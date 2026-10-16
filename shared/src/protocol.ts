@@ -1,4 +1,4 @@
-import type { Tile } from "./pathfinding";
+import type { Vec2 } from "./pathfinding";
 
 /**
  * Keep-alive and RTT probe: the runtime answers PING_MESSAGE with PONG_MESSAGE without waking the
@@ -18,7 +18,7 @@ export const CHAT_MIN_GAP_MS = 500;
 export const MAX_DESYNC_TILES = 3;
 
 export type ClientMessage =
-  /** `fx`/`fy` is the tile the client is standing on; `seq` is echoed back in the ack. */
+  /** `x`/`y` is the exact destination and `fx`/`fy` the exact position the client starts from, in tile units; `seq` is echoed back in the ack. */
   | { t: "move"; x: number; y: number; fx: number; fy: number; seq: number }
   /** Ask to use the portal the character is standing on; the server verifies the position. */
   | { t: "portal" }
@@ -28,7 +28,8 @@ export type ClientMessage =
 export interface PlayerSnapshot {
   id: string;
   name: string;
-  path: Tile[];
+  /** Continuous waypoints in tile units (see Vec2). */
+  path: Vec2[];
   ageMs: number;
   speed: number;
 }
@@ -50,6 +51,11 @@ function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
 }
 
+/** A finite coordinate in a sane range; the server still validates it against the map. */
+function isCoord(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v >= -1 && v <= 1024;
+}
+
 /** Validates untrusted client input. Returns null when the message is malformed. */
 export function parseClientMessage(raw: string): ClientMessage | null {
   if (raw.length > MAX_MESSAGE_BYTES) return null;
@@ -63,7 +69,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   const m = data as Record<string, unknown>;
   switch (m.t) {
     case "move":
-      if (!isInt(m.x) || !isInt(m.y) || !isInt(m.fx) || !isInt(m.fy) || !isInt(m.seq)) return null;
+      if (!isCoord(m.x) || !isCoord(m.y) || !isCoord(m.fx) || !isCoord(m.fy) || !isInt(m.seq)) return null;
       return { t: "move", x: m.x, y: m.y, fx: m.fx, fy: m.fy, seq: m.seq };
     case "portal":
       return { t: "portal" };
