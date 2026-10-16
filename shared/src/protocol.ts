@@ -9,12 +9,20 @@ export const PONG_MESSAGE = "pong";
 
 export const MAX_MESSAGE_BYTES = 512;
 export const MIN_MOVE_INTERVAL_MS = 100;
+export const CHAT_MAX_LENGTH = 120;
+/** At most CHAT_BURST messages per CHAT_WINDOW_MS per player, and at least CHAT_MIN_GAP_MS apart. */
+export const CHAT_BURST = 5;
+export const CHAT_WINDOW_MS = 10_000;
+export const CHAT_MIN_GAP_MS = 500;
 /** How far (tiles) the client-claimed start tile may differ from the server position and still be trusted. */
 export const MAX_DESYNC_TILES = 3;
 
 export type ClientMessage =
   /** `fx`/`fy` is the tile the client is standing on; `seq` is echoed back in the ack. */
-  | { t: "move"; x: number; y: number; fx: number; fy: number; seq: number };
+  | { t: "move"; x: number; y: number; fx: number; fy: number; seq: number }
+  /** Ask to use the portal the character is standing on; the server verifies the position. */
+  | { t: "portal" }
+  | { t: "chat"; text: string };
 
 /** Snapshot of one player: where they started walking, the path, and how long ago they started. */
 export interface PlayerSnapshot {
@@ -32,7 +40,11 @@ export type ServerMessage =
   | { t: "path"; player: PlayerSnapshot }
   /** Reply to the mover. `player` is present only when the server corrected or rejected the move. */
   | { t: "ack"; seq: number; player?: PlayerSnapshot }
-  | { t: "kicked"; reason: string };
+  | { t: "kicked"; reason: string }
+  /** The character moved to another map; the client reconnects and receives a fresh welcome. */
+  | { t: "transfer"; map: string }
+  | { t: "chat"; id: string; name: string; text: string; ts: number }
+  | { t: "chat_error"; reason: "rate" | "invalid" };
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
@@ -53,7 +65,26 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "move":
       if (!isInt(m.x) || !isInt(m.y) || !isInt(m.fx) || !isInt(m.fy) || !isInt(m.seq)) return null;
       return { t: "move", x: m.x, y: m.y, fx: m.fx, fy: m.fy, seq: m.seq };
+    case "portal":
+      return { t: "portal" };
+    case "chat": {
+      if (typeof m.text !== "string") return null;
+      const text = normalizeChatText(m.text);
+      return text ? { t: "chat", text } : null;
+    }
     default:
       return null;
   }
+}
+
+/** Strips control characters, collapses whitespace and caps the length. Returns null for empty text. */
+export function normalizeChatText(raw: string): string | null {
+  const text = raw
+    .normalize("NFC")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const chars = [...text];
+  if (chars.length === 0) return null;
+  return chars.slice(0, CHAT_MAX_LENGTH).join("");
 }
