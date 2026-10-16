@@ -21,3 +21,10 @@ npx wrangler d1 create cultivation-db      # copy the database_id into wrangler.
 npm run db:migrate:remote
 npm run deploy
 ```
+
+## Preview environment
+Separate worker `cultivation-preview` with its own D1 (`cultivation-preview-db`):
+```bash
+npm run db:migrate:preview
+npm run deploy:preview
+```

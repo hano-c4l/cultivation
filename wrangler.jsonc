@@ -15,8 +15,32 @@
     {
       "binding": "DB",
       "database_name": "cultivation-db",
-      "database_id": "eaee542b-3e9c-4a20-98d6-4554f9953292",
+      "database_id": "f9773fff-6171-4255-825f-b1e6087b4bdf",
       "migrations_dir": "server/migrations"
     }
-  ]
+  ],
+  // Preview environment: `wrangler deploy --env preview` -> separate worker "cultivation-preview" with its own D1.
+  // Environments do not inherit bindings, so everything is repeated here.
+  "env": {
+    "preview": {
+      "name": "cultivation-preview",
+      "assets": {
+        "directory": "client/dist",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*", "/ws"]
+      },
+      "durable_objects": {
+        "bindings": [{ "name": "MAP_ROOM", "class_name": "MapRoom" }]
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MapRoom"] }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "cultivation-preview-db",
+          "database_id": "8bc4d494-5fe2-4d08-b042-5010ad5b8d9d",
+          "migrations_dir": "server/migrations"
+        }
+      ]
+    }
+  }
 }
