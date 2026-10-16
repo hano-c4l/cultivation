@@ -59,11 +59,12 @@ function connect(cookie, channel = 1) {
   return {
     ws, inbox, opened,
     send: (m) => ws.send(JSON.stringify(m)),
-    wait: (pred, ms = 5000) => new Promise((resolve, reject) => {
+    // `label` names the step in the timeout error, so a slow run says where it stopped.
+    wait: (pred, ms = 5000, label = pred.toString().slice(0, 80)) => new Promise((resolve, reject) => {
       const hit = inbox.find(pred);
       if (hit) return resolve(hit);
       waiters.push({ pred, resolve });
-      setTimeout(() => reject(new Error("timeout waiting for message")), ms);
+      setTimeout(() => reject(new Error(`timeout waiting for message: ${label}`)), ms);
     }),
   };
 }
