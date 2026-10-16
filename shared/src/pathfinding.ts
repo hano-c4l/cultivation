@@ -98,6 +98,9 @@ export function findPath(map: MapData, from: Tile, to: Tile): Tile[] | null {
   return path.reverse();
 }
 
+/** A point in continuous tile units: tile (i, j) spans [i, i+1) x [j, j+1), its center is (i+0.5, j+0.5). */
+export type Vec2 = [number, number];
+
 export interface PathPosition {
   /** Continuous position in tile units (tile centers are at integer + 0.5). */
   x: number;
@@ -105,8 +108,8 @@ export interface PathPosition {
   moving: boolean;
 }
 
-/** Interpolated position after `elapsedMs` of walking along `path` at `speed` tiles/second. */
-export function positionAlongPath(path: readonly Tile[], elapsedMs: number, speed: number): PathPosition {
+/** Interpolated position after `elapsedMs` of walking along `path` (continuous waypoints) at `speed` tiles/second. */
+export function positionAlongPath(path: readonly Vec2[], elapsedMs: number, speed: number): PathPosition {
   const first = path[0];
   if (!first) return { x: 0.5, y: 0.5, moving: false };
   let remaining = Math.max(0, (elapsedMs / 1000) * speed);
@@ -116,10 +119,79 @@ export function positionAlongPath(path: readonly Tile[], elapsedMs: number, spee
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (remaining <= len) {
       const t = len === 0 ? 1 : remaining / len;
-      return { x: a[0] + (b[0] - a[0]) * t + 0.5, y: a[1] + (b[1] - a[1]) * t + 0.5, moving: true };
+      return { x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t, moving: true };
     }
     remaining -= len;
   }
   const last = path[path.length - 1]!;
-  return { x: last[0] + 0.5, y: last[1] + 0.5, moving: false };
+  return { x: last[0], y: last[1], moving: false };
+}
+
+/** Collision radius of a character in tiles. Paths keep this much clearance from blocked tiles. */
+export const BODY_RADIUS = 0.25;
+/** Spacing between collision samples along a segment, in tiles (must be well below BODY_RADIUS). */
+const SAMPLE_STEP = 0.1;
+/** How many waypoints ahead the smoother looks, bounding its cost on long A* paths. */
+const SMOOTH_LOOKAHEAD = 48;
+
+export function tileCenter(tile: Tile): Vec2 {
+  return [tile[0] + 0.5, tile[1] + 0.5];
+}
+
+/** True when a body of BODY_RADIUS centred on (x, y) overlaps only walkable tiles (checked at its four corners). */
+export function pointClear(map: MapData, x: number, y: number, radius = BODY_RADIUS): boolean {
+  return (
+    isWalkable(map, Math.floor(x - radius), Math.floor(y - radius)) &&
+    isWalkable(map, Math.floor(x + radius), Math.floor(y - radius)) &&
+    isWalkable(map, Math.floor(x - radius), Math.floor(y + radius)) &&
+    isWalkable(map, Math.floor(x + radius), Math.floor(y + radius))
+  );
+}
+
+/** True when the body can slide along the straight segment a -> b without touching a blocked tile. */
+export function lineClear(map: MapData, a: Vec2, b: Vec2, radius = BODY_RADIUS): boolean {
+  const dist = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const steps = Math.max(1, Math.ceil(dist / SAMPLE_STEP));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    if (!pointClear(map, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, radius)) return false;
+  }
+  return true;
+}
+
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
+/**
+ * Free-movement path from an exact position to an exact destination.
+ * Goes straight when the line is clear; otherwise runs A* on the tile grid and pulls the string
+ * (greedy line-of-sight shortcuts) so the result has as few, as long segments as possible.
+ * Returns null when the destination tile is blocked or unreachable.
+ */
+export function findSmoothPath(map: MapData, from: Vec2, to: Vec2): Vec2[] | null {
+  const fromTile: Tile = [Math.floor(from[0]), Math.floor(from[1])];
+  const toTile: Tile = [Math.floor(to[0]), Math.floor(to[1])];
+  if (!isWalkable(map, toTile[0], toTile[1])) return null;
+  // A destination hugging a wall (inside the body radius) is moved to the centre of its tile.
+  const end: Vec2 = pointClear(map, to[0], to[1]) ? [round2(to[0]), round2(to[1])] : tileCenter(toTile);
+  const start: Vec2 = [round2(from[0]), round2(from[1])];
+
+  if (lineClear(map, start, end)) return start[0] === end[0] && start[1] === end[1] ? [start] : [start, end];
+
+  const tiles = findPath(map, fromTile, toTile);
+  if (!tiles) return null;
+  // Waypoints: exact start, centres of the intermediate tiles, exact end.
+  const points: Vec2[] = [start, ...tiles.slice(1, -1).map(tileCenter), end];
+
+  const out: Vec2[] = [start];
+  let i = 0;
+  while (i < points.length - 1) {
+    let j = Math.min(points.length - 1, i + SMOOTH_LOOKAHEAD);
+    // Adjacent A* waypoints are always passable at tile granularity, so j = i + 1 is accepted unconditionally.
+    while (j > i + 1 && !lineClear(map, points[i]!, points[j]!)) j--;
+    out.push(points[j]!);
+    i = j;
+  }
+  return out;
 }
