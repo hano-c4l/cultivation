@@ -1,0 +1,72 @@
+# Trạng thái dự án (bàn giao)
+
+Cập nhật: 2026-10-17. Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `docs/PLAN.md` (kế hoạch tổng) và `docs/PHASE1.md` (chia nhỏ giai đoạn 1).
+
+## Đã xong
+| Hạng mục | Ghi chú |
+|---|---|
+| Giai đoạn 0 | Worker + Durable Object + D1, bản đồ isometric, click để di chuyển, nhiều người thấy nhau |
+| 1a Tài khoản và nhân vật | Email + mật khẩu, phiên bằng cookie, tạo nhân vật (server tung linh căn), WebSocket xác thực bằng cookie, khóa nhân vật xuyên kênh, lưu vị trí |
+| 1b Thế giới và chat | 3 bản đồ (Thanh Vân Thành an toàn, Hắc Mộc Lâm, U Minh Động) nối bằng cổng, chat theo bản đồ có lọc từ và giới hạn tốc độ |
+| Di chuyển | Dự đoán phía client, hòa trộn khi server sửa, ping tự trả lời (DO ngủ được), đích đến chính xác, đường đi làm thẳng, **va chạm lưới mịn 4x4 mỗi ô** (vật cản tròn, vát góc, hàng rào mỏng) |
+
+## Còn lại của giai đoạn 1 (xem `docs/PHASE1.md`)
+- **1c** Chỉ số, cảnh giới (Luyện Khí → Nguyên Anh, 9 tầng), EXP, điểm tiềm năng, bảng ngũ hành, giao diện nhân vật
+- **1d** Quái, chiến đấu realtime (tick chỉ chạy khi có người; alarm cho hồi sinh), nhận EXP
+- **1e** Kinh tế khung xương: `item_instances`, `currency_ledger` append-only có idempotency key, `mailbox`, trang admin cộng tiền, rơi Linh Thạch
+- **1f** Kiểm thử tải 50 client, rà giới hạn gói Free
+
+Việc tồn đọng khác:
+- Chưa có giới hạn tốc độ di chuyển: client khai ô xuất phát, server tin trong `MAX_DESYNC_TILES` (3 ô) nên có thể nối chuỗi claim (TODO trong `server/src/map-room.ts`). Cần movement budget trước khi mở cho đông người.
+- Bản đồ vẽ bằng RenderTexture: chỉ mới thử với Canvas, chưa thử WebGL trên thiết bị thật (đặc biệt điện thoại). Có `?renderer=canvas` làm đường lùi.
+- Hình ảnh vật cản và nhân vật còn là placeholder (xem mục asset trong `docs/PLAN.md`).
+- Tài khoản thử `smoke-*` và `cpu-*@example.test` còn trong D1 preview; production có 2 tài khoản thử do người dùng tự tạo (thông tin đăng nhập do người dùng giữ, không ghi trong repo).
+- Quên mật khẩu qua email và cổng thanh toán chưa làm (cần nhà cung cấp, xem `docs/PLAN.md`).
+
+## Môi trường
+| | Production | Preview |
+|---|---|---|
+| Worker | `cultivation` | `cultivation-preview` |
+| URL | https://cultivation.hanowl.workers.dev, https://cultivation.hanowl.com | https://cultivation-preview.hanowl.workers.dev |
+| D1 | `cultivation-db` | `cultivation-preview-db` |
+| Nhánh | `main` | `preview` |
+
+- Durable Object (SQLite): `MapRoom` (mỗi `bản đồ:kênh` một object), `CharacterLock` (theo id nhân vật), `PasswordHasher`.
+- Gói Cloudflare: **Workers Free**. Giới hạn đã tính: Worker 10 ms CPU mỗi request (vì vậy băm mật khẩu PBKDF2 100k vòng nằm trong DO), DO 100k request và 13.000 GB-s mỗi ngày, D1 100k dòng ghi mỗi ngày. Vượt thì lỗi đến 00:00 UTC.
+- Kênh mặc định là `ch4` (`client/src/config.ts`). Cloudflare đặt DO ngẫu nhiên trong vùng APAC. Đã đo: production ch1 KIX, ch2 SIN, ch3 NRT, ch4 SIN, ch5 KIX, ch6 HKG, ch7 HKG, ch8 SIN. Phải đo lại nếu đổi môi trường. HUD hiện "Máy chủ: XXX"; `/api/whereami` cho biết edge.
+
+## Kiến trúc nhanh
+```
+client/  Vite + Phaser 3 (Canvas/WebGL) + lớp HTML cho đăng nhập, chat, HUD
+server/  Worker (API + WebSocket) + Durable Object + D1
+shared/  Bản đồ, va chạm, tìm đường, giao thức, validation (dùng chung client và server)
+tools/   smoke.mjs
+```
+- **Một Worker** phục vụ asset tĩnh, `/api/*`, `/ws` (cấu hình `wrangler.jsonc`, có khối `env.preview`; môi trường không kế thừa binding nên phải khai báo lại).
+- **Server là nguồn sự thật.** Worker xác thực cookie, đặt header `x-char-id`, `x-room` rồi chuyển cho `MapRoom`. Bản đồ do server quyết định theo vị trí đã lưu; client chỉ chọn kênh (`?ch=N`).
+- **Vị trí** là tọa độ liên tục (đơn vị ô, tâm ô là `i+0.5`), đường đi là danh sách điểm (`Vec2[]`), lưu D1 với 2 chữ số thập phân. Hàng cũ lưu số nguyên được coi là tâm ô.
+- **Khóa nhân vật:** vào phòng mới phải `CharacterLock.claim` trước; phòng cũ lưu rồi đá socket; chỉ sau đó phòng mới mới đọc dòng nhân vật. Giải phóng theo `claimId`, không theo tên phòng.
+- **Chuyển bản đồ:** lưu tại bản đồ đích → tách socket → giải phóng khóa → báo `transfer` → client kết nối lại và nhận `welcome` mới.
+- **Ping:** chuỗi thuần `ping`/`pong` do runtime tự trả (`setWebSocketAutoResponse`), không đánh thức DO. Trạng thái người chơi nằm trong attachment của socket nên DO ngủ được.
+- **Lưu vị trí:** khi ngắt kết nối và debounce 10 giây bằng alarm sau khi di chuyển (không có alarm định kỳ).
+- **Va chạm:** `CELLS_PER_TILE = 4`, bán kính thân `BODY_RADIUS = 0.25`. A* trên lưới điều hướng mịn rồi kéo căng bằng line-of-sight (`findSmoothPath`). Click vào vật cản đi tới điểm đứng được gần nhất.
+- **Giao thức:** xem `shared/src/protocol.ts`. Client gửi `move` (x, y, fx, fy, seq), `portal`, `chat`; server trả `welcome`, `joined`, `left`, `path`, `ack`, `transfer`, `chat`, `chat_error`, `kicked`.
+- **D1:** migration trong `server/migrations/` (`0001`, `0002`). Bảng `accounts`, `sessions`, `characters` (một nhân vật mỗi tài khoản), `auth_attempts`. Vai trò `admin` gán thủ công bằng `wrangler d1 execute`.
+
+## Quy trình làm việc
+- Nhánh và deploy: xem `CLAUDE.md` (`features_*` từ `preview` → PR vào `preview` → deploy preview → PR vào `main` → deploy production). Trước khi deploy chạy `npm run db:migrate:preview` hoặc `npm run db:migrate:remote` nếu có migration mới.
+- Lệnh: `npm run typecheck`, `npm test`, `npm run preview` (build + wrangler dev ở :8787), `npm run db:migrate:local`, `npm run deploy:preview`, `npm run deploy`.
+- **Smoke test** (`node tools/smoke.mjs [wss://host]`) tạo tài khoản thật nên **chỉ chạy ở local hoặc preview**, tự từ chối production. Local cần file `.dev.vars` (không commit) chứa `DISABLE_RATE_LIMIT=1`. Trên preview giới hạn đăng ký là 10 lần mỗi 10 phút (cửa sổ cố định), nên chỉ chạy được khoảng một lần mỗi 10 phút.
+- **Kiểm tra production** chỉ làm chỉ-đọc: `/api/health`, `/api/me` không cookie và cookie rác phải 401, WebSocket không cookie 401, POST Origin lạ 403, trang có khung đăng nhập và chat.
+- **Thỏa thuận với trợ lý:** trợ lý không nhập mật khẩu hay tạo tài khoản trên host từ xa (preview/production); các bước cần đăng nhập thật do người dùng tự thử. Việc đăng ký/đăng nhập tự động chỉ chạy ở local.
+- Danh tính git theo repo: `hano-c4l` / `hano.c4l@gmail.com` (cấu hình local, không đi theo repo).
+- Cloud cần: `gh` đã đăng nhập, `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` để dùng wrangler (token do người dùng tạo và giữ trong secrets).
+
+## Bẫy đã gặp
+- Heredoc shell (`<<'EOF'`) hay hỏng với nội dung có backtick, `${}` hoặc dấu nháy lẫn lộn; dùng công cụ ghi file hoặc script Python lưu thành file.
+- `tools/smoke.mjs` import `shared/src/map.ts` bằng type-stripping của Node: file đó không được dùng cú pháp TypeScript không xóa được (parameter properties, enum) và không được import file khác thiếu đuôi mở rộng.
+- Worker Free chỉ 10 ms CPU: không băm mật khẩu hay làm việc nặng trong Worker; để trong DO.
+- `workers-types` v5 và wrangler 4: dùng `^5.20261006.1`, nếu không `npm install` báo ERESOLVE.
+- Lần gọi đầu tiên sau mỗi lần deploy đôi khi lỗi thoáng qua (health trả 1042 hoặc smoke timeout); chạy lại thì qua. Chưa rõ nguyên nhân.
+- WebGL trong khung trình duyệt của app không tạo được framebuffer; client tự chuyển sang Canvas khi gặp lỗi đó.
+- Đo độ trễ từ máy phát triển không đại diện: định tuyến của máy này nhảy giữa nhiều edge (CDG, MAD, NRT, SIN) và RTT 330–450 ms.
