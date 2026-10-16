@@ -5,12 +5,14 @@ import {
   findPath,
   getMap,
   isWalkable,
+  MIN_MOVE_INTERVAL_MS,
   positionAlongPath,
   type PlayerSnapshot,
   type ServerMessage,
   type Tile,
 } from "@game/shared";
 import { vi } from "./locales/vi";
+import { DEFAULT_CHANNEL } from "./config";
 import { Net } from "./net";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
@@ -94,6 +96,8 @@ export class GameScene extends Phaser.Scene {
   private net!: Net;
   private hud!: HTMLElement;
   private ping = 0;
+  private moveSeq = 0;
+  private lastMoveSentAt = 0;
   private colo = "…";
   private marker!: Phaser.GameObjects.Graphics;
 
@@ -113,8 +117,10 @@ export class GameScene extends Phaser.Scene {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
 
     const identity = loadIdentity();
+    // Channel picks which Durable Object (and so which Cloudflare data centre) serves us; override with ?ch=N.
+    const channel = Number(new URLSearchParams(location.search).get("ch")) || DEFAULT_CHANNEL;
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    this.net = new Net(`${proto}://${location.host}/ws?map=town&ch=1`, identity, {
+    this.net = new Net(`${proto}://${location.host}/ws?map=town&ch=${channel}`, identity, {
       onMessage: (msg) => this.handleMessage(msg),
       onStatus: (connected) => {
         if (!connected) {
@@ -159,21 +165,29 @@ export class GameScene extends Phaser.Scene {
     const tx = Math.floor(t.x);
     const ty = Math.floor(t.y);
     if (!isWalkable(this.map, tx, ty)) return;
-    this.net.send({ t: "move", x: tx, y: ty });
-    this.predictSelfMove(tx, ty);
+    // Client-side throttle matches the server's, so a dropped click never desyncs the prediction.
+    const now = performance.now();
+    if (now - this.lastMoveSentAt < MIN_MOVE_INTERVAL_MS + 20) return;
+    const from = this.predictSelfMove(tx, ty);
+    if (!from) return;
+    this.lastMoveSentAt = now;
+    this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
     const c = toScreen(tx + 0.5, ty + 0.5);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
     this.time.delayedCall(500, () => this.marker.clear());
   }
 
-  /** Starts walking immediately using the same A* as the server; the server's path later corrects any drift. */
-  private predictSelfMove(tx: number, ty: number): void {
+  /** Starts walking immediately using the same A* as the server. Returns the tile it started from, or null if no path. */
+  private predictSelfMove(tx: number, ty: number): Tile | null {
     const self = this.actors.get(this.selfId);
-    if (!self) return;
+    if (!self) return null;
     const now = performance.now();
     const here = currentPos(self, now);
-    const path = findPath(this.map, [Math.floor(here.x), Math.floor(here.y)], [tx, ty]);
-    if (path) applyTrack(self, path, now, self.speed, now);
+    const from: Tile = [Math.floor(here.x), Math.floor(here.y)];
+    const path = findPath(this.map, from, [tx, ty]);
+    if (!path) return null;
+    applyTrack(self, path, now, self.speed, now);
+    return from;
   }
 
   private handleMessage(msg: ServerMessage): void {
@@ -189,6 +203,10 @@ export class GameScene extends Phaser.Scene {
       case "path":
         this.upsertActor([msg.player]);
         this.refreshHud();
+        break;
+      case "ack":
+        // Only corrections carry a track; an accepted move keeps the local prediction untouched.
+        if (msg.player) this.upsertActor([msg.player]);
         break;
       case "left":
         this.removeActor(msg.id);

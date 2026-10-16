@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   BASE_SPEED,
+  MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
   findPath,
   getMap,
@@ -93,20 +94,28 @@ export class MapRoom extends DurableObject {
 
     if (msg.t === "move") {
       const now = Date.now();
-      // On rejection, send the authoritative track back so a predicting client can resync.
-      const reject = () => this.send(ws, { t: "path", player: this.snapshot(state) });
+      // The mover predicts locally, so it only needs a payload when its move was corrected or rejected.
+      const reject = () => this.send(ws, { t: "ack", seq: msg.seq, player: this.snapshot(state) });
       if (now - state.lastMoveAt < MIN_MOVE_INTERVAL_MS) return reject();
       if (!isWalkable(this.map, msg.x, msg.y)) return reject();
       const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-      const from: Tile = [Math.floor(here.x), Math.floor(here.y)];
+      const serverTile: Tile = [Math.floor(here.x), Math.floor(here.y)];
+      // Trust the client's start tile when it is close to the server's view (latency drift), so the
+      // client's prediction and the server path start from the same tile and nothing is pulled back.
+      // TODO(phase 1): add a movement budget so repeated claims cannot be chained into a speed hack.
+      const claimedOk =
+        isWalkable(this.map, msg.fx, msg.fy) &&
+        Math.hypot(msg.fx - serverTile[0], msg.fy - serverTile[1]) <= MAX_DESYNC_TILES;
+      const from: Tile = claimedOk ? [msg.fx, msg.fy] : serverTile;
       const path = findPath(this.map, from, [msg.x, msg.y]);
       if (!path) return reject();
       state.path = path;
       state.startedAt = now;
       state.lastMoveAt = now;
       ws.serializeAttachment(state);
-      // Broadcast to everyone including the mover so all clients use one authoritative path.
-      this.broadcast({ t: "path", player: this.snapshot(state) });
+      // Others get the new path; the mover only gets the track back if its start tile was overridden.
+      this.broadcast({ t: "path", player: this.snapshot(state) }, ws);
+      this.send(ws, claimedOk ? { t: "ack", seq: msg.seq } : { t: "ack", seq: msg.seq, player: this.snapshot(state) });
     }
   }
 
