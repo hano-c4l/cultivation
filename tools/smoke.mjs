@@ -8,7 +8,8 @@ function client(id, name) {
   const inbox = [];
   const waiters = [];
   ws.addEventListener("message", (ev) => {
-    const msg = JSON.parse(ev.data);
+    // The server auto-responds to the plain string "ping" with "pong" (not JSON).
+    const msg = ev.data === "pong" ? { t: "pong" } : JSON.parse(ev.data);
     inbox.push(msg);
     for (const w of [...waiters]) if (w.pred(msg)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(msg); }
   });
@@ -47,6 +48,10 @@ a.send({ t: "move", x: 26, y: 5, fx: 20, fy: 20, seq: 1 });
 const pathMsg = await b.wait((m) => m.t === "path" && m.player.id === wa.self);
 const path = pathMsg.player.path;
 assert(path.length > 2 && path.at(-1)[0] === 26 && path.at(-1)[1] === 5, "B receives A's server-computed path");
+
+a.ws.send("ping");
+await a.wait((m) => m.t === "pong");
+assert(true, "plain-string ping is auto-answered with pong");
 
 const ack1 = await a.wait((m) => m.t === "ack" && m.seq === 1);
 assert(ack1.player === undefined, "accepted move acks without a track (mover keeps its prediction)");

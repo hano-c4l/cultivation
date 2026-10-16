@@ -2,6 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import {
   BASE_SPEED,
   MAX_DESYNC_TILES,
+  PING_MESSAGE,
+  PONG_MESSAGE,
   MIN_MOVE_INTERVAL_MS,
   findPath,
   getMap,
@@ -30,6 +32,12 @@ export class MapRoom extends DurableObject {
   private readonly map: MapData = getMap(MAP_ID);
   private colo: string | null = null;
 
+  constructor(ctx: DurableObjectState, env: unknown) {
+    super(ctx, env as never);
+    // Answered by the runtime while the object hibernates (no wake-up, no duration billing).
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING_MESSAGE, PONG_MESSAGE));
+  }
+
   /** Cloudflare data centre this Durable Object runs in (diagnostics for latency). */
   private async getColo(): Promise<string> {
     if (this.colo) return this.colo;
@@ -54,11 +62,6 @@ export class MapRoom extends DurableObject {
     if (typeof raw !== "string") return;
     const msg = parseClientMessage(raw);
     if (!msg) return;
-
-    if (msg.t === "ping") {
-      this.send(ws, { t: "pong", c: msg.c });
-      return;
-    }
 
     const state = ws.deserializeAttachment() as PlayerState | null;
 

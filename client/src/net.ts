@@ -1,8 +1,9 @@
-import type { ClientMessage, ServerMessage } from "@game/shared";
+import { PONG_MESSAGE, PING_MESSAGE, type ClientMessage, type ServerMessage } from "@game/shared";
 
 export interface NetHandlers {
   onMessage(msg: ServerMessage): void;
   onStatus(connected: boolean): void;
+  onPong(): void;
 }
 
 /** WebSocket wrapper with automatic reconnect (the server re-sends a full welcome on join). */
@@ -27,6 +28,10 @@ export class Net {
     });
     ws.addEventListener("message", (ev) => {
       if (typeof ev.data !== "string") return;
+      if (ev.data === PONG_MESSAGE) {
+        this.handlers.onPong();
+        return;
+      }
       try {
         const msg = JSON.parse(ev.data) as ServerMessage;
         if (msg.t === "kicked") this.closedForGood = true;
@@ -41,6 +46,11 @@ export class Net {
       setTimeout(() => this.connect(), this.retryMs);
       this.retryMs = Math.min(this.retryMs * 2, 5000);
     });
+  }
+
+  /** Sends the plain-string keep-alive that the server answers without waking the room. */
+  sendPing(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(PING_MESSAGE);
   }
 
   send(msg: ClientMessage): void {
