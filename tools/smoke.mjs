@@ -138,16 +138,24 @@ const w3 = await a3.wait((m) => m.t === "welcome");
 assert(w3.players.length === 1 && w3.players[0].id === A.character.id, "other channel: old room kicked, new room has exactly one A");
 
 // --- persistence: position saved on disconnect and restored on the next login ---
+// The start tile depends on where A was when the previous room kicked it, so pick a target exactly 2 tiles away.
+const { getMap, isWalkable } = await import("../shared/src/map.ts");
+const town = getMap("town");
+const [sx, sy] = w3.players[0].path[0];
+const target = [[2, 0], [-2, 0], [0, 2], [0, -2]]
+  .map(([dx, dy]) => [sx + dx, sy + dy, sx + dx / 2, sy + dy / 2])
+  .find(([x, y, mx, my]) => isWalkable(town, x, y) && isWalkable(town, mx, my));
+assert(target !== undefined, "found a walkable target 2 tiles from the start tile");
 await sleep(150);
-a3.send({ t: "move", x: 22, y: 20, fx: w3.players[0].path[0][0], fy: w3.players[0].path[0][1], seq: 1 });
+a3.send({ t: "move", x: target[0], y: target[1], fx: sx, fy: sy, seq: 1 });
 await a3.wait((m) => m.t === "ack" && m.seq === 1);
-await sleep(1200); // 2 tiles at 4 tiles/s
+await sleep(1200); // 2 tiles at 4 tiles/s = 0.5 s
 a3.ws.close();
 await sleep(1500);
 const a4 = connect(A.cookie, 2);
 await a4.opened;
 const w4 = await a4.wait((m) => m.t === "welcome");
-assert(w4.players[0].path[0].join() === "22,20", "position persisted across disconnect/login");
+assert(w4.players[0].path[0].join() === `${target[0]},${target[1]}`, "position persisted across disconnect/login");
 
 // --- race: a fast same-room reconnect must not let a late release free the new claim ---
 const r1 = connect(A.cookie, 3);
