@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Tu Tiên Giới</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600&display=swap" rel="stylesheet" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #10141c; overflow: hidden; touch-action: none; }
+      #game { position: fixed; inset: 0; }
+      #hud {
+        position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;
+        background: rgba(0, 0, 0, 0.55); color: #e8e4d8; font: 14px/1.4 "Be Vietnam Pro", system-ui, sans-serif;
+        pointer-events: none; user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="hud">Đang kết nối…</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

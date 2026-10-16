@@ -1,0 +1,8 @@
+{
+  "name": "@game/server",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@game/shared": "*"
+  }
+}
