@@ -20,6 +20,11 @@ export default {
       return Response.json({ ok: row?.ok === 1 });
     }
 
+    if (url.pathname === "/api/whereami") {
+      const cf = request.cf as { colo?: string; country?: string } | undefined;
+      return Response.json({ edge: cf?.colo ?? null, country: cf?.country ?? null });
+    }
+
     if (url.pathname === "/ws") {
       if (request.headers.get("Upgrade") !== "websocket") {
         return new Response("Expected WebSocket", { status: 426 });
