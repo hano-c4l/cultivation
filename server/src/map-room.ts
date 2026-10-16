@@ -2,9 +2,9 @@ import { DurableObject } from "cloudflare:workers";
 import {
   BASE_SPEED,
   MAX_DESYNC_TILES,
+  MIN_MOVE_INTERVAL_MS,
   PING_MESSAGE,
   PONG_MESSAGE,
-  MIN_MOVE_INTERVAL_MS,
   findPath,
   getMap,
   isWalkable,
@@ -15,25 +15,34 @@ import {
   type ServerMessage,
   type Tile,
 } from "@game/shared";
+import { getCharacterById, saveCharacterPosition } from "./characters";
+import type { Env } from "./env";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
 interface PlayerState {
+  /** Character id. */
   id: string;
   name: string;
+  /** Room name (`map:channel`), kept so the lock can be released after a wake-up. */
+  room: string;
   path: Tile[];
   startedAt: number;
   speed: number;
   lastMoveAt: number;
+  /** Position changed since the last save to D1. */
+  dirty: boolean;
 }
 
 const MAP_ID = "town";
+/** Moves are saved at most this often per room, so D1 writes stay low and the room can still hibernate. */
+const SAVE_DEBOUNCE_MS = 10_000;
 
-export class MapRoom extends DurableObject {
+export class MapRoom extends DurableObject<Env> {
   private readonly map: MapData = getMap(MAP_ID);
   private colo: string | null = null;
 
-  constructor(ctx: DurableObjectState, env: unknown) {
-    super(ctx, env as never);
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
     // Answered by the runtime while the object hibernates (no wake-up, no duration billing).
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING_MESSAGE, PONG_MESSAGE));
   }
@@ -51,92 +60,138 @@ export class MapRoom extends DurableObject {
     return this.colo;
   }
 
-  async fetch(_request: Request): Promise<Response> {
-    const pair = new WebSocketPair();
-    const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
-    this.ctx.acceptWebSocket(server);
-    return new Response(null, { status: 101, webSocket: client });
+  /** The Worker authenticates the cookie and sets these headers; clients cannot reach this object directly. */
+  async fetch(request: Request): Promise<Response> {
+    const characterId = request.headers.get("x-char-id");
+    const room = request.headers.get("x-room");
+    if (!characterId || !room) return new Response("Forbidden", { status: 403 });
+
+    const lock = this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(characterId));
+    // Claim first: the previous holder (any room) kicks its socket and saves before we read the row.
+    await lock.claim(characterId, room);
+    try {
+      const row = await getCharacterById(this.env.DB, characterId);
+      if (!row) {
+        await lock.release(room);
+        return new Response("No such character", { status: 404 });
+      }
+      const colo = await this.getColo();
+
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
+      this.ctx.acceptWebSocket(server);
+      const tile: Tile = isWalkable(this.map, row.x, row.y) ? [row.x, row.y] : this.map.spawn;
+      const state: PlayerState = {
+        id: row.id,
+        name: row.name,
+        room,
+        path: [tile],
+        startedAt: Date.now(),
+        speed: BASE_SPEED,
+        lastMoveAt: 0,
+        dirty: false,
+      };
+      server.serializeAttachment(state);
+      // Includes the joining player so the client gets its own authoritative snapshot.
+      const players = this.players().map((p) => this.snapshot(p));
+      this.send(server, { t: "welcome", self: state.id, map: this.map.id, players, colo });
+      this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
+      return new Response(null, { status: 101, webSocket: client });
+    } catch (err) {
+      await lock.release(room);
+      throw err;
+    }
+  }
+
+  /** Called by CharacterLock when the same character connects elsewhere: save, then kick the old socket. */
+  async evictCharacter(characterId: string): Promise<void> {
+    for (const ws of this.ctx.getWebSockets()) {
+      const state = ws.deserializeAttachment() as PlayerState | null;
+      if (!state || state.id !== characterId) continue;
+      ws.serializeAttachment(null);
+      await this.save(state);
+      this.send(ws, { t: "kicked", reason: "duplicate-login" });
+      try {
+        ws.close(4000, "duplicate-login");
+      } catch {
+        // Already closed.
+      }
+      this.broadcast({ t: "left", id: state.id }, ws);
+    }
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     if (typeof raw !== "string") return;
     const msg = parseClientMessage(raw);
     if (!msg) return;
-
     const state = ws.deserializeAttachment() as PlayerState | null;
+    if (!state) return;
 
-    if (msg.t === "join") {
-      if (state) return; // already joined on this socket
-      // Single writer per character: kick any older socket with the same id.
-      for (const other of this.ctx.getWebSockets()) {
-        const o = other.deserializeAttachment() as PlayerState | null;
-        if (o && o.id === msg.id) {
-          this.send(other, { t: "kicked", reason: "duplicate-login" });
-          other.serializeAttachment(null);
-          other.close(4000, "duplicate-login");
-          this.broadcast({ t: "left", id: o.id }, other);
-        }
-      }
-      const fresh: PlayerState = {
-        id: msg.id,
-        name: msg.name,
-        path: [this.map.spawn],
-        startedAt: Date.now(),
-        speed: BASE_SPEED,
-        lastMoveAt: 0,
-      };
-      ws.serializeAttachment(fresh);
-      // Includes the joining player so the client gets its own authoritative snapshot.
-      const players = this.players().map((p) => this.snapshot(p));
-      this.send(ws, { t: "welcome", self: fresh.id, map: this.map.id, players, colo: await this.getColo() });
-      this.broadcast({ t: "joined", player: this.snapshot(fresh) }, ws);
-      return;
-    }
+    const now = Date.now();
+    // The mover predicts locally, so it only needs a payload when its move was corrected or rejected.
+    const reject = () => this.send(ws, { t: "ack", seq: msg.seq, player: this.snapshot(state) });
+    if (now - state.lastMoveAt < MIN_MOVE_INTERVAL_MS) return reject();
+    if (!isWalkable(this.map, msg.x, msg.y)) return reject();
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const serverTile: Tile = [Math.floor(here.x), Math.floor(here.y)];
+    // Trust the client's start tile when it is close to the server's view (latency drift), so the
+    // client's prediction and the server path start from the same tile and nothing is pulled back.
+    // TODO(phase 1): add a movement budget so repeated claims cannot be chained into a speed hack.
+    const claimedOk =
+      isWalkable(this.map, msg.fx, msg.fy) &&
+      Math.hypot(msg.fx - serverTile[0], msg.fy - serverTile[1]) <= MAX_DESYNC_TILES;
+    const from: Tile = claimedOk ? [msg.fx, msg.fy] : serverTile;
+    const path = findPath(this.map, from, [msg.x, msg.y]);
+    if (!path) return reject();
+    state.path = path;
+    state.startedAt = now;
+    state.lastMoveAt = now;
+    state.dirty = true;
+    ws.serializeAttachment(state);
+    // Others get the new path; the mover only gets the track back if its start tile was overridden.
+    this.broadcast({ t: "path", player: this.snapshot(state) }, ws);
+    this.send(ws, claimedOk ? { t: "ack", seq: msg.seq } : { t: "ack", seq: msg.seq, player: this.snapshot(state) });
+    if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(now + SAVE_DEBOUNCE_MS);
+  }
 
-    if (!state) return; // must join first
-
-    if (msg.t === "move") {
-      const now = Date.now();
-      // The mover predicts locally, so it only needs a payload when its move was corrected or rejected.
-      const reject = () => this.send(ws, { t: "ack", seq: msg.seq, player: this.snapshot(state) });
-      if (now - state.lastMoveAt < MIN_MOVE_INTERVAL_MS) return reject();
-      if (!isWalkable(this.map, msg.x, msg.y)) return reject();
-      const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-      const serverTile: Tile = [Math.floor(here.x), Math.floor(here.y)];
-      // Trust the client's start tile when it is close to the server's view (latency drift), so the
-      // client's prediction and the server path start from the same tile and nothing is pulled back.
-      // TODO(phase 1): add a movement budget so repeated claims cannot be chained into a speed hack.
-      const claimedOk =
-        isWalkable(this.map, msg.fx, msg.fy) &&
-        Math.hypot(msg.fx - serverTile[0], msg.fy - serverTile[1]) <= MAX_DESYNC_TILES;
-      const from: Tile = claimedOk ? [msg.fx, msg.fy] : serverTile;
-      const path = findPath(this.map, from, [msg.x, msg.y]);
-      if (!path) return reject();
-      state.path = path;
-      state.startedAt = now;
-      state.lastMoveAt = now;
+  /** Debounced save of every player whose position changed. */
+  async alarm(): Promise<void> {
+    for (const ws of this.ctx.getWebSockets()) {
+      const state = ws.deserializeAttachment() as PlayerState | null;
+      if (!state?.dirty) continue;
+      state.dirty = false;
       ws.serializeAttachment(state);
-      // Others get the new path; the mover only gets the track back if its start tile was overridden.
-      this.broadcast({ t: "path", player: this.snapshot(state) }, ws);
-      this.send(ws, claimedOk ? { t: "ack", seq: msg.seq } : { t: "ack", seq: msg.seq, player: this.snapshot(state) });
+      await this.save(state);
     }
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
-    this.handleLeave(ws);
+    await this.handleLeave(ws);
     // 1005/1006 are reserved and cannot be sent in a close frame.
     ws.close(code >= 1000 && code !== 1005 && code !== 1006 && code !== 1015 ? code : 1000, reason);
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    this.handleLeave(ws);
+    await this.handleLeave(ws);
   }
 
-  private handleLeave(ws: WebSocket): void {
+  private async handleLeave(ws: WebSocket): Promise<void> {
     const state = ws.deserializeAttachment() as PlayerState | null;
-    if (!state) return;
+    if (!state) return; // already evicted or never joined
     ws.serializeAttachment(null);
     this.broadcast({ t: "left", id: state.id }, ws);
+    await this.save(state);
+    await this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(state.id)).release(state.room);
+  }
+
+  /** Persists the current tile. Failures are logged; the next debounced save or disconnect retries. */
+  private async save(state: PlayerState): Promise<void> {
+    const pos = positionAlongPath(state.path, Date.now() - state.startedAt, state.speed);
+    try {
+      await saveCharacterPosition(this.env.DB, state.id, this.map.id, Math.floor(pos.x), Math.floor(pos.y));
+    } catch (err) {
+      console.error("save failed", state.id, err);
+    }
   }
 
   private players(): PlayerState[] {
