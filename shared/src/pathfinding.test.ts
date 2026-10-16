@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getMap, isWalkable } from "./map";
+import { MAP_IDS, getMap, isWalkable, portalNear } from "./map";
 import { findPath, positionAlongPath } from "./pathfinding";
 import { validateCharacterName, validateEmail, validatePassword } from "./character";
-import { parseClientMessage } from "./protocol";
+import { normalizeChatText, parseClientMessage } from "./protocol";
 
 const town = getMap("town");
 
@@ -67,5 +67,43 @@ describe("validation", () => {
     expect(validateEmail("not-an-email")).toBeNull();
     expect(validatePassword("short")).toBeNull();
     expect(validatePassword("longenough")).toBe("longenough");
+  });
+});
+
+describe("maps and portals", () => {
+  for (const id of MAP_IDS) {
+    it(`${id}: spawn, portals and arrival tiles are walkable and connected`, () => {
+      const map = getMap(id);
+      expect(isWalkable(map, map.spawn[0], map.spawn[1])).toBe(true);
+      for (const p of map.portals) {
+        expect(isWalkable(map, p.x, p.y)).toBe(true);
+        expect(findPath(map, map.spawn, [p.x, p.y])).not.toBeNull();
+        const dest = getMap(p.toMap);
+        expect(isWalkable(dest, p.toX, p.toY)).toBe(true);
+        // Arrival tile must be connected to the destination's own portals and spawn.
+        expect(findPath(dest, [p.toX, p.toY], dest.spawn)).not.toBeNull();
+        for (const q of dest.portals) expect(findPath(dest, [p.toX, p.toY], [q.x, q.y])).not.toBeNull();
+        // Arriving must not immediately trigger a portal.
+        expect(portalNear(dest, p.toX + 0.5, p.toY + 0.5)).toBeUndefined();
+      }
+    });
+  }
+  it("every portal has a return portal", () => {
+    for (const id of MAP_IDS) {
+      for (const p of getMap(id).portals) {
+        expect(getMap(p.toMap).portals.some((q) => q.toMap === id)).toBe(true);
+      }
+    }
+  });
+});
+
+describe("chat parsing", () => {
+  it("normalizes text and rejects empty messages", () => {
+    expect(normalizeChatText("  xin   chào\n\tđạo hữu ")).toBe("xin chào đạo hữu");
+    expect(normalizeChatText("   ")).toBeNull();
+    expect([...(normalizeChatText("a".repeat(500)) ?? "")].length).toBe(120);
+    expect(parseClientMessage(JSON.stringify({ t: "chat", text: "chào" }))).toEqual({ t: "chat", text: "chào" });
+    expect(parseClientMessage(JSON.stringify({ t: "chat", text: 5 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: "portal" }))).toEqual({ t: "portal" });
   });
 });
