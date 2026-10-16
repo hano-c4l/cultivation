@@ -8,18 +8,21 @@ import {
   MIN_MOVE_INTERVAL_MS,
   PING_MESSAGE,
   PONG_MESSAGE,
-  findPath,
+  findSmoothPath,
   getMap,
   isMapId,
   isWalkable,
   parseClientMessage,
+  pointClear,
   portalNear,
   positionAlongPath,
   type ClientMessage,
   type MapId,
   type PlayerSnapshot,
+  tileCenter,
+  type MapData,
   type ServerMessage,
-  type Tile,
+  type Vec2,
 } from "@game/shared";
 import { filterChat } from "./chat";
 import { getCharacterById, saveCharacterPosition } from "./characters";
@@ -33,7 +36,7 @@ interface PlayerState {
   /** Lock claim id of this connection, kept so the lock can be released after a wake-up. */
   claimId: string;
   mapId: MapId;
-  path: Tile[];
+  path: Vec2[];
   startedAt: number;
   speed: number;
   lastMoveAt: number;
@@ -43,6 +46,22 @@ interface PlayerState {
   transferring?: boolean;
   /** Timestamps of recent chat messages, for rate limiting. */
   chatTimes: number[];
+}
+
+/**
+ * Position stored in the character row, as continuous tile units. Rows written before free movement hold
+ * integer tile indices, which are treated as tile centres; blocked or wall-hugging positions snap to a safe spot.
+ */
+function restorePosition(map: MapData, x: number, y: number): Vec2 {
+  const legacy = Number.isInteger(x) && Number.isInteger(y);
+  const p: Vec2 = legacy ? [x + 0.5, y + 0.5] : [x, y];
+  if (pointClear(map, p[0], p[1])) return p;
+  const tile: [number, number] = [Math.floor(p[0]), Math.floor(p[1])];
+  return isWalkable(map, tile[0], tile[1]) ? tileCenter(tile) : tileCenter(map.spawn);
+}
+
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
 }
 
 /** Moves are saved at most this often per room, so D1 writes stay low and the room can still hibernate. */
@@ -114,13 +133,13 @@ export class MapRoom extends DurableObject<Env> {
       // The Worker routes by the character's saved map, so the row's map is this room's map.
       const mapId: MapId = isMapId(row.map_id) ? row.map_id : "town";
       const map = getMap(mapId);
-      const tile: Tile = isWalkable(map, row.x, row.y) ? [row.x, row.y] : map.spawn;
+      const position = restorePosition(map, row.x, row.y);
       const state: PlayerState = {
         id: row.id,
         name: row.name,
         claimId,
         mapId,
-        path: [tile],
+        path: [position],
         startedAt: Date.now(),
         speed: BASE_SPEED,
         lastMoveAt: 0,
@@ -179,16 +198,14 @@ export class MapRoom extends DurableObject<Env> {
     // The mover predicts locally, so it only needs a payload when its move was corrected or rejected.
     const reject = () => this.send(ws, { t: "ack", seq: msg.seq, player: this.snapshot(state) });
     if (now - state.lastMoveAt < MIN_MOVE_INTERVAL_MS) return reject();
-    if (!isWalkable(map, msg.x, msg.y)) return reject();
+    if (!isWalkable(map, Math.floor(msg.x), Math.floor(msg.y))) return reject();
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-    const serverTile: Tile = [Math.floor(here.x), Math.floor(here.y)];
     // Trust the client's start tile when it is close to the server's view (latency drift), so the
     // client's prediction and the server path start from the same tile and nothing is pulled back.
     // TODO(phase 1): add a movement budget so repeated claims cannot be chained into a speed hack.
-    const claimedOk =
-      isWalkable(map, msg.fx, msg.fy) && Math.hypot(msg.fx - serverTile[0], msg.fy - serverTile[1]) <= MAX_DESYNC_TILES;
-    const from: Tile = claimedOk ? [msg.fx, msg.fy] : serverTile;
-    const path = findPath(map, from, [msg.x, msg.y]);
+    const claimedOk = pointClear(map, msg.fx, msg.fy) && Math.hypot(msg.fx - here.x, msg.fy - here.y) <= MAX_DESYNC_TILES;
+    const from: Vec2 = claimedOk ? [msg.fx, msg.fy] : [here.x, here.y];
+    const path = findSmoothPath(map, from, [msg.x, msg.y]);
     if (!path) return reject();
     state.path = path;
     state.startedAt = now;
@@ -211,7 +228,7 @@ export class MapRoom extends DurableObject<Env> {
     state.dirty = false;
     ws.serializeAttachment(state);
     try {
-      await saveCharacterPosition(this.env.DB, state.id, portal.toMap, portal.toX, portal.toY);
+      await saveCharacterPosition(this.env.DB, state.id, portal.toMap, portal.toX + 0.5, portal.toY + 0.5);
     } catch (err) {
       console.error("portal save failed", state.id, err);
       state.transferring = false;
@@ -280,7 +297,7 @@ export class MapRoom extends DurableObject<Env> {
     if (state.transferring) return; // the portal handler owns the row until the handoff completes
     const pos = positionAlongPath(state.path, Date.now() - state.startedAt, state.speed);
     try {
-      await saveCharacterPosition(this.env.DB, state.id, state.mapId, Math.floor(pos.x), Math.floor(pos.y));
+      await saveCharacterPosition(this.env.DB, state.id, state.mapId, round2(pos.x), round2(pos.y));
     } catch (err) {
       console.error("save failed", state.id, err);
     }

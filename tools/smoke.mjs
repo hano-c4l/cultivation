@@ -103,9 +103,10 @@ const wb = await b.wait((m) => m.t === "welcome");
 await a.wait((m) => m.t === "joined" && m.player.name === B.name);
 assert(true, "A sees B join (Vietnamese diacritics preserved)");
 
-a.send({ t: "move", x: 26, y: 5, fx: 20, fy: 20, seq: 1 });
+a.send({ t: "move", x: 26.37, y: 5.61, fx: 20.5, fy: 20.5, seq: 1 });
 const pathMsg = await b.wait((m) => m.t === "path" && m.player.id === A.character.id);
-assert(pathMsg.player.path.at(-1).join() === "26,5", "B receives A's server-computed path");
+assert(pathMsg.player.path.at(-1).join() === "26.37,5.61", "B receives A's path ending at the exact click point (not a tile centre)");
+assert(pathMsg.player.path.length <= 4, "path is smoothed into a few straight segments instead of per-tile hops");
 const ack1 = await a.wait((m) => m.t === "ack" && m.seq === 1);
 assert(ack1.player === undefined, "accepted move acks without a track (mover keeps its prediction)");
 
@@ -114,15 +115,15 @@ await a.wait((m) => m.t === "pong");
 assert(true, "plain-string ping is auto-answered with pong");
 
 await sleep(150);
-a.send({ t: "move", x: 26, y: 10, fx: 20, fy: 20, seq: 2 }); // pond tile, blocked
+a.send({ t: "move", x: 26.5, y: 10.5, fx: 20.5, fy: 20.5, seq: 2 }); // pond tile, blocked
 const ack2 = await a.wait((m) => m.t === "ack" && m.seq === 2);
 assert(ack2.player !== undefined, "rejected move acks with the authoritative track");
 assert(b.inbox.filter((m) => m.t === "path").length === 1, "blocked target is not broadcast");
 
 await sleep(150);
-a.send({ t: "move", x: 26, y: 5, fx: 2, fy: 2, seq: 3 }); // claimed start far from server position
+a.send({ t: "move", x: 26.5, y: 5.5, fx: 2.5, fy: 2.5, seq: 3 }); // claimed start far from server position
 const ack3 = await a.wait((m) => m.t === "ack" && m.seq === 3);
-assert(ack3.player !== undefined && ack3.player.path[0].join() !== "2,2", "implausible start tile is overridden by the server");
+assert(ack3.player !== undefined && ack3.player.path[0].join() !== "2.5,2.5", "implausible start tile is overridden by the server");
 
 // --- duplicate login: same room, then another channel (a different Durable Object) ---
 const a2 = connect(A.cookie, 1);
@@ -142,10 +143,13 @@ assert(w3.players.length === 1 && w3.players[0].id === A.character.id, "other ch
 // The start tile depends on where A was when the previous room kicked it, so pick a target exactly 2 tiles away.
 const { getMap, isWalkable } = await import("../shared/src/map.ts");
 const town = getMap("town");
+// Positions are continuous now, so require clearance around the whole straight segment (the server uses a body radius).
+const clear = (x, y) => [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]].every(([ox, oy]) => isWalkable(town, Math.floor(x + ox), Math.floor(y + oy)));
+const segmentClear = (x0, y0, x1, y1) => Array.from({ length: 21 }, (_, i) => i / 20).every((t) => clear(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t));
 const [sx, sy] = w3.players[0].path[0];
 const target = [[2, 0], [-2, 0], [0, 2], [0, -2]]
-  .map(([dx, dy]) => [sx + dx, sy + dy, sx + dx / 2, sy + dy / 2])
-  .find(([x, y, mx, my]) => isWalkable(town, x, y) && isWalkable(town, mx, my));
+  .map(([dx, dy]) => [Math.round((sx + dx) * 100) / 100, Math.round((sy + dy) * 100) / 100])
+  .find(([x, y]) => segmentClear(sx, sy, x, y));
 assert(target !== undefined, "found a walkable target 2 tiles from the start tile");
 await sleep(150);
 a3.send({ t: "move", x: target[0], y: target[1], fx: sx, fy: sy, seq: 1 });
@@ -156,7 +160,7 @@ await sleep(1500);
 const a4 = connect(A.cookie, 2);
 await a4.opened;
 const w4 = await a4.wait((m) => m.t === "welcome");
-assert(w4.players[0].path[0].join() === `${target[0]},${target[1]}`, "position persisted across disconnect/login");
+assert(Math.hypot(w4.players[0].path[0][0] - target[0], w4.players[0].path[0][1] - target[1]) < 0.02, "exact position persisted across disconnect/login");
 
 // --- race: a fast same-room reconnect must not let a late release free the new claim ---
 const r1 = connect(A.cookie, 3);
@@ -178,7 +182,7 @@ const C = await newPlayer("c");
 const c = connect(C.cookie, 1);
 await c.opened;
 const wc = await c.wait((m) => m.t === "welcome");
-assert(wc.map === "town" && wc.players.at(-1).path[0].join() === "20,20", "new character starts in town at the spawn");
+assert(wc.map === "town" && wc.players.at(-1).path[0].join() === "20.5,20.5", "new character starts in town at the spawn");
 c.send({ t: "chat", text: "  xin   chào đạo hữu " });
 const heard = await b.wait((m) => m.t === "chat" && m.id === C.character.id);
 assert(heard.text === "xin chào đạo hữu" && heard.name === C.name, "chat is normalized and reaches the other player in the room");
@@ -196,7 +200,7 @@ assert((await c.wait((m) => m.t === "chat" && m.text === "*** ** hello")) !== un
 c.send({ t: "portal" }); // far from any portal: must be ignored
 await sleep(1000);
 assert(!c.inbox.some((m) => m.t === "transfer"), "portal request far from a portal is ignored");
-c.send({ t: "move", x: 20, y: 38, fx: 20, fy: 20, seq: 1 });
+c.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1);
 await sleep(5500); // ~18 tiles at 4 tiles/s
 c.send({ t: "portal" });
@@ -206,7 +210,7 @@ await sleep(500);
 const c2 = connect(C.cookie, 1);
 await c2.opened;
 const wc2 = await c2.wait((m) => m.t === "welcome");
-assert(wc2.map === "forest" && wc2.players[0].path[0].join() === "20,3", "reconnect lands in the forest at the arrival tile");
+assert(wc2.map === "forest" && wc2.players[0].path[0].join() === "20.5,3.5", "reconnect lands in the forest at the arrival tile");
 const bChats = b.inbox.filter((m) => m.t === "chat").length;
 await sleep(600);
 c2.send({ t: "chat", text: "chào rừng" });
@@ -214,7 +218,7 @@ await c2.wait((m) => m.t === "chat" && m.text === "chào rừng");
 await sleep(500);
 assert(b.inbox.filter((m) => m.t === "chat").length === bChats, "chat does not leak to a player on another map");
 await sleep(150);
-c2.send({ t: "move", x: 20, y: 1, fx: 20, fy: 3, seq: 1 });
+c2.send({ t: "move", x: 20.5, y: 1.5, fx: 20.5, fy: 3.5, seq: 1 });
 await c2.wait((m) => m.t === "ack" && m.seq === 1);
 await sleep(1000);
 c2.send({ t: "portal" });
@@ -223,7 +227,7 @@ await sleep(500);
 const c3 = connect(C.cookie, 1);
 await c3.opened;
 const wc3 = await c3.wait((m) => m.t === "welcome");
-assert(wc3.map === "town" && wc3.players.find((p) => p.id === C.character.id).path[0].join() === "20,36", "return trip lands at the town arrival tile");
+assert(wc3.map === "town" && wc3.players.find((p) => p.id === C.character.id).path[0].join() === "20.5,36.5", "return trip lands at the town arrival tile");
 
 // --- logout invalidates the session ---
 await api("POST", "/api/logout", { cookie: A.cookie });

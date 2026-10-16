@@ -3,7 +3,7 @@ import {
   TILE_H,
   TILE_W,
   MIN_MOVE_INTERVAL_MS,
-  findPath,
+  findSmoothPath,
   getMap,
   isMapId,
   isWalkable,
@@ -12,7 +12,7 @@ import {
   type MapData,
   type PlayerSnapshot,
   type ServerMessage,
-  type Tile,
+  type Vec2,
 } from "@game/shared";
 import { initChat, type ChatUi } from "./chat-ui";
 import { DEFAULT_CHANNEL } from "./config";
@@ -35,7 +35,7 @@ function toTile(sx: number, sy: number): { x: number; y: number } {
 
 interface Actor {
   id: string;
-  path: Tile[];
+  path: Vec2[];
   startedAt: number; // local performance.now() timestamp
   speed: number;
   /** Visual error (tiles) between the previous track and the new one; decays to zero so path swaps never snap. */
@@ -59,7 +59,7 @@ function currentPos(actor: Actor, now: number): { x: number; y: number; moving: 
 }
 
 /** Swaps in a new track while keeping the rendered position continuous (blended, or snapped if far). */
-function applyTrack(actor: Actor, path: Tile[], startedAt: number, speed: number, now: number): void {
+function applyTrack(actor: Actor, path: Vec2[], startedAt: number, speed: number, now: number): void {
   const before = currentPos(actor, now);
   actor.path = path;
   actor.speed = speed;
@@ -196,9 +196,10 @@ export class GameScene extends Phaser.Scene {
     if (this.transferring) return;
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
-    const tx = Math.floor(t.x);
-    const ty = Math.floor(t.y);
-    if (!isWalkable(this.map, tx, ty)) return;
+    // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
+    const tx = Math.round(t.x * 100) / 100;
+    const ty = Math.round(t.y * 100) / 100;
+    if (!isWalkable(this.map, Math.floor(tx), Math.floor(ty))) return;
     // Client-side throttle matches the server's, so a dropped click never desyncs the prediction.
     const now = performance.now();
     if (now - this.lastMoveSentAt < MIN_MOVE_INTERVAL_MS + 20) return;
@@ -206,19 +207,19 @@ export class GameScene extends Phaser.Scene {
     if (!from) return;
     this.lastMoveSentAt = now;
     this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
-    const c = toScreen(tx + 0.5, ty + 0.5);
+    const c = toScreen(tx, ty);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
     this.time.delayedCall(500, () => this.marker.clear());
   }
 
-  /** Starts walking immediately using the same A* as the server. Returns the tile it started from, or null if no path. */
-  private predictSelfMove(tx: number, ty: number): Tile | null {
+  /** Starts walking immediately using the same path finder as the server. Returns the exact position it started from, or null if no path. */
+  private predictSelfMove(tx: number, ty: number): Vec2 | null {
     const self = this.actors.get(this.selfId);
     if (!self) return null;
     const now = performance.now();
     const here = currentPos(self, now);
-    const from: Tile = [Math.floor(here.x), Math.floor(here.y)];
-    const path = findPath(this.map, from, [tx, ty]);
+    const from: Vec2 = [Math.round(here.x * 100) / 100, Math.round(here.y * 100) / 100];
+    const path = findSmoothPath(this.map, from, [tx, ty]);
     if (!path) return null;
     applyTrack(self, path, now, self.speed, now);
     return from;
