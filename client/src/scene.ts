@@ -96,6 +96,7 @@ export class GameScene extends Phaser.Scene {
   private net!: Net;
   private hud!: HTMLElement;
   private ping = 0;
+  private pingSentAt = 0;
   private moveSeq = 0;
   private lastMoveSentAt = 0;
   private colo = "…";
@@ -122,6 +123,10 @@ export class GameScene extends Phaser.Scene {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     this.net = new Net(`${proto}://${location.host}/ws?map=town&ch=${channel}`, identity, {
       onMessage: (msg) => this.handleMessage(msg),
+      onPong: () => {
+        this.ping = Math.max(0, Math.round(performance.now() - this.pingSentAt));
+        this.refreshHud();
+      },
       onStatus: (connected) => {
         if (!connected) {
           this.hud.textContent = vi.disconnected;
@@ -134,7 +139,10 @@ export class GameScene extends Phaser.Scene {
     this.time.addEvent({
       delay: 2000,
       loop: true,
-      callback: () => this.net.send({ t: "ping", c: Math.round(performance.now()) }),
+      callback: () => {
+        this.pingSentAt = performance.now();
+        this.net.sendPing();
+      },
     });
   }
 
@@ -210,10 +218,6 @@ export class GameScene extends Phaser.Scene {
         break;
       case "left":
         this.removeActor(msg.id);
-        this.refreshHud();
-        break;
-      case "pong":
-        this.ping = Math.max(0, Math.round(performance.now()) - msg.c);
         this.refreshHud();
         break;
       case "kicked":
