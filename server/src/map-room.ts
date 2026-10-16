@@ -27,6 +27,20 @@ const MAP_ID = "town";
 
 export class MapRoom extends DurableObject {
   private readonly map: MapData = getMap(MAP_ID);
+  private colo: string | null = null;
+
+  /** Cloudflare data centre this Durable Object runs in (diagnostics for latency). */
+  private async getColo(): Promise<string> {
+    if (this.colo) return this.colo;
+    try {
+      const res = await fetch("https://cloudflare.com/cdn-cgi/trace");
+      const m = /^colo=(\w+)$/m.exec(await res.text());
+      this.colo = m?.[1] ?? "??";
+    } catch {
+      this.colo = "??";
+    }
+    return this.colo;
+  }
 
   async fetch(_request: Request): Promise<Response> {
     const pair = new WebSocketPair();
@@ -70,7 +84,7 @@ export class MapRoom extends DurableObject {
       ws.serializeAttachment(fresh);
       // Includes the joining player so the client gets its own authoritative snapshot.
       const players = this.players().map((p) => this.snapshot(p));
-      this.send(ws, { t: "welcome", self: fresh.id, map: this.map.id, players });
+      this.send(ws, { t: "welcome", self: fresh.id, map: this.map.id, players, colo: await this.getColo() });
       this.broadcast({ t: "joined", player: this.snapshot(fresh) }, ws);
       return;
     }
@@ -79,12 +93,14 @@ export class MapRoom extends DurableObject {
 
     if (msg.t === "move") {
       const now = Date.now();
-      if (now - state.lastMoveAt < MIN_MOVE_INTERVAL_MS) return;
-      if (!isWalkable(this.map, msg.x, msg.y)) return;
+      // On rejection, send the authoritative track back so a predicting client can resync.
+      const reject = () => this.send(ws, { t: "path", player: this.snapshot(state) });
+      if (now - state.lastMoveAt < MIN_MOVE_INTERVAL_MS) return reject();
+      if (!isWalkable(this.map, msg.x, msg.y)) return reject();
       const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
       const from: Tile = [Math.floor(here.x), Math.floor(here.y)];
       const path = findPath(this.map, from, [msg.x, msg.y]);
-      if (!path) return;
+      if (!path) return reject();
       state.path = path;
       state.startedAt = now;
       state.lastMoveAt = now;

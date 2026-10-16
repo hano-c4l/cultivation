@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import {
   TILE_H,
   TILE_W,
+  findPath,
   getMap,
   isWalkable,
   positionAlongPath,
@@ -31,8 +32,39 @@ interface Actor {
   path: Tile[];
   startedAt: number; // local performance.now() timestamp
   speed: number;
+  /** Visual error (tiles) between the previous track and the new one; decays to zero so path swaps never snap. */
+  offX: number;
+  offY: number;
+  offAt: number;
   body: Phaser.GameObjects.Ellipse;
   label: Phaser.GameObjects.Text;
+}
+
+/** Time constant (ms) for blending away the offset left by a path correction. */
+const CORRECTION_TAU_MS = 150;
+/** Corrections larger than this many tiles snap instead of blending. */
+const MAX_BLEND_TILES = 3;
+
+/** Rendered position: authoritative/predicted track plus the decaying correction offset. */
+function currentPos(actor: Actor, now: number): { x: number; y: number; moving: boolean } {
+  const auth = positionAlongPath(actor.path, now - actor.startedAt, actor.speed);
+  const k = Math.exp(-(now - actor.offAt) / CORRECTION_TAU_MS);
+  return { x: auth.x + actor.offX * k, y: auth.y + actor.offY * k, moving: auth.moving };
+}
+
+/** Swaps in a new track while keeping the rendered position continuous (blended, or snapped if far). */
+function applyTrack(actor: Actor, path: Tile[], startedAt: number, speed: number, now: number): void {
+  const before = currentPos(actor, now);
+  actor.path = path;
+  actor.speed = speed;
+  actor.startedAt = startedAt;
+  const auth = positionAlongPath(path, now - startedAt, speed);
+  const dx = before.x - auth.x;
+  const dy = before.y - auth.y;
+  const far = Math.hypot(dx, dy) > MAX_BLEND_TILES;
+  actor.offX = far ? 0 : dx;
+  actor.offY = far ? 0 : dy;
+  actor.offAt = now;
 }
 
 /** Guest identity is per tab (sessionStorage) so two tabs can play as two characters; accounts replace this in Phase 1. */
@@ -62,6 +94,7 @@ export class GameScene extends Phaser.Scene {
   private net!: Net;
   private hud!: HTMLElement;
   private ping = 0;
+  private colo = "…";
   private marker!: Phaser.GameObjects.Graphics;
 
   constructor() {
@@ -127,18 +160,30 @@ export class GameScene extends Phaser.Scene {
     const ty = Math.floor(t.y);
     if (!isWalkable(this.map, tx, ty)) return;
     this.net.send({ t: "move", x: tx, y: ty });
+    this.predictSelfMove(tx, ty);
     const c = toScreen(tx + 0.5, ty + 0.5);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
     this.time.delayedCall(500, () => this.marker.clear());
+  }
+
+  /** Starts walking immediately using the same A* as the server; the server's path later corrects any drift. */
+  private predictSelfMove(tx: number, ty: number): void {
+    const self = this.actors.get(this.selfId);
+    if (!self) return;
+    const now = performance.now();
+    const here = currentPos(self, now);
+    const path = findPath(this.map, [Math.floor(here.x), Math.floor(here.y)], [tx, ty]);
+    if (path) applyTrack(self, path, now, self.speed, now);
   }
 
   private handleMessage(msg: ServerMessage): void {
     switch (msg.t) {
       case "welcome":
         this.selfId = msg.self;
+        this.colo = msg.colo;
         this.clearActors();
         this.upsertActor(msg.players);
-        this.hud.textContent = vi.connected(this.actors.size, this.ping);
+        this.hud.textContent = vi.connected(this.actors.size, this.ping, this.colo);
         break;
       case "joined":
       case "path":
@@ -160,24 +205,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshHud(): void {
-    this.hud.textContent = `${vi.connected(this.actors.size, this.ping)} · ${vi.hint}`;
+    this.hud.textContent = `${vi.connected(this.actors.size, this.ping, this.colo)} · ${vi.hint}`;
   }
 
   private upsertActor(players: PlayerSnapshot[]): void {
     for (const p of players) {
       let actor = this.actors.get(p.id);
+      const isNew = !actor;
       if (!actor) {
         const isSelf = p.id === this.selfId;
         const body = this.add.ellipse(0, 0, 22, 34, isSelf ? 0xffd54a : 0x6ec6ff).setStrokeStyle(2, 0x000000, 0.6);
         const label = this.add
           .text(0, 0, p.name, { fontFamily: FONT, fontSize: "13px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
           .setOrigin(0.5, 1);
-        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, body, label };
+        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label };
         this.actors.set(p.id, actor);
       }
-      actor.path = p.path;
-      actor.speed = p.speed;
-      actor.startedAt = performance.now() - p.ageMs;
+      const now = performance.now();
+      if (isNew) {
+        actor.path = p.path;
+        actor.speed = p.speed;
+        actor.startedAt = now - p.ageMs;
+      } else {
+        applyTrack(actor, p.path, now - p.ageMs, p.speed, now);
+      }
       if (p.id === this.selfId) this.cameras.main.startFollow(actor.body, true, 0.15, 0.15);
     }
   }
@@ -197,7 +248,7 @@ export class GameScene extends Phaser.Scene {
   update(): void {
     const now = performance.now();
     for (const actor of this.actors.values()) {
-      const pos = positionAlongPath(actor.path, now - actor.startedAt, actor.speed);
+      const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
       actor.body.setPosition(s.x, s.y - 17);
       actor.label.setPosition(s.x, s.y - 38);
