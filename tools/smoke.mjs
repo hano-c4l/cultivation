@@ -141,11 +141,10 @@ assert(w3.players.length === 1 && w3.players[0].id === A.character.id, "other ch
 
 // --- persistence: position saved on disconnect and restored on the next login ---
 // The start tile depends on where A was when the previous room kicked it, so pick a target exactly 2 tiles away.
-const { getMap, isWalkable } = await import("../shared/src/map.ts");
+const { getMap, lineClear } = await import("../shared/src/map.ts");
 const town = getMap("town");
-// Positions are continuous now, so require clearance around the whole straight segment (the server uses a body radius).
-const clear = (x, y) => [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]].every(([ox, oy]) => isWalkable(town, Math.floor(x + ox), Math.floor(y + oy)));
-const segmentClear = (x0, y0, x1, y1) => Array.from({ length: 21 }, (_, i) => i / 20).every((t) => clear(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t));
+// Collision is a fine grid with a body radius; use the shared check so the target is reachable in a straight line.
+const segmentClear = (x0, y0, x1, y1) => lineClear(town, [x0, y0], [x1, y1]);
 const [sx, sy] = w3.players[0].path[0];
 const target = [[2, 0], [-2, 0], [0, 2], [0, -2]]
   .map(([dx, dy]) => [Math.round((sx + dx) * 100) / 100, Math.round((sy + dy) * 100) / 100])

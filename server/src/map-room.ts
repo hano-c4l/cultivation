@@ -11,9 +11,9 @@ import {
   findSmoothPath,
   getMap,
   isMapId,
-  isWalkable,
+  isStandable,
+  nearestStandablePoint,
   parseClientMessage,
-  pointClear,
   portalNear,
   positionAlongPath,
   type ClientMessage,
@@ -50,14 +50,12 @@ interface PlayerState {
 
 /**
  * Position stored in the character row, as continuous tile units. Rows written before free movement hold
- * integer tile indices, which are treated as tile centres; blocked or wall-hugging positions snap to a safe spot.
+ * integer tile indices, which are treated as tile centres; positions inside obstacles snap to the nearest standable point.
  */
 function restorePosition(map: MapData, x: number, y: number): Vec2 {
   const legacy = Number.isInteger(x) && Number.isInteger(y);
   const p: Vec2 = legacy ? [x + 0.5, y + 0.5] : [x, y];
-  if (pointClear(map, p[0], p[1])) return p;
-  const tile: [number, number] = [Math.floor(p[0]), Math.floor(p[1])];
-  return isWalkable(map, tile[0], tile[1]) ? tileCenter(tile) : tileCenter(map.spawn);
+  return nearestStandablePoint(map, p[0], p[1], 2) ?? tileCenter(map.spawn);
 }
 
 function round2(v: number): number {
@@ -198,12 +196,11 @@ export class MapRoom extends DurableObject<Env> {
     // The mover predicts locally, so it only needs a payload when its move was corrected or rejected.
     const reject = () => this.send(ws, { t: "ack", seq: msg.seq, player: this.snapshot(state) });
     if (now - state.lastMoveAt < MIN_MOVE_INTERVAL_MS) return reject();
-    if (!isWalkable(map, Math.floor(msg.x), Math.floor(msg.y))) return reject();
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     // Trust the client's start tile when it is close to the server's view (latency drift), so the
     // client's prediction and the server path start from the same tile and nothing is pulled back.
     // TODO(phase 1): add a movement budget so repeated claims cannot be chained into a speed hack.
-    const claimedOk = pointClear(map, msg.fx, msg.fy) && Math.hypot(msg.fx - here.x, msg.fy - here.y) <= MAX_DESYNC_TILES;
+    const claimedOk = isStandable(map, msg.fx, msg.fy) && Math.hypot(msg.fx - here.x, msg.fy - here.y) <= MAX_DESYNC_TILES;
     const from: Vec2 = claimedOk ? [msg.fx, msg.fy] : [here.x, here.y];
     const path = findSmoothPath(map, from, [msg.x, msg.y]);
     if (!path) return reject();
