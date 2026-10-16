@@ -8,7 +8,8 @@ function client(id, name) {
   const inbox = [];
   const waiters = [];
   ws.addEventListener("message", (ev) => {
-    const msg = JSON.parse(ev.data);
+    // The server auto-responds to the plain string "ping" with "pong" (not JSON).
+    const msg = ev.data === "pong" ? { t: "pong" } : JSON.parse(ev.data);
     inbox.push(msg);
     for (const w of [...waiters]) if (w.pred(msg)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(msg); }
   });
@@ -43,15 +44,29 @@ const wb = await b.wait((m) => m.t === "welcome");
 await a.wait((m) => m.t === "joined" && m.player.name === "Bêta");
 assert(true, "A sees B join (Vietnamese diacritics preserved)");
 
-a.send({ t: "move", x: 26, y: 5 });
+a.send({ t: "move", x: 26, y: 5, fx: 20, fy: 20, seq: 1 });
 const pathMsg = await b.wait((m) => m.t === "path" && m.player.id === wa.self);
 const path = pathMsg.player.path;
 assert(path.length > 2 && path.at(-1)[0] === 26 && path.at(-1)[1] === 5, "B receives A's server-computed path");
 
-a.send({ t: "move", x: 26, y: 10 }); // pond tile, blocked
-a.send({ t: "ping", c: 7 });
-await a.wait((m) => m.t === "pong" && m.c === 7);
-assert(b.inbox.filter((m) => m.t === "path").length === 1, "blocked target is rejected silently");
+a.ws.send("ping");
+await a.wait((m) => m.t === "pong");
+assert(true, "plain-string ping is auto-answered with pong");
+
+const ack1 = await a.wait((m) => m.t === "ack" && m.seq === 1);
+assert(ack1.player === undefined, "accepted move acks without a track (mover keeps its prediction)");
+assert(!a.inbox.some((m) => m.t === "path" && m.player.id === wa.self), "mover does not receive its own path back");
+
+await new Promise((r) => setTimeout(r, 150)); // clear the server move throttle
+a.send({ t: "move", x: 26, y: 10, fx: 20, fy: 20, seq: 2 }); // pond tile, blocked
+const ack2 = await a.wait((m) => m.t === "ack" && m.seq === 2);
+assert(ack2.player !== undefined, "rejected move acks with the authoritative track");
+assert(b.inbox.filter((m) => m.t === "path").length === 1, "blocked target is not broadcast");
+
+await new Promise((r) => setTimeout(r, 150));
+a.send({ t: "move", x: 26, y: 5, fx: 2, fy: 2, seq: 3 }); // claimed start far from server position
+const ack3 = await a.wait((m) => m.t === "ack" && m.seq === 3);
+assert(ack3.player !== undefined && ack3.player.path[0].join() !== "2,2", "implausible start tile is overridden by the server");
 
 // Duplicate login: new socket with A's id kicks the old one, B sees exactly one left + joined.
 const a2 = client("aaaaaaaa-0000-0000-0000-000000000001", "Alpha");
