@@ -1,5 +1,5 @@
 {
-  "name": "tu-tien-game",
+  "name": "cultivation",
   "main": "server/src/index.ts",
   "compatibility_date": "2025-09-01",
   "assets": {
@@ -14,9 +14,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "tu-tien-db",
-      // Replace with the real id from `wrangler d1 create tu-tien-db` before deploying.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_name": "cultivation-db",
+      "database_id": "eaee542b-3e9c-4a20-98d6-4554f9953292",
       "migrations_dir": "server/migrations"
     }
   ]

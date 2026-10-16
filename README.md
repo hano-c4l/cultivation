@@ -17,7 +17,7 @@ For hot reload, run `npm run dev:server` and `npm run dev:client` (Vite proxies 
 ## Deploy to Cloudflare (one Worker serves the client assets, API, WebSocket and Durable Objects)
 ```bash
 npx wrangler login
-npx wrangler d1 create tu-tien-db      # copy the database_id into wrangler.jsonc
+npx wrangler d1 create cultivation-db      # copy the database_id into wrangler.jsonc
 npm run db:migrate:remote
 npm run deploy
 ```
