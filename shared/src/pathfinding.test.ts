@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getMap, isWalkable } from "./map";
 import { findPath, positionAlongPath } from "./pathfinding";
+import { validateCharacterName, validateEmail, validatePassword } from "./character";
 import { parseClientMessage } from "./protocol";
 
 const town = getMap("town");
@@ -43,7 +44,7 @@ describe("parseClientMessage", () => {
   it("rejects malformed input", () => {
     expect(parseClientMessage("not json")).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: "move", x: 1.5, y: 2, fx: 0, fy: 0, seq: 1 }))).toBeNull();
-    expect(parseClientMessage(JSON.stringify({ t: "join", id: "x", name: "a" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: "join", id: "abcdefgh", name: "a" }))).toBeNull();
   });
   it("accepts a valid move", () => {
     const move = { t: "move", x: 3, y: 4, fx: 1, fy: 2, seq: 7 };
@@ -51,5 +52,20 @@ describe("parseClientMessage", () => {
   });
   it("rejects a move without a start tile or sequence", () => {
     expect(parseClientMessage(JSON.stringify({ t: "move", x: 3, y: 4 }))).toBeNull();
+  });
+});
+
+describe("validation", () => {
+  it("normalizes valid names and accepts Vietnamese diacritics", () => {
+    expect(validateCharacterName("  Lý   Tiêu Dao ")).toBe("Lý Tiêu Dao");
+    expect(validateCharacterName("A")).toBeNull();
+    expect(validateCharacterName("a".repeat(17))).toBeNull();
+    expect(validateCharacterName("<script>")).toBeNull();
+  });
+  it("validates email and password", () => {
+    expect(validateEmail(" User@Example.COM ")).toBe("user@example.com");
+    expect(validateEmail("not-an-email")).toBeNull();
+    expect(validatePassword("short")).toBeNull();
+    expect(validatePassword("longenough")).toBe("longenough");
   });
 });

@@ -1,12 +1,14 @@
-import { PONG_MESSAGE, PING_MESSAGE, type ClientMessage, type ServerMessage } from "@game/shared";
+import { PING_MESSAGE, PONG_MESSAGE, type ClientMessage, type ServerMessage } from "@game/shared";
 
 export interface NetHandlers {
   onMessage(msg: ServerMessage): void;
   onStatus(connected: boolean): void;
   onPong(): void;
+  /** The session cookie is no longer valid (logged out elsewhere or expired). */
+  onAuthLost(): void;
 }
 
-/** WebSocket wrapper with automatic reconnect (the server re-sends a full welcome on join). */
+/** WebSocket wrapper with automatic reconnect (the server re-sends a full welcome on connect). */
 export class Net {
   private ws: WebSocket | null = null;
   private retryMs = 500;
@@ -14,7 +16,6 @@ export class Net {
 
   constructor(
     private readonly url: string,
-    private readonly identity: { id: string; name: string },
     private readonly handlers: NetHandlers,
   ) {}
 
@@ -23,7 +24,6 @@ export class Net {
     this.ws = ws;
     ws.addEventListener("open", () => {
       this.retryMs = 500;
-      this.send({ t: "join", id: this.identity.id, name: this.identity.name });
       this.handlers.onStatus(true);
     });
     ws.addEventListener("message", (ev) => {
@@ -43,9 +43,16 @@ export class Net {
     ws.addEventListener("close", () => {
       this.handlers.onStatus(false);
       if (this.closedForGood) return;
-      setTimeout(() => this.connect(), this.retryMs);
-      this.retryMs = Math.min(this.retryMs * 2, 5000);
+      void this.reconnectLater();
     });
+  }
+
+  private async reconnectLater(): Promise<void> {
+    // A refused upgrade (401) looks like any close; check the session so we show login instead of looping.
+    const me = await fetch("/api/me", { credentials: "same-origin" }).catch(() => null);
+    if (me && me.status === 401) return this.handlers.onAuthLost();
+    setTimeout(() => this.connect(), this.retryMs);
+    this.retryMs = Math.min(this.retryMs * 2, 5000);
   }
 
   /** Sends the plain-string keep-alive that the server answers without waking the room. */
