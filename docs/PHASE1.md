@@ -39,6 +39,7 @@ Thứ tự phụ thuộc: 1a → 1b → 1c → 1d → 1e → 1f.
 - Smoke/E2E cho toàn luồng, giả lập 50 client, kiểm tra tick, rà soát giới hạn Free, cập nhật tài liệu.
 
 ## Quyết định đã chốt
+0. **Gói Cloudflare:** kế hoạch là Workers Paid, nhưng khi develop dùng Free; gặp việc cần Paid (ví dụ kiểm thử tải 1f, tick loop 1d) thì báo người dùng để nâng cấp (xem `docs/PLAN.md` mục 2a).
 1. **PBKDF2 trên gói Free:** 100.000 vòng đo được ~24 ms (Node), vượt 10 ms CPU của Worker Free. Chọn băm trong Durable Object (đã chốt với người dùng), xác nhận lại trên preview; dự phòng là Workers Paid.
 2. **Admin:** vai trò `admin` được gán bằng cách nào (mặc định đề xuất: gán thủ công qua lệnh `wrangler d1 execute`, không có đăng ký admin qua giao diện).
 3. **Email:** không xác minh email ở GĐ1 (đã ghi nhận ở kế hoạch gốc).
