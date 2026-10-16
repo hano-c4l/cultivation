@@ -149,9 +149,24 @@ await a4.opened;
 const w4 = await a4.wait((m) => m.t === "welcome");
 assert(w4.players[0].path[0].join() === "22,20", "position persisted across disconnect/login");
 
+// --- race: a fast same-room reconnect must not let a late release free the new claim ---
+const r1 = connect(A.cookie, 3);
+await r1.opened;
+await r1.wait((m) => m.t === "welcome");
+r1.ws.close();
+const r2 = connect(A.cookie, 3); // reconnects immediately, while r1's leave/save may still be running
+await r2.opened;
+await r2.wait((m) => m.t === "welcome");
+await sleep(1500); // let r1's late release land
+const r3 = connect(A.cookie, 4);
+await r3.opened;
+await r2.wait((m) => m.t === "kicked");
+await r3.wait((m) => m.t === "welcome");
+assert(true, "fast reconnect then another channel still evicts the old room (best-effort race check; fix is by claim id)");
+
 // --- logout invalidates the session ---
 await api("POST", "/api/logout", { cookie: A.cookie });
 assert((await api("GET", "/api/me", { cookie: A.cookie })).status === 401, "logout invalidates the session");
 
-for (const c of [a, a2, a3, a4, b]) c.ws.close();
+for (const c of [a, a2, a3, a4, b, r1, r2, r3]) c.ws.close();
 console.log("smoke passed");

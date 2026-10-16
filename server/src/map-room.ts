@@ -23,8 +23,8 @@ interface PlayerState {
   /** Character id. */
   id: string;
   name: string;
-  /** Room name (`map:channel`), kept so the lock can be released after a wake-up. */
-  room: string;
+  /** Lock claim id of this connection, kept so the lock can be released after a wake-up. */
+  claimId: string;
   path: Tile[];
   startedAt: number;
   speed: number;
@@ -68,11 +68,12 @@ export class MapRoom extends DurableObject<Env> {
 
     const lock = this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(characterId));
     // Claim first: the previous holder (any room) kicks its socket and saves before we read the row.
-    await lock.claim(characterId, room);
+    const claimId = crypto.randomUUID();
+    await lock.claim(characterId, room, claimId);
     try {
       const row = await getCharacterById(this.env.DB, characterId);
       if (!row) {
-        await lock.release(room);
+        await lock.release(claimId);
         return new Response("No such character", { status: 404 });
       }
       const colo = await this.getColo();
@@ -84,7 +85,7 @@ export class MapRoom extends DurableObject<Env> {
       const state: PlayerState = {
         id: row.id,
         name: row.name,
-        room,
+        claimId,
         path: [tile],
         startedAt: Date.now(),
         speed: BASE_SPEED,
@@ -98,7 +99,7 @@ export class MapRoom extends DurableObject<Env> {
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
       return new Response(null, { status: 101, webSocket: client });
     } catch (err) {
-      await lock.release(room);
+      await lock.release(claimId);
       throw err;
     }
   }
@@ -178,10 +179,12 @@ export class MapRoom extends DurableObject<Env> {
   private async handleLeave(ws: WebSocket): Promise<void> {
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state) return; // already evicted or never joined
-    ws.serializeAttachment(null);
     this.broadcast({ t: "left", id: state.id }, ws);
+    // Keep the attachment until the save finished: a claim arriving meanwhile must still find this
+    // socket in evictCharacter() and wait for a save before the new room reads the character row.
     await this.save(state);
-    await this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(state.id)).release(state.room);
+    ws.serializeAttachment(null);
+    await this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(state.id)).release(state.claimId);
   }
 
   /** Persists the current tile. Failures are logged; the next debounced save or disconnect retries. */
