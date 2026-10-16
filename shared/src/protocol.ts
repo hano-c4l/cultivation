@@ -1,4 +1,4 @@
-import type { Vec2 } from "./pathfinding";
+import type { Vec2 } from "./map";
 
 /**
  * Keep-alive and RTT probe: the runtime answers PING_MESSAGE with PONG_MESSAGE without waking the

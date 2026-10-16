@@ -3,10 +3,11 @@ import {
   TILE_H,
   TILE_W,
   MIN_MOVE_INTERVAL_MS,
+  CELLS_PER_TILE,
   findSmoothPath,
   getMap,
+  isCellWalkable,
   isMapId,
-  isWalkable,
   portalNear,
   positionAlongPath,
   type MapData,
@@ -141,20 +142,37 @@ export class GameScene extends Phaser.Scene {
     for (const obj of this.mapObjects) obj.destroy();
     this.mapObjects = [];
 
-    const g = this.add.graphics().setDepth(0);
-    this.mapObjects.push(g);
+    // Draw the ground once into a texture: the fine collision cells can add up to thousands of polygons, and
+    // replaying them every frame (Canvas renderer) would be wasteful for a static map.
+    const g = this.make.graphics({}, false);
     for (let y = 0; y < this.map.height; y++) {
       for (let x = 0; x < this.map.width; x++) {
-        const walk = isWalkable(this.map, x, y);
         const p = toScreen(x, y);
-        const shade = (x + y) % 2 === 0 ? 0x3d5a3a : 0x38553a;
-        g.fillStyle(walk ? shade : 0x5a4a3a, 1);
+        g.fillStyle((x + y) % 2 === 0 ? 0x3d5a3a : 0x38553a, 1);
         g.lineStyle(1, 0x000000, 0.18);
         const pts = this.diamond(p.x, p.y);
         g.fillPoints(pts, true);
         g.strokePoints(pts, true);
       }
     }
+    // Obstacles: every blocked collision cell, so trees, pillars, ponds and fences show their real shape.
+    g.fillStyle(0x5a4a3a, 1);
+    const cw = this.map.width * CELLS_PER_TILE;
+    const ch = this.map.height * CELLS_PER_TILE;
+    for (let cy = 0; cy < ch; cy++) {
+      for (let cx = 0; cx < cw; cx++) {
+        if (isCellWalkable(this.map, cx, cy)) continue;
+        const p = toScreen(cx / CELLS_PER_TILE, cy / CELLS_PER_TILE);
+        g.fillPoints(this.diamond(p.x, p.y, 1 / CELLS_PER_TILE), true);
+      }
+    }
+    const minX = -this.map.height * (TILE_W / 2);
+    const texW = (this.map.width + this.map.height) * (TILE_W / 2) + 2;
+    const texH = (this.map.width + this.map.height) * (TILE_H / 2) + TILE_H + 2;
+    const ground = this.add.renderTexture(minX, 0, texW, texH).setOrigin(0, 0).setDepth(0);
+    ground.draw(g, -minX, 0);
+    g.destroy();
+    this.mapObjects.push(ground);
 
     for (const portal of this.map.portals) {
       const p = toScreen(portal.x, portal.y);
@@ -177,12 +195,15 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private diamond(x: number, y: number): Phaser.Math.Vector2[] {
+  /** Isometric diamond whose top vertex is at (x, y); `scale` 1 is a full tile. */
+  private diamond(x: number, y: number, scale = 1): Phaser.Math.Vector2[] {
+    const w = (TILE_W / 2) * scale;
+    const h = (TILE_H / 2) * scale;
     return [
       new Phaser.Math.Vector2(x, y),
-      new Phaser.Math.Vector2(x + TILE_W / 2, y + TILE_H / 2),
-      new Phaser.Math.Vector2(x, y + TILE_H),
-      new Phaser.Math.Vector2(x - TILE_W / 2, y + TILE_H / 2),
+      new Phaser.Math.Vector2(x + w, y + h),
+      new Phaser.Math.Vector2(x, y + 2 * h),
+      new Phaser.Math.Vector2(x - w, y + h),
     ];
   }
 
@@ -199,7 +220,6 @@ export class GameScene extends Phaser.Scene {
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
     const tx = Math.round(t.x * 100) / 100;
     const ty = Math.round(t.y * 100) / 100;
-    if (!isWalkable(this.map, Math.floor(tx), Math.floor(ty))) return;
     // Client-side throttle matches the server's, so a dropped click never desyncs the prediction.
     const now = performance.now();
     if (now - this.lastMoveSentAt < MIN_MOVE_INTERVAL_MS + 20) return;
