@@ -1,0 +1,98 @@
+import { api, type ApiResult } from "./api";
+import { vi } from "./locales/vi";
+
+const root = () => document.getElementById("auth")!;
+
+function errorText(code: string | undefined): string {
+  return vi.errors[code ?? "unknown"] ?? vi.errors.unknown!;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  props: Partial<HTMLElementTagNameMap[K]> = {},
+  ...children: (Node | string)[]
+): HTMLElementTagNameMap[K] {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+function mount(card: HTMLElement): void {
+  const host = root();
+  host.replaceChildren(card);
+  host.hidden = false;
+}
+
+export function hideAuth(): void {
+  root().hidden = true;
+  root().replaceChildren();
+}
+
+/** Login / register card. Resolves once the server accepted the credentials (session cookie set). */
+export function showAuth(): Promise<void> {
+  return new Promise((resolve) => {
+    let registering = false;
+    const render = () => {
+      const email = el("input", { type: "email", placeholder: vi.email, autocomplete: "email", required: true });
+      const password = el("input", {
+        type: "password",
+        placeholder: vi.password,
+        autocomplete: registering ? "new-password" : "current-password",
+        required: true,
+      });
+      const error = el("p", { className: "error" });
+      const submit = el("button", { type: "submit", textContent: registering ? vi.register : vi.login });
+      const toggle = el("button", {
+        type: "button",
+        className: "link",
+        textContent: registering ? vi.switchToLogin : vi.switchToRegister,
+      });
+      toggle.onclick = () => {
+        registering = !registering;
+        render();
+      };
+      const form = el("form", {}, el("h1", { textContent: vi.title }), email, password, error, submit, toggle);
+      form.onsubmit = async (ev) => {
+        ev.preventDefault();
+        submit.disabled = true;
+        error.textContent = "";
+        const res: ApiResult<unknown> = registering
+          ? await api.register(email.value, password.value)
+          : await api.login(email.value, password.value);
+        if (res.ok) return resolve();
+        error.textContent = errorText(res.error);
+        submit.disabled = false;
+      };
+      mount(el("div", { className: "card" }, form));
+    };
+    render();
+  });
+}
+
+/** Character creation card. Resolves once the character exists. */
+export function showCharacterCreate(): Promise<void> {
+  return new Promise((resolve) => {
+    const name = el("input", { type: "text", placeholder: vi.characterName, maxLength: 16, required: true });
+    const error = el("p", { className: "error" });
+    const submit = el("button", { type: "submit", textContent: vi.createCharacter });
+    const form = el(
+      "form",
+      {},
+      el("h1", { textContent: vi.createCharacterTitle }),
+      name,
+      el("p", { className: "note", textContent: vi.linhCanNote }),
+      error,
+      submit,
+    );
+    form.onsubmit = async (ev) => {
+      ev.preventDefault();
+      submit.disabled = true;
+      error.textContent = "";
+      const res = await api.createCharacter(name.value);
+      if (res.ok || res.error === "character_exists") return resolve();
+      error.textContent = errorText(res.error);
+      submit.disabled = false;
+    };
+    mount(el("div", { className: "card" }, form));
+  });
+}

@@ -69,26 +69,6 @@ function applyTrack(actor: Actor, path: Tile[], startedAt: number, speed: number
   actor.offAt = now;
 }
 
-/** Guest identity is per tab (sessionStorage) so two tabs can play as two characters; accounts replace this in Phase 1. */
-function loadIdentity(): { id: string; name: string } {
-  try {
-    const stored = sessionStorage.getItem("tt.identity");
-    if (stored) return JSON.parse(stored) as { id: string; name: string };
-  } catch {
-    // Storage unavailable; fall through to an ephemeral identity.
-  }
-  const identity = {
-    id: crypto.randomUUID(),
-    name: `${vi.guestPrefix} ${Math.floor(1000 + Math.random() * 9000)}`,
-  };
-  try {
-    sessionStorage.setItem("tt.identity", JSON.stringify(identity));
-  } catch {
-    // Ignore.
-  }
-  return identity;
-}
-
 export class GameScene extends Phaser.Scene {
   private readonly map = getMap("town");
   private actors = new Map<string, Actor>();
@@ -117,12 +97,12 @@ export class GameScene extends Phaser.Scene {
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
 
-    const identity = loadIdentity();
     // Channel picks which Durable Object (and so which Cloudflare data centre) serves us; override with ?ch=N.
     const channel = Number(new URLSearchParams(location.search).get("ch")) || DEFAULT_CHANNEL;
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    this.net = new Net(`${proto}://${location.host}/ws?map=town&ch=${channel}`, identity, {
+    this.net = new Net(`${proto}://${location.host}/ws?map=town&ch=${channel}`, {
       onMessage: (msg) => this.handleMessage(msg),
+      onAuthLost: () => location.reload(),
       onPong: () => {
         this.ping = Math.max(0, Math.round(performance.now() - this.pingSentAt));
         this.refreshHud();
