@@ -22,10 +22,11 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
   const character = await getCharacterByAccount(env.DB, session.accountId);
   if (!character) return errorResponse("no_character", 403);
 
-  const map = url.searchParams.get("map") ?? character.map_id;
+  // The map is server-authoritative (the character's saved map); clients only choose the channel.
+  const map = isMapId(character.map_id) ? character.map_id : "town";
   const channel = Number(url.searchParams.get("ch") ?? "1");
-  if (!isMapId(map) || !Number.isInteger(channel) || channel < 1 || channel > MAX_CHANNEL) {
-    return errorResponse("bad_map_or_channel", 400);
+  if (!Number.isInteger(channel) || channel < 1 || channel > MAX_CHANNEL) {
+    return errorResponse("bad_channel", 400);
   }
 
   const room = `${map}:${channel}`;

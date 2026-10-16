@@ -2,17 +2,21 @@ import Phaser from "phaser";
 import {
   TILE_H,
   TILE_W,
+  MIN_MOVE_INTERVAL_MS,
   findPath,
   getMap,
+  isMapId,
   isWalkable,
-  MIN_MOVE_INTERVAL_MS,
+  portalNear,
   positionAlongPath,
+  type MapData,
   type PlayerSnapshot,
   type ServerMessage,
   type Tile,
 } from "@game/shared";
-import { vi } from "./locales/vi";
+import { initChat, type ChatUi } from "./chat-ui";
 import { DEFAULT_CHANNEL } from "./config";
+import { vi } from "./locales/vi";
 import { Net } from "./net";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
@@ -70,16 +74,20 @@ function applyTrack(actor: Actor, path: Tile[], startedAt: number, speed: number
 }
 
 export class GameScene extends Phaser.Scene {
-  private readonly map = getMap("town");
+  private map: MapData = getMap("town");
+  private mapObjects: Phaser.GameObjects.GameObject[] = [];
   private actors = new Map<string, Actor>();
   private selfId = "";
   private net!: Net;
+  private chat!: ChatUi;
   private hud!: HTMLElement;
   private ping = 0;
   private pingSentAt = 0;
   private moveSeq = 0;
   private lastMoveSentAt = 0;
   private colo = "…";
+  private portalSentAt = 0;
+  private transferring = false;
   private marker!: Phaser.GameObjects.Graphics;
 
   constructor() {
@@ -90,6 +98,7 @@ export class GameScene extends Phaser.Scene {
     this.hud = document.getElementById("hud")!;
     this.drawMap();
     this.marker = this.add.graphics().setDepth(1);
+    this.chat = initChat((text) => this.net.send({ t: "chat", text }));
 
     const camera = this.cameras.main;
     const center = toScreen(this.map.spawn[0] + 0.5, this.map.spawn[1] + 0.5);
@@ -98,9 +107,10 @@ export class GameScene extends Phaser.Scene {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
 
     // Channel picks which Durable Object (and so which Cloudflare data centre) serves us; override with ?ch=N.
+    // The map is chosen by the server from the character's saved position.
     const channel = Number(new URLSearchParams(location.search).get("ch")) || DEFAULT_CHANNEL;
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    this.net = new Net(`${proto}://${location.host}/ws?map=town&ch=${channel}`, {
+    this.net = new Net(`${proto}://${location.host}/ws?ch=${channel}`, {
       onMessage: (msg) => this.handleMessage(msg),
       onAuthLost: () => location.reload(),
       onPong: () => {
@@ -109,7 +119,7 @@ export class GameScene extends Phaser.Scene {
       },
       onStatus: (connected) => {
         if (!connected) {
-          this.hud.textContent = vi.disconnected;
+          this.hud.textContent = this.transferring ? vi.transferring : vi.disconnected;
           this.clearActors();
         }
       },
@@ -126,8 +136,13 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /** (Re)draws the current map's tiles and portals, destroying whatever was drawn for the previous map. */
   private drawMap(): void {
+    for (const obj of this.mapObjects) obj.destroy();
+    this.mapObjects = [];
+
     const g = this.add.graphics().setDepth(0);
+    this.mapObjects.push(g);
     for (let y = 0; y < this.map.height; y++) {
       for (let x = 0; x < this.map.width; x++) {
         const walk = isWalkable(this.map, x, y);
@@ -135,19 +150,50 @@ export class GameScene extends Phaser.Scene {
         const shade = (x + y) % 2 === 0 ? 0x3d5a3a : 0x38553a;
         g.fillStyle(walk ? shade : 0x5a4a3a, 1);
         g.lineStyle(1, 0x000000, 0.18);
-        const pts = [
-          new Phaser.Math.Vector2(p.x, p.y),
-          new Phaser.Math.Vector2(p.x + TILE_W / 2, p.y + TILE_H / 2),
-          new Phaser.Math.Vector2(p.x, p.y + TILE_H),
-          new Phaser.Math.Vector2(p.x - TILE_W / 2, p.y + TILE_H / 2),
-        ];
+        const pts = this.diamond(p.x, p.y);
         g.fillPoints(pts, true);
         g.strokePoints(pts, true);
       }
     }
+
+    for (const portal of this.map.portals) {
+      const p = toScreen(portal.x, portal.y);
+      const glow = this.add.graphics().setDepth(0.5);
+      glow.fillStyle(0x7b61ff, 0.55).lineStyle(2, 0xd9ccff, 1);
+      const pts = this.diamond(p.x, p.y);
+      glow.fillPoints(pts, true);
+      glow.strokePoints(pts, true);
+      const label = this.add
+        .text(p.x, p.y - 6, vi.maps[portal.toMap] ?? portal.toMap, {
+          fontFamily: FONT,
+          fontSize: "12px",
+          color: "#e8e0ff",
+          stroke: "#000000",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5, 1)
+        .setDepth(0.6);
+      this.mapObjects.push(glow, label);
+    }
+  }
+
+  private diamond(x: number, y: number): Phaser.Math.Vector2[] {
+    return [
+      new Phaser.Math.Vector2(x, y),
+      new Phaser.Math.Vector2(x + TILE_W / 2, y + TILE_H / 2),
+      new Phaser.Math.Vector2(x, y + TILE_H),
+      new Phaser.Math.Vector2(x - TILE_W / 2, y + TILE_H / 2),
+    ];
+  }
+
+  private switchMap(mapId: string): void {
+    if (!isMapId(mapId) || this.map.id === mapId) return;
+    this.map = getMap(mapId);
+    this.drawMap();
   }
 
   private handleClick(pointer: Phaser.Input.Pointer): void {
+    if (this.transferring) return;
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
     const tx = Math.floor(t.x);
@@ -183,9 +229,12 @@ export class GameScene extends Phaser.Scene {
       case "welcome":
         this.selfId = msg.self;
         this.colo = msg.colo;
+        this.transferring = false;
+        this.portalSentAt = 0;
+        this.switchMap(msg.map);
         this.clearActors();
         this.upsertActor(msg.players);
-        this.hud.textContent = vi.connected(this.actors.size, this.ping, this.colo);
+        this.refreshHud();
         break;
       case "joined":
       case "path":
@@ -203,11 +252,23 @@ export class GameScene extends Phaser.Scene {
       case "kicked":
         this.hud.textContent = vi.kicked;
         break;
+      case "transfer":
+        // The server closes the socket right after; Net reconnects and the welcome brings the new map.
+        this.transferring = true;
+        this.hud.textContent = vi.transferring;
+        break;
+      case "chat":
+        this.chat.add(msg.name, msg.text, msg.id === this.selfId);
+        break;
+      case "chat_error":
+        this.chat.system(msg.reason === "rate" ? vi.chatRateLimited : vi.chatInvalid);
+        break;
     }
   }
 
   private refreshHud(): void {
-    this.hud.textContent = `${vi.connected(this.actors.size, this.ping, this.colo)} · ${vi.hint}`;
+    const where = vi.maps[this.map.id] ?? this.map.id;
+    this.hud.textContent = `${where} · ${vi.connected(this.actors.size, this.ping, this.colo)} · ${vi.hint}`;
   }
 
   private upsertActor(players: PlayerSnapshot[]): void {
@@ -257,6 +318,17 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       actor.label.setDepth(depth + 0.1);
+    }
+
+    // Standing still on a portal tile asks the server to transfer us (the server re-checks the position).
+    const self = this.actors.get(this.selfId);
+    // Retry after 1.5 s in case the server's (slightly lagging) position was not yet in range.
+    if (self && !this.transferring && now - this.portalSentAt > 1500) {
+      const pos = currentPos(self, now);
+      if (!pos.moving && portalNear(this.map, pos.x, pos.y)) {
+        this.portalSentAt = now;
+        this.net.send({ t: "portal" });
+      }
     }
   }
 }

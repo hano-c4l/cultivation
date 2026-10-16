@@ -42,7 +42,7 @@ async function newPlayer(tag) {
 }
 
 function connect(cookie, channel = 1) {
-  const ws = new WebSocket(`${base}/ws?map=town&ch=${channel}`, { headers: cookie ? { Cookie: cookie } : {} });
+  const ws = new WebSocket(`${base}/ws?ch=${channel}`, { headers: cookie ? { Cookie: cookie } : {} });
   const inbox = [];
   const waiters = [];
   ws.addEventListener("message", (ev) => {
@@ -59,11 +59,12 @@ function connect(cookie, channel = 1) {
   return {
     ws, inbox, opened,
     send: (m) => ws.send(JSON.stringify(m)),
-    wait: (pred, ms = 5000) => new Promise((resolve, reject) => {
+    // `label` names the step in the timeout error, so a slow run says where it stopped.
+    wait: (pred, ms = 5000, label = pred.toString().slice(0, 80)) => new Promise((resolve, reject) => {
       const hit = inbox.find(pred);
       if (hit) return resolve(hit);
       waiters.push({ pred, resolve });
-      setTimeout(() => reject(new Error("timeout waiting for message")), ms);
+      setTimeout(() => reject(new Error(`timeout waiting for message: ${label}`)), ms);
     }),
   };
 }
@@ -172,9 +173,61 @@ await r2.wait((m) => m.t === "kicked");
 await r3.wait((m) => m.t === "welcome");
 assert(true, "fast reconnect then another channel still evicts the old room (best-effort race check; fix is by claim id)");
 
+// --- chat: room-local broadcast, word filter, rate limit ---
+const C = await newPlayer("c");
+const c = connect(C.cookie, 1);
+await c.opened;
+const wc = await c.wait((m) => m.t === "welcome");
+assert(wc.map === "town" && wc.players.at(-1).path[0].join() === "20,20", "new character starts in town at the spawn");
+c.send({ t: "chat", text: "  xin   chào đạo hữu " });
+const heard = await b.wait((m) => m.t === "chat" && m.id === C.character.id);
+assert(heard.text === "xin chào đạo hữu" && heard.name === C.name, "chat is normalized and reaches the other player in the room");
+await sleep(600);
+c.send({ t: "chat", text: "vcl Đm hello" });
+const filtered = await b.wait((m) => m.t === "chat" && m.text.includes("hello"));
+assert(filtered.text === "*** ** hello", "word filter masks blocked words");
+c.send({ t: "chat", text: "spam 1" });
+c.send({ t: "chat", text: "spam 2" }); // under CHAT_MIN_GAP_MS
+const limited = await c.wait((m) => m.t === "chat_error");
+assert(limited.reason === "rate", "chat rate limit rejects messages sent too fast");
+assert((await c.wait((m) => m.t === "chat" && m.text === "*** ** hello")) !== undefined, "sender also receives its own chat");
+
+// --- portals: server verifies the position, hands off through the saved row, return trip works ---
+c.send({ t: "portal" }); // far from any portal: must be ignored
+await sleep(1000);
+assert(!c.inbox.some((m) => m.t === "transfer"), "portal request far from a portal is ignored");
+c.send({ t: "move", x: 20, y: 38, fx: 20, fy: 20, seq: 1 });
+await c.wait((m) => m.t === "ack" && m.seq === 1);
+await sleep(5500); // ~18 tiles at 4 tiles/s
+c.send({ t: "portal" });
+const moved = await c.wait((m) => m.t === "transfer");
+assert(moved.map === "forest", "standing on the south gate transfers to the forest");
+await sleep(500);
+const c2 = connect(C.cookie, 1);
+await c2.opened;
+const wc2 = await c2.wait((m) => m.t === "welcome");
+assert(wc2.map === "forest" && wc2.players[0].path[0].join() === "20,3", "reconnect lands in the forest at the arrival tile");
+const bChats = b.inbox.filter((m) => m.t === "chat").length;
+await sleep(600);
+c2.send({ t: "chat", text: "chào rừng" });
+await c2.wait((m) => m.t === "chat" && m.text === "chào rừng");
+await sleep(500);
+assert(b.inbox.filter((m) => m.t === "chat").length === bChats, "chat does not leak to a player on another map");
+await sleep(150);
+c2.send({ t: "move", x: 20, y: 1, fx: 20, fy: 3, seq: 1 });
+await c2.wait((m) => m.t === "ack" && m.seq === 1);
+await sleep(1000);
+c2.send({ t: "portal" });
+assert((await c2.wait((m) => m.t === "transfer")).map === "town", "return portal leads back to town");
+await sleep(500);
+const c3 = connect(C.cookie, 1);
+await c3.opened;
+const wc3 = await c3.wait((m) => m.t === "welcome");
+assert(wc3.map === "town" && wc3.players.find((p) => p.id === C.character.id).path[0].join() === "20,36", "return trip lands at the town arrival tile");
+
 // --- logout invalidates the session ---
 await api("POST", "/api/logout", { cookie: A.cookie });
 assert((await api("GET", "/api/me", { cookie: A.cookie })).status === 401, "logout invalidates the session");
 
-for (const c of [a, a2, a3, a4, b, r1, r2, r3]) c.ws.close();
+for (const conn of [a, a2, a3, a4, b, c, c2, c3, r1, r2, r3]) conn.ws.close();
 console.log("smoke passed");
