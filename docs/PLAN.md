@@ -15,7 +15,7 @@ Trạng thái: **CHỜ DUYỆT** — chưa viết code. Mọi mục "Mặc đị
 | Tiền tệ | Linh Thạch (giao dịch tự do), Cống Hiến (khóa, từ nhiệm vụ, dùng cho tông môn), Tiên Ngọc (tiền nạp) |
 | Nạp tiền | Có sẵn sổ cái, đơn nạp, trang admin cộng tiền thủ công. **Chưa** nối cổng thanh toán |
 | Giao dịch | Giao dịch trực tiếp 2 người + chợ đăng bán + đấu giá |
-| Hạ tầng | Cloudflare, đã có Workers Paid |
+| Hạ tầng | Cloudflare. **Gói áp dụng theo kế hoạch (vận hành thật): Workers Paid.** **Khi phát triển: dùng Workers Free nếu không cần thiết phải nâng.** Nếu một kỹ thuật/công nghệ cần bản Paid thì phải báo người dùng để nâng cấp, không tự giả định (xem mục 2a) |
 | Ngôn ngữ | Giao diện game: tiếng Việt. Code (hàm, biến, comment): tiếng Anh |
 
 ## 2. Hình dạng deploy
@@ -26,6 +26,12 @@ Trạng thái: **CHỜ DUYỆT** — chưa viết code. Mọi mục "Mặc đị
   - `shared/`: kiểu dữ liệu, schema message (validate bằng zod hoặc tương đương), dữ liệu game (JSON/TS), công thức chỉ số/ngũ hành/cảnh giới, lưới đi được (walkability) dùng chung client/server.
   - `tools/`: script build map/atlas, seed dữ liệu.
   - `docs/`: tài liệu.
+
+## 2a. Gói Cloudflare: Paid là đích, Free khi phát triển
+- **Đích vận hành:** Workers Paid (CPU/request cao hơn, nhiều quota Durable Object và D1 hơn).
+- **Khi develop:** mặc định chạy trên Workers Free để tiết kiệm; thiết kế code sao cho chạy được trong giới hạn Free (ví dụ băm mật khẩu nằm trong Durable Object vì Worker Free chỉ có 10 ms CPU, ghi D1 theo batch/debounce).
+- **Quy tắc báo nâng cấp:** khi gặp việc mà giới hạn Free thực sự chặn (CPU 10 ms, quota request/GB-s của DO, 100k dòng ghi D1/ngày, kiểm thử tải 50 client, tick loop chạy liên tục...), trợ lý **dừng lại và thông báo người dùng** nêu rõ: giới hạn nào, vì sao cần Paid, có phương án né trong Free không. Chỉ nâng cấp khi người dùng đồng ý.
+- Không thiết kế lệch kiến trúc chỉ để né Free nếu việc đó làm sai hướng so với bản Paid; khi nghi ngờ, hỏi người dùng.
 
 ## 3. Bảng sở hữu trạng thái (quan trọng nhất)
 Nguyên tắc: **server là nguồn sự thật**; mỗi nhân vật chỉ có **1 writer** tại một thời điểm.

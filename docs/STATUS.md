@@ -32,7 +32,7 @@ Việc tồn đọng khác:
 | Nhánh | `main` | `preview` |
 
 - Durable Object (SQLite): `MapRoom` (mỗi `bản đồ:kênh` một object), `CharacterLock` (theo id nhân vật), `PasswordHasher`.
-- Gói Cloudflare: **Workers Free**. Giới hạn đã tính: Worker 10 ms CPU mỗi request (vì vậy băm mật khẩu PBKDF2 100k vòng nằm trong DO), DO 100k request và 13.000 GB-s mỗi ngày, D1 100k dòng ghi mỗi ngày. Vượt thì lỗi đến 00:00 UTC.
+- Gói Cloudflare: kế hoạch vận hành là **Workers Paid** (`docs/PLAN.md` mục 2a), nhưng **khi develop đang dùng Workers Free**. Nếu gặp kỹ thuật/công nghệ cần bản Paid thì thông báo người dùng để nâng cấp, không tự giả định. Giới hạn Free đã tính: Worker 10 ms CPU mỗi request (vì vậy băm mật khẩu PBKDF2 100k vòng nằm trong DO), DO 100k request và 13.000 GB-s mỗi ngày, D1 100k dòng ghi mỗi ngày. Vượt thì lỗi đến 00:00 UTC.
 - Kênh mặc định là `ch4` (`client/src/config.ts`). Cloudflare đặt DO ngẫu nhiên trong vùng APAC. Đã đo: production ch1 KIX, ch2 SIN, ch3 NRT, ch4 SIN, ch5 KIX, ch6 HKG, ch7 HKG, ch8 SIN. Phải đo lại nếu đổi môi trường. HUD hiện "Máy chủ: XXX"; `/api/whereami` cho biết edge.
 
 ## Kiến trúc nhanh
