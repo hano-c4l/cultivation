@@ -57,17 +57,32 @@ export class MapRoom extends DurableObject<Env> {
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING_MESSAGE, PONG_MESSAGE));
   }
 
-  /** Cloudflare data centre this Durable Object runs in (diagnostics for latency). */
-  private async getColo(): Promise<string> {
+  /**
+   * Cloudflare data centre this Durable Object runs in (diagnostics for latency). Never blocks the join:
+   * it is cached in memory and storage, and the first lookup runs in the background with a short timeout.
+   */
+  private async knownColo(): Promise<string> {
     if (this.colo) return this.colo;
-    try {
-      const res = await fetch("https://cloudflare.com/cdn-cgi/trace");
-      const m = /^colo=(\w+)$/m.exec(await res.text());
-      this.colo = m?.[1] ?? "??";
-    } catch {
-      this.colo = "??";
+    const stored = await this.ctx.storage.get<string>("colo");
+    if (stored) {
+      this.colo = stored;
+      return stored;
     }
-    return this.colo;
+    this.ctx.waitUntil(this.fetchColo());
+    return "…";
+  }
+
+  private async fetchColo(): Promise<void> {
+    try {
+      const res = await fetch("https://cloudflare.com/cdn-cgi/trace", { signal: AbortSignal.timeout(800) });
+      const m = /^colo=(\w+)$/m.exec(await res.text());
+      if (m?.[1]) {
+        this.colo = m[1];
+        await this.ctx.storage.put("colo", m[1]);
+      }
+    } catch {
+      // Diagnostics only; the next join retries.
+    }
   }
 
   /** The Worker authenticates the cookie and sets these headers; clients cannot reach this object directly. */
@@ -86,7 +101,12 @@ export class MapRoom extends DurableObject<Env> {
         await lock.release(claimId);
         return new Response("No such character", { status: 404 });
       }
-      const colo = await this.getColo();
+      // The Worker routes by the saved map; a mismatch means the character moved during this login (portal in flight).
+      if (room.split(":")[0] !== row.map_id) {
+        await lock.release(claimId);
+        return new Response("Wrong map", { status: 409 });
+      }
+      const colo = await this.knownColo();
 
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
@@ -187,6 +207,8 @@ export class MapRoom extends DurableObject<Env> {
     const portal = portalNear(getMap(state.mapId), here.x, here.y);
     if (!portal) return;
     state.transferring = true;
+    // The destination row is written below; a pending debounced save must not overwrite it with the old map.
+    state.dirty = false;
     ws.serializeAttachment(state);
     try {
       await saveCharacterPosition(this.env.DB, state.id, portal.toMap, portal.toX, portal.toY);
@@ -255,6 +277,7 @@ export class MapRoom extends DurableObject<Env> {
 
   /** Persists the current tile. Failures are logged; the next debounced save or disconnect retries. */
   private async save(state: PlayerState): Promise<void> {
+    if (state.transferring) return; // the portal handler owns the row until the handoff completes
     const pos = positionAlongPath(state.path, Date.now() - state.startedAt, state.speed);
     try {
       await saveCharacterPosition(this.env.DB, state.id, state.mapId, Math.floor(pos.x), Math.floor(pos.y));

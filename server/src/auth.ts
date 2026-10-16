@@ -84,12 +84,13 @@ function clientIp(request: Request): string {
 }
 
 async function register(request: Request, env: Env): Promise<Response> {
-  if (!(await allowAttempt(env, `reg:${clientIp(request)}`, 10, 600))) return errorResponse("rate_limited", 429);
   const body = await readJson(request);
   const email = validateEmail(body?.email);
   const password = validatePassword(body?.password);
   if (!email) return errorResponse("invalid_email", 400);
   if (!password) return errorResponse("invalid_password", 400);
+  // Rate limit only well-formed attempts: malformed ones are rejected without a D1 write.
+  if (!(await allowAttempt(env, `reg:${clientIp(request)}`, 10, 600))) return errorResponse("rate_limited", 429);
 
   const salt = toBase64(crypto.getRandomValues(new Uint8Array(16)));
   const hash = await hashPassword(env, password, salt);
