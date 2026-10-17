@@ -2,6 +2,8 @@
 
 Mỗi mục là một nhánh `features_*` từ `preview` → PR vào `preview` → deploy preview kiểm tra → cuối giai đoạn (hoặc khi một mục tự đứng được) PR `preview` → `main`.
 
+**Trạng thái: giai đoạn 1 đã xong và đang chạy ở production (1f được hoãn).** Giai đoạn 2 xem `docs/PHASE2.md`.
+
 Thứ tự phụ thuộc: 1a → 1b → 1c → 1d → 1e → 1f.
 
 ## 1a. Tài khoản và nhân vật (`features_accounts`)
