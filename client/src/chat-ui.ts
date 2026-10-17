@@ -133,8 +133,9 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
     log.append(line);
     while (log.childElementCount > MAX_LINES) log.firstElementChild?.remove();
     log.scrollTop = log.scrollHeight;
-    // The "all" tab shows everything and the line's own tab shows it too; any other tab counts it as unread.
-    if (visibleEverywhere || active === "all" || active === tab) return;
+    // Shown where it is visible: everywhere for red lines, in its own tab, and in "all" except for routine system lines.
+    // Anywhere else it counts as unread on its own tab.
+    if (visibleEverywhere || active === tab || (active === "all" && tab !== "system")) return;
     unread.set(tab, (unread.get(tab) ?? 0) + 1);
     renderTab(tab);
   };

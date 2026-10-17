@@ -69,6 +69,8 @@
       #chat-log.tab-world .line:not(.ch-world), #chat-log.tab-map .line:not(.ch-map), #chat-log.tab-whisper .line:not(.ch-whisper),
       #chat-log.tab-system .line:not(.ch-system) { display: none; }
       #chat-log .line.err, #chat-log .line.important { display: block !important; }
+      /* The "all" tab leaves out routine system lines (loot, EXP); they live in the system tab. Red lines stay everywhere. */
+      #chat-log.tab-all .line.ch-system:not(.important):not(.err) { display: none; }
       #chat-form { display: flex; gap: 4px; flex-wrap: wrap; }
       #chat-channel { padding: 6px 4px; border-radius: 8px; border: 1px solid #3a4560; background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
       #chat-to { width: 90px; padding: 6px 8px; border-radius: 8px; border: 1px solid #3a4560; background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
