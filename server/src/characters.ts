@@ -40,10 +40,42 @@ export function getCharacterById(db: D1Database, id: string): Promise<CharacterR
   return db.prepare(`SELECT ${COLUMNS} FROM characters WHERE id = ?`).bind(id).first<CharacterRow>();
 }
 
-export async function saveCharacterPosition(db: D1Database, id: string, mapId: string, x: number, y: number): Promise<void> {
+/** Progression the room holds in memory; written together with the position when present. */
+export interface ProgressWrite {
+  stage: number;
+  exp: number;
+  /** Points gained since the last write, added relative to the stored value so `allocate` is never overwritten. */
+  addPoints: number;
+}
+
+export async function saveCharacterPosition(
+  db: D1Database,
+  id: string,
+  mapId: string,
+  x: number,
+  y: number,
+  progress?: ProgressWrite,
+): Promise<void> {
+  if (!progress) {
+    await db
+      .prepare("UPDATE characters SET map_id = ?, x = ?, y = ?, updated_at = ? WHERE id = ?")
+      .bind(mapId, x, y, Date.now(), id)
+      .run();
+    return;
+  }
   await db
-    .prepare("UPDATE characters SET map_id = ?, x = ?, y = ?, updated_at = ? WHERE id = ?")
-    .bind(mapId, x, y, Date.now(), id)
+    .prepare(
+      "UPDATE characters SET map_id = ?, x = ?, y = ?, stage = ?, exp = ?, potential_points = potential_points + ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(mapId, x, y, progress.stage, progress.exp, progress.addPoints, Date.now(), id)
+    .run();
+}
+
+/** Writes only EXP, stage and points (no position), for flushes while the character stays in the room. */
+export async function saveCharacterProgress(db: D1Database, id: string, progress: ProgressWrite): Promise<void> {
+  await db
+    .prepare("UPDATE characters SET stage = ?, exp = ?, potential_points = potential_points + ?, updated_at = ? WHERE id = ?")
+    .bind(progress.stage, progress.exp, progress.addPoints, Date.now(), id)
     .run();
 }
 

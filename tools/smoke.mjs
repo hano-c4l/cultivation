@@ -1,5 +1,5 @@
 // Smoke test: accounts, characters, WebSocket auth, movement, duplicate-login lock across channels, persistence,
-// chat, portals, potential point allocation (the EXP grant step needs ENABLE_DEV_GRANT=1 in .dev.vars, skipped otherwise).
+// chat, portals, potential point allocation, monsters and combat (the EXP grant step needs ENABLE_DEV_GRANT=1 in .dev.vars, skipped otherwise).
 // Usage: node tools/smoke.mjs [baseWsUrl]   (default ws://localhost:8787)
 // Registers throwaway accounts, so it only runs against local dev and preview, never production.
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -258,6 +258,64 @@ if (grant.status === 404) {
   assert(grant.data.character.potentialPoints === st1.character.potentialPoints + 8 * 5, "each stage granted potential points");
 }
 connections.push(c4);
+
+// --- combat: monsters, auto-attack, EXP, persistence, death and respawn in town ---
+const D = await newPlayer("d");
+let d = connect(D.cookie, 5);
+await d.opened;
+let wd = await d.wait((m) => m.t === "welcome");
+assert(wd.monsters.length === 0 && wd.hp > 0 && wd.maxHp >= wd.hp, "town has no monsters and the welcome carries hp");
+d.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
+await d.wait((m) => m.t === "ack" && m.seq === 1);
+await sleep(5500);
+d.send({ t: "portal" });
+await d.wait((m) => m.t === "transfer");
+await sleep(500);
+d = connect(D.cookie, 5);
+await d.opened;
+wd = await d.wait((m) => m.t === "welcome");
+assert(wd.map === "forest" && wd.monsters.length === 9 && wd.monsters.every((m) => m.tier === 1 || m.tier === 4 || m.tier === 7), "the forest welcome lists 3 clusters of 3 monsters at bậc 1, 4 and 7");
+// Rare ranks are rolled at random, so hunt a normal bậc-1 monster to keep the test deterministic.
+const prey = wd.monsters.find((m) => m.rank === "normal" && m.tier === 1) ?? wd.monsters[0];
+d.send({ t: "attack", id: prey.id });
+const firstHit = await d.wait((m) => m.t === "hit" && m.from === D.character.id && m.to === prey.id, 20000, "first hit on the monster");
+assert(firstHit.kind === "miss" || firstHit.damage > 0, "attacking walks into range and lands a hit");
+await d.wait((m) => m.t === "mon_gone" && m.id === prey.id, 40000, "monster dies");
+const gained = await d.wait((m) => m.t === "stats" && m.character.exp > 0, 5000, "stats with EXP after the kill");
+assert(gained.character.exp > 0, "killing a monster grants EXP");
+d.ws.close();
+await sleep(800);
+d = connect(D.cookie, 5);
+await d.opened;
+wd = await d.wait((m) => m.t === "welcome");
+assert(wd.character.exp === gained.character.exp, "EXP from kills is saved when the player leaves");
+const expBeforeDeath = wd.character.exp;
+const stageBeforeDeath = wd.character.stage;
+
+// Walk to the cave and stand next to its monsters until they kill us.
+const here = wd.players.find((p) => p.id === D.character.id).path[0];
+d.send({ t: "move", x: 46.5, y: 24.5, fx: here[0], fy: here[1], seq: 1 });
+await d.wait((m) => m.t === "ack" && m.seq === 1);
+await sleep((Math.hypot(46.5 - here[0], 24.5 - here[1]) / 4) * 1000 + 5000);
+d.send({ t: "portal" });
+const toCave = await d.wait((m) => m.t === "transfer", 8000, "east gate transfer to the cave");
+assert(toCave.map === "cave", "the east gate leads to the cave (and the walk there was survivable)");
+await sleep(500);
+d = connect(D.cookie, 5);
+await d.opened;
+wd = await d.wait((m) => m.t === "welcome");
+assert(wd.map === "cave" && wd.monsters.length === 9, "the cave welcome lists its monsters");
+d.send({ t: "move", x: 14.5, y: 20.5, fx: 3.5, fy: 20.5, seq: 1 });
+const died = await d.wait((m) => m.t === "died", 90000, "dying to cave monsters");
+assert(died.expLost >= 0 && died.expLost <= expBeforeDeath, "death costs a little EXP, never more than owned");
+assert((await d.wait((m) => m.t === "transfer", 5000)).map === "town", "death sends the player to town");
+await sleep(600);
+d = connect(D.cookie, 5);
+await d.opened;
+wd = await d.wait((m) => m.t === "welcome");
+assert(wd.map === "town" && wd.hp === wd.maxHp, "respawn in town with full HP");
+assert(wd.character.stage === stageBeforeDeath && wd.character.exp === expBeforeDeath - died.expLost, "death lowered EXP without changing the stage");
+connections.push(d);
 
 // --- logout invalidates the session ---
 await api("POST", "/api/logout", { cookie: A.cookie });

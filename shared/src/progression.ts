@@ -3,6 +3,8 @@ import { BASE_SPEED } from "./pathfinding";
 import {
   BASE_STAT_START,
   ELEMENT_GENERATE_MULT,
+  KILLS_BASE,
+  KILLS_GROWTH,
   ELEMENT_OVERCOME_BY_MULT,
   ELEMENT_OVERCOME_MULT,
   MAX_ALLOCATE_PER_STAT,
@@ -47,6 +49,16 @@ export function levelIndex(realm: number, stage: number): number {
   const r = Math.min(Math.max(Math.trunc(realm), 0), REALMS.length - 1);
   const s = Math.min(Math.max(Math.trunc(stage), 1), STAGES_PER_REALM);
   return r * STAGES_PER_REALM + (s - 1);
+}
+
+/** Same-bậc normal monsters needed to finish a stage (see KILLS_BASE). */
+export function killsToNext(realm: number, stage: number): number {
+  return Math.round(KILLS_BASE * KILLS_GROWTH ** levelIndex(realm, stage));
+}
+
+/** EXP of a normal monster of this realm and bậc: the stage's EXP divided by the kills it should take. */
+export function monsterBaseExp(realm: number, tier: number): number {
+  return Math.max(1, Math.round(expToNext(realm, tier) / killsToNext(realm, tier)));
 }
 
 /** EXP needed to finish the given stage. At stage 9 this is also the EXP cap until breakthrough exists. */

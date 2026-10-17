@@ -1,6 +1,6 @@
 # Kế hoạch: Web game tu tiên (MMO nhỏ-vừa, 2.5D isometric)
 
-Trạng thái: **CHỜ DUYỆT** — chưa viết code. Mọi mục "Mặc định" bên dưới đều có thể sửa.
+Trạng thái: **ĐANG THỰC HIỆN** — giai đoạn 0 và 1a-1c đã xong, đang làm 1d (xem `docs/STATUS.md` và `docs/PHASE1.md`). Mọi mục "Mặc định" bên dưới đều có thể sửa.
 
 ## 1. Yêu cầu đã chốt
 | Hạng mục | Quyết định |
@@ -46,7 +46,7 @@ Nguyên tắc: **server là nguồn sự thật**; mỗi nhân vật chỉ có *
 | Escrow giao dịch trực tiếp | D1 (bảng `trade_sessions`) + DO điều phối | Atomic: batch D1 với cập nhật có điều kiện |
 | Tin đăng chợ, đấu giá | D1 | Đồng bộ |
 | Hòm thư (tiền/đồ cho người offline) | D1 (`mailbox`) | Đồng bộ |
-| Phiên đăng nhập, khóa phiên | D1 + `PlayerSession` DO | Khi đăng nhập/đăng xuất |
+| Phiên đăng nhập, khóa phiên | D1 + `CharacterLock` DO (khóa theo id nhân vật) | Khi đăng nhập/đăng xuất |
 
 Quy tắc bổ sung:
 - **Session lock**: mỗi nhân vật có 1 khóa phiên; đăng nhập lần 2 sẽ đá phiên cũ (hoặc từ chối) để tránh nhân đôi trạng thái.
@@ -64,7 +64,7 @@ Quy tắc bổ sung:
 
 ## 5. Vòng đời Map DO và netcode
 - Mỗi **bản đồ + kênh** là một `MapRoom` DO (SQLite-backed, WebSocket Hibernation API).
-- **Tick loop chỉ chạy khi có người chơi** (interval giữ DO không ngủ và tính phí thời lượng). Phòng trống: dừng tick, dùng **alarm** cho hồi sinh quái/tài nguyên.
+- **Tick loop chỉ chạy khi có người chơi** (interval giữ DO không ngủ và tính phí thời lượng). Phòng trống: dừng tick và bỏ trạng thái quái; hồi sinh quái/tài nguyên chạy bằng bộ đếm trong tick (không dùng alarm: alarm tính như request DO và không có quan sát viên khi phòng trống). Bản đồ an toàn không tick.
 - **Click-to-move**: client gửi ô đích → server chạy A* trên lưới đi được dùng chung → server phát `đường đi + thời điểm bắt đầu + tốc độ` → client nội suy. Không gửi vị trí mỗi frame.
 - Chiến đấu xử lý trên tick server (~10-15Hz); client chỉ dự đoán hiệu ứng.
 - **Area-of-interest**: chỉ gửi thực thể trong bán kính nhìn thấy, để 100 người không làm nghẽn client mobile.
@@ -99,7 +99,13 @@ Con số cố định (có thể chỉnh trước khi bắt đầu, sau đó kh�
 - **Phụ tu**: hệ số EXP = `1 / (1 + k·n)` với `n` là số nhánh phụ, `k` chỉnh được trong cấu hình; tốn thời gian + tài nguyên cho mỗi nhánh.
 - **Điểm tiềm năng**: nhận mỗi tầng; các chỉ số gốc (Căn cốt, Thân pháp, Ngộ tính, Linh lực, Thần thức, Phúc duyên) quy ra chỉ số chiến đấu bằng công thức trong `shared/`.
 - **Ngũ hành**: Kim/Mộc/Thủy/Hỏa/Thổ, bảng nhân sát thương (tương khắc ×1.3, bị khắc ×0.75, tương sinh bonus nhỏ); linh căn nhân vật quyết định tư chất.
-- Chết: mất ít EXP (không xuống tầng), giảm độ bền; hồi sinh ở thành.
+- **Phẩm cấp linh căn** (đã chốt, đã làm ở GĐ1): trục chất lượng, server tung một lần khi tạo nhân vật: Hạ phẩm 50%, Trung phẩm 30%, Thượng phẩm 13%, Địa 5%, Thiên 2%; thưởng tu vi -10/0/+10/+25/+50%, điểm tiềm năng khởi đầu +0/1/2/4/6. Số liệu ở `shared/src/progression-data.ts` (`ROOT_GRADES`).
+  - **Không cho đổi linh căn ở GĐ1.** Sau này chỉ đổi qua vật phẩm hiếm trong game (ghi sổ cái, không bán trực tiếp bằng tiền nạp), làm ở giai đoạn khác.
+  - **Trục số hệ** (đơn/song/tam/tứ/ngũ linh căn, linh căn biến dị Lôi/Băng/Phong) làm ở **GĐ2**, cùng lúc ngũ hành đầy đủ vào chiến đấu; thiết kế bảng sát thương ngũ hành hiện tại phải mở rộng được cho hệ này.
+- **Đột phá cảnh giới** (đã chốt cho GĐ1): tiến độ **dừng ở tầng 9** của mỗi cảnh giới, EXP bị chặn ở mức đầy, phần dư bị bỏ. Cơ chế đột phá (tỉ lệ thất bại, đan dược) làm ở GĐ2.
+- **Vùng quái** (đã chốt, xem `docs/PHASE1.md` mục 1d+): bản đồ có cảnh giới; quái theo cụm cố định theo bậc (1, 4, 7 và nhiều hơn khi mở rộng), tên hiện bậc và loại (thường / hiếm hai hạng / boss); nhịp lên cấp là số quái cùng bậc cần giết tăng theo cấp (Luyện Khí 1 khoảng 30, Luyện Khí 5 khoảng 50, Trúc Cơ 2 khoảng 100); săn ở bản đồ cảnh giới cao hơn không cho nhiều EXP hơn mức tối đa ở bản đồ đúng cảnh giới. Boss: cực hiếm, một con mỗi bản đồ, thưởng chia theo đóng góp (70% sát thương + 30% kết liễu), tiền theo tỉ lệ, đồ ngẫu nhiên có trọng số, dưới 10% không được chia; làm sau 1e.
+- **Tự đánh trả** (đã làm cho quái ở GĐ1): đứng im, chưa có mục tiêu mà bị đánh thì tự đánh lại; đang đi thì không. Áp dụng cùng quy tắc cho PvP ở GĐ2.
+- Chết: mất 10% EXP của tầng hiện tại (không xuống tầng; đã làm ở GĐ1), giảm độ bền (chờ có trang bị, GĐ2); hồi sinh ở thành.
 - Đột phá cảnh giới có tỉ lệ thất bại, dùng đan dược tăng tỉ lệ.
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
