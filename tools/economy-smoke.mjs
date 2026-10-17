@@ -44,7 +44,14 @@ execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", 
 
 const grant = (who, body) => api("/api/admin/grant", { cookie: who?.cookie, method: "POST", body });
 const key = () => crypto.randomUUID();
-const g = { characterName: player.name, currency: "linh_thach", reason: "smoke" };
+const found = await api(`/api/admin/lookup?q=${encodeURIComponent(player.email)}`, { cookie: admin.cookie });
+const charId0 = found.data?.accounts?.[0]?.characters?.[0]?.id;
+check("lookup by email finds the account and its character", found.status === 200 && found.data.accounts.length === 1 && !!charId0, JSON.stringify(found.data));
+const byName = await api(`/api/admin/lookup?q=${encodeURIComponent(player.name)}`, { cookie: admin.cookie });
+check("lookup by character name finds the same character", byName.data?.accounts?.[0]?.characters?.[0]?.id === charId0);
+check("lookup treats % literally (no match-all)", (await api("/api/admin/lookup?q=%25%25", { cookie: admin.cookie })).data?.accounts?.length === 0);
+check("lookup requires admin", (await api(`/api/admin/lookup?q=${player.name}`, { cookie: player.cookie })).status === 403);
+const g = { characterId: charId0, currency: "linh_thach", reason: "smoke" };
 
 check("anonymous grant is 401", (await grant(null, { ...g, amount: 5, idempotencyKey: key() })).status === 401);
 check("non-admin grant is 403", (await grant(player, { ...g, amount: 5, idempotencyKey: key() })).status === 403);
@@ -59,9 +66,16 @@ const over = await grant(admin, { ...g, amount: -150, idempotencyKey: key() });
 check("overdraft is 409 insufficient", over.status === 409 && over.data.error === "insufficient_balance");
 const spend = await grant(admin, { ...g, amount: -40, idempotencyKey: key() });
 check("debit within balance applies (balance 60)", spend.status === 200 && spend.data.balance === 60, JSON.stringify(spend.data));
-check("unknown character is 404", (await grant(admin, { ...g, characterName: "Khong-Ton-Tai", amount: 1, idempotencyKey: key() })).status === 404);
+check("unknown character is 404", (await grant(admin, { ...g, characterId: "khong-ton-tai", amount: 1, idempotencyKey: key() })).status === 404);
 check("zero amount is 400", (await grant(admin, { ...g, amount: 0, idempotencyKey: key() })).status === 400);
 check("bad currency is 400", (await grant(admin, { ...g, currency: "vang", amount: 1, idempotencyKey: key() })).status === 400);
+
+const view = await api(`/api/admin/character?id=${charId0}`, { cookie: admin.cookie });
+check(
+  "character view shows wallet and 2 ledger rows, newest first, with the actor's email",
+  view.status === 200 && view.data.wallet.linh_thach === 60 && view.data.ledger.length === 2 && view.data.ledger[0].delta === -40 && view.data.ledger[0].actor_email === admin.email,
+  JSON.stringify(view.data),
+);
 
 const supply = await api("/api/admin/supply", { cookie: admin.cookie });
 check("supply lists linh_thach", supply.status === 200 && supply.data.supply.some((s) => s.currency === "linh_thach" && s.total >= 60));
