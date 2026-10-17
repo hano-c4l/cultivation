@@ -244,8 +244,15 @@ export class CombatSim {
     return true;
   }
 
-  /** Advances the simulation. `positions` holds the live, non-transferring players' current positions. */
-  tick(now: number, positions: ReadonlyMap<string, Vec2>): SimEvent[] {
+  /** Players who were walking during the current tick; only idle players retaliate on their own. */
+  private moving: ReadonlySet<string> = new Set();
+
+  /**
+   * Advances the simulation. `positions` holds the live, non-transferring players' current positions and `moving`
+   * the ids of those who are currently walking.
+   */
+  tick(now: number, positions: ReadonlyMap<string, Vec2>, moving: ReadonlySet<string> = new Set()): SimEvent[] {
+    this.moving = moving;
     const events: SimEvent[] = [];
     this.tickMonsters(now, positions, events);
     this.tickPlayers(now, positions, events);
@@ -326,6 +333,12 @@ export class CombatSim {
     p.lastHurtAt = now;
     events.push({ t: "hit", from: m.id, to: p.id, kind: hit.kind, damage: hit.damage, hp: p.hp });
     events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+    // Standing still and being hit with nothing targeted: fight back (in reach, since the monster is in melee range).
+    // A walking player is fleeing and keeps going; a player who already has a target keeps it. PvP will reuse this.
+    if (p.hp > 0 && p.targetId === null && !this.moving.has(p.id)) {
+      p.targetId = m.id;
+      p.lastRepathAt = Number.NEGATIVE_INFINITY;
+    }
     if (p.hp <= 0) {
       p.dead = true;
       p.targetId = null;

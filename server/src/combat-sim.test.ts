@@ -76,6 +76,35 @@ describe("CombatSim", () => {
     expect(p.hp).toBeLessThan(p.maxHp);
   });
 
+  it("an idle player hit by a monster fights back on their own", () => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    const p = sim.addPlayer(seed());
+    const near: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+    const events = run(sim, 0, 6000, new Map([["p1", near]]));
+    expect(events.some((e) => e.t === "hit" && e.from === "p1" && e.to === m.id)).toBe(true);
+    expect(p.targetId === m.id || events.some((e) => e.t === "mon_gone")).toBe(true);
+  });
+
+  it("a walking player does not retaliate, and keeps an existing target", () => {
+    const sim = forestSim();
+    const [a, b] = sim.snapshots(0);
+    const p = sim.addPlayer(seed());
+    const near: Vec2 = [a!.path[0]![0] + 1, a!.path[0]![1]];
+    const positions = new Map([["p1", near]]);
+    const moving = new Set(["p1"]);
+    const walking: SimEvent[] = [];
+    for (let t = 0; t <= 4000; t += 100) walking.push(...sim.tick(t, positions, moving));
+    expect(walking.some((e) => e.t === "hit" && e.to === "p1")).toBe(true);
+    expect(walking.some((e) => e.t === "hit" && e.from === "p1")).toBe(false);
+    expect(p.targetId).toBeNull();
+    // With an explicit target on another monster, being hit does not change it.
+    sim.setTarget("p1", b!.id);
+    for (let t = 4100; t <= 8000; t += 100) sim.tick(t, positions);
+    expect(p.targetId === b!.id || p.targetId === null).toBe(true);
+    expect(p.targetId).not.toBe(a!.id);
+  });
+
   it("a killed player is flagged dead once and not attacked further", () => {
     const sim = forestSim();
     const m = sim.snapshots(0)[0]!;
@@ -176,7 +205,10 @@ describe("CombatSim", () => {
     const here: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
     sim.setTarget("p1", m.id);
     sim.clearTarget("p1");
-    expect(run(sim, 0, 3000, new Map([["p1", here]])).some((e) => e.t === "hit" && e.to === m.id)).toBe(false);
+    // Walking away (moving) so the monster's attacks do not trigger the idle retaliation.
+    const out: SimEvent[] = [];
+    for (let t = 0; t <= 3000; t += 100) out.push(...sim.tick(t, new Map([["p1", here]]), new Set(["p1"])));
+    expect(out.some((e) => e.t === "hit" && e.to === m.id)).toBe(false);
     sim.removePlayer("p1");
     expect(sim.playerCount).toBe(0);
   });
