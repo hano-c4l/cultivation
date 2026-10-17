@@ -8,7 +8,8 @@ export type ChatTab = "all" | ChatChannel | "system";
 const TABS: readonly ChatTab[] = ["all", "world", "map", "whisper", "system"];
 const PLAYER_SEND_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper"];
 
-export type SystemKind = "info" | "important" | "error";
+/** "warning" is a red line for the system tab only (e.g. the sort lock); "error" belongs to the tab it came from. */
+export type SystemKind = "info" | "important" | "warning" | "error";
 
 export interface ChatLineData {
   channel: ChatChannel;
@@ -97,6 +98,19 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
     if (tab === "world" || tab === "map" || tab === "whisper" || (tab === "system" && isAdmin)) setSendChannel(tab);
   };
 
+  // Clears every tab's lines and unread counts (the history only lives in this client, so nothing else is affected).
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.className = "clear";
+  clear.textContent = "🗑";
+  clear.title = vi.chat.clearTitle;
+  clear.setAttribute("aria-label", vi.chat.clearTitle);
+  clear.onclick = () => {
+    log.replaceChildren();
+    unread.clear();
+    for (const t of TABS) renderTab(t);
+  };
+
   for (const tab of TABS) {
     const b = document.createElement("button");
     b.type = "button";
@@ -105,6 +119,7 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
     tabButtons.set(tab, b);
     tabsBar.append(b);
   }
+  tabsBar.append(clear);
   activate("all");
 
   form.onsubmit = (ev) => {
@@ -192,7 +207,7 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
     },
     system(text, kind = "info") {
       const el = document.createElement("div");
-      el.className = `line ch-system${kind === "info" ? "" : kind === "error" ? " err" : " important"}`;
+      el.className = `line ch-system${kind === "info" ? "" : kind === "error" ? " err" : kind === "warning" ? " important sysonly" : " important"}`;
       // A rejection belongs to the tab the player was using when it happened.
       if (kind === "error") el.dataset.origin = active;
       el.textContent = text;

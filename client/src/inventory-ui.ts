@@ -7,8 +7,12 @@ export interface InventoryUi {
   /** Applies a delta from the server. */
   applyDelta(tabs: number, items: BagItem[], removed: string[]): void;
   setMail(mail: MailView[]): void;
-  /** The server refused a command; a refused sort must not leave the button showing a mode that was not applied. */
-  rejected(reason: string): void;
+  /**
+   * The server refused a command. A refused sort must not leave the button showing a mode that was not applied, and a
+   * "wait" refusal locks the button with a countdown for `retryMs`. Returns true when that started a new lock (so the
+   * caller reports it once instead of on every refused click).
+   */
+  rejected(reason: string, retryMs?: number): boolean;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -53,6 +57,33 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
   let prevSortStep = -1;
   /** The button is dimmed briefly after a click, matching the server's minimum gap. */
   let sortLockedUntil = 0;
+  /** Set by a "wait" refusal: the button shows the seconds left and stays locked until then. */
+  let sortBanUntil = 0;
+  let sortBtn: HTMLButtonElement | null = null;
+  let banTimer: ReturnType<typeof setInterval> | undefined;
+
+  const sortLabel = (): string => {
+    const base = sortStep < 0 ? vi.inventory.sort : vi.inventory.sortBy(vi.inventory.sortModes[SORT_MODES[sortStep]!] ?? "");
+    const left = Math.ceil((sortBanUntil - Date.now()) / 1000);
+    return left > 0 ? `${base} (${left}s)` : base;
+  };
+  const banned = (): boolean => Date.now() < sortBanUntil;
+
+  /** Keeps the seconds on the button current without rebuilding the whole panel. */
+  function runBanTimer(): void {
+    if (banTimer) clearInterval(banTimer);
+    banTimer = setInterval(() => {
+      if (sortBtn) {
+        sortBtn.textContent = sortLabel();
+        sortBtn.disabled = banned() || Date.now() < sortLockedUntil;
+      }
+      if (!banned()) {
+        clearInterval(banTimer);
+        banTimer = undefined;
+        render();
+      }
+    }, 250);
+  }
   /** Quantity chosen in the split controls, or null while they are closed. */
   let splitQty: number | null = null;
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
@@ -75,10 +106,11 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     const head = el("div", "bag-head");
     head.append(el("b", undefined, vi.inventory.title));
     const used = el("span", "bag-used", vi.inventory.used(items.size, tabs * BAG_CELLS_PER_TAB));
-    const sort = el("button", "bag-sort", sortStep < 0 ? vi.inventory.sort : vi.inventory.sortBy(vi.inventory.sortModes[SORT_MODES[sortStep]!] ?? ""));
-    sort.disabled = Date.now() < sortLockedUntil;
+    const sort = el("button", "bag-sort", sortLabel());
+    sortBtn = sort;
+    sort.disabled = banned() || Date.now() < sortLockedUntil;
     sort.onclick = () => {
-      if (Date.now() < sortLockedUntil) return;
+      if (banned() || Date.now() < sortLockedUntil) return;
       prevSortStep = sortStep;
       sortLockedUntil = Date.now() + SORT_MIN_GAP_MS + 100;
       setTimeout(render, SORT_MIN_GAP_MS + 150);
@@ -331,13 +363,20 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       if (!selected) splitQty = null;
       render();
     },
-    rejected(reason) {
-      if (reason === "wait" || reason === "rate") {
-        // The sort did not happen: show the mode that is really applied, and let the button be used again.
-        sortStep = prevSortStep;
-        sortLockedUntil = 0;
-        render();
+    rejected(reason, retryMs) {
+      if (reason !== "wait" && reason !== "rate") return false;
+      // The sort did not happen: show the mode that is really applied.
+      sortStep = prevSortStep;
+      sortLockedUntil = 0;
+      let started = false;
+      if (reason === "wait") {
+        started = !banned();
+        // Lock the button until the server would accept a sort again (a little margin for latency), counting down.
+        sortBanUntil = Date.now() + (retryMs ?? 5000) + 200;
+        runBanTimer();
       }
+      render();
+      return started;
     },
     setMail(next) {
       const now = Date.now();

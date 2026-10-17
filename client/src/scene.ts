@@ -404,6 +404,11 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       case "inv_error":
+        // A sort refused for being too frequent locks the button with a countdown and is reported once, in the system tab.
+        if (msg.reason === "wait") {
+          if (this.inventory.rejected("wait", msg.retryMs)) this.chat.system(vi.inventory.sortBlocked(Math.max(1, Math.ceil((msg.retryMs ?? 5000) / 1000))), "warning");
+          break;
+        }
         // Rate-limit refusals are silent: they only happen when commands are sent faster than a person taps.
         this.inventory.rejected(msg.reason);
         if (msg.reason !== "rate") this.chat.system(vi.inventory.errors[msg.reason] ?? vi.inventory.errors.invalid!, "error");

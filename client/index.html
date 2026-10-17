@@ -105,10 +105,13 @@
       #chat-log:not(.tab-all) .tag { display: none; }
       #chat-log.tab-world .line:not(.ch-world), #chat-log.tab-map .line:not(.ch-map), #chat-log.tab-whisper .line:not(.ch-whisper),
       #chat-log.tab-system .line:not(.ch-system) { display: none; }
-      /* A rejection ("you talk too fast") shows in the tab it happened in, and in "all"; nowhere else. */
+      /* A rejection ("friend is offline", "you talk too fast") shows only in the tab it came from. It reaches "all" only when
+         that was the tab in use. A "sysonly" line (the sort lock) shows in the system tab alone. */
       #chat-log .line.err { display: none; }
-      #chat-log.tab-all .line.err, #chat-log.tab-world .line.err[data-origin="world"], #chat-log.tab-map .line.err[data-origin="map"],
+      #chat-log.tab-all .line.err[data-origin="all"], #chat-log.tab-world .line.err[data-origin="world"], #chat-log.tab-map .line.err[data-origin="map"],
       #chat-log.tab-whisper .line.err[data-origin="whisper"], #chat-log.tab-system .line.err[data-origin="system"] { display: block; }
+      #chat-log.tab-all .line.sysonly { display: none; }
+      #chat-tabs .clear { flex: 0 0 28px; padding: 3px 0; }
       /* The "all" tab leaves out routine system lines (loot, EXP); they live in the system tab. Red lines stay everywhere. */
       #chat-log.tab-all .line.ch-system:not(.important):not(.err) { display: none; }
       #chat-form { display: flex; gap: 4px; flex-wrap: wrap; }
