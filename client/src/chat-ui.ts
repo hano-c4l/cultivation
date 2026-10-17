@@ -66,7 +66,13 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
   const renderTab = (tab: ChatTab) => {
     const b = tabButtons.get(tab)!;
     const n = unread.get(tab) ?? 0;
-    b.textContent = n > 0 && tab !== active ? `${vi.chat.tabs[tab]} (${n > 99 ? "99+" : n})` : vi.chat.tabs[tab];
+    b.textContent = vi.chat.tabs[tab];
+    if (n > 0 && tab !== active) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = n > 99 ? "99+" : String(n);
+      b.append(badge);
+    }
     b.classList.toggle("active", tab === active);
   };
 

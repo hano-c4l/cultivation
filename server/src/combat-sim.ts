@@ -12,6 +12,8 @@ import {
   killExp,
   levelIndex,
   rollLinhThachDrop,
+  rollLoot,
+  type LootDrop,
   monsterStats,
   rollRank,
   topContributor,
@@ -67,6 +69,8 @@ export interface PlayerProfile extends ProfileSeed {
   inflightPoints: number;
   expDirty: boolean;
   dead: boolean;
+  /** Earliest time the next potion may be used. */
+  potionReadyAt: number;
 }
 
 type MonsterState = "idle" | "chase" | "return" | "dead";
@@ -98,6 +102,8 @@ export type SimEvent =
   | { t: "hp"; playerId: string; hp: number; maxHp: number }
   /** EXP changed after a kill; `stagesGained > 0` means points changed and the room must persist right away. */
   | { t: "progress"; playerId: string; stagesGained: number }
+  /** A kill dropped items for this player; the room puts them in the bag (or mails them when it is full). */
+  | { t: "loot"; playerId: string; drops: LootDrop[] }
   /** A kill dropped Linh Thạch for this player; the room writes it to the ledger. */
   | { t: "drop"; playerId: string; amount: number }
   | { t: "player_dead"; playerId: string }
@@ -236,6 +242,7 @@ export class CombatSim {
       inflightPoints: 0,
       expDirty: false,
       dead: false,
+      potionReadyAt: 0,
     };
     this.players.set(seed.id, profile);
     return profile;
@@ -246,6 +253,14 @@ export class CombatSim {
     for (const m of this.monsters.values()) {
       if (m.targetId === id && m.state === "chase") m.state = "return";
     }
+  }
+
+  /** Restores `fraction` of max HP (a potion). Returns the new HP, or null for a missing or dead player. */
+  heal(id: string, fraction: number): number | null {
+    const p = this.players.get(id);
+    if (!p || p.dead) return null;
+    p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(p.maxHp * fraction)));
+    return p.hp;
   }
 
   getPlayer(id: string): PlayerProfile | undefined {
@@ -490,6 +505,8 @@ export class CombatSim {
     events.push({ t: "progress", playerId: winner.id, stagesGained });
     const drop = rollLinhThachDrop(levelIndex(this.realm, m.tier), m.rank, this.rand(), this.rand());
     if (drop > 0) events.push({ t: "drop", playerId: winner.id, amount: drop });
+    const loot = rollLoot(m.rank, this.rand);
+    if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
   }
