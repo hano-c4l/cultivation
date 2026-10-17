@@ -56,6 +56,28 @@ describe("CombatSim", () => {
     expect(p.targetId).toBeNull();
   });
 
+  it("a kill drops Linh Thạch to the winner when the chance roll hits, and nothing when it misses", () => {
+    const kill = (rand: () => number) => {
+      const sim = forestSim(rand);
+      const m = sim.snapshots(0)[0]!;
+      sim.addPlayer(seed());
+      sim.setTarget("p1", m.id);
+      const here: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+      return run(sim, 0, 10_000, new Map([["p1", here]]));
+    };
+    expect(kill(noCrit).filter((e) => e.t === "drop")).toHaveLength(0); // 0.99 misses the normal-rank chance
+    // A rare monster (rolled at spawn) always drops, whatever the chance roll.
+    const sim = forestSim(() => 0.01);
+    const m = sim.snapshots(0)[0]!;
+    expect(m.rank).not.toBe("normal");
+    sim.addPlayer(seed());
+    sim.setTarget("p1", m.id);
+    const here: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+    const drops = run(sim, 0, 20_000, new Map([["p1", here]])).filter((e) => e.t === "drop");
+    expect(drops.length).toBeGreaterThanOrEqual(1); // other rare monsters may be killed in self-defence too
+    for (const d of drops) expect(d).toMatchObject({ playerId: "p1" });
+  });
+
   it("a player far from the target gets a path request instead of attacking", () => {
     const sim = forestSim();
     const m = sim.snapshots(0)[0]!;

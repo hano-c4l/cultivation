@@ -28,6 +28,9 @@ export const vi = {
   enterWorld: "Vào thế giới",
   logout: "Đăng xuất",
   loading: "Đang tải…",
+  economy: {
+    linhThach: "Linh Thạch",
+  },
   combat: {
     miss: "Trượt",
     tier: (n: number) => `Bậc ${n}`,

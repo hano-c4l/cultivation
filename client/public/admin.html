@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Quản trị · Tu Tiên Giới</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #10141c; color: #e8e4d8; font: 15px/1.5 "Be Vietnam Pro", system-ui, sans-serif; }
+      main { max-width: 420px; margin: 0 auto; }
+      h1 { font-size: 20px; }
+      label { display: block; margin-top: 10px; }
+      input, select, button { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 8px; border-radius: 6px; border: 1px solid #3a4560;
+        background: #1b2130; color: inherit; font: inherit; }
+      button { background: #d6a94b; color: #1b1405; font-weight: 600; border: 0; cursor: pointer; margin-top: 14px; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      #msg { margin-top: 12px; min-height: 1.5em; }
+      .err { color: #ff8a80; }
+      .ok { color: #8bc34a; }
+      table { width: 100%; margin-top: 8px; border-collapse: collapse; }
+      td, th { text-align: left; padding: 4px 0; border-bottom: 1px solid #2a3248; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Cộng / trừ tiền thủ công</h1>
+      <form id="form">
+        <label>Đạo hiệu nhân vật <input id="name" required maxlength="32" autocomplete="off" /></label>
+        <label>Loại tiền
+          <select id="currency">
+            <option value="linh_thach">Linh Thạch</option>
+            <option value="cong_hien">Cống Hiến</option>
+            <option value="tien_ngoc">Tiên Ngọc</option>
+          </select>
+        </label>
+        <label>Số lượng (số âm để trừ) <input id="amount" type="number" step="1" required /></label>
+        <label>Lý do (ghi vào sổ cái) <input id="reason" maxlength="80" autocomplete="off" /></label>
+        <button id="submit" type="submit">Thực hiện</button>
+      </form>
+      <div id="msg"></div>
+      <h1>Tổng cung</h1>
+      <table id="supply"></table>
+    </main>
+    <script>
+      const ERRORS = {
+        unauthenticated: "Chưa đăng nhập. Hãy đăng nhập ở trang chính trước.",
+        forbidden: "Tài khoản này không phải quản trị viên.",
+        character_not_found: "Không tìm thấy nhân vật.",
+        invalid_amount: "Số lượng không hợp lệ.",
+        invalid_character: "Tên nhân vật không hợp lệ.",
+        insufficient_balance: "Nhân vật không đủ tiền để trừ.",
+        duplicate_request: "Yêu cầu này đã được xử lý rồi.",
+      };
+      const NAMES = { linh_thach: "Linh Thạch", cong_hien: "Cống Hiến", tien_ngoc: "Tiên Ngọc" };
+      const $ = (id) => document.getElementById(id);
+      // One key per form render: a double click or a retry of the same submit cannot grant twice.
+      let key = crypto.randomUUID();
+      const show = (text, cls) => { $("msg").textContent = text; $("msg").className = cls; };
+
+      async function loadSupply() {
+        const res = await fetch("/api/admin/supply");
+        if (!res.ok) return;
+        const { supply } = await res.json();
+        $("supply").innerHTML = "<tr><th>Loại</th><th>Tổng</th><th>Số người giữ</th></tr>" +
+          supply.map((s) => `<tr><td>${NAMES[s.currency] ?? s.currency}</td><td>${s.total.toLocaleString("vi-VN")}</td><td>${s.holders}</td></tr>`).join("");
+      }
+
+      $("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        $("submit").disabled = true;
+        try {
+          const res = await fetch("/api/admin/grant", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              characterName: $("name").value,
+              currency: $("currency").value,
+              amount: Number($("amount").value),
+              reason: $("reason").value,
+              idempotencyKey: key,
+            }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            show(`Xong. Số dư mới: ${data.balance.toLocaleString("vi-VN")}`, "ok");
+            key = crypto.randomUUID();
+            loadSupply();
+          } else {
+            show(ERRORS[data.error] ?? `Lỗi: ${data.error}`, "err");
+            if (data.error !== "duplicate_request") key = crypto.randomUUID();
+          }
+        } catch {
+          show("Lỗi mạng. Bấm lại để thử lần nữa (an toàn, không cộng hai lần).", "err");
+        } finally {
+          $("submit").disabled = false;
+        }
+      });
+      loadSupply();
+    </script>
+  </body>
+</html>

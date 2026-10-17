@@ -6,6 +6,7 @@ import {
   CHAT_BURST,
   CHAT_MIN_GAP_MS,
   CHAT_WINDOW_MS,
+  EMPTY_WALLET,
   MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
   MOVE_BUDGET_CAP,
@@ -43,6 +44,7 @@ import {
   toCharacterSheet,
   type CharacterRow,
 } from "./characters";
+import { applyCurrencyDelta, getWallet } from "./economy";
 import { CombatSim, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
 
@@ -125,6 +127,8 @@ export class MapRoom extends DurableObject<Env> {
   private sim: CombatSim | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
+  /** Pending ledger writes for monster drops, run one after another so they never delay the tick. */
+  private dropQueue: Promise<void> = Promise.resolve();
   private lastTickAt = 0;
   private tickStat = { count: 0, totalMs: 0, maxMs: 0, maxDriftMs: 0, skipped: 0 };
 
@@ -205,6 +209,12 @@ export class MapRoom extends DurableObject<Env> {
         chatTimes: [],
       };
       server.serializeAttachment(state);
+      // Read before the player list: an await after the snapshot would let joins, leaves and tick broadcasts reach
+      // this socket ahead of `welcome`, and the client would rebuild its actors from a stale list.
+      const wallet = await getWallet(this.env.DB, row.id).catch((err) => {
+        console.error("wallet read failed", err);
+        return { ...EMPTY_WALLET };
+      });
       // Includes the joining player so the client gets its own authoritative snapshot.
       const players = this.players().map((p) => this.snapshot(p));
       const sim = this.ensureSim(mapId);
@@ -221,6 +231,7 @@ export class MapRoom extends DurableObject<Env> {
         monsters: sim?.snapshots(Date.now()) ?? [],
         hp: profile?.hp ?? maxHp,
         maxHp,
+        wallet,
       });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
       return new Response(null, { status: 101, webSocket: client });
@@ -549,6 +560,9 @@ export class MapRoom extends DurableObject<Env> {
         else later.push(this.ensureSaveAlarm(now));
         return;
       }
+      case "drop":
+        this.enqueueDrop(ev.playerId, ev.amount);
+        return;
       case "player_dead": {
         const entry = sockets.get(ev.playerId);
         const profile = this.sim?.getPlayer(ev.playerId);
@@ -566,6 +580,39 @@ export class MapRoom extends DurableObject<Env> {
 
   private async ensureSaveAlarm(now: number): Promise<void> {
     if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(now + SAVE_DEBOUNCE_MS);
+  }
+
+  /**
+   * Records a Linh Thạch drop in the ledger. The key is made once per kill and reused on every retry, so a retry
+   * after a timeout cannot pay twice. The write is synchronous with the kill's own queue slot (never held in memory
+   * only, PLAN section 3), but off the tick's critical path. A drop still failing after the retries is lost, never doubled.
+   */
+  private enqueueDrop(characterId: string, amount: number): void {
+    const key = `drop:${crypto.randomUUID()}`;
+    this.dropQueue = this.dropQueue.then(async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const r = await applyCurrencyDelta(this.env.DB, {
+            characterId,
+            currency: "linh_thach",
+            delta: amount,
+            reason: "monster_drop",
+            actor: "system",
+            idempotencyKey: key,
+          });
+          if (r.status === "applied") {
+            for (const ws of this.ctx.getWebSockets()) {
+              const s = ws.deserializeAttachment() as PlayerState | null;
+              if (s?.id === characterId && !s.transferring) this.send(ws, { t: "wallet", currency: "linh_thach", balance: r.balance, gained: amount });
+            }
+          }
+          return;
+        } catch (err) {
+          console.error("drop write failed", characterId, attempt, err);
+          await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
+        }
+      }
+    });
   }
 
   private async flushProgress(id: string): Promise<void> {

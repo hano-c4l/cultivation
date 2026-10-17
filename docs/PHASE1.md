@@ -56,6 +56,7 @@ Mở rộng 1d theo yêu cầu của người dùng. Đã làm trong nhánh này
 - Migration D1: `item_instances` (ID duy nhất), `currency_ledger` append-only (idempotency key, actor), `mailbox`; số dư là bản tổng hợp cập nhật bằng batch atomic có điều kiện.
 - Trang admin cộng tiền thủ công (kiểm tra `role = admin`), rơi Linh Thạch từ quái.
 - Nghiệm thu: test idempotency và không âm tiền; admin cộng tiền ghi đúng sổ cái; người không phải admin bị từ chối.
+- **Đã làm (nhánh `features_economy-core`):** xem `docs/STATUS.md`. Điểm thiết kế quan trọng: một câu lệnh đổi 0 dòng **không** rollback batch D1, nên lặp khóa và âm tiền được ép thành lỗi (UNIQUE và CHECK) để cả batch rollback; số dư dùng `INSERT OR IGNORE` + `UPDATE` thay vì upsert vì SQLite kiểm CHECK của dòng INSERT (âm) trước khi xử lý xung đột. Người dùng chọn ghi đồng bộ từng lần rơi (phương án A). Khóa idempotency của lần rơi là UUID tạo lúc giết (id quái lặp lại mỗi lần hồi sinh nên không dùng làm khóa).
 
 ## 1f. Kiểm thử tải và hoàn thiện (`features_phase1-hardening`)
 - Smoke/E2E cho toàn luồng, giả lập 50 client, kiểm tra tick, rà soát giới hạn Free, cập nhật tài liệu.
