@@ -1,4 +1,4 @@
-import { DEFAULT_CONSTITUTION, constitutionTierName, getRootGrade } from "@game/shared";
+import { DEFAULT_CONSTITUTION, GENDERS, constitutionTierName, getRootGrade, type Gender } from "@game/shared";
 import { api, type ApiResult } from "./api";
 import { fetchCatalog, getCatalog } from "./constitution-store";
 import { vi } from "./locales/vi";
@@ -77,11 +77,17 @@ export function showCharacterCreate(): Promise<void> {
     const name = el("input", { type: "text", placeholder: vi.characterName, maxLength: 16, required: true });
     const error = el("p", { className: "error" });
     const submit = el("button", { type: "submit", textContent: vi.createCharacter });
+    // Gender decides which gear the character can wear; it is chosen once, here.
+    const genderSelect = el("select", {});
+    for (const g of GENDERS) genderSelect.append(el("option", { value: g, textContent: vi.gender[g] ?? g }));
     const form = el(
       "form",
       {},
       el("h1", { textContent: vi.createCharacterTitle }),
       name,
+      el("label", { className: "note", textContent: vi.gender.label }),
+      genderSelect,
+      el("p", { className: "note", textContent: vi.gender.note }),
       el("p", { className: "note", textContent: vi.linhCanNote }),
       error,
       submit,
@@ -90,7 +96,7 @@ export function showCharacterCreate(): Promise<void> {
       ev.preventDefault();
       submit.disabled = true;
       error.textContent = "";
-      const res = await api.createCharacter(name.value);
+      const res = await api.createCharacter(name.value, genderSelect.value as Gender);
       if (res.ok && res.data?.character) {
         // Reveal the rolled spiritual root before entering the world.
         const c = res.data.character;

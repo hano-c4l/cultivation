@@ -1,5 +1,7 @@
 import {
   SPIRITUAL_ROOTS,
+  isGender,
+  type Gender,
   CONSTITUTION_ROLL_RANGE,
   type ConstitutionCatalog,
   CONSTITUTION_TIER_ROLL_RANGE,
@@ -166,6 +168,9 @@ async function createCharacter(request: Request, env: Env): Promise<Response> {
   const body = await readJson(request);
   const name = validateCharacterName(body?.name);
   if (!name) return errorResponse("invalid_name", 400);
+  // The player picks the gender (it decides which gear they can wear). Callers that send none get a plain Nam or Nữ at random.
+  if (body?.gender !== undefined && !isGender(body.gender)) return errorResponse("invalid_gender", 400);
+  const gender: Gender = isGender(body?.gender) ? body.gender : crypto.getRandomValues(new Uint8Array(1))[0]! % 2 === 0 ? "male" : "female";
 
   // The server rolls the spiritual root; the client cannot choose it.
   const root = SPIRITUAL_ROOTS[crypto.getRandomValues(new Uint32Array(1))[0]! % SPIRITUAL_ROOTS.length]!;
@@ -186,10 +191,10 @@ async function createCharacter(request: Request, env: Env): Promise<Response> {
   const id = crypto.randomUUID();
   try {
     await env.DB.prepare(
-      `INSERT INTO characters (id, account_id, name, spiritual_root, map_id, x, y, potential_points, root_grade, constitution, constitution_tier, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
-        `VALUES (?, ?, ?, ?, 'town', ?, ?, ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
+      `INSERT INTO characters (id, account_id, name, spiritual_root, map_id, x, y, potential_points, root_grade, constitution, constitution_tier, gender, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
+        `VALUES (?, ?, ?, ?, 'town', ?, ?, ?, ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
     )
-      .bind(id, session.accountId, name, root, sx, sy, start.potentialPoints, rootGrade, constitution.id, constitution.tier, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
+      .bind(id, session.accountId, name, root, sx, sy, start.potentialPoints, rootGrade, constitution.id, constitution.tier, gender, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
       .run();
   } catch (err) {
     if (String(err).includes("characters.name")) return errorResponse("name_taken", 409);

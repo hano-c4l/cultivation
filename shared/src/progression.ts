@@ -1,4 +1,6 @@
 import type { SpiritualRoot } from "./character";
+import type { EquipStats } from "./equipment-data";
+import type { Gender } from "./gender";
 import { BASE_SPEED } from "./pathfinding";
 import {
   BASE_STAT_START,
@@ -39,6 +41,7 @@ export interface CharacterSheet extends CharacterProgress {
   /** Thể chất: an id from CONSTITUTIONS and its 1-based tier (see constitutions.ts). */
   constitution: string;
   constitutionTier: number;
+  gender: Gender;
   base: BaseStats;
 }
 
@@ -136,16 +139,19 @@ export interface DerivedStats {
 
 const RATE_CAP = 60;
 
-/** Combat stats from base stats and cultivation level. Formulas live here so client and server always agree. */
-export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number): DerivedStats {
+/**
+ * Combat stats from base stats and cultivation level, plus the stats of worn gear (`gear`, see equipmentBonus).
+ * Formulas live here so client and server always agree.
+ */
+export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number, gear?: EquipStats): DerivedStats {
   const lv = levelIndex(realm, stage);
   return {
-    maxHp: 100 + base.canCot * 15 + lv * 25,
+    maxHp: 100 + base.canCot * 15 + lv * 25 + (gear?.maxHp ?? 0),
     maxMp: 50 + base.linhLuc * 10 + lv * 12,
-    attack: Math.floor(5 + base.linhLuc * 2 + base.canCot * 0.5 + lv * 3),
-    defense: Math.floor(2 + base.canCot * 1.5 + lv * 2),
-    critRate: Math.min(RATE_CAP, 5 + base.thanThuc * 0.5),
-    dodgeRate: Math.min(RATE_CAP, base.thanPhap * 0.5),
+    attack: Math.floor(5 + base.linhLuc * 2 + base.canCot * 0.5 + lv * 3 + (gear?.attack ?? 0)),
+    defense: Math.floor(2 + base.canCot * 1.5 + lv * 2 + (gear?.defense ?? 0)),
+    critRate: Math.min(RATE_CAP, 5 + base.thanThuc * 0.5 + (gear?.critRate ?? 0)),
+    dodgeRate: Math.min(RATE_CAP, base.thanPhap * 0.5 + (gear?.dodgeRate ?? 0)),
     expBonus: Math.max(-50, base.ngoTinh + getRootGrade(rootGrade).expBonusPct),
     dropBonus: Math.min(RATE_CAP, base.phucDuyen * 0.5),
     moveSpeed: Math.round(BASE_SPEED * (1 + base.thanPhap * 0.01) * 100) / 100,

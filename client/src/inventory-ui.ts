@@ -1,4 +1,5 @@
 import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, getItemDef, type BagItem, type BagView, type ClientMessage, type MailView } from "@game/shared";
+import { equipLines } from "./equip-text";
 import { vi } from "./locales/vi";
 
 export interface InventoryUi {
@@ -7,6 +8,8 @@ export interface InventoryUi {
   /** Applies a delta from the server. */
   applyDelta(tabs: number, items: BagItem[], removed: string[]): void;
   setMail(mail: MailView[]): void;
+  /** The bag items right now (the equipment window lists the ones that can be worn). */
+  list(): BagItem[];
   /**
    * The server refused a command. A refused sort must not leave the button showing a mode that was not applied, and a
    * "wait" refusal locks the button with a countdown for `retryMs`. Returns true when that started a new lock (so the
@@ -153,6 +156,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       if (item) {
         const def = getItemDef(item.type);
         slot.classList.add(`cat-${def?.category ?? "material"}`, `rar-${def?.rarity ?? "common"}`);
+        if (item.dur !== undefined && item.dur <= 0) slot.classList.add("broken");
         slot.title = itemName(item.type);
         slot.append(el("span", "bag-name", itemName(item.type)));
         if (item.qty > 1) slot.append(el("span", "bag-qty", String(item.qty)));
@@ -181,7 +185,13 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       return box;
     }
     box.append(el("div", "muted", def?.descVi ?? ""));
+    if (def?.equip) box.append(el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
     const actions = el("div", "bag-actions");
+    if (def?.equip) {
+      const wear = el("button", undefined, vi.inventory.wear);
+      wear.onclick = () => send({ t: "eq_equip", tab: sel.tab, cell: sel.cell });
+      actions.append(wear);
+    }
     if (def?.healFraction !== undefined) {
       const use = el("button", undefined, vi.inventory.use);
       use.onclick = () => send({ t: "inv_use", tab: sel.tab, cell: sel.cell });
@@ -277,7 +287,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     }
     for (const m of mail) {
       const row = el("div", "mail-row");
-      const what = m.item ? `${itemName(m.item.type)} × ${m.item.qty}` : "";
+      const what = m.item ? `${itemName(m.item.type)}${m.item.qty > 1 ? ` × ${m.item.qty}` : ""}${m.deadline === null ? ` · ${vi.inventory.noExpiry}` : ""}` : "";
       const info = el("div");
       info.append(el("div", undefined, vi.inventory.mailSubjects[m.subject] ?? m.subject), el("div", "muted", what));
       const timer = el("span", "mail-timer");
@@ -377,6 +387,9 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       }
       render();
       return started;
+    },
+    list() {
+      return [...items.values()];
     },
     setMail(next) {
       const now = Date.now();

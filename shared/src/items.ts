@@ -1,10 +1,11 @@
+import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 
 /**
  * Item catalogue. Placeholder game-design values (listed under "giá trị tạm" in docs/STATUS.md). Display strings are
  * Vietnamese data fields, like monster names. Equipment (never stacked, PLAN section 4) arrives with phase 2b.
  */
-export type ItemCategory = "consumable" | "material";
+export type ItemCategory = "consumable" | "material" | "equipment";
 
 /** Độ hiếm (rarity), from common to rarest. The order here is the order used when sorting. */
 export const ITEM_RARITIES = ["common", "uncommon", "rare", "epic"] as const;
@@ -24,6 +25,8 @@ export interface ItemDef {
   grade: number;
   /** Consumables that heal: fraction of max HP restored on use. */
   healFraction?: number;
+  /** Equipment only: the template behind the item (slot kind, stats, requirements, durability). */
+  equip?: EquipInfo;
 }
 
 export const ITEMS: Readonly<Record<string, ItemDef>> = {
@@ -42,12 +45,32 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
   yeu_dan: { id: "yeu_dan", nameVi: "Yêu Đan", descVi: "Tinh hoa ngưng tụ trong người yêu thú mạnh.", category: "material", maxStack: 99, rarity: "rare", grade: 2 },
 };
 
+const EQUIPMENT_RARITY: readonly ItemRarity[] = ["common", "uncommon", "rare", "epic"];
+const equipmentDefs = new Map<string, ItemDef>();
+
+/** Plain items come from ITEMS; equipment is generated from its id (shared/src/equipment-data.ts) and cached. */
 export function getItemDef(id: string): ItemDef | undefined {
-  return ITEMS[id];
+  if (Object.prototype.hasOwnProperty.call(ITEMS, id)) return ITEMS[id];
+  const cached = equipmentDefs.get(id);
+  if (cached) return cached;
+  const equip = equipmentInfo(id);
+  if (!equip) return undefined;
+  const def: ItemDef = {
+    id,
+    nameVi: equip.nameVi,
+    descVi: equip.descVi,
+    category: "equipment",
+    maxStack: 1,
+    rarity: EQUIPMENT_RARITY[equip.grade - 1] ?? "common",
+    grade: equip.grade,
+    equip,
+  };
+  equipmentDefs.set(id, def);
+  return def;
 }
 
 export function isItemId(v: unknown): v is string {
-  return typeof v === "string" && Object.prototype.hasOwnProperty.call(ITEMS, v);
+  return typeof v === "string" && getItemDef(v) !== undefined;
 }
 
 /** One line of a monster's loot table: each kill rolls `chance` (0..1) and, on success, a quantity in [min, max]. */
@@ -79,6 +102,9 @@ export const LOOT_TABLES: Readonly<Record<MonsterRank, readonly LootEntry[]>> = 
 export interface LootDrop {
   item: string;
   qty: number;
+  /** Equipment: current and maximum durability of the dropped piece (absent for pieces that never wear out). */
+  dur?: number;
+  max?: number;
 }
 
 /** Items dropped by one kill. `rand` returns uniform [0, 1); two numbers are drawn per entry (chance, quantity). */

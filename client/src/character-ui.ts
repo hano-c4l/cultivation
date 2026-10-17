@@ -5,12 +5,14 @@ import {
   clampConstitutionTier,
   constitutionTierName,
   deriveStats,
+  equipmentBonus,
   expToNext,
   getConstitution,
   getRealm,
   getRootGrade,
   type BaseStats,
   type CharacterSheet,
+  type EquippedItem,
   type StatKey,
 } from "@game/shared";
 import { getCatalog } from "./constitution-store";
@@ -18,6 +20,8 @@ import { vi } from "./locales/vi";
 
 export interface CharacterPanel {
   update(sheet: CharacterSheet): void;
+  /** The worn gear, whose stats are part of the derived stats shown. */
+  setEquipped(items: EquippedItem[]): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -42,6 +46,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
 
   let sheet: CharacterSheet | null = null;
   let pending: Partial<Record<StatKey, number>> = {};
+  let worn: EquippedItem[] = [];
 
   const pendingTotal = () => Object.values(pending).reduce((a, b) => a + (b ?? 0), 0);
 
@@ -54,6 +59,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
 
     const head = el("div", "cp-head");
     head.append(el("b", undefined, s.name), el("span", undefined, `${vi.character.root}: ${vi.roots[s.spiritualRoot] ?? s.spiritualRoot} · ${getRootGrade(s.rootGrade).nameVi}`));
+    const genderLine = el("div", "cp-constitution", `${vi.character.gender}: ${vi.gender[s.gender] ?? s.gender}`);
     const close = el("button", "cp-close", "×");
     close.onclick = () => (panel.hidden = true);
     head.append(close);
@@ -119,7 +125,9 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
 
     const preview: BaseStats = { ...s.base };
     for (const def of STAT_DEFS) preview[def.key] += pending[def.key] ?? 0;
-    const d = deriveStats(preview, s.realm, s.stage, s.rootGrade);
+    // Gear counts as the server counts it: requirements are judged against the saved stats, not the unconfirmed clicks.
+    const gear = equipmentBonus(worn, { gender: s.gender, realm: s.realm, stage: s.stage, base: s.base });
+    const d = deriveStats(preview, s.realm, s.stage, s.rootGrade, gear);
     const derived = el("div", "cp-derived");
     const lines: [string, string][] = [
       [vi.character.derived.maxHp, String(d.maxHp)],
@@ -137,7 +145,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
       derived.append(row);
     }
 
-    panel.append(head, constitutionLine, realmLine, bar, expLine, points, stats, confirm, derived);
+    panel.append(head, genderLine, constitutionLine, realmLine, bar, expLine, points, stats, confirm, derived);
   }
 
   toggle.onclick = () => {
@@ -151,6 +159,10 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
   });
 
   return {
+    setEquipped(items) {
+      worn = items;
+      render();
+    },
     update(next) {
       // A kill also sends a sheet; keep the player's unconfirmed clicks unless the stats changed (an allocate
       // answer) or they no longer fit the available points.
