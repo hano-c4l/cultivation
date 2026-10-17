@@ -14,7 +14,7 @@ import {
   type EquippedItem,
   type WearerCtx,
 } from "@game/shared";
-import { durabilityShort, durabilityText, elementDot, equipLines, itemTierTag, itemTierText, itemTypeText, statText } from "./equip-text";
+import { describeItem, durabilityShort, durabilityText, elementDot, equipLines, itemTierTag, statText } from "./equip-text";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -95,13 +95,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   /** Full description of a worn piece: grade, rarity, stats at the current durability, durability, requirements, style. */
   function renderInfo(piece: EquippedItem): HTMLElement {
     const box = el("div", `eq-info rar-${getItemDef(piece.type)?.rarity ?? "common"}`);
-    const def = getItemDef(piece.type);
-    const infoName = el("b", undefined, nameOf(piece.type));
-    const infoDot = elementDot(piece.type);
-    if (infoDot) infoName.prepend(infoDot);
-    box.append(infoName, el("div", "muted", `${itemTypeText(piece.type)} · ${itemTierText(piece.type) ?? ""}`));
-    if (def) box.append(el("div", "muted", `${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.gradeLabel}: ${vi.inventory.grades[def.grade] ?? def.grade}`));
-    for (const line of equipLines(piece.type, piece.dur, piece.max)) box.append(el("div", undefined, line));
+    box.append(describeItem(piece.type, { dur: piece.dur, max: piece.max }));
     return box;
   }
 

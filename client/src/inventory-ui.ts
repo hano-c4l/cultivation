@@ -1,5 +1,5 @@
 import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type WearerCtx } from "@game/shared";
-import { elementDot, equipLines, itemTierTag, itemTierText, itemTypeText } from "./equip-text";
+import { describeItem, elementDot, itemTierTag } from "./equip-text";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -209,19 +209,12 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     }
     const def = getItemDef(item.type);
     const sel = selected;
-    box.append(el("b", undefined, `${itemName(item.type)}${item.qty > 1 ? ` × ${item.qty}` : ""}`));
-    if (moveMode) {
-      box.append(el("div", "muted", vi.inventory.swapHint));
-    }
-    const typeLine = [itemTypeText(item.type), itemTierText(item.type)].filter(Boolean).join(" · ");
-    if (typeLine) box.append(el("div", "muted", typeLine));
-    if (def) box.append(el("div", "muted", `${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.gradeLabel}: ${vi.inventory.grades[def.grade] ?? def.grade}`));
+    box.append(describeItem(item.type, { dur: item.dur, max: item.max, qty: item.qty }));
+    if (moveMode) box.append(el("div", "muted", vi.inventory.swapHint));
     if (splitQty !== null && item.qty > 1) {
       box.append(renderSplit(item, sel));
       return box;
     }
-    if (!moveMode) box.append(el("div", "muted", def?.descVi ?? ""));
-    if (def?.equip && !moveMode) box.append(el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
     const actions = el("div", "bag-actions");
     const swap = el("button", moveMode ? "active" : undefined, vi.inventory.swap);
     swap.onclick = () => {
@@ -270,8 +263,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     if (def?.equip) {
       for (const w of worn.filter((e) => equipmentInfo(e.type)?.kind === def.equip!.kind)) {
         const cmp = el("div", "bag-compare");
-        const tag = itemTierTag(w.type);
-        cmp.append(el("b", undefined, `${vi.inventory.wornNow}: ${itemName(w.type)}${tag ? ` (${tag})` : ""}`), el("div", "muted", equipLines(w.type, w.dur, w.max).join(" · ")));
+        cmp.append(el("div", "muted", `${vi.inventory.wornNow}:`), describeItem(w.type, { dur: w.dur, max: w.max }));
         box.append(cmp);
       }
     }

@@ -51,26 +51,84 @@ export function durabilityText(dur?: number, max?: number): string {
   return dur <= 0 ? vi.equip.broken : vi.equip.durability(dur, max);
 }
 
-/** The description lines of a piece of gear: stats at its current durability, requirements, style and durability. */
-export function equipLines(type: string, dur?: number, max?: number): string[] {
+/** "+5 Công kích, +5 Sinh lực" at the current durability; a stat that wore down shows its maximum too. */
+function statsText(type: string, dur?: number, max?: number): string {
   const info = equipmentInfo(type);
-  if (!info) return [];
-  const lines: string[] = [];
+  if (!info) return "";
   const full = info.stats;
   const now = scaledStats(info, dur, max);
+  const parts: string[] = [];
   for (const key of EQUIP_STAT_KEYS) {
     if (full[key] <= 0) continue;
-    lines.push(now[key] === full[key] ? statText(key, now[key]) : `${statText(key, now[key])} (${vi.equip.of(full[key])})`);
+    parts.push(now[key] === full[key] ? statText(key, now[key]) : `${statText(key, now[key])} (${vi.equip.of(full[key])})`);
   }
-  lines.push(durabilityText(dur, max));
+  return parts.join(", ");
+}
+
+/** "Luyện Khí tầng 1, Căn cốt ≥ 8", or null when the piece asks nothing. */
+function requirementText(type: string): string | null {
+  const info = equipmentInfo(type);
+  if (!info) return null;
   const req: string[] = [];
   if (info.req.level !== null) {
     const lv = info.req.level;
     req.push(vi.equip.reqLevel(REALMS[Math.floor(lv / STAGES_PER_REALM)]?.nameVi ?? "", (lv % STAGES_PER_REALM) + 1));
   }
   if (info.req.stat) req.push(`${STAT_DEFS.find((d) => d.key === info.req.stat!.key)?.nameVi ?? info.req.stat.key} ≥ ${info.req.stat.value}`);
-  lines.push(req.length > 0 ? `${vi.equip.requires}: ${req.join(", ")}` : vi.equip.noRequirement);
-  lines.push(vi.equip.styles[info.style] ?? "");
-  if (info.element) lines.push(vi.equip.element(vi.roots[info.element] ?? vi.equip.variantElements[info.element] ?? info.element));
-  return lines;
+  return req.length > 0 ? req.join(", ") : null;
+}
+
+/** Short one-paragraph description of a piece of gear for the equipment chooser: stats, durability, requirement (no style, the list is already filtered). */
+export function equipLines(type: string, dur?: number, max?: number): string[] {
+  if (!equipmentInfo(type)) return [];
+  const req = requirementText(type);
+  return [statsText(type, dur, max), durabilityText(dur, max), ...(req ? [`${vi.equip.requires}: ${req}`] : [])];
+}
+
+/** The element name for display ("Thủy"), or null. */
+function elementName(type: string): string | null {
+  const element = equipmentInfo(type)?.element;
+  return element ? (vi.roots[element] ?? vi.equip.variantElements[element] ?? element) : null;
+}
+
+/**
+ * The details of an item, one layout everywhere (bag, equipment window, comparison):
+ *   (element icon) Name (Nam/Nữ when the piece is made for one sex)
+ *   Type · Family · Realm bậc · Hệ X
+ *   Độ hiếm: R · Phẩm cấp
+ *   Chỉ số: ...            (gear)      or the description (other items)
+ *   Độ bền: ...            (gear)
+ *   Yêu cầu: ...           (gear, only when it asks something)
+ */
+export function describeItem(type: string, opts: { dur?: number; max?: number; qty?: number } = {}): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "item-desc";
+  const def = getItemDef(type);
+  const info = equipmentInfo(type);
+  const line = (text: string) => {
+    const d = document.createElement("div");
+    d.className = "id-line";
+    d.textContent = text;
+    box.append(d);
+  };
+
+  const name = document.createElement("b");
+  const dot = elementDot(type);
+  if (dot) name.append(dot);
+  const sex = info && info.style !== "u" ? ` (${vi.equip.sexNames[info.style]})` : "";
+  name.append(`${def?.nameVi ?? type}${sex}${opts.qty && opts.qty > 1 ? ` × ${opts.qty}` : ""}`);
+  box.append(name);
+
+  const element = elementName(type);
+  line([itemTypeText(type), itemTierText(type), element ? vi.equip.elementShort(element) : null].filter(Boolean).join(" · "));
+  if (def) line(`${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.grades[def.grade] ?? def.grade}`);
+  if (info) {
+    line(`${vi.equip.statsLabel}: ${statsText(type, opts.dur, opts.max)}`);
+    line(durabilityText(opts.dur, opts.max));
+    const req = requirementText(type);
+    if (req) line(`${vi.equip.requires}: ${req}`);
+  } else if (def?.descVi) {
+    line(def.descVi);
+  }
+  return box;
 }
