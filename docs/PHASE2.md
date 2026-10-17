@@ -22,7 +22,7 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và 
 - Nghiệm thu: mặc/tháo đổi đúng chỉ số; chết giảm độ bền; sửa đồ trừ đúng tiền, không âm.
 
 ## 2c. Kỹ năng, MP và ngũ hành đầy đủ (`features_skills`)
-- MP, thanh phím tắt kỹ năng, hồi chiêu, tầm đánh; kỹ năng theo hướng tu và ngũ hành. **Thanh phím tắt này cũng chứa các ô dùng nhanh vật phẩm tiêu hao** (ví dụ Hồi Huyết Đan, kéo từ túi đồ vào ô; yêu cầu của người dùng, 2026-10-17), nên các ô dùng nhanh được làm ở đây chứ không ở 2a.
+- MP, thanh phím tắt kỹ năng, hồi chiêu, tầm đánh; kỹ năng theo hướng tu và ngũ hành. **Hiệu ứng buff của thể chất** (xem `docs/PLAN.md` mục 9, `shared/src/constitutions.ts`) cũng được áp dụng ở đây: sát thương và độ thuần thục của kỹ năng theo nguyên tố/vũ khí. **Thanh phím tắt này cũng chứa các ô dùng nhanh vật phẩm tiêu hao** (ví dụ Hồi Huyết Đan, kéo từ túi đồ vào ô; yêu cầu của người dùng, 2026-10-17), nên các ô dùng nhanh được làm ở đây chứ không ở 2a.
 - Bảng sát thương ngũ hành đầy đủ (tương khắc ×1.3, bị khắc ×0.75, tương sinh bonus nhỏ) mở rộng được cho **trục số hệ linh căn** (đơn/song/tam/tứ/ngũ, biến dị Lôi/Băng/Phong) đã hẹn ở GĐ2.
 - Nghiệm thu: công thức sát thương ngũ hành đúng test (bảng đầy đủ); hồi chiêu và MP được server kiểm.
 
@@ -49,6 +49,11 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và 
 - Theo `docs/PLAN.md` mục 9a: 5 thẻ Tất cả / Thế giới / Bản đồ / Truyền âm / Hệ thống.
 - Cần `ChatHub` Durable Object cho chat thế giới (chú ý chi phí request, mục 2a của PLAN); truyền âm cần tra người nhận online; tin hệ thống có mã loại để client dịch.
 - Làm sau 2a nếu muốn có sẵn tin "nhặt đồ" cho thẻ Hệ thống, nhưng không bắt buộc.
+
+## 2i. Màn admin quản lý thể chất (`features_admin-constitutions`)
+- Dữ liệu đã sẵn (xem `docs/STATUS.md` mục "Thể chất: thiết kế dữ liệu"): màn admin liệt kê thể chất, tên cấp, trọng số tung, bật/tắt, và danh sách hiệu ứng từng cấp (chọn chỉ số, đối tượng nguyên tố/vũ khí/kỹ năng, kiểu cộng, giá trị; có nút "sao chép sang mọi cấp"), kèm xem trước tỉ lệ thực tế và cảnh báo "chưa có tác dụng" theo cờ `applied`.
+- API ghi: một batch thay cả danh mục, kiểm `validateCatalog` và `expectedVersion`, tăng `config_versions`.
+- Việc nối hiệu ứng vào gameplay làm cùng 2c (kỹ năng) và các chỉ số khác khi có (kinh nghiệm, tốc độ di chuyển cần xử lý đường đi).
 
 ## 2h. Bảng xếp hạng và boss (`features_leaderboard-boss`)
 - Bảng xếp hạng (cảnh giới/tầng/EXP; đọc từ D1, cache ngắn).

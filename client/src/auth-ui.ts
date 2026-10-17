@@ -1,5 +1,6 @@
-import { getRootGrade } from "@game/shared";
+import { DEFAULT_CONSTITUTION, constitutionTierName, getRootGrade } from "@game/shared";
 import { api, type ApiResult } from "./api";
+import { fetchCatalog, getCatalog } from "./constitution-store";
 import { vi } from "./locales/vi";
 
 const root = () => document.getElementById("auth")!;
@@ -93,6 +94,7 @@ export function showCharacterCreate(): Promise<void> {
       if (res.ok && res.data?.character) {
         // Reveal the rolled spiritual root before entering the world.
         const c = res.data.character;
+        await fetchCatalog(); // the constitution's name comes from the catalogue
         const enter = el("button", { type: "button", textContent: vi.enterWorld });
         enter.style.cssText = "margin-top:12px;width:100%";
         enter.onclick = () => resolve();
@@ -102,6 +104,9 @@ export function showCharacterCreate(): Promise<void> {
             { className: "card" },
             el("h1", { textContent: vi.rootRevealTitle }),
             el("p", { className: "note", textContent: vi.rootReveal(vi.roots[c.spiritualRoot] ?? c.spiritualRoot, getRootGrade(c.rootGrade).nameVi) }),
+            ...(c.constitution === DEFAULT_CONSTITUTION
+              ? []
+              : [el("p", { className: "note", textContent: vi.constitutionReveal(constitutionTierName(getCatalog(), c.constitution, c.constitutionTier)) })]),
             enter,
           ),
         );

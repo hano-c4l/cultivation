@@ -1,5 +1,9 @@
 import {
   SPIRITUAL_ROOTS,
+  CONSTITUTION_ROLL_RANGE,
+  type ConstitutionCatalog,
+  CONSTITUTION_TIER_ROLL_RANGE,
+  rollConstitution,
   rootGradeFromRoll,
   STAT_DEFS,
   getMap,
@@ -8,6 +12,7 @@ import {
   validateEmail,
   validatePassword,
 } from "@game/shared";
+import { getConstitutionCatalog } from "./constitution-catalog";
 import { adminBagTabs, adminCharacter, adminGrant, adminLookup, adminSupply } from "./admin";
 import { getCharacterByAccount, grantExp, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
@@ -167,14 +172,24 @@ async function createCharacter(request: Request, env: Env): Promise<Response> {
   const [sx, sy] = getMap("town").spawn;
   const rootGrade = rootGradeFromRoll(crypto.getRandomValues(new Uint32Array(1))[0]! % 100);
   const start = startingStats(root, rootGrade);
+  // Thể chất is rolled by the server too: a rare special constitution, otherwise the ordinary Phàm Thể.
+  const rolls = crypto.getRandomValues(new Uint32Array(2));
+  let catalog: ConstitutionCatalog;
+  try {
+    catalog = await getConstitutionCatalog(env.DB);
+  } catch (err) {
+    console.error("constitution catalogue unavailable", err);
+    return errorResponse("catalog_unavailable", 503); // never roll from a made-up catalogue
+  }
+  const constitution = rollConstitution(catalog, rolls[0]! % CONSTITUTION_ROLL_RANGE, rolls[1]! % CONSTITUTION_TIER_ROLL_RANGE);
   const now = Date.now();
   const id = crypto.randomUUID();
   try {
     await env.DB.prepare(
-      `INSERT INTO characters (id, account_id, name, spiritual_root, map_id, x, y, potential_points, root_grade, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
-        `VALUES (?, ?, ?, ?, 'town', ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
+      `INSERT INTO characters (id, account_id, name, spiritual_root, map_id, x, y, potential_points, root_grade, constitution, constitution_tier, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
+        `VALUES (?, ?, ?, ?, 'town', ?, ?, ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
     )
-      .bind(id, session.accountId, name, root, sx, sy, start.potentialPoints, rootGrade, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
+      .bind(id, session.accountId, name, root, sx, sy, start.potentialPoints, rootGrade, constitution.id, constitution.tier, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
       .run();
   } catch (err) {
     if (String(err).includes("characters.name")) return errorResponse("name_taken", 409);
@@ -202,6 +217,16 @@ async function devGrantExp(request: Request, env: Env): Promise<Response> {
   return json({ character: updated ? toCharacterSheet(updated) : null });
 }
 
+/** The constitution catalogue (names, tiers, descriptions, effects): game data, shown on the character screen. */
+async function constitutionsApi(env: Env): Promise<Response> {
+  try {
+    return json(await getConstitutionCatalog(env.DB));
+  } catch (err) {
+    console.error("constitution catalogue unavailable", err);
+    return errorResponse("catalog_unavailable", 503);
+  }
+}
+
 export async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "POST" && hasForeignOrigin(request)) return errorResponse("forbidden_origin", 403);
   switch (`${request.method} ${url.pathname}`) {
@@ -213,6 +238,8 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return logout(request, env);
     case "GET /api/me":
       return me(request, env);
+    case "GET /api/constitutions":
+      return constitutionsApi(env);
     case "POST /api/character":
       return createCharacter(request, env);
     case "POST /api/admin/grant":

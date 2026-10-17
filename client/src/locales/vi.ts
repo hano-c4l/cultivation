@@ -41,6 +41,7 @@ export const vi = {
   linhCanNote: "Linh căn sẽ được thiên đạo quyết định khi bạn nhập đạo.",
   rootRevealTitle: "Thiên đạo đã định",
   rootReveal: (element: string, grade: string) => `Linh căn của bạn là ${element} hệ, phẩm cấp: ${grade}.`,
+  constitutionReveal: (name: string) => `Ngươi còn mang thể chất đặc biệt: ${name}.`,
   enterWorld: "Vào thế giới",
   logout: "Đăng xuất",
   loading: "Đang tải…",
@@ -95,6 +96,8 @@ export const vi = {
   character: {
     button: "Nhân vật",
     root: "Linh căn",
+    constitution: "Thể chất",
+    constitutionTier: (tier: number, max: number) => `Cấp ${tier}/${max}`,
     stage: (realm: string, stage: number) => `${realm} tầng ${stage}`,
     exp: "Tu vi",
     atStageCap: (exp: number, need: number) => `Tu vi đã đầy (${exp} / ${need}), chờ đột phá.`,

@@ -36,6 +36,9 @@ export interface CharacterSheet extends CharacterProgress {
   spiritualRoot: SpiritualRoot;
   /** Index into ROOT_GRADES. */
   rootGrade: number;
+  /** Thể chất: an id from CONSTITUTIONS and its 1-based tier (see constitutions.ts). */
+  constitution: string;
+  constitutionTier: number;
   base: BaseStats;
 }
 

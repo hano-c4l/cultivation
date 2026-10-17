@@ -1,5 +1,6 @@
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
+import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
@@ -98,7 +99,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[] }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }

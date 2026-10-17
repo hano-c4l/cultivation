@@ -2,14 +2,18 @@ import {
   REALMS,
   STAGES_PER_REALM,
   STAT_DEFS,
+  clampConstitutionTier,
+  constitutionTierName,
   deriveStats,
   expToNext,
+  getConstitution,
   getRealm,
   getRootGrade,
   type BaseStats,
   type CharacterSheet,
   type StatKey,
 } from "@game/shared";
+import { getCatalog } from "./constitution-store";
 import { vi } from "./locales/vi";
 
 export interface CharacterPanel {
@@ -53,6 +57,14 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
     const close = el("button", "cp-close", "×");
     close.onclick = () => (panel.hidden = true);
     head.append(close);
+
+    // Thể chất sits right under the spiritual root, in the same style; the tooltip carries its description.
+    const catalog = getCatalog();
+    const constitution = getConstitution(catalog, s.constitution);
+    const tier = clampConstitutionTier(catalog, s.constitution, s.constitutionTier);
+    const tierText = constitution.tiers.length > 1 ? ` · ${vi.character.constitutionTier(tier, constitution.tiers.length)}` : "";
+    const constitutionLine = el("div", "cp-constitution", `${vi.character.constitution}: ${constitutionTierName(catalog, s.constitution, tier)}${tierText}`);
+    constitutionLine.title = constitution.descVi;
 
     const stageText = vi.character.stage(realm.nameVi, s.stage);
     const need = expToNext(s.realm, s.stage);
@@ -125,7 +137,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
       derived.append(row);
     }
 
-    panel.append(head, realmLine, bar, expLine, points, stats, confirm, derived);
+    panel.append(head, constitutionLine, realmLine, bar, expLine, points, stats, confirm, derived);
   }
 
   toggle.onclick = () => {
