@@ -1,6 +1,7 @@
-import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, getItemDef, type BagItem, type BagView, type ClientMessage, type MailView } from "@game/shared";
+import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, type CharacterSheet, type ClientMessage, type MailView, type WearerCtx } from "@game/shared";
 import { equipLines } from "./equip-text";
 import { vi } from "./locales/vi";
+import { registerWindow } from "./window-manager";
 
 export interface InventoryUi {
   /** Replaces the whole bag (welcome, or after the server refused a command). */
@@ -8,6 +9,8 @@ export interface InventoryUi {
   /** Applies a delta from the server. */
   applyDelta(tabs: number, items: BagItem[], removed: string[]): void;
   setMail(mail: MailView[]): void;
+  /** Who the player is: gear that does not fit them gets a mark on its cell. */
+  setSheet(sheet: CharacterSheet): void;
   /** The bag items right now (the equipment window lists the ones that can be worn). */
   list(): BagItem[];
   /**
@@ -47,12 +50,18 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
   panel.id = "bag-panel";
   panel.hidden = true;
   document.body.append(toggle, panel);
+  registerWindow("bag", panel, 2);
 
   let items = new Map<string, BagItem>();
   let tabs = 1;
   let mail: Array<MailView & { deadline: number | null }> = [];
   let activeTab = 0;
   let selected: { tab: number; cell: number } | null = null;
+  /** "Đổi chỗ" is on: the next tap on a cell moves the selected item there. */
+  let moveMode = false;
+  let wearer: WearerCtx | null = null;
+  /** Set when a mouse drag just ended, so the click that follows it does not also select. */
+  let justDragged = false;
   let confirmDrop: "one" | "all" | null = null;
   /** Each click on the sort button uses the next mode; -1 until the first click. */
   let sortStep = -1;
@@ -135,7 +144,8 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
         const b = el("button", t === activeTab ? "active" : undefined, vi.inventory.tab(t + 1));
         b.onclick = () => {
           activeTab = t;
-          selected = null;
+          // Moving to another tab is the point of "Đổi chỗ", so the selection survives the tab change in that mode.
+          if (!moveMode) selected = null;
           resetConfirm();
           render();
         };
@@ -152,6 +162,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     for (let cell = 0; cell < BAG_CELLS_PER_TAB; cell++) {
       const item = at(activeTab, cell);
       const slot = el("button", "bag-cell");
+      slot.dataset.cell = String(cell);
       if (selected && selected.tab === activeTab && selected.cell === cell) slot.classList.add("selected");
       if (item) {
         const def = getItemDef(item.type);
@@ -160,8 +171,18 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
         slot.title = itemName(item.type);
         slot.append(el("span", "bag-name", itemName(item.type)));
         if (item.qty > 1) slot.append(el("span", "bag-qty", String(item.qty)));
+        // Gear this character cannot use: X for the wrong gender, + when more level or stats are needed.
+        if (def?.equip && wearer) {
+          const why = equipBlock(def.equip, undefined, undefined, wearer);
+          if (why === "gender") slot.append(mark("bag-mark x", "✕", vi.inventory.markGender));
+          else if (why === "level" || why === "stat") slot.append(mark("bag-mark plus", "+", vi.inventory.markLevel));
+        }
+        slot.onpointerdown = (ev) => startDrag(ev, activeTab, cell, item);
       }
-      slot.onclick = () => onCell(activeTab, cell);
+      slot.onclick = () => {
+        if (justDragged) return;
+        onCell(activeTab, cell);
+      };
       grid.append(slot);
     }
     panel.append(grid);
@@ -179,14 +200,23 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     const def = getItemDef(item.type);
     const sel = selected;
     box.append(el("b", undefined, `${itemName(item.type)}${item.qty > 1 ? ` × ${item.qty}` : ""}`));
+    if (moveMode) {
+      box.append(el("div", "muted", vi.inventory.swapHint));
+    }
     if (def) box.append(el("div", "muted", `${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.gradeLabel}: ${vi.inventory.grades[def.grade] ?? def.grade}`));
     if (splitQty !== null && item.qty > 1) {
       box.append(renderSplit(item, sel));
       return box;
     }
-    box.append(el("div", "muted", def?.descVi ?? ""));
-    if (def?.equip) box.append(el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
+    if (!moveMode) box.append(el("div", "muted", def?.descVi ?? ""));
+    if (def?.equip && !moveMode) box.append(el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
     const actions = el("div", "bag-actions");
+    const swap = el("button", moveMode ? "active" : undefined, vi.inventory.swap);
+    swap.onclick = () => {
+      moveMode = !moveMode;
+      render();
+    };
+    actions.append(swap);
     if (def?.equip) {
       const wear = el("button", undefined, vi.inventory.wear);
       wear.onclick = () => send({ t: "eq_equip", tab: sel.tab, cell: sel.cell });
@@ -217,6 +247,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     const cancel = el("button", undefined, vi.inventory.cancel);
     cancel.onclick = () => {
       selected = null;
+      moveMode = false;
       splitQty = null;
       resetConfirm();
       render();
@@ -301,19 +332,64 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     return box;
   }
 
+  /**
+   * Tapping selects; tapping an empty cell or the same item again deselects; tapping another item selects that one.
+   * Items only move by dragging (mouse) or with "Đổi chỗ" on, then tapping the destination.
+   */
   function onCell(tab: number, cell: number): void {
     resetConfirm();
     splitQty = null;
     const here = at(tab, cell);
-    if (!selected) {
-      if (here) selected = { tab, cell };
-    } else if (selected.tab === tab && selected.cell === cell) {
+    if (moveMode && selected) {
+      if (!(selected.tab === tab && selected.cell === cell)) send({ t: "inv_move", from: { tab: selected.tab, cell: selected.cell }, to: { tab, cell } });
+      moveMode = false;
+      selected = null;
+    } else if (!here || (selected && selected.tab === tab && selected.cell === cell)) {
       selected = null;
     } else {
-      send({ t: "inv_move", from: { tab: selected.tab, cell: selected.cell }, to: { tab, cell } });
-      selected = null;
+      selected = { tab, cell };
     }
     render();
+  }
+
+  function mark(cls: string, text: string, title: string): HTMLElement {
+    const m = el("span", cls, text);
+    m.title = title;
+    return m;
+  }
+
+  /** Mouse drag and drop of an item onto another cell of the tab being shown (touch uses "Đổi chỗ" instead, so scrolling stays possible). */
+  function startDrag(ev: PointerEvent, tab: number, cell: number, item: BagItem): void {
+    if (ev.pointerType !== "mouse" || ev.button !== 0) return;
+    const sx = ev.clientX;
+    const sy = ev.clientY;
+    let ghost: HTMLElement | null = null;
+    const move = (e: PointerEvent) => {
+      if (!ghost && Math.hypot(e.clientX - sx, e.clientY - sy) > 6) {
+        ghost = el("div", "bag-ghost", itemName(item.type));
+        document.body.append(ghost);
+      }
+      if (ghost) {
+        ghost.style.left = `${e.clientX + 8}px`;
+        ghost.style.top = `${e.clientY + 8}px`;
+      }
+    };
+    const up = (e: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (!ghost) return; // no drag: the click handler takes over
+      ghost.remove();
+      justDragged = true;
+      setTimeout(() => (justDragged = false), 0);
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>(".bag-cell");
+      const to = target?.dataset.cell === undefined ? NaN : Number(target.dataset.cell);
+      if (Number.isInteger(to) && to !== cell) send({ t: "inv_move", from: { tab, cell }, to: { tab, cell: to } });
+      selected = null;
+      moveMode = false;
+      render();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   }
 
   function tickMail(): void {
@@ -342,6 +418,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     clock = open ? setInterval(tickMail, 1000) : undefined;
     if (!open) {
       selected = null;
+      moveMode = false;
       resetConfirm();
     }
     render();
@@ -370,7 +447,10 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       for (const i of changed) items.set(i.id, i);
       // The selection may point at a cell that just changed under it.
       if (selected && !at(selected.tab, selected.cell)) selected = null;
-      if (!selected) splitQty = null;
+      if (!selected) {
+        splitQty = null;
+        moveMode = false;
+      }
       render();
     },
     rejected(reason, retryMs) {
@@ -387,6 +467,10 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       }
       render();
       return started;
+    },
+    setSheet(sheet) {
+      wearer = { gender: sheet.gender, realm: sheet.realm, stage: sheet.stage, base: sheet.base };
+      render();
     },
     list() {
       return [...items.values()];
