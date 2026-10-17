@@ -1,43 +1,8 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { DROP_CHANCE, rollLinhThachDrop } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyCurrencyDelta, claimMail, createItem, getWallet, sendMail } from "./economy";
-
-/**
- * Minimal D1 stand-in over real SQLite (node:sqlite) with the real migrations applied, so constraint, trigger and
- * rollback behaviour is the real thing. `batch` runs in a transaction and rolls back when a statement throws, like D1.
- */
-function makeDb(): { db: D1Database; raw: DatabaseSync } {
-  const raw = new DatabaseSync(":memory:");
-  const dir = new URL("../migrations/", import.meta.url);
-  for (const f of readdirSync(dir).filter((n) => n.endsWith(".sql")).sort()) raw.exec(readFileSync(new URL(f, dir), "utf8"));
-  const stmt = (sql: string, args: unknown[] = []) => ({
-    bind: (...a: unknown[]) => stmt(sql, a),
-    run: async () => {
-      raw.prepare(sql).run(...(args as never[]));
-      return {};
-    },
-    first: async () => (raw.prepare(sql).get(...(args as never[])) as unknown) ?? null,
-    all: async () => ({ results: raw.prepare(sql).all(...(args as never[])) as unknown[] }),
-  });
-  const db = {
-    prepare: (sql: string) => stmt(sql),
-    batch: async (list: ReturnType<typeof stmt>[]) => {
-      raw.exec("BEGIN");
-      try {
-        const out = [];
-        for (const s of list) out.push(await s.all());
-        raw.exec("COMMIT");
-        return out;
-      } catch (err) {
-        raw.exec("ROLLBACK");
-        throw err;
-      }
-    },
-  } as unknown as D1Database;
-  return { db, raw };
-}
+import { makeDb } from "./test-db";
 
 const CHAR = "char-1";
 const change = (over: Partial<Parameters<typeof applyCurrencyDelta>[1]> = {}) => ({

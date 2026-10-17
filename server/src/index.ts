@@ -1,4 +1,4 @@
-import { isMapId } from "@game/shared";
+import { isItemId, isMapId } from "@game/shared";
 import { getSession, handleApi } from "./auth";
 import { ChatHub } from "./chat-hub";
 import { CharacterLock } from "./character-lock";
@@ -76,6 +76,18 @@ export default {
         if (env.ENABLE_DEV_GRANT !== "1" || !/^(forest|cave):\d{1,3}$/.test(room)) return errorResponse("not_found", 404);
         const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
         return json(await stub.tickStats());
+      }
+      if (url.pathname === "/api/dev/loot") {
+        // Local testing only (same gate as tick-stats): gives loot to a character connected to the named room.
+        const room = url.searchParams.get("room") ?? "";
+        const item = url.searchParams.get("item") ?? "";
+        const qty = Number(url.searchParams.get("qty") ?? "1");
+        const char = url.searchParams.get("char") ?? "";
+        if (env.ENABLE_DEV_GRANT !== "1" || !/^(town|forest|cave):\d{1,3}$/.test(room) || !isItemId(item) || !char) return errorResponse("not_found", 404);
+        if (!Number.isInteger(qty) || qty < 1 || qty > 100000) return errorResponse("bad_request", 400);
+        const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
+        await stub.devLoot(char, [{ item, qty }]);
+        return json({ ok: true });
       }
       if (url.pathname === "/api/dev/evict") {
         // Local testing only (same gate as tick-stats): imitates the runtime evicting a paused room.

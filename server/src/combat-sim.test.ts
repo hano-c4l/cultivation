@@ -418,3 +418,48 @@ describe("CombatSim ranks across a sleep", () => {
     expect(sim.ranks()["m1"]).toBe("normal");
   });
 });
+
+describe("CombatSim potions and loot", () => {
+  it("heal restores a fraction of max HP, clamps at max HP, and refuses dead or missing players", () => {
+    const sim = forestSim();
+    const p = sim.addPlayer(seed());
+    p.hp = 10;
+    const healed = sim.heal("p1", 0.4)!;
+    expect(healed).toBe(Math.min(p.maxHp, 10 + Math.round(p.maxHp * 0.4)));
+    expect(p.hp).toBe(healed);
+    expect(sim.heal("p1", 5)).toBe(p.maxHp); // never above max
+    p.dead = true;
+    expect(sim.heal("p1", 0.4)).toBeNull();
+    expect(sim.heal("nobody", 0.4)).toBeNull();
+  });
+
+  it("a heal always restores at least 1 HP, even for a tiny fraction", () => {
+    const sim = forestSim();
+    const p = sim.addPlayer(seed());
+    p.hp = 1;
+    expect(sim.heal("p1", 0.0001)).toBe(2);
+  });
+
+  it("a kill emits loot to the winner when the loot roll hits, and none when every roll misses", () => {
+    const killWith = (rand: () => number) => {
+      const sim = new CombatSim(getMap("forest"), "forest", rand, 0);
+      const m = sim.snapshots(0)[0]!;
+      sim.addPlayer(seed());
+      sim.setTarget("p1", m.id);
+      const here: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+      return { m, events: run(sim, 0, 20_000, new Map([["p1", here]])) };
+    };
+    expect(killWith(noCrit).events.filter((e) => e.t === "loot")).toHaveLength(0); // 0.99 misses every chance
+    // 0.01 rolls the rarest class everywhere and makes every chance hit.
+    const { events } = killWith(() => 0.01);
+    const loot = events.filter((e) => e.t === "loot");
+    expect(loot.length).toBeGreaterThanOrEqual(1);
+    for (const l of loot) {
+      expect(l).toMatchObject({ playerId: "p1" });
+      if (l.t === "loot") {
+        expect(l.drops.length).toBeGreaterThan(0);
+        expect(l.drops.every((d) => d.qty >= 1 && Number.isInteger(d.qty))).toBe(true);
+      }
+    }
+  });
+});

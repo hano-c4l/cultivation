@@ -51,6 +51,9 @@
           <button id="submit" type="submit">Cộng / trừ</button>
         </form>
         <div id="msg"></div>
+        <h1>Túi đồ</h1>
+        <div>Số tab hiện có: <b id="bag-tabs"></b> (mỗi tab 8×16 ô). Nhân vật thấy tab mới khi vào phòng lần sau.</div>
+        <button id="bag-add" type="button">Thêm 1 tab túi đồ</button>
         <h1>Sổ cái (50 dòng gần nhất)</h1>
         <table id="ledger"></table>
       </section>
@@ -66,6 +69,7 @@
         invalid_amount: "Số lượng không hợp lệ.",
         invalid_character: "Nhân vật không hợp lệ.",
         insufficient_balance: "Nhân vật không đủ tiền để trừ.",
+        cannot_expand: "Không thể thêm tab (đã đạt giới hạn hoặc không có nhân vật).",
         duplicate_request: "Yêu cầu này đã được xử lý rồi.",
         query_too_short: "Từ khóa phải từ 2 đến 64 ký tự.",
       };
@@ -106,6 +110,7 @@
       async function loadCharacter() {
         const { ok, data } = await getJson("/api/admin/character?id=" + encodeURIComponent(selected.id));
         if (!ok) return show(ERRORS[data.error] ?? "Lỗi: " + data.error, "err");
+        $("bag-tabs").textContent = data.character.bagTabs;
         $("wallet").replaceChildren(...Object.keys(NAMES).map((c) => row([NAMES[c], fmt(data.wallet[c] ?? 0)])));
         $("ledger").replaceChildren(row(["#", "Thời gian", "Loại", "Số lượng", "Lý do", "Người thực hiện"], true),
           ...data.ledger.map((l) => row([l.id, new Date(l.created_at).toLocaleString("vi-VN"), NAMES[l.currency] ?? l.currency,
@@ -139,6 +144,23 @@
           }
           return div;
         }));
+      });
+
+      $("bag-add").addEventListener("click", async () => {
+        if (!selected) return;
+        $("bag-add").disabled = true;
+        try {
+          const res = await fetch("/api/admin/bag-tabs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ characterId: selected.id }),
+          });
+          const data = await res.json();
+          show(res.ok ? "Đã thêm tab. Số tab: " + data.bagTabs : ERRORS[data.error] ?? "Lỗi: " + data.error, res.ok ? "ok" : "err");
+          if (res.ok) loadCharacter();
+        } finally {
+          $("bag-add").disabled = false;
+        }
       });
 
       $("form").addEventListener("submit", async (e) => {

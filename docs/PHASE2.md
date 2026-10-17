@@ -1,13 +1,14 @@
 # Giai đoạn 2: Chiều sâu nhân vật — đề xuất chia nhánh (bản nháp)
 
-Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g đã làm xong ở nhánh `features_chat-channels`. Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
+Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g xong (`features_chat-channels`), 2a xong (`features_inventory`); kế tiếp là 2b. Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
 
 Nghiệm thu chung của GĐ2 (từ PLAN): một nhân vật đi trọn chuỗi nhiệm vụ tân thủ; công thức sát thương ngũ hành đúng test; sát khí/rơi đồ/vệ binh theo đúng luật mặc định.
 
 ## Thứ tự phụ thuộc
 2g (xong) → 2a → 2b → 2c → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
 
-## 2a. Vật phẩm và túi đồ (`features_inventory`)
+## 2a. Vật phẩm và túi đồ (`features_inventory`) — ĐÃ LÀM
+Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và hòm thư (2a)". Quyết định thêm (2026-10-17): túi đầy thì đồ rơi được **gửi vào hòm thư, phải nhận trong 30 phút nếu không sẽ mất**.
 - **Túi đồ (đã chốt):** mỗi tab 8×16 ô, mở rộng bằng cách thêm tab; kích thước tab và số tab nằm trong cấu hình để đổi sau; **chưa có giới hạn trọng lượng** (làm sau).
 - Dữ liệu vật phẩm trong `shared/` (`name_vi`, `desc_vi`, loại, phẩm cấp, xếp chồng hay không). `item_instances` (đã có từ 1e) là bản chính; DO giữ cache khi nhân vật online (PLAN mục 3).
 - Quái rơi vật phẩm theo bảng rơi có trọng số (chỗ móc `reward` trong `combat-sim.ts` và hàng đợi ghi riêng như Linh Thạch). Nhặt đồ, bỏ đồ, dùng đồ (thuốc hồi HP).
