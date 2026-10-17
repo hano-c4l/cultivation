@@ -235,6 +235,13 @@ describe("bag and mail messages", () => {
     });
     expect(parse({ t: "inv_move", from: { tab: 0, cell: 1 } })).toBeNull();
     expect(parse({ t: "inv_move", from: { tab: 0, cell: 1 }, to: { tab: 0, cell: 999 } })).toBeNull();
+    expect(parse({ t: "inv_sort", mode: "rarity" })).toEqual({ t: "inv_sort", mode: "rarity" });
+    expect(parse({ t: "inv_sort", mode: "price" })).toBeNull();
+    expect(parse({ t: "inv_sort" })).toBeNull();
+    expect(parse({ t: "inv_split", tab: 0, cell: 3, qty: 5 })).toEqual({ t: "inv_split", tab: 0, cell: 3, qty: 5 });
+    expect(parse({ t: "inv_split", tab: 0, cell: 3, qty: 0 })).toBeNull();
+    expect(parse({ t: "inv_split", tab: 0, cell: 3 })).toBeNull();
+    expect(parse({ t: "inv_split", tab: 0, cell: 200, qty: 1 })).toBeNull();
     expect(parse({ t: "mail_claim", id: "abc" })).toEqual({ t: "mail_claim", id: "abc" });
     expect(parse({ t: "mail_claim", id: "" })).toBeNull();
     expect(parse({ t: "mail_claim", id: 5 })).toBeNull();

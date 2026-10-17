@@ -58,8 +58,62 @@ function guard(db: D1Database, characterId: string, id: string, expect: { qty?: 
   return db.prepare(`INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM item_instances WHERE ${conds.join(" AND ")})`).bind(...args);
 }
 
+/** D1 allows 100 bound parameters per statement, so the bulk statements of a sort work in chunks. */
+function chunks<T>(list: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+/**
+ * The sort: every changed row is checked, merged-away rows are deleted, changed rows are first parked at (NULL, NULL)
+ * and then written to their final cell and quantity. Parking makes the order of rows irrelevant to the unique cell index
+ * (two rows swapping cells would otherwise collide while the statement runs). All of it is guard-checked first, so a
+ * stale cache fails the whole batch instead of overwriting rows that changed in the meantime.
+ */
+function arrangeStatements(db: D1Database, characterId: string, op: Extract<BagOp, { op: "arrange" }>): D1PreparedStatement[] {
+  const out: D1PreparedStatement[] = [];
+  // Guard: exactly these rows must exist with exactly this state (5 params per row + owner).
+  for (const group of chunks(op.before, 18)) {
+    const rows = group.map(() => "(id = ? AND bag_tab = ? AND cell = ? AND qty = ?)").join(" OR ");
+    const args = group.flatMap((r) => [r.id, r.tab, r.cell, r.qty]);
+    out.push(
+      db
+        .prepare(`INSERT INTO inv_guard (ok) SELECT NULL WHERE (SELECT COUNT(*) FROM item_instances WHERE owner_character_id = ? AND (${rows})) <> ?`)
+        .bind(characterId, ...args, group.length),
+    );
+  }
+  const keep = new Set(op.after.map((r) => r.id));
+  const removed = op.before.filter((r) => !keep.has(r.id));
+  for (const group of chunks(removed, 90)) {
+    out.push(db.prepare(`DELETE FROM item_instances WHERE owner_character_id = ? AND id IN (${group.map(() => "?").join(", ")})`).bind(characterId, ...group.map((r) => r.id)));
+  }
+  for (const group of chunks(op.after, 90)) {
+    out.push(
+      db
+        .prepare(`UPDATE item_instances SET bag_tab = NULL, cell = NULL WHERE owner_character_id = ? AND id IN (${group.map(() => "?").join(", ")})`)
+        .bind(characterId, ...group.map((r) => r.id)),
+    );
+  }
+  for (const group of chunks(op.after, 13)) {
+    const cases = (col: "tab" | "cell" | "qty") => `CASE id ${group.map(() => "WHEN ? THEN ?").join(" ")} END`;
+    const pairs = (col: "tab" | "cell" | "qty") => group.flatMap((r) => [r.id, r[col]]);
+    out.push(
+      db
+        .prepare(
+          `UPDATE item_instances SET bag_tab = ${cases("tab")}, cell = ${cases("cell")}, qty = ${cases("qty")} ` +
+            `WHERE owner_character_id = ? AND id IN (${group.map(() => "?").join(", ")})`,
+        )
+        .bind(...pairs("tab"), ...pairs("cell"), ...pairs("qty"), characterId, ...group.map((r) => r.id)),
+    );
+  }
+  return out;
+}
+
 function opStatements(db: D1Database, characterId: string, op: BagOp, now: number): D1PreparedStatement[] {
   switch (op.op) {
+    case "arrange":
+      return arrangeStatements(db, characterId, op);
     case "add":
       return [
         db

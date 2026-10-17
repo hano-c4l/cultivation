@@ -405,6 +405,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "inv_error":
         // Rate-limit refusals are silent: they only happen when commands are sent faster than a person taps.
+        this.inventory.rejected(msg.reason);
         if (msg.reason !== "rate") this.chat.system(vi.inventory.errors[msg.reason] ?? vi.inventory.errors.invalid!, "error");
         break;
       case "chat":

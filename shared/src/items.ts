@@ -6,6 +6,12 @@ import type { MonsterRank } from "./monsters";
  */
 export type ItemCategory = "consumable" | "material";
 
+/** Độ hiếm (rarity), from common to rarest. The order here is the order used when sorting. */
+export const ITEM_RARITIES = ["common", "uncommon", "rare", "epic"] as const;
+export type ItemRarity = (typeof ITEM_RARITIES)[number];
+/** Phẩm cấp (grade) of an item, 1 (Hạ phẩm) upwards; higher is better. Names live in the client locale. */
+export const MAX_ITEM_GRADE = 4;
+
 export interface ItemDef {
   id: string;
   nameVi: string;
@@ -13,6 +19,9 @@ export interface ItemDef {
   category: ItemCategory;
   /** 1 means the item never stacks (equipment and rare items must use 1). */
   maxStack: number;
+  rarity: ItemRarity;
+  /** 1..MAX_ITEM_GRADE. */
+  grade: number;
   /** Consumables that heal: fraction of max HP restored on use. */
   healFraction?: number;
 }
@@ -24,11 +33,13 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     descVi: "Đan dược cơ bản, hồi 40% sinh lực khi dùng.",
     category: "consumable",
     maxStack: 99,
+    rarity: "common",
+    grade: 1,
     healFraction: 0.4,
   },
-  linh_thao: { id: "linh_thao", nameVi: "Linh Thảo", descVi: "Thảo dược mọc nơi linh khí dồi dào, dùng làm nguyên liệu luyện đan.", category: "material", maxStack: 99 },
-  thu_cot: { id: "thu_cot", nameVi: "Thú Cốt", descVi: "Xương của yêu thú, dùng làm nguyên liệu.", category: "material", maxStack: 99 },
-  yeu_dan: { id: "yeu_dan", nameVi: "Yêu Đan", descVi: "Tinh hoa ngưng tụ trong người yêu thú mạnh.", category: "material", maxStack: 99 },
+  linh_thao: { id: "linh_thao", nameVi: "Linh Thảo", descVi: "Thảo dược mọc nơi linh khí dồi dào, dùng làm nguyên liệu luyện đan.", category: "material", maxStack: 99, rarity: "common", grade: 1 },
+  thu_cot: { id: "thu_cot", nameVi: "Thú Cốt", descVi: "Xương của yêu thú, dùng làm nguyên liệu.", category: "material", maxStack: 99, rarity: "common", grade: 1 },
+  yeu_dan: { id: "yeu_dan", nameVi: "Yêu Đan", descVi: "Tinh hoa ngưng tụ trong người yêu thú mạnh.", category: "material", maxStack: 99, rarity: "rare", grade: 2 },
 };
 
 export function getItemDef(id: string): ItemDef | undefined {

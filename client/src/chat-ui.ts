@@ -23,8 +23,9 @@ export interface ChatLineData {
 export interface ChatUi {
   add(line: ChatLineData, selfId: string): void;
   /**
-   * A client-made line for the "Hệ thống" tab. "info" (green, e.g. loot) shows in the system and all tabs; "important"
-   * (red, e.g. death, map change) and "error" (red, rejected chat) stay visible in every tab.
+   * A client-made line for the "Hệ thống" tab. "info" (teal, e.g. loot) shows only in the system tab; "important"
+   * (red, e.g. death, map change) in the system and all tabs, and "error" (red, a rejected message or command) in the tab
+   * that was active when it happened, plus the all tab.
    */
   system(text: string, kind?: SystemKind): void;
 }
@@ -135,13 +136,16 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
     }
   });
 
-  const append = (line: HTMLElement, tab: ChatTab, visibleEverywhere = false) => {
+  /**
+   * `visibleIn` says where the line is shown besides its own tab: "everywhere" (a rejection, which is shown only in the
+   * tab it came from, so it never needs an unread count), "all" (chat, and red system lines such as announcements and death) or "own" (routine green system lines,
+   * which live only in the system tab). A tab that does not show the line counts it as unread on the line's own tab.
+   */
+  const append = (line: HTMLElement, tab: ChatTab, visibleIn: "everywhere" | "all" | "own") => {
     log.append(line);
     while (log.childElementCount > MAX_LINES) log.firstElementChild?.remove();
     log.scrollTop = log.scrollHeight;
-    // Shown where it is visible: everywhere for red lines, in its own tab, and in "all" except for routine system lines.
-    // Anywhere else it counts as unread on its own tab.
-    if (visibleEverywhere || active === tab || (active === "all" && tab !== "system")) return;
+    if (visibleIn === "everywhere" || active === tab || (visibleIn === "all" && active === "all")) return;
     unread.set(tab, (unread.get(tab) ?? 0) + 1);
     renderTab(tab);
   };
@@ -172,7 +176,7 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
       el.append(tag);
       const isSelf = line.id === selfId;
       if (line.channel === "system") {
-        // An admin announcement: an important (red) line without the sender's name, visible in every tab.
+        // An admin announcement: an important (red) line without the sender's name, shown in the all and system tabs.
         el.classList.add("important");
         el.append(document.createTextNode(line.text));
       } else if (line.channel === "whisper") {
@@ -184,13 +188,15 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
       } else {
         el.append(nameButton(line.name, isSelf, isSelf ? null : line.name), document.createTextNode(`: ${line.text}`));
       }
-      append(el, line.channel, line.channel === "system");
+      append(el, line.channel, "all");
     },
     system(text, kind = "info") {
       const el = document.createElement("div");
       el.className = `line ch-system${kind === "info" ? "" : kind === "error" ? " err" : " important"}`;
+      // A rejection belongs to the tab the player was using when it happened.
+      if (kind === "error") el.dataset.origin = active;
       el.textContent = text;
-      append(el, "system", kind !== "info");
+      append(el, "system", kind === "error" ? "everywhere" : kind === "important" ? "all" : "own");
     },
   };
 }

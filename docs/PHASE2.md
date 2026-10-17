@@ -22,7 +22,7 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và 
 - Nghiệm thu: mặc/tháo đổi đúng chỉ số; chết giảm độ bền; sửa đồ trừ đúng tiền, không âm.
 
 ## 2c. Kỹ năng, MP và ngũ hành đầy đủ (`features_skills`)
-- MP, thanh phím tắt kỹ năng, hồi chiêu, tầm đánh; kỹ năng theo hướng tu và ngũ hành.
+- MP, thanh phím tắt kỹ năng, hồi chiêu, tầm đánh; kỹ năng theo hướng tu và ngũ hành. **Thanh phím tắt này cũng chứa các ô dùng nhanh vật phẩm tiêu hao** (ví dụ Hồi Huyết Đan, kéo từ túi đồ vào ô; yêu cầu của người dùng, 2026-10-17), nên các ô dùng nhanh được làm ở đây chứ không ở 2a.
 - Bảng sát thương ngũ hành đầy đủ (tương khắc ×1.3, bị khắc ×0.75, tương sinh bonus nhỏ) mở rộng được cho **trục số hệ linh căn** (đơn/song/tam/tứ/ngũ, biến dị Lôi/Băng/Phong) đã hẹn ở GĐ2.
 - Nghiệm thu: công thức sát thương ngũ hành đúng test (bảng đầy đủ); hồi chiêu và MP được server kiểm.
 

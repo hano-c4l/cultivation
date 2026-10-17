@@ -12,7 +12,11 @@ export function makeDb(): { db: D1Database; raw: DatabaseSync } {
   const dir = new URL("../migrations/", import.meta.url);
   for (const f of readdirSync(dir).filter((n) => n.endsWith(".sql")).sort()) raw.exec(readFileSync(new URL(f, dir), "utf8"));
   const stmt = (sql: string, args: unknown[] = []) => ({
-    bind: (...a: unknown[]) => stmt(sql, a),
+    bind: (...a: unknown[]) => {
+      // D1 accepts at most 100 bound parameters per statement; enforce it here so chunking bugs show up in tests.
+      if (a.length > 100) throw new Error(`D1_ERROR: too many SQL variables (${a.length} > 100)`);
+      return stmt(sql, a);
+    },
     run: async () => {
       raw.prepare(sql).run(...(args as never[]));
       return {};

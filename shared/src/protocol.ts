@@ -1,7 +1,7 @@
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
 import type { Currency, Wallet } from "./economy";
-import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, type BagItem, type BagPos } from "./inventory";
+import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
 import { parseAllocation, type CharacterSheet } from "./progression";
 import type { BaseStats } from "./progression-data";
@@ -52,6 +52,10 @@ export type ClientMessage =
   | { t: "inv_use"; tab: number; cell: number }
   | { t: "inv_drop"; tab: number; cell: number; qty?: number }
   | { t: "inv_move"; from: BagPos; to: BagPos }
+  /** Merge split stacks and order the whole bag by `mode`. */
+  | { t: "inv_sort"; mode: SortMode }
+  /** Split `qty` off a stack into the first free cell. */
+  | { t: "inv_split"; tab: number; cell: number; qty: number }
   /** Claim the item attached to a mail into the bag. */
   | { t: "mail_claim"; id: string };
 
@@ -123,7 +127,7 @@ export type ServerMessage =
   | { t: "loot"; items: Array<{ type: string; qty: number; mailed: boolean }> }
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
-  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" }
+  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" }
   /** The receiving character died; a transfer to town follows. */
   | { t: "died"; expLost: number }
 
@@ -192,6 +196,12 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const to = parseBagPos(m.to);
       return from && to ? { t: "inv_move", from, to } : null;
     }
+    case "inv_sort":
+      return typeof m.mode === "string" && (SORT_MODES as readonly string[]).includes(m.mode) ? { t: "inv_sort", mode: m.mode as SortMode } : null;
+    case "inv_split":
+      return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999
+        ? { t: "inv_split", tab: m.tab, cell: m.cell, qty: m.qty }
+        : null;
     case "mail_claim":
       return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAG_CELLS_PER_TAB, BAG_COLS, BAG_ROWS, applyOps, bagUsage, inBounds, planAdd, planMove, planRemove, type BagItem } from "./inventory";
+import { BAG_CELLS_PER_TAB, BAG_COLS, BAG_ROWS, SORT_MODES, applyOps, bagUsage, inBounds, planAdd, planMove, planRemove, planSort, planSplit, type BagItem } from "./inventory";
 import { ITEMS, LOOT_TABLES, rollLoot } from "./items";
 
 let n = 0;
@@ -167,5 +167,94 @@ describe("items and loot", () => {
 
   it("rare monsters always drop a Yêu Đan from the rarest class", () => {
     expect(rollLoot("rare2", () => 0.999).some((d) => d.item === "yeu_dan")).toBe(true);
+  });
+});
+
+describe("planSplit", () => {
+  it("splits part of a stack into the first free cell", () => {
+    const bag = [item("linh_thao", 0, 0, 10, "a"), item("thu_cot", 0, 1, 5, "b")];
+    const after = applyOps(bag, planSplit(bag, 1, { tab: 0, cell: 0 }, 4, newId)!);
+    expect(after.find((i) => i.id === "a")!.qty).toBe(6);
+    const created = after.find((i) => i.id !== "a" && i.id !== "b")!;
+    expect(created).toMatchObject({ type: "linh_thao", qty: 4, tab: 0, cell: 2 });
+    expect(after.reduce((s, i) => s + i.qty, 0)).toBe(15);
+  });
+
+  it("refuses to split off everything, nothing, a fraction, or from an empty cell", () => {
+    const bag = [item("linh_thao", 0, 0, 10, "a")];
+    expect(planSplit(bag, 1, { tab: 0, cell: 0 }, 10, newId)).toBeNull();
+    expect(planSplit(bag, 1, { tab: 0, cell: 0 }, 0, newId)).toBeNull();
+    expect(planSplit(bag, 1, { tab: 0, cell: 0 }, 2.5, newId)).toBeNull();
+    expect(planSplit(bag, 1, { tab: 0, cell: 5 }, 1, newId)).toBeNull();
+    expect(planSplit(bag, 1, { tab: 3, cell: 0 }, 1, newId)).toBeNull();
+  });
+
+  it("refuses when the bag has no free cell", () => {
+    const full: BagItem[] = Array.from({ length: BAG_CELLS_PER_TAB }, (_, i) => item("thu_cot", 0, i, 50));
+    expect(planSplit(full, 1, { tab: 0, cell: 0 }, 10, newId)).toBeNull();
+    expect(planSplit(full, 2, { tab: 0, cell: 0 }, 10, newId)).not.toBeNull();
+  });
+});
+
+describe("planSort", () => {
+  const sorted = (bag: BagItem[], mode: (typeof SORT_MODES)[number]) => {
+    const ops = planSort(bag, 1, mode);
+    return ops ? applyOps(bag, ops) : bag;
+  };
+  const order = (bag: BagItem[]) => [...bag].sort((a, b) => a.tab - b.tab || a.cell - b.cell).map((i) => i.type);
+
+  it("merges split stacks and packs everything from the first cell", () => {
+    const bag = [item("linh_thao", 0, 5, 40, "a"), item("linh_thao", 0, 9, 70, "b"), item("thu_cot", 0, 20, 3, "c")];
+    const after = sorted(bag, "name");
+    const herb = after.filter((i) => i.type === "linh_thao").map((i) => i.qty).sort((x, y) => y - x);
+    expect(herb).toEqual([99, 11]); // 110 in total: one full stack and the remainder
+    expect(after.reduce((s, i) => s + i.qty, 0)).toBe(113);
+    expect(after.map((i) => i.cell).sort((x, y) => x - y)).toEqual([0, 1, 2]);
+  });
+
+  it("orders by name, by rarity (best first) and by grade (best first)", () => {
+    const bag = [
+      item("yeu_dan", 0, 0, 1), // rare, grade 2
+      item("thu_cot", 0, 1, 1), // common, grade 1
+      item("hoi_huyet_dan", 0, 2, 1), // common, grade 1
+      item("linh_thao", 0, 3, 1), // common, grade 1
+    ];
+    // Vietnamese names: Hồi Huyết Đan, Linh Thảo, Thú Cốt, Yêu Đan
+    expect(order(sorted(bag, "name"))).toEqual(["hoi_huyet_dan", "linh_thao", "thu_cot", "yeu_dan"]);
+    expect(order(sorted(bag, "rarity"))[0]).toBe("yeu_dan");
+    expect(order(sorted(bag, "grade"))[0]).toBe("yeu_dan");
+    // Ties fall back to the name, so the order is stable and does not depend on where things were.
+    expect(order(sorted(bag, "rarity")).slice(1)).toEqual(["hoi_huyet_dan", "linh_thao", "thu_cot"]);
+  });
+
+  it("is idempotent: sorting a sorted bag plans nothing", () => {
+    const bag = [item("thu_cot", 0, 7, 30), item("thu_cot", 0, 8, 80), item("yeu_dan", 0, 2, 1)];
+    for (const mode of SORT_MODES) {
+      const once = sorted(bag, mode);
+      expect(planSort(once, 1, mode)).toBeNull();
+    }
+  });
+
+  it("never loses quantity or shares a cell, also across tabs", () => {
+    const bag: BagItem[] = [];
+    for (let i = 0; i < 200; i++) bag.push(item(i % 3 === 0 ? "linh_thao" : i % 3 === 1 ? "thu_cot" : "yeu_dan", i < 128 ? 0 : 1, i % 128, 1 + (i % 7), `r${i}`));
+    const total = bag.reduce((s, i) => s + i.qty, 0);
+    const ops = planSort(bag, 2, "rarity")!;
+    const after = applyOps(bag, ops);
+    expect(after.reduce((s, i) => s + i.qty, 0)).toBe(total);
+    expect(after.every((i) => i.qty >= 1 && i.qty <= 99)).toBe(true);
+    const cells = after.map((i) => `${i.tab}:${i.cell}`);
+    expect(new Set(cells).size).toBe(cells.length);
+    // At most one partial stack per type: the stack count is the sum of ceil(type total / 99).
+    const perType = new Map<string, number>();
+    for (const i of bag) perType.set(i.type, (perType.get(i.type) ?? 0) + i.qty);
+    expect(after.length).toBe([...perType.values()].reduce((s, q) => s + Math.ceil(q / 99), 0));
+    // Packed from the front: the used cells are exactly 0..n-1.
+    const idx = after.map((i) => i.tab * BAG_CELLS_PER_TAB + i.cell).sort((x, y) => x - y);
+    expect(idx).toEqual(idx.map((_, k) => k));
+  });
+
+  it("an empty bag has nothing to sort", () => {
+    expect(planSort([], 1, "name")).toBeNull();
   });
 });
