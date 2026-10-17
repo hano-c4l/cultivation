@@ -6,6 +6,7 @@ import {
   CHAT_BURST,
   CHAT_MIN_GAP_MS,
   CHAT_WINDOW_MS,
+  checkChatRate,
   EMPTY_WALLET,
   MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
@@ -29,6 +30,7 @@ import {
   type CharacterSheet,
   type ClientMessage,
   type MapId,
+  type MonsterRank,
   type PlayerSnapshot,
   tileCenter,
   type MapData,
@@ -130,6 +132,12 @@ export class MapRoom extends DurableObject<Env> {
   /** Pending ledger writes for monster drops, run one after another so they never delay the tick. */
   private dropQueue: Promise<void> = Promise.resolve();
   private lastTickAt = 0;
+  /** Single-flight rebuild of the sim after the object slept (see wake). */
+  private waking: Promise<void> | null = null;
+  /** JSON of the monster classes last written to storage, to skip identical writes. */
+  private ranksJson: string | null = null;
+  private pauses = 0;
+  private wakes = 0;
   private tickStat = { count: 0, totalMs: 0, maxMs: 0, maxDriftMs: 0, skipped: 0 };
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -188,13 +196,22 @@ export class MapRoom extends DurableObject<Env> {
         return new Response("Wrong map", { status: 409 });
       }
       const colo = await this.knownColo();
+      // The Worker routes by the character's saved map, so the row's map is this room's map.
+      const mapId: MapId = isMapId(row.map_id) ? row.map_id : "town";
+      const map = getMap(mapId);
+      // Every await of the join happens before the socket is accepted. From accepting to `welcome` the code is
+      // synchronous, so no broadcast, tick event or monster resync can reach the new socket ahead of its welcome
+      // (the client rebuilds its actors from the welcome and would otherwise show stale ones).
+      // After a sleep the sim is gone and every connected player needs a profile again.
+      await this.wake(mapId);
+      const wallet = await getWallet(this.env.DB, row.id).catch((err) => {
+        console.error("wallet read failed", err);
+        return { ...EMPTY_WALLET };
+      });
 
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
       this.ctx.acceptWebSocket(server);
-      // The Worker routes by the character's saved map, so the row's map is this room's map.
-      const mapId: MapId = isMapId(row.map_id) ? row.map_id : "town";
-      const map = getMap(mapId);
       const position = restorePosition(map, row.x, row.y);
       const state: PlayerState = {
         id: row.id,
@@ -209,16 +226,10 @@ export class MapRoom extends DurableObject<Env> {
         chatTimes: [],
       };
       server.serializeAttachment(state);
-      // Read before the player list: an await after the snapshot would let joins, leaves and tick broadcasts reach
-      // this socket ahead of `welcome`, and the client would rebuild its actors from a stale list.
-      const wallet = await getWallet(this.env.DB, row.id).catch((err) => {
-        console.error("wallet read failed", err);
-        return { ...EMPTY_WALLET };
-      });
       // Includes the joining player so the client gets its own authoritative snapshot.
       const players = this.players().map((p) => this.snapshot(p));
-      const sim = this.ensureSim(mapId);
-      const profile = sim?.addPlayer(seedOf(row));
+      const sim = this.sim;
+      const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row))) : undefined;
       if (sim) this.startTick();
       const maxHp = profile?.maxHp ?? deriveStats(baseOf(row), row.realm, row.stage, row.root_grade).maxHp;
       this.send(server, {
@@ -268,11 +279,14 @@ export class MapRoom extends DurableObject<Env> {
 
     switch (msg.t) {
       case "move":
+        // Starts the tick again if it was paused. Never awaited: a move must not wait for a rebuild.
+        void this.wake(state.mapId).catch((err) => console.error("wake failed", err));
         return this.handleMove(ws, state, msg);
       case "portal":
         return this.handlePortal(ws, state);
       case "chat":
-        return this.handleChat(ws, state, msg.text);
+        // Only map chat belongs on this socket; a client that sends the others here is ignored.
+        return msg.channel === "map" ? this.handleChat(ws, state, msg.text) : undefined;
       case "allocate":
         return this.handleAllocate(ws, state, msg.points);
       case "attack":
@@ -365,16 +379,12 @@ export class MapRoom extends DurableObject<Env> {
 
   private handleChat(ws: WebSocket, state: PlayerState, text: string): void {
     const now = Date.now();
-    const recent = state.chatTimes.filter((t) => now - t < CHAT_WINDOW_MS);
-    const last = recent[recent.length - 1];
-    if (recent.length >= CHAT_BURST || (last !== undefined && now - last < CHAT_MIN_GAP_MS)) {
-      return this.send(ws, { t: "chat_error", reason: "rate" });
-    }
-    recent.push(now);
-    state.chatTimes = recent;
+    const times = checkChatRate(state.chatTimes, now, { burst: CHAT_BURST, windowMs: CHAT_WINDOW_MS, minGapMs: CHAT_MIN_GAP_MS });
+    if (!times) return this.send(ws, { t: "chat_error", reason: "rate" });
+    state.chatTimes = times;
     ws.serializeAttachment(state);
-    // Room-local chat: only players on this map channel receive it.
-    this.broadcast({ t: "chat", id: state.id, name: state.name, text: filterChat(text), ts: now });
+    // Room-local chat: only players on this map channel receive it. World chat and whispers go over the chat socket.
+    this.broadcast({ t: "chat", channel: "map", id: state.id, name: state.name, text: filterChat(text), ts: now });
   }
 
   /** Spends potential points. Always answers with the current sheet so the client resyncs after a rejection. */
@@ -453,11 +463,63 @@ export class MapRoom extends DurableObject<Env> {
 
   // --- combat -------------------------------------------------------------------------------------------------
 
-  private ensureSim(mapId: MapId): CombatSim | null {
+  private ensureSim(mapId: MapId, ranks?: Record<string, MonsterRank>): CombatSim | null {
     const map = getMap(mapId);
     if (map.safe) return null;
-    if (!this.sim) this.sim = new CombatSim(map, mapId, Math.random, Date.now());
+    if (!this.sim) this.sim = new CombatSim(map, mapId, Math.random, Date.now(), ranks);
     return this.sim;
+  }
+
+  /**
+   * Makes sure a combat map's sim exists and ticks. Cheap and synchronous while it is running. A paused sim only
+   * restarts the interval. If the object slept, the sim is gone: one rebuild (shared by concurrent callers) restores
+   * the monster classes from storage and a profile for every connected player from D1, then tells clients about the
+   * monsters again.
+   */
+  private wake(mapId: MapId): Promise<void> {
+    if (getMap(mapId).safe) return Promise.resolve();
+    if (this.sim) {
+      this.startTick();
+      return Promise.resolve();
+    }
+    this.waking ??= this.rebuild(mapId).finally(() => {
+      this.waking = null;
+    });
+    return this.waking;
+  }
+
+  private async rebuild(mapId: MapId): Promise<void> {
+    const stored = await this.ctx.storage.get<Record<string, MonsterRank>>("ranks");
+    if (this.sim) return; // another path created it while storage was read
+    const sim = this.ensureSim(mapId, stored)!;
+    this.ranksJson = stored ? JSON.stringify(stored) : null;
+    try {
+      const present = this.players().filter((p) => !p.transferring);
+      const rows = await Promise.all(present.map((p) => getCharacterById(this.env.DB, p.id)));
+      const stillHere = new Set(this.players().filter((p) => !p.transferring).map((p) => p.id));
+      for (const row of rows) if (row && stillHere.has(row.id) && !sim.getPlayer(row.id)) sim.addPlayer(seedOf(row));
+    } catch (err) {
+      this.sim = null; // the next move or attack retries the whole rebuild
+      throw err;
+    }
+    this.wakes++;
+    console.log("sim rebuilt", mapId, "players", sim.playerCount, "ranks restored", !!stored);
+    for (const monster of sim.snapshots(Date.now())) this.broadcast({ t: "mon", monster });
+    this.startTick();
+  }
+
+  /** Stops the interval when nothing happens so the object can sleep. Everything not yet in D1 is written first. */
+  private async pauseTick(sim: CombatSim): Promise<void> {
+    if (this.tickTimer) clearInterval(this.tickTimer);
+    this.tickTimer = null;
+    this.pauses++;
+    const ranks = sim.ranks();
+    const json = JSON.stringify(ranks);
+    await Promise.all([
+      this.alarm(),
+      json === this.ranksJson ? Promise.resolve() : this.ctx.storage.put("ranks", ranks).then(() => void (this.ranksJson = json)),
+    ]);
+    console.log("tick paused", "players", sim.playerCount);
   }
 
   private startTick(): void {
@@ -469,15 +531,29 @@ export class MapRoom extends DurableObject<Env> {
   /** Forgets a character's combat profile; with nobody left the tick stops and the monsters are discarded. */
   private dropPlayer(id: string): void {
     this.sim?.removePlayer(id);
-    if (this.sim && this.sim.playerCount === 0) {
+    // Judged by the sockets, not the sim: after a sleep the sim may be gone while the last players leave.
+    if (this.players().length === 0) {
       if (this.tickTimer) clearInterval(this.tickTimer);
       this.tickTimer = null;
       this.sim = null;
+      this.ranksJson = null;
+      this.ctx.waitUntil(this.ctx.storage.delete("ranks").then(() => undefined));
     }
   }
 
   /** Dev-only metrics (see /api/dev/tick-stats); never exposed unless ENABLE_DEV_GRANT is set. */
-  tickStats(): { count: number; avgMs: number; maxMs: number; maxDriftMs: number; skipped: number; players: number; monsters: number } {
+  tickStats(): {
+    count: number;
+    avgMs: number;
+    maxMs: number;
+    maxDriftMs: number;
+    skipped: number;
+    players: number;
+    monsters: number;
+    paused: boolean;
+    pauses: number;
+    wakes: number;
+  } {
     const t = this.tickStat;
     return {
       count: t.count,
@@ -487,7 +563,18 @@ export class MapRoom extends DurableObject<Env> {
       skipped: t.skipped,
       players: this.sim?.playerCount ?? 0,
       monsters: this.sim?.monsterCount ?? 0,
+      paused: this.tickTimer === null,
+      pauses: this.pauses,
+      wakes: this.wakes,
     };
+  }
+
+  /** Dev-only (see /api/dev/evict): imitates the runtime evicting a paused object, which wrangler dev does not do reliably. */
+  devEvict(): boolean {
+    if (this.tickTimer || !this.sim) return false;
+    this.sim = null;
+    this.ranksJson = null;
+    return true;
   }
 
   private async tick(): Promise<void> {
@@ -525,6 +612,7 @@ export class MapRoom extends DurableObject<Env> {
       t.count++;
       t.totalMs += ms;
       if (ms > t.maxMs) t.maxMs = ms;
+      if (this.sim === sim && sim.isIdle(positions, moving)) await this.pauseTick(sim);
     } catch (err) {
       console.error("tick failed", err);
     } finally {
@@ -653,16 +741,15 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private async handleAttack(ws: WebSocket, state: PlayerState, monsterId: string): Promise<void> {
-    const sim = this.ensureSim(state.mapId);
-    if (!sim) return;
-    let profile = sim.getPlayer(state.id);
-    if (!profile) {
-      // The room restarted while the socket survived: rebuild the working copy from D1.
-      const row = await getCharacterById(this.env.DB, state.id);
-      if (!row || !ws.deserializeAttachment()) return;
-      profile = sim.addPlayer(seedOf(row));
-      this.startTick();
+    try {
+      await this.wake(state.mapId);
+    } catch (err) {
+      console.error("wake failed", err);
+      return;
     }
+    const sim = this.sim;
+    const profile = sim?.getPlayer(state.id);
+    if (!sim || !profile) return;
     const now = Date.now();
     if (profile.dead || now - profile.lastAttackMsgAt < ATTACK_MIN_GAP_MS) return;
     profile.lastAttackMsgAt = now;

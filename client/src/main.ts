@@ -7,8 +7,10 @@ import { GameScene } from "./scene";
 // `?renderer=canvas` forces the Canvas renderer for devices with broken or weak WebGL.
 const forceCanvas = new URLSearchParams(location.search).get("renderer") === "canvas";
 
-function startGame(): void {
+function startGame(isAdmin: boolean): void {
   new Phaser.Game({
+    // Read by the scene when it starts; the server decides what admins may actually do.
+    callbacks: { preBoot: (game) => game.registry.set("isAdmin", isAdmin) },
     type: forceCanvas ? Phaser.CANVAS : Phaser.AUTO,
     parent: "game",
     backgroundColor: "#10141c",
@@ -43,7 +45,7 @@ async function boot(): Promise<void> {
     await api.logout();
     location.reload();
   };
-  startGame();
+  startGame(me.ok && me.data!.account.role === "admin");
 }
 
 void boot();

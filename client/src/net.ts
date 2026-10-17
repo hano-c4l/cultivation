@@ -20,6 +20,8 @@ export class Net {
   ) {}
 
   connect(): void {
+    // A reconnect scheduled before close() or a `kicked` must not reopen the socket (it would kick the active tab's).
+    if (this.closedForGood) return;
     const ws = new WebSocket(this.url);
     this.ws = ws;
     ws.addEventListener("open", () => {
@@ -40,7 +42,9 @@ export class Net {
         // Ignore malformed server frames.
       }
     });
-    ws.addEventListener("close", () => {
+    ws.addEventListener("close", (ev) => {
+      // 4001: the server replaced this socket with a newer one of the same character; reconnecting would start a tug of war.
+      if (ev.code === 4001) this.closedForGood = true;
       this.handlers.onStatus(false);
       if (this.closedForGood) return;
       void this.reconnectLater();
@@ -55,9 +59,19 @@ export class Net {
     this.retryMs = Math.min(this.retryMs * 2, 5000);
   }
 
+  /** Stops for good: closes the socket and never reconnects. */
+  close(): void {
+    this.closedForGood = true;
+    this.ws?.close();
+  }
+
   /** Sends the plain-string keep-alive that the server answers without waking the room. */
   sendPing(): void {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(PING_MESSAGE);
+  }
+
+  isOpen(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 
   send(msg: ClientMessage): void {

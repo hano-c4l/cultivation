@@ -1,5 +1,6 @@
 import { isMapId } from "@game/shared";
 import { getSession, handleApi } from "./auth";
+import { ChatHub } from "./chat-hub";
 import { CharacterLock } from "./character-lock";
 import { getCharacterByAccount } from "./characters";
 import type { Env } from "./env";
@@ -7,7 +8,7 @@ import { errorResponse, hasForeignOrigin, json } from "./http";
 import { MapRoom } from "./map-room";
 import { PasswordHasher } from "./password-hasher";
 
-export { CharacterLock, MapRoom, PasswordHasher };
+export { ChatHub, CharacterLock, MapRoom, PasswordHasher };
 export type { Env };
 
 const MAX_CHANNEL = 8;
@@ -39,6 +40,24 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
   return stub.fetch(new Request(request, { headers }));
 }
 
+/** The chat socket (world chat and whispers): same authentication as /ws, routed to the single ChatHub. */
+async function handleChatSocket(request: Request, env: Env): Promise<Response> {
+  if (request.headers.get("Upgrade") !== "websocket") return new Response("Expected WebSocket", { status: 426 });
+  if (hasForeignOrigin(request)) return errorResponse("forbidden_origin", 403);
+  const session = await getSession(request, env);
+  if (!session) return errorResponse("unauthenticated", 401);
+  const character = await getCharacterByAccount(env.DB, session.accountId);
+  if (!character) return errorResponse("no_character", 403);
+  // Identity headers are set here only; any client-supplied values are overwritten.
+  const headers = new Headers(request.headers);
+  headers.set("x-char-id", character.id);
+  // Header values are Latin-1; names carry Vietnamese diacritics, so they travel encoded.
+  headers.set("x-char-name", encodeURIComponent(character.name));
+  headers.set("x-char-admin", session.role === "admin" ? "1" : "0");
+  const stub = env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" });
+  return stub.fetch(new Request(request, { headers }));
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -58,8 +77,16 @@ export default {
         const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
         return json(await stub.tickStats());
       }
+      if (url.pathname === "/api/dev/evict") {
+        // Local testing only (same gate as tick-stats): imitates the runtime evicting a paused room.
+        const room = url.searchParams.get("room") ?? "";
+        if (env.ENABLE_DEV_GRANT !== "1" || !/^(forest|cave):\d{1,3}$/.test(room)) return errorResponse("not_found", 404);
+        const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
+        return json({ evicted: await stub.devEvict() });
+      }
       if (url.pathname.startsWith("/api/")) return await handleApi(request, env, url);
       if (url.pathname === "/ws") return await handleWebSocket(request, env, url);
+      if (url.pathname === "/ws/chat") return await handleChatSocket(request, env);
       return new Response("Not found", { status: 404 });
     } catch (err) {
       console.error("unhandled", err);

@@ -33,6 +33,7 @@ Thứ tự phụ thuộc: 1a → 1b → 1c → 1d → 1e → 1f.
 - Quái: đứng yên đến khi người chơi vào bán kính aggro thì đuổi theo (thẳng nếu thông, A* nếu không, tối đa 2 lần/giây), đánh khi trong tầm, bị kéo quá xa thì bỏ cuộc và về chỗ cũ, hồi đầy máu. Người chơi click quái: server tự đuổi và auto-attack (1 lần/giây). Click mặt đất thì hủy mục tiêu.
 - **Tự đánh trả:** người chơi đứng im, chưa có mục tiêu mà bị quái đánh thì tự nhắm quái đó và đánh lại (đang đi thì coi như đang bỏ chạy, không tự đánh; đã có mục tiêu thì giữ nguyên). PvP ở giai đoạn 2 dùng lại đúng quy tắc này khi bị người chơi khác tấn công (`monsterAttack` trong `server/src/combat-sim.ts` là chỗ cần mở rộng).
 - Chết: mất 10% EXP của tầng hiện tại (không tụt tầng), về Thanh Vân Thành bằng đúng cơ chế portal. Chưa có độ bền (chưa có trang bị).
+- **Tạm dừng tick khi rảnh** (đã làm, nhánh `features_idle-tick`): xem `docs/STATUS.md`. Điểm cần nhớ: object ngủ thì mất sim, nên phải dựng lại hồ sơ cho mọi người đang kết nối và khôi phục hạng quái từ storage.
 - Chưa có: rơi vật phẩm/Linh Thạch (có chỗ móc `reward` trong `combat-sim.ts` cho 1e), PvP, kỹ năng/MP, area-of-interest (mọi sự kiện gửi cả phòng).
 - Nghiệm thu: đánh quái → lên tầng (smoke đã kiểm: đánh chết quái nhận EXP, lưu khi thoát, chết mất EXP về thành); `tools/load.mjs` 50 client trên một phòng chạy local: tick trung bình ~6 ms, 0 tick bị bỏ, độ trễ tick tối đa 376-524 ms giữa các lần chạy (ngưỡng đặt 500 ms nên có lúc sát/vượt). Nghi do A* khi nhiều người cùng đuổi quái (mỗi người tối đa 2 lần/giây) và do băm mật khẩu chạy chung tiến trình khi dev (script đã tạo tài khoản trước khi vào phòng để tách yếu tố này). Số đo local, chưa đại diện cho Cloudflare thật; 1f cần đo lại và tối ưu A* nếu cần (xem `docs/STATUS.md`).
 
@@ -50,7 +51,7 @@ Mở rộng 1d theo yêu cầu của người dùng. Đã làm trong nhánh này
 - Cấp cao hơn cấp bản đồ một ít (người chơi hợp lực và có kỹ năng vẫn hạ được). Có kỹ năng đặc biệt, làm khi người chơi đã có kỹ năng (GĐ2).
 - Thông báo toàn bản đồ khi boss xuất hiện và khi bị giết. Quái hiếm thì không thông báo.
 - Chia thưởng: tỉ lệ đóng góp = 70% theo sát thương + 30% kết liễu (ví dụ đánh 20/70 phần máu nhưng kết liễu = 20% + 30% = 50%). **Tiền chia theo tỉ lệ; đồ chia ngẫu nhiên có trọng số theo tỉ lệ (tỉ lệ cao thì dễ ra đồ tốt); người dưới 10% không được chia.**
-- **Cần ghi nhớ khi làm:** "chỉ biến mất khi bị giết" mâu thuẫn với việc hiện nay bỏ quái khi phòng trống, nên trạng thái boss và bộ đếm quái bị giết phải lưu bền (DO storage, ghi gộp). Câu hỏi còn mở: giới hạn một boss cho mỗi kênh hay cho cả bản đồ qua 8 kênh; quy tắc loại dưới 10% có áp dụng cho tiền không hay chỉ cho đồ.
+- **Cần ghi nhớ khi làm:** "chỉ biến mất khi bị giết" mâu thuẫn với việc hiện nay bỏ quái khi phòng trống, nên trạng thái boss và bộ đếm quái bị giết phải lưu bền (DO storage, ghi gộp). **Đã chốt (2026-10-17): chỉ 1 boss cho mỗi bản đồ (cả 8 kênh), quy tắc dưới 10% áp dụng cho cả tiền lẫn đồ.**
 
 ## 1e. Kinh tế khung xương (`features_economy-core`)
 - Migration D1: `item_instances` (ID duy nhất), `currency_ledger` append-only (idempotency key, actor), `mailbox`; số dư là bản tổng hợp cập nhật bằng batch atomic có điều kiện.
@@ -59,6 +60,7 @@ Mở rộng 1d theo yêu cầu của người dùng. Đã làm trong nhánh này
 - **Đã làm (nhánh `features_economy-core`):** xem `docs/STATUS.md`. Điểm thiết kế quan trọng: một câu lệnh đổi 0 dòng **không** rollback batch D1, nên lặp khóa và âm tiền được ép thành lỗi (UNIQUE và CHECK) để cả batch rollback; số dư dùng `INSERT OR IGNORE` + `UPDATE` thay vì upsert vì SQLite kiểm CHECK của dòng INSERT (âm) trước khi xử lý xung đột. Người dùng chọn ghi đồng bộ từng lần rơi (phương án A). Khóa idempotency của lần rơi là UUID tạo lúc giết (id quái lặp lại mỗi lần hồi sinh nên không dùng làm khóa).
 
 ## 1f. Kiểm thử tải và hoàn thiện (`features_phase1-hardening`)
+**Hoãn (2026-10-17, quyết định của người dùng):** không đo tải thật trên Cloudflare lúc này, chỉ nâng Workers Paid khi gặp dấu hiệu nêu ở `docs/STATUS.md`. Giai đoạn 1 coi như xong; phần dưới giữ lại làm danh sách việc khi cần.
 - Smoke/E2E cho toàn luồng, giả lập 50 client, kiểm tra tick, rà soát giới hạn Free, cập nhật tài liệu.
 
 ## Quyết định đã chốt

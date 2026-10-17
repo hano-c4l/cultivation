@@ -141,6 +141,8 @@ export class CombatSim {
     mapId: MapId,
     private readonly rand: () => number,
     now: number,
+    /** Classes to restore after the room slept, by monster id; without them every monster rolls its class. */
+    ranks?: Readonly<Record<string, MonsterRank>>,
   ) {
     this.realm = map.realm ?? 0;
     for (const cluster of CLUSTERS[mapId]) {
@@ -168,7 +170,7 @@ export class CombatSim {
           lastRepathAt: 0,
           respawnAt: 0,
         };
-        this.applyRank(m);
+        this.applyRank(m, ranks?.[id]);
         m.hp = m.maxHp;
         this.monsters.set(id, m);
       }
@@ -176,12 +178,42 @@ export class CombatSim {
   }
 
   /** (Re)rolls the monster's class and derives its stats from the map's realm, its bậc, species and class. */
-  private applyRank(m: Monster): void {
-    m.rank = rollRank(this.rand());
+  private applyRank(m: Monster, rank?: MonsterRank): void {
+    m.rank = rank && rank in RANKS ? rank : rollRank(this.rand());
     const stats = monsterStats(m.def, this.realm, m.tier, m.rank);
     m.maxHp = stats.maxHp;
     m.combatant.attack = stats.attack;
     m.combatant.defense = stats.defense;
+  }
+
+  /** Current class of every monster, kept by the room across a sleep so a rebuilt sim cannot reroll rare monsters. */
+  ranks(): Record<string, MonsterRank> {
+    const out: Record<string, MonsterRank> = {};
+    for (const m of this.monsters.values()) out[m.id] = m.rank;
+    return out;
+  }
+
+  /**
+   * True when nothing needs ticks: no monster is dead (respawn is tick-driven), chasing or walking home, none is
+   * within aggro range of a living player, and no living player is walking, fighting, hurt (regeneration is
+   * tick-driven) or dead. The room may then stop its
+   * interval and let the Durable Object sleep; any move or attack starts it again.
+   */
+  isIdle(positions: ReadonlyMap<string, Vec2>, moving: ReadonlySet<string> = new Set()): boolean {
+    for (const m of this.monsters.values()) {
+      if (m.state !== "idle" || m.hp < m.maxHp) return false;
+      // An idle monster only looks for a target on the next tick. A monster that just respawned (or got home) next to
+      // a standing player would never get that tick and would sit there until the player acted, so it counts as busy.
+      const at = lastPoint(m.path);
+      for (const [id, pos] of positions) {
+        const profile = this.players.get(id);
+        if (profile && !profile.dead && dist(at, pos) <= m.def.aggroRadius) return false;
+      }
+    }
+    for (const p of this.players.values()) {
+      if (p.dead || p.targetId !== null || p.hp < p.maxHp || moving.has(p.id)) return false;
+    }
+    return true;
   }
 
   get monsterCount(): number {
