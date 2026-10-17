@@ -8,6 +8,7 @@ import {
   validateEmail,
   validatePassword,
 } from "@game/shared";
+import { adminCharacter, adminGrant, adminLookup, adminSupply } from "./admin";
 import { getCharacterByAccount, grantExp, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import {
@@ -214,6 +215,14 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return me(request, env);
     case "POST /api/character":
       return createCharacter(request, env);
+    case "POST /api/admin/grant":
+      return adminGrant(request, env);
+    case "GET /api/admin/lookup":
+      return adminLookup(request, env, url);
+    case "GET /api/admin/character":
+      return adminCharacter(request, env, url);
+    case "GET /api/admin/supply":
+      return adminSupply(request, env);
     case "POST /api/dev/grant-exp":
       return devGrantExp(request, env);
     default:

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Quản trị · Tu Tiên Giới</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #10141c; color: #e8e4d8; font: 15px/1.5 "Be Vietnam Pro", system-ui, sans-serif; }
+      main { max-width: 720px; margin: 0 auto; }
+      h1 { font-size: 18px; margin-top: 24px; }
+      label { display: block; margin-top: 10px; }
+      input, select, button { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 8px; border-radius: 6px; border: 1px solid #3a4560;
+        background: #1b2130; color: inherit; font: inherit; }
+      button { background: #d6a94b; color: #1b1405; font-weight: 600; border: 0; cursor: pointer; margin-top: 14px; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      #msg { margin-top: 12px; min-height: 1.5em; }
+      .err { color: #ff8a80; }
+      .ok { color: #8bc34a; }
+      .muted { opacity: 0.6; }
+      .account { margin-top: 10px; padding: 8px; border: 1px solid #2a3248; border-radius: 6px; }
+      .account button { margin-top: 6px; }
+      table { width: 100%; margin-top: 8px; border-collapse: collapse; }
+      td, th { text-align: left; padding: 4px 6px 4px 0; border-bottom: 1px solid #2a3248; vertical-align: top; }
+      #ledger { font-size: 13px; }
+      #selected { overflow-x: auto; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>1. Tìm tài khoản / nhân vật</h1>
+      <form id="search-form">
+        <label>Email hoặc đạo hiệu (ít nhất 2 ký tự) <input id="q" required minlength="2" maxlength="64" autocomplete="off" /></label>
+        <button type="submit">Tìm</button>
+      </form>
+      <div id="results"></div>
+
+      <section id="selected" hidden>
+        <h1>2. Nhân vật đã chọn: <span id="sel-name"></span></h1>
+        <table id="wallet"></table>
+        <form id="form">
+          <label>Loại tiền
+            <select id="currency">
+              <option value="linh_thach">Linh Thạch</option>
+              <option value="cong_hien">Cống Hiến</option>
+              <option value="tien_ngoc">Tiên Ngọc</option>
+            </select>
+          </label>
+          <label>Số lượng (số âm để trừ) <input id="amount" type="number" step="1" required /></label>
+          <label>Lý do (ghi vào sổ cái) <input id="reason" maxlength="80" autocomplete="off" /></label>
+          <button id="submit" type="submit">Cộng / trừ</button>
+        </form>
+        <div id="msg"></div>
+        <h1>Sổ cái (50 dòng gần nhất)</h1>
+        <table id="ledger"></table>
+      </section>
+
+      <h1>Tổng cung</h1>
+      <table id="supply"></table>
+    </main>
+    <script>
+      const ERRORS = {
+        unauthenticated: "Chưa đăng nhập. Hãy đăng nhập ở trang chính trước.",
+        forbidden: "Tài khoản này không phải quản trị viên.",
+        character_not_found: "Không tìm thấy nhân vật.",
+        invalid_amount: "Số lượng không hợp lệ.",
+        invalid_character: "Nhân vật không hợp lệ.",
+        insufficient_balance: "Nhân vật không đủ tiền để trừ.",
+        duplicate_request: "Yêu cầu này đã được xử lý rồi.",
+        query_too_short: "Từ khóa phải từ 2 đến 64 ký tự.",
+      };
+      const NAMES = { linh_thach: "Linh Thạch", cong_hien: "Cống Hiến", tien_ngoc: "Tiên Ngọc" };
+      const fmt = (n) => Number(n).toLocaleString("vi-VN");
+      const $ = (id) => document.getElementById(id);
+      // Every value from the server goes in through textContent, never innerHTML (emails and names are user input).
+      function el(tag, text, cls) {
+        const n = document.createElement(tag);
+        if (text !== undefined) n.textContent = text;
+        if (cls) n.className = cls;
+        return n;
+      }
+      function row(cells, head) {
+        const tr = el("tr");
+        for (const c of cells) tr.append(el(head ? "th" : "td", String(c)));
+        return tr;
+      }
+      const show = (text, cls) => { $("msg").textContent = text; $("msg").className = cls; };
+
+      let selected = null; // { id, name }
+      // One key per form render: a double click or a retry of the same submit cannot grant twice.
+      let key = crypto.randomUUID();
+
+      async function getJson(url) {
+        const res = await fetch(url);
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok, data };
+      }
+
+      async function loadSupply() {
+        const { ok, data } = await getJson("/api/admin/supply");
+        if (!ok) return;
+        $("supply").replaceChildren(row(["Loại", "Tổng", "Số người giữ"], true),
+          ...data.supply.map((s) => row([NAMES[s.currency] ?? s.currency, fmt(s.total), s.holders])));
+      }
+
+      async function loadCharacter() {
+        const { ok, data } = await getJson("/api/admin/character?id=" + encodeURIComponent(selected.id));
+        if (!ok) return show(ERRORS[data.error] ?? "Lỗi: " + data.error, "err");
+        $("wallet").replaceChildren(...Object.keys(NAMES).map((c) => row([NAMES[c], fmt(data.wallet[c] ?? 0)])));
+        $("ledger").replaceChildren(row(["#", "Thời gian", "Loại", "Số lượng", "Lý do", "Người thực hiện"], true),
+          ...data.ledger.map((l) => row([l.id, new Date(l.created_at).toLocaleString("vi-VN"), NAMES[l.currency] ?? l.currency,
+            (l.delta > 0 ? "+" : "") + fmt(l.delta), l.reason, l.actor_email ?? l.actor])));
+      }
+
+      function select(character, email) {
+        selected = character;
+        $("sel-name").textContent = character.name + " (" + email + ")";
+        $("selected").hidden = false;
+        $("msg").textContent = "";
+        key = crypto.randomUUID();
+        loadCharacter();
+      }
+
+      $("search-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const { ok, data } = await getJson("/api/admin/lookup?q=" + encodeURIComponent($("q").value));
+        const box = $("results");
+        if (!ok) return box.replaceChildren(el("div", ERRORS[data.error] ?? "Lỗi: " + data.error, "err"));
+        if (data.accounts.length === 0) return box.replaceChildren(el("div", "Không tìm thấy."));
+        box.replaceChildren(...data.accounts.map((a) => {
+          const div = el("div", undefined, "account");
+          div.append(el("div", a.email + (a.role === "admin" ? " (admin)" : "")));
+          if (a.characters.length === 0) div.append(el("div", "Chưa có nhân vật", "muted"));
+          for (const c of a.characters) {
+            const b = el("button", c.name + " · cảnh giới " + (c.realm + 1) + " tầng " + c.stage);
+            b.type = "button";
+            b.onclick = () => select(c, a.email);
+            div.append(b);
+          }
+          return div;
+        }));
+      });
+
+      $("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (!selected) return;
+        $("submit").disabled = true;
+        try {
+          const res = await fetch("/api/admin/grant", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              characterId: selected.id,
+              currency: $("currency").value,
+              amount: Number($("amount").value),
+              reason: $("reason").value,
+              idempotencyKey: key,
+            }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            show("Xong. Số dư mới: " + fmt(data.balance), "ok");
+            key = crypto.randomUUID();
+            loadCharacter();
+            loadSupply();
+          } else {
+            show(ERRORS[data.error] ?? "Lỗi: " + data.error, "err");
+            if (data.error !== "duplicate_request") key = crypto.randomUUID();
+          }
+        } catch {
+          show("Lỗi mạng. Bấm lại để thử lần nữa (an toàn, không cộng hai lần).", "err");
+        } finally {
+          $("submit").disabled = false;
+        }
+      });
+      loadSupply();
+    </script>
+  </body>
+</html>

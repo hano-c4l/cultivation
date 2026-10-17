@@ -1,5 +1,6 @@
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
+import type { Currency, Wallet } from "./economy";
 import type { MonsterRank } from "./monsters";
 import { parseAllocation, type CharacterSheet } from "./progression";
 import type { BaseStats } from "./progression-data";
@@ -59,7 +60,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
@@ -79,6 +80,8 @@ export type ServerMessage =
   | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number }
   /** The receiving character's own HP changed (regeneration or damage). */
   | { t: "hp"; hp: number; maxHp: number }
+  /** One of the receiving character's balances changed; `gained` is the amount just added, when it is a gain. */
+  | { t: "wallet"; currency: Currency; balance: number; gained?: number }
   /** The receiving character died; a transfer to town follows. */
   | { t: "died"; expLost: number }
 

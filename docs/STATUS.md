@@ -16,25 +16,36 @@ Cập nhật: 2026-10-17. Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `
 | 1d+ Vùng quái | Bản đồ có cảnh giới, 3 cụm × 3 quái (bậc 1, 4, 7) mỗi bản đồ, quái thường/hiếm (2 hạng), tên có bậc và loại, EXP theo nhịp lên cấp, chặn EXP khi săn sai cảnh giới. Boss và rơi đồ chưa làm (xem `docs/PHASE1.md` 1d+). Bảng EXP người chơi đã nhân 10 |
 | Di chuyển | Dự đoán phía client, hòa trộn khi server sửa, ping tự trả lời (DO ngủ được), đích đến chính xác, đường đi làm thẳng, **va chạm lưới mịn 4x4 mỗi ô** (vật cản tròn, vát góc, hàng rào mỏng) |
 
+| 1e Kinh tế khung xương | Migration `0005_economy.sql`: `currency_ledger` (append-only bằng trigger, khóa idempotency UNIQUE), `currency_balances` (CHECK >= 0), `item_instances`, `mailbox`. `server/src/economy.ts`: `applyCurrencyDelta` (một batch D1, lặp khóa hoặc âm tiền thì cả batch rollback), `claimMail` (khóa `mail:<id>`), `createItem`, `sendMail`. HUD góc phải hiện cả 3 loại tiền (không nằm trong bảng nhân vật). Trang admin `/admin.html`: tìm theo email hoặc đạo hiệu (`GET /api/admin/lookup`), chọn tài khoản rồi nhân vật, xem số dư và 50 dòng sổ cái gần nhất (`GET /api/admin/character`), sau đó mới cộng/trừ (`POST /api/admin/grant` nhận `characterId`). Chưa có: xem số dư qua `/api/me`, giao diện hòm thư/túi đồ. **Chat 5 thẻ (Tất cả/Thế giới/Bản đồ/Truyền âm/Hệ thống) chưa làm, đã ghi ở `docs/PLAN.md` mục 9a cho GĐ2.** Quái rơi Linh Thạch (`rollLinhThachDrop`, ghi sổ cái đồng bộ qua hàng đợi riêng của phòng, không chặn tick; HUD hiện số dư). Admin: `POST /api/admin/grant`, `GET /api/admin/supply`, trang `/admin.html`. Test: `server/src/economy.test.ts` (SQLite thật với migration thật), `tools/economy-smoke.mjs` (chỉ local). **Chưa lên preview/production** |
+
 ## Đang chạy ở đâu
 - **Preview:** tới hết 1d+ (vùng quái) và tự đánh trả.
 - **Production:** tới hết phẩm cấp linh căn (1c). **Chưa có** 1d, 1d+, tự đánh trả, movement budget. Khi lên production không có migration mới; bảng EXP người chơi nhân 10 nên EXP dở dang của tầng hiện tại co lại 10 lần ở các nhân vật hiện có.
 
 ## Còn lại của giai đoạn 1 (xem `docs/PHASE1.md`)
-- **1e** Kinh tế khung xương: `item_instances`, `currency_ledger` append-only có idempotency key, `mailbox`, trang admin cộng tiền, rơi Linh Thạch
 - **1f** Kiểm thử tải 50 client trên Cloudflare thật (kịch bản local đã có: `tools/load.mjs`), rà giới hạn gói Free; có thể cần Workers Paid
 
 Việc tồn đọng khác:
 - **Tạm dừng tick khi rảnh** (chưa làm, cần trước khi có người chơi thật): tick chiến đấu giữ Durable Object thức; một phòng rừng/hang có người cả ngày tốn khoảng 10.800 GB-s trên hạn mức Free 13.000/ngày dùng chung preview và production. Ý tưởng: dừng tick khi không quái nào đuổi, không ai có mục tiêu hoặc đang di chuyển, và phục hồi đúng sau khi DO ngủ.
 - **Độ trễ tick đo local** tối đa khoảng 125-524 ms giữa các lần chạy (ngưỡng 500 ms), nghi do A* khi nhiều người cùng đuổi quái; đo lại và tối ưu ở 1f.
 - **Boss** (chưa làm, sau 1e): quy tắc đã chốt nằm ở `docs/PHASE1.md` mục 1d+. Câu hỏi còn mở: một boss cho mỗi kênh hay cho cả bản đồ qua 8 kênh; quy tắc loại dưới 10% có áp dụng cho tiền không hay chỉ cho đồ.
-- **Giá trị tạm cần người dùng xác nhận:** tên hạng quái hiếm ("Tinh Anh" 8%, "Đại Yêu" 2%) và các hệ số chỉ số/EXP của chúng (`RANKS`), `LOW_MAP_EXP_MULT = 1` (không phạt thêm khi người mạnh săn bản đồ thấp), nhịp lên cấp `KILLS_BASE`/`KILLS_GROWTH` (Nguyên Anh 9 cần 2162 quái cùng bậc một tầng, nặng).
+- **Giá trị tạm cần người dùng xác nhận:** lượng và xác suất rơi Linh Thạch (`DROP_CHANCE` thường 30%, hiếm 100%; `DROP_BASE`, `DROP_GROWTH`, `DROP_AMOUNT_MULT` trong `shared/src/economy.ts`); tên hạng quái hiếm ("Tinh Anh" 8%, "Đại Yêu" 2%) và các hệ số chỉ số/EXP của chúng (`RANKS`), `LOW_MAP_EXP_MULT = 1` (không phạt thêm khi người mạnh săn bản đồ thấp), nhịp lên cấp `KILLS_BASE`/`KILLS_GROWTH` (Nguyên Anh 9 cần 2162 quái cùng bậc một tầng, nặng).
 - **Chưa ai qua được Luyện Khí 9** (chưa có đột phá, GĐ2) nên mọi lần giết ở hang đều bị chặn EXP ở mức cao nhất của rừng.
 - **Chưa có:** rơi đồ (1e), PvP, kỹ năng, area-of-interest (mọi sự kiện gửi cả phòng), độ bền trang bị.
 - Bản đồ vẽ bằng RenderTexture: chỉ mới thử với Canvas, chưa thử WebGL trên thiết bị thật (đặc biệt điện thoại). Có `?renderer=canvas` làm đường lùi.
 - Hình ảnh vật cản và nhân vật còn là placeholder (xem mục asset trong `docs/PLAN.md`).
 - Tài khoản thử `smoke-*` và `cpu-*@example.test` còn trong D1 preview; production có 2 tài khoản thử do người dùng tự tạo (thông tin đăng nhập do người dùng giữ, không ghi trong repo).
 - Quên mật khẩu qua email và cổng thanh toán chưa làm (cần nhà cung cấp, xem `docs/PLAN.md`).
+
+## Kinh tế: lưu ý vận hành
+- **Chi phí ghi D1 của một lần rơi** (ước tính, local không báo `rows_written`): dòng sổ cái (bảng + chỉ mục idempotency + chỉ mục nhân vật = 3) + cập nhật số dư (1) ≈ 4 dòng; `INSERT OR IGNORE` số dư chỉ tốn khi tạo dòng mới. Hạn mức Free là 100k dòng/ngày dùng chung cả tài khoản, tức khoảng 25k lần rơi/ngày trước khi tính lưu vị trí. **Cần đo `meta.rows_written` thật trên preview** (1f). Phương án nếu thiếu: giảm `DROP_CHANCE` hoặc hàng đợi bền trong DO gộp ghi (đổi luật PLAN mục 3, cần người dùng đồng ý).
+- Một lần rơi thất bại sau 3 lần thử thì mất (không bao giờ nhân đôi): khóa idempotency tạo một lần cho mỗi lần giết và dùng lại khi thử lại.
+- Gán admin: `wrangler d1 execute DB --env preview --remote --command "UPDATE accounts SET role='admin' WHERE email='...'"`. Trang `/admin.html` tạo khóa idempotency mới cho mỗi lần hiển thị form.
+- **Không bao giờ chèn tay dòng thử vào sổ cái preview/production**: trigger làm chúng vĩnh viễn và phá phép kiểm `SUM(delta) = số dư`. Dùng nhân vật thử.
+- Đo chi phí thật: `npx wrangler tail --env preview` rồi giết quái, dòng log `ledger rows_written <reason> <n>` cho số dòng ghi mỗi lần.
+- `client/public/admin.html` viết chuỗi tiếng Việt trực tiếp (ngoại lệ chấp nhận được với công cụ quản trị độc lập, trái PLAN mục 7).
+- **Triển khai:** chạy `db:migrate:*` (0005) TRƯỚC khi deploy worker, hai bước riêng; thiếu bảng thì mọi lần rơi lỗi âm thầm vào log.
+- Test kinh tế dùng `node:sqlite` (Node 22+); file test bị loại khỏi `tsc` của server vì không có kiểu Node.
 
 ## Môi trường
 | | Production | Preview |
