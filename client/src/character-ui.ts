@@ -5,6 +5,7 @@ import {
   deriveStats,
   expToNext,
   getRealm,
+  getRootGrade,
   type BaseStats,
   type CharacterSheet,
   type StatKey,
@@ -48,7 +49,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
     const realm = getRealm(s.realm);
 
     const head = el("div", "cp-head");
-    head.append(el("b", undefined, s.name), el("span", undefined, `${vi.character.root}: ${vi.roots[s.spiritualRoot] ?? s.spiritualRoot}`));
+    head.append(el("b", undefined, s.name), el("span", undefined, `${vi.character.root}: ${vi.roots[s.spiritualRoot] ?? s.spiritualRoot} · ${getRootGrade(s.rootGrade).nameVi}`));
     const close = el("button", "cp-close", "×");
     close.onclick = () => (panel.hidden = true);
     head.append(close);
@@ -106,7 +107,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
 
     const preview: BaseStats = { ...s.base };
     for (const def of STAT_DEFS) preview[def.key] += pending[def.key] ?? 0;
-    const d = deriveStats(preview, s.realm, s.stage);
+    const d = deriveStats(preview, s.realm, s.stage, s.rootGrade);
     const derived = el("div", "cp-derived");
     const lines: [string, string][] = [
       [vi.character.derived.maxHp, String(d.maxHp)],
@@ -115,7 +116,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
       [vi.character.derived.defense, String(d.defense)],
       [vi.character.derived.critRate, `${d.critRate}%`],
       [vi.character.derived.dodgeRate, `${d.dodgeRate}%`],
-      [vi.character.derived.expBonus, `+${d.expBonus}%`],
+      [vi.character.derived.expBonus, `${d.expBonus >= 0 ? "+" : ""}${d.expBonus}%`],
       [vi.character.derived.dropBonus, `+${d.dropBonus}%`],
     ];
     for (const [name, value] of lines) {

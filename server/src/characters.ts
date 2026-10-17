@@ -19,6 +19,7 @@ export interface CharacterRow {
   stage: number;
   exp: number;
   potential_points: number;
+  root_grade: number;
   stat_can_cot: number;
   stat_than_phap: number;
   stat_ngo_tinh: number;
@@ -28,7 +29,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 export function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
@@ -54,6 +55,7 @@ export function toCharacterSheet(c: CharacterRow): CharacterSheet {
     id: c.id,
     name: c.name,
     spiritualRoot: c.spiritual_root,
+    rootGrade: c.root_grade,
     realm: c.realm,
     stage: c.stage,
     exp: c.exp,

@@ -232,15 +232,15 @@ assert(wc3.map === "town" && wc3.players.find((p) => p.id === C.character.id).pa
 
 // --- progression: allocate potential points, overspend rejected, persisted across reconnect ---
 const sheet0 = wc3.character;
-assert(sheet0.potentialPoints === 5 && sheet0.realm === 0 && sheet0.stage === 1, "new character starts at Luyện Khí tầng 1 with starting points");
+assert(sheet0.rootGrade >= 0 && sheet0.rootGrade <= 4 && sheet0.potentialPoints >= 5 && sheet0.realm === 0 && sheet0.stage === 1, "new character starts at Luyện Khí tầng 1 with starting points");
 c3.send({ t: "allocate", points: { canCot: 2, linhLuc: 1 } });
 const st1 = await c3.wait((m) => m.t === "stats");
-assert(st1.character.potentialPoints === 2 && st1.character.base.canCot === sheet0.base.canCot + 2 && st1.character.base.linhLuc === sheet0.base.linhLuc + 1, "allocation spends points and raises stats");
+assert(st1.character.potentialPoints === sheet0.potentialPoints - 3 && st1.character.base.canCot === sheet0.base.canCot + 2 && st1.character.base.linhLuc === sheet0.base.linhLuc + 1, "allocation spends points and raises stats");
 await sleep(600);
 c3.inbox.length = 0;
 c3.send({ t: "allocate", points: { canCot: 50 } });
 const st2 = await c3.wait((m) => m.t === "stats");
-assert(st2.character.potentialPoints === 2 && st2.character.base.canCot === st1.character.base.canCot, "overspending is rejected and nothing changes");
+assert(st2.character.potentialPoints === st1.character.potentialPoints && st2.character.base.canCot === st1.character.base.canCot, "overspending is rejected and nothing changes");
 await sleep(600);
 c3.send({ t: "allocate", points: { hacker: 5 } });
 c3.send({ t: "allocate", points: { canCot: -3 } });
@@ -249,13 +249,13 @@ assert(!c3.inbox.some((m) => m.t === "stats" && m !== st2), "malformed allocatio
 const c4 = connect(C.cookie, 1);
 await c4.opened;
 const wc4 = await c4.wait((m) => m.t === "welcome");
-assert(wc4.character.potentialPoints === 2 && wc4.character.base.canCot === st1.character.base.canCot, "allocation survives reconnect");
+assert(wc4.character.potentialPoints === st1.character.potentialPoints && wc4.character.base.canCot === st1.character.base.canCot, "allocation survives reconnect");
 const grant = await api("POST", "/api/dev/grant-exp", { body: { exp: 1e12 }, cookie: C.cookie });
 if (grant.status === 404) {
   console.log("skip: dev grant is not enabled here (set ENABLE_DEV_GRANT=1 in .dev.vars for local runs)");
 } else {
   assert(grant.status === 200 && grant.data.character.stage === 9 && grant.data.character.realm === 0, "dev EXP grant reaches stage 9 and stops there");
-  assert(grant.data.character.potentialPoints === 2 + 8 * 5, "each stage granted potential points");
+  assert(grant.data.character.potentialPoints === st1.character.potentialPoints + 8 * 5, "each stage granted potential points");
 }
 connections.push(c4);
 
