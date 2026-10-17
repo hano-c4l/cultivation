@@ -1,6 +1,20 @@
 # Trạng thái dự án (bàn giao)
 
-Cập nhật: 2026-10-17. Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `docs/PLAN.md` (kế hoạch tổng) và `docs/PHASE1.md` (chia nhỏ giai đoạn 1).
+Cập nhật: 2026-10-17 (cuối ngày). Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `docs/PLAN.md` (kế hoạch tổng), `docs/PHASE1.md` (giai đoạn 1, đã xong) và `docs/PHASE2.md` (giai đoạn 2, đang làm). Ngôn ngữ: giao diện và tài liệu tiếng Việt, code (hàm, biến, comment) tiếng Anh.
+
+## Bàn giao nhanh (cho session mới)
+- **Đang ở đâu:** giai đoạn 1 xong (1f đo tải thật trên Cloudflare được hoãn theo quyết định của người dùng). Giai đoạn 2 đã làm: **2g** chat nhiều kênh, **2a** vật phẩm và túi đồ (gồm hòm thư, sắp xếp, chia), **hệ thống thể chất** (dữ liệu và hiển thị; xem bảng bên dưới). **Việc kế tiếp theo kế hoạch: 2b (trang bị và độ bền)**, rồi 2c → 2d → 2e → 2f → 2i → 2h (xem `docs/PHASE2.md`). Người dùng chưa chốt phạm vi chi tiết của 2b; nên phác thảo rồi hỏi các điểm cần chốt trước khi viết code.
+- **Production và preview đang chạy cùng một bản code** (nhánh `main` và `preview` trùng nội dung), D1 đã áp dụng migration `0001` đến `0008` ở cả hai. Xem mục "Đang chạy ở đâu".
+- **Phản hồi gần nhất của người dùng đều đã xử lý:** lỗi bố cục túi đồ trên điện thoại (sửa và đã lên production), sắp xếp/chia, hiển thị chat đỏ, thể chất.
+- **Quy ước làm việc với người dùng:**
+  - Khi người dùng nói **"PR"** nghĩa là: mở PR, merge, rồi deploy chỗ đó (chạy migration D1 **trước**, riêng một bước, nếu có). Nếu không nói "PR", làm xong thì hỏi một câu "mở PR vào preview (merge và deploy preview luôn)?".
+  - Quy trình nhánh trong `CLAUDE.md`: `features_xxxx` từ `preview` → PR vào `preview` → deploy preview → (chỉ khi người dùng đồng ý) PR `preview` → `main` → migrate production → deploy production. Không commit thẳng vào `main`/`preview`.
+  - Trợ lý **không đăng nhập hay tạo tài khoản trên preview/production**; kiểm tra ở đó chỉ-đọc (`/api/health`, các API cần đăng nhập phải 401, các cổng `dev` phải 404, WebSocket không cookie bị từ chối). Việc cần đăng nhập thật do người dùng tự thử; trợ lý nêu rõ danh sách cần thử.
+  - Trước khi báo "xong" và trước khi chốt thiết kế lớn, tham khảo advisor (xem `CLAUDE.md`). Số liệu và rủi ro giới hạn gói Free phải báo cho người dùng (xem `docs/PLAN.md` mục 2a).
+  - Báo cáo cuối mỗi việc: nói rõ **đã kiểm gì, chưa kiểm gì**, giá trị tạm đã dùng và việc người dùng cần thử.
+- **Máy mới (laptop):** cần `.dev.vars` (không commit) với `DISABLE_RATE_LIMIT=1` và `ENABLE_DEV_GRANT=1` để chạy các smoke script, `npm install`, `gh` đã đăng nhập, `CLOUDFLARE_API_TOKEN` và `CLOUDFLARE_ACCOUNT_ID` để dùng wrangler, danh tính git `hano-c4l` / `hano.c4l@gmail.com` đặt theo repo, bản Node có `node:sqlite` (các test D1 dùng nó; máy hiện chạy Node 26).
+- **Lệnh gán admin trên production** (người dùng đã có): `npx wrangler d1 execute DB --remote --command "UPDATE accounts SET role='admin' WHERE email='...'"`, preview thêm `--env preview`; đăng nhập lại sau khi gán.
+- **Việc nhỏ đang chờ quyết định hoặc chưa làm:** giá mở khóa tab túi đồ trong game; tiền tệ trong thư; nhận thể chất qua vật phẩm; nối buff thể chất vào gameplay (chờ kỹ năng 2c); màn admin quản lý thể chất (2i); ô dùng nhanh vật phẩm (trong thanh phím tắt 2c); boss (2h); các giá trị tạm (xem "Giá trị tạm" bên dưới).
 
 ## Đã xong
 | Hạng mục | Ghi chú |
@@ -18,23 +32,31 @@ Cập nhật: 2026-10-17. Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `
 
 | 1e Kinh tế khung xương | Migration `0005_economy.sql`: `currency_ledger` (append-only bằng trigger, khóa idempotency UNIQUE), `currency_balances` (CHECK >= 0), `item_instances`, `mailbox`. `server/src/economy.ts`: `applyCurrencyDelta` (một batch D1, lặp khóa hoặc âm tiền thì cả batch rollback), `claimMail` (khóa `mail:<id>`), `createItem`, `sendMail`. HUD góc phải hiện cả 3 loại tiền (không nằm trong bảng nhân vật). Trang admin `/admin.html`: tìm theo email hoặc đạo hiệu (`GET /api/admin/lookup`), chọn tài khoản rồi nhân vật, xem số dư và 50 dòng sổ cái gần nhất (`GET /api/admin/character`), sau đó mới cộng/trừ (`POST /api/admin/grant` nhận `characterId`). Chưa có: xem số dư qua `/api/me`, giao diện hòm thư/túi đồ. **Chat 5 thẻ (Tất cả/Thế giới/Bản đồ/Truyền âm/Hệ thống) chưa làm, đã ghi ở `docs/PLAN.md` mục 9a cho GĐ2.** Quái rơi Linh Thạch (`rollLinhThachDrop`, ghi sổ cái đồng bộ qua hàng đợi riêng của phòng, không chặn tick; HUD hiện số dư). Admin: `POST /api/admin/grant`, `GET /api/admin/supply`, trang `/admin.html`. Test: `server/src/economy.test.ts` (SQLite thật với migration thật), `tools/economy-smoke.mjs` (chỉ local). **Chưa lên preview/production** |
 
+| 1f Kiểm thử tải thật | **Hoãn** (quyết định người dùng): số đo local đã đạt (tick trung bình khoảng 2,7 ms, tối đa khoảng 35 ms, không tick nào bị bỏ ở 50 client). Chỉ nâng Workers Paid khi gặp dấu hiệu nêu ở mục "Còn lại" |
+| Tạm dừng tick khi rảnh | Phòng rừng/hang dừng tick khi không có gì xảy ra, dựng lại sim sau khi Durable Object ngủ (chi tiết ở "Việc tồn đọng") |
+| 2g Chat nhiều kênh | 5 thẻ Tất cả/Thế giới/Bản đồ/Truyền âm/Hệ thống qua socket chat riêng tới `ChatHub`; admin gửi thông báo hệ thống; mức độ dòng hệ thống (đỏ/xanh ngọc); nút xóa chat; lỗi chỉ ở kênh phát sinh (chi tiết ở "Chat nhiều kênh (2g)") |
+| 2a Vật phẩm và túi đồ | Danh mục vật phẩm (độ hiếm, phẩm cấp), rơi đồ, túi 8×16 nhiều tab, hòm thư 30 phút khi túi đầy, dùng đan, sắp xếp (3 lần mỗi phút), chia, mở rộng tab bằng admin (chi tiết ở "Túi đồ và hòm thư (2a)") |
+| Ví và admin | HUD 3 loại tiền ở góc phải; trang `/admin`: tra cứu theo email/đạo hiệu, xem số dư và sổ cái, cộng/trừ tiền, thêm tab túi đồ, xem tổng cung |
 | Thể chất | Trục thứ hai bên cạnh linh căn; đa số là Phàm Thể, số ít có thể chất đặc biệt với thang cấp bậc riêng. **Danh mục là dữ liệu trong D1** để sau này làm màn admin quản lý (xem mục "Thể chất: thiết kế dữ liệu" bên dưới). Migration `0007` (cột `characters.constitution`/`constitution_tier`, tung ngẫu nhiên cho mọi nhân vật đã có) và `0008` (các bảng danh mục + seed). Tạo nhân vật do server tung từ danh mục; cửa sổ nhân vật có dòng "Thể chất: … · Cấp n/m" ngay dưới Linh căn (di chuột xem mô tả); màn hình sau khi tạo nhân vật báo thể chất nếu không phải Phàm Thể. **Buff chưa có tác dụng** (chờ kỹ năng ở 2c); nhận thể chất qua vật phẩm và màn admin chưa làm. |
 
 ## Đang chạy ở đâu
-- **Preview:** cùng bản với production, cộng các thay đổi chưa đưa lên (xem lịch sử PR).
-- **Production:** cùng bản với preview (deploy 2026-10-17, version 4e3c69bf): 1e, ví/admin, tạm dừng tick, chat nhiều kênh, thông báo hệ thống, sửa bố cục điện thoại.
+- **Production** (`cultivation`, nhánh `main`): deploy 2026-10-17, version `6c232fd3`, đã chạy migration D1 `0001` đến `0008`. Gồm mọi thứ ở bảng trên.
+- **Preview** (`cultivation-preview`, nhánh `preview`): cùng code, version `6d070283`, D1 cũng đã áp dụng `0001` đến `0008`.
+- Số version đổi mỗi lần deploy (kể cả deploy chỉ có thay đổi tài liệu); các số ở đây là lần deploy có thay đổi code gần nhất.
+- Production còn hai tài khoản thử do người dùng tự tạo; preview còn nhiều tài khoản thử của smoke script (`smoke-*`, `cpu-*`, `eco-*`, `chat-*`... `@example.test`, không đụng chạm).
 
-## Còn lại của giai đoạn 1 (xem `docs/PHASE1.md`)
-- **1f** Kiểm thử tải 50 client trên Cloudflare thật: **HOÃN theo quyết định của người dùng (2026-10-17)**, vì số đo local đã đạt (tick trung bình khoảng 2,7 ms, tối đa khoảng 35 ms, không tick nào bị bỏ) và tạm dừng tick đã giảm nguy cơ hết hạn mức. Kịch bản local vẫn có: `tools/load.mjs`. **Chỉ nâng Workers Paid khi gặp một trong các dấu hiệu**: có vài chục người online cùng lúc; lỗi quota hoặc 1015/1102/1042 kéo dài, đăng nhập lỗi hàng loạt; bảng điều khiển Cloudflare cho thấy GB-s, request Durable Object hoặc dòng ghi D1 trên khoảng 80% hạn mức ngày (hạn mức chung preview và production). Khi nâng thì báo người dùng trước (`docs/PLAN.md` mục 2a), rồi mới chạy đo tải thật.
-- **Giai đoạn 2**: bản nháp chia nhánh ở `docs/PHASE2.md`, chờ người dùng chốt thứ tự và các câu hỏi cuối file.
+## Việc kế tiếp và còn lại
+- **Kế tiếp: 2b Trang bị và độ bền** (`features_equipment`), xem `docs/PHASE2.md`: ô trang bị, chỉ số cộng vào `deriveStats`, yêu cầu cảnh giới, độ bền giảm khi chết, sửa đồ tốn Linh Thạch. Trang bị là đồ **không xếp chồng** và quý: khi làm nên đổi cách xử lý "túi đầy" (hiện gửi hòm thư 30 phút) cho phù hợp, và nhớ rằng `item_instances` đã có `bag_tab`/`cell` NULL khi không ở trong túi (dùng cho ô trang bị).
+- Thứ tự còn lại của giai đoạn 2: 2c Kỹ năng/MP/ngũ hành đầy đủ/thanh phím tắt (gồm ô dùng nhanh đan dược và nối buff thể chất) → 2d Chủ tu/phụ tu và đột phá → 2e NPC thương nhân và nhiệm vụ → 2f PvP, sát khí, vệ binh (và area-of-interest) → 2i màn admin thể chất → 2h Bảng xếp hạng và boss.
+- **1f** (đo tải 50 client trên Cloudflare thật) **hoãn theo quyết định của người dùng (2026-10-17)**. **Chỉ nâng Workers Paid khi gặp một trong các dấu hiệu**: có vài chục người online cùng lúc; lỗi quota hoặc 1015/1102/1042 kéo dài, đăng nhập lỗi hàng loạt; bảng điều khiển Cloudflare cho thấy GB-s, request Durable Object hoặc dòng ghi D1 trên khoảng 80% hạn mức ngày (hạn mức chung preview và production). Khi nâng thì báo người dùng trước (`docs/PLAN.md` mục 2a), rồi mới chạy đo tải thật.
 
 Việc tồn đọng khác:
 - **Tạm dừng tick khi rảnh: ĐÃ LÀM** (`features_idle-tick`). Phòng rừng/hang tự dừng `setInterval` khi `CombatSim.isIdle()` (không quái chết/đuổi/về nhà, không người đi/có mục tiêu/thiếu máu/chết), ghi hết tiến độ rồi mới dừng, nên Durable Object ngủ được. `move`/`attack`/vào phòng đánh thức lại. Nếu runtime đã đuổi object (sim mất): `rebuild` dựng sim mới, cấp hồ sơ cho **mọi** người đang kết nối (đọc D1), khôi phục hạng quái từ `ctx.storage` (khóa `ranks`, tránh tái tung hạng để không nuôi lạm phát Linh Thạch), gửi lại `mon` cho client. Con số 10.800 GB-s mỗi ngày giờ chỉ đúng cho phòng đánh nhau liên tục; phòng đứng yên gần như không tốn. **Cần xác nhận trên preview** bằng `wrangler tail --env preview` (log `tick paused`, `sim rebuilt`) và bảng điều khiển Cloudflare (thời lượng DO giảm). Hạng quái không được lưu nếu object bị đuổi khi đang đánh nhau (crash): khi đó hạng được tung lại. Còn một đường tái tung hạng có sẵn từ trước: đổi kênh (mỗi kênh trống spawn lại quái mới); cần lưu ý khi làm boss và rơi đồ. `GET /api/dev/evict` phải trả 404 ở preview/production.
 - **Độ trễ tick đo local** tối đa khoảng 125-524 ms giữa các lần chạy (ngưỡng 500 ms), nghi do A* khi nhiều người cùng đuổi quái; đo lại và tối ưu ở 1f.
-- **Boss** (chưa làm, sau 1e): quy tắc đã chốt nằm ở `docs/PHASE1.md` mục 1d+. **Đã chốt (2026-10-17): mỗi bản đồ chỉ có đúng 1 boss, tính cho cả 8 kênh của bản đồ đó (cần bộ điều phối toàn cục theo bản đồ, cùng kiểu với `ChatHub`); quy tắc loại dưới 10% áp dụng cho cả tiền lẫn đồ.** Làm ở 2h (`docs/PHASE2.md`).
+- **Boss** (chưa làm, 2h): quy tắc đã chốt nằm ở `docs/PHASE1.md` mục 1d+. **Đã chốt (2026-10-17): mỗi bản đồ chỉ có đúng 1 boss, tính cho cả 8 kênh của bản đồ đó (cần bộ điều phối toàn cục theo bản đồ, cùng kiểu với `ChatHub`); quy tắc loại dưới 10% áp dụng cho cả tiền lẫn đồ.** Làm ở 2h (`docs/PHASE2.md`).
 - **Giá trị tạm (người dùng đã đồng ý giữ nguyên, chỉnh khi cân bằng, 2026-10-17):** lượng và xác suất rơi Linh Thạch (`DROP_CHANCE` thường 30%, hiếm 100%; `DROP_BASE`, `DROP_GROWTH`, `DROP_AMOUNT_MULT` trong `shared/src/economy.ts`); tên hạng quái hiếm ("Tinh Anh" 8%, "Đại Yêu" 2%) và các hệ số chỉ số/EXP của chúng (`RANKS`), `LOW_MAP_EXP_MULT = 1` (không phạt thêm khi người mạnh săn bản đồ thấp), nhịp lên cấp `KILLS_BASE`/`KILLS_GROWTH` (Nguyên Anh 9 cần 2162 quái cùng bậc một tầng, nặng).
 - **Chưa ai qua được Luyện Khí 9** (chưa có đột phá, GĐ2) nên mọi lần giết ở hang đều bị chặn EXP ở mức cao nhất của rừng.
-- **Chưa có:** trang bị, PvP, kỹ năng, area-of-interest (mọi sự kiện gửi cả phòng), độ bền trang bị.
+- **Chưa có:** trang bị và độ bền (2b), kỹ năng/MP (2c), PvP (2f), area-of-interest (mọi sự kiện gửi cả phòng), cửa hàng NPC và nhiệm vụ (2e), boss (2h), màn admin thể chất (2i).
 - Bản đồ vẽ bằng RenderTexture: chỉ mới thử với Canvas, chưa thử WebGL trên thiết bị thật (đặc biệt điện thoại). Có `?renderer=canvas` làm đường lùi.
 - Hình ảnh vật cản và nhân vật còn là placeholder (xem mục asset trong `docs/PLAN.md`).
 - Tài khoản thử `smoke-*` và `cpu-*@example.test` còn trong D1 preview; production có 2 tài khoản thử do người dùng tự tạo (thông tin đăng nhập do người dùng giữ, không ghi trong repo).
@@ -122,8 +144,8 @@ tools/   smoke.mjs
 - **Ping:** chuỗi thuần `ping`/`pong` do runtime tự trả (`setWebSocketAutoResponse`), không đánh thức DO. Trạng thái người chơi nằm trong attachment của socket nên DO ngủ được **ở thành**; ở bản đồ có quái, trạng thái chiến đấu nằm trong bộ nhớ phòng và phòng thức suốt lúc có người (tick 10 Hz).
 - **Lưu vị trí và tiến độ:** khi ngắt kết nối và debounce 10 giây bằng alarm sau khi di chuyển hoặc nhận EXP (không có alarm định kỳ). Lên tầng ghi ngay. Mọi đường nhả khóa (rời, bị đá, portal, chết) ghi tiến độ trước; điểm tiềm năng ghi theo delta và được "đặt chỗ" trước khi ghi (`beginFlush`/`endFlush`) để không ghi trùng.
 - **Va chạm:** `CELLS_PER_TILE = 4`, bán kính thân `BODY_RADIUS = 0.25`. A* trên lưới điều hướng mịn rồi kéo căng bằng line-of-sight (`findSmoothPath`). Click vào vật cản đi tới điểm đứng được gần nhất.
-- **Giao thức:** xem `shared/src/protocol.ts`. Client gửi `move` (x, y, fx, fy, seq), `portal`, `chat`, `allocate` (điểm theo chỉ số, một tin một lần ghi), `attack` (id quái); server trả `welcome` (kèm `character`), `stats` (sau mỗi lần cộng điểm hoặc nhận EXP), `mon`/`mon_gone` (quái theo đường đi như người chơi), `hit`, `hp`, `died`; `joined`, `left`, `path`, `ack`, `transfer`, `chat`, `chat_error`, `kicked`.
-- **D1:** migration trong `server/migrations/` (`0001`, `0002`, `0003` thêm 6 cột `stat_*`, `0004` thêm `root_grade`). Bảng `accounts`, `sessions`, `characters` (một nhân vật mỗi tài khoản), `auth_attempts`. Vai trò `admin` gán thủ công bằng `wrangler d1 execute`.
+- **Giao thức** (đầy đủ và mới nhất: `shared/src/protocol.ts`; túi đồ ở mục 2a, chat ở mục 2g, danh mục thể chất ở mục thể chất): client gửi `move` (x, y, fx, fy, seq), `portal`, `chat` (kèm `channel`), `allocate` (điểm theo chỉ số, một tin một lần ghi), `attack` (id quái); server trả `welcome` (kèm `character`), `stats` (sau mỗi lần cộng điểm hoặc nhận EXP), `mon`/`mon_gone` (quái theo đường đi như người chơi), `hit`, `hp`, `died`; `joined`, `left`, `path`, `ack`, `transfer`, `chat`, `chat_error`, `kicked`; sau này thêm `wallet`, `inv`, `loot`, `mail`, `inv_error` và `welcome` mang `wallet`, `bag`, `mail`, `constitutions`.
+- **D1:** migration trong `server/migrations/`: `0001` khởi tạo, `0002` tài khoản/phiên/nhân vật, `0003` sáu cột `stat_*`, `0004` `root_grade`, `0005` kinh tế (sổ cái, số dư, vật phẩm, hòm thư), `0006` túi đồ (`qty`, `bag_tab`, `cell`, `bag_tabs`, `item_grants`, `inv_guard`, hạn thư), `0007` thể chất của nhân vật (cột + tung cho nhân vật có sẵn), `0008` bảng danh mục thể chất + `config_versions`. Bảng chính: `accounts`, `sessions`, `characters` (một nhân vật mỗi tài khoản), `auth_attempts`, `currency_ledger`, `currency_balances`, `item_instances`, `item_grants`, `mailbox`, `constitutions`, `constitution_tiers`, `constitution_effects`, `config_versions`. Durable Object: `MapRoom`, `CharacterLock`, `PasswordHasher`, `ChatHub` (migration `v3` trong `wrangler.jsonc`). Vai trò `admin` gán thủ công bằng `wrangler d1 execute`.
 
 ## Quy trình làm việc
 - Nhánh và deploy: xem `CLAUDE.md` (`features_*` từ `preview` → PR vào `preview` → deploy preview → PR vào `main` → deploy production). Trước khi deploy chạy `npm run db:migrate:preview` hoặc `npm run db:migrate:remote` nếu có migration mới.
@@ -138,7 +160,27 @@ tools/   smoke.mjs
 - Danh tính git theo repo: `hano-c4l` / `hano.c4l@gmail.com` (cấu hình local, không đi theo repo).
 - Cloud cần: `gh` đã đăng nhập, `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` để dùng wrangler (token do người dùng tạo và giữ trong secrets).
 
+## Công cụ kiểm thử (tất cả chạy ở local trừ khi ghi khác)
+Cần `wrangler dev` chạy ở cổng 8787 và `.dev.vars` có `DISABLE_RATE_LIMIT=1` và `ENABLE_DEV_GRANT=1`. Các script tự từ chối host không phải localhost, trừ `smoke.mjs` còn chạy được trên preview.
+| Lệnh | Kiểm gì |
+|---|---|
+| `npm run typecheck`, `npm test` | Kiểu và toàn bộ test đơn vị (khoảng 225 test; một số dùng SQLite thật qua `server/src/test-db.ts`, loại khỏi `tsc` vì cần kiểu Node) |
+| `node tools/smoke.mjs [ws://localhost:8787]` | Luồng chính: đăng ký, tạo nhân vật, quái, EXP, chết, cổng bản đồ |
+| `node tools/economy-smoke.mjs` | Admin: tra cứu, cộng/trừ tiền, idempotency, sổ cái khớp số dư |
+| `node tools/chat-smoke.mjs` | Chat Thế giới/Bản đồ/Truyền âm/Hệ thống, giới hạn, socket chat bị thay thế |
+| `node tools/idle-smoke.mjs` | Tạm dừng tick, giả lập Durable Object bị đuổi, dựng lại sim |
+| `node tools/inventory-smoke.mjs` | Túi đồ, hòm thư, hết hạn, sắp xếp, chia, đan trong rừng, đăng nhập hai nơi |
+| `node tools/load.mjs ws://localhost:8787 50 30` | 50 client săn quái 30 giây, đo tick |
+Các cổng chỉ có ở local (production/preview phải trả 404): `/api/dev/grant-exp`, `/api/dev/tick-stats`, `/api/dev/evict`, `/api/dev/loot`.
+
 ## Bẫy đã gặp
+- **Bẫy khi làm việc ở máy Windows (session vừa rồi):** khởi động `wrangler dev` bằng `Start-Process cmd.exe /c "npx wrangler dev --port 8787 > log 2>&1"` (cửa sổ ẩn) và dọn tiến trình sau khi xong (`Get-Process workerd | Stop-Process`, cộng các `node.exe`/`cmd.exe` có `wrangler` trong dòng lệnh); chạy `wrangler dev` bằng `&` trong Git Bash làm treo lệnh, và nhiều bản chạy chồng nhau trên cổng 8787 làm mọi kết nối bị reset. Trong Git Bash, đường dẫn bắt đầu bằng `/api/...` truyền cho `curl -w` bị đổi thành đường dẫn Windows trong phần in ra (chỉ là hiển thị).
+- Lỗi 7403 ("account is not valid") của wrangler khi migrate/deploy đôi khi thoáng qua: chạy lại một lần; luôn chạy migration và deploy thành hai lệnh riêng và kiểm kết quả migration trước.
+- Trong khung trình duyệt của app, ảnh chụp màn hình đôi khi chậm một nhịp sau thao tác: chụp lại sau 1 giây hoặc đọc DOM bằng JavaScript để chắc chắn.
+- Script Python ghi file qua heredoc trong Git Bash đôi khi hỏng khi nội dung có dấu nháy lẫn lộn: ghi script bằng công cụ Write rồi chạy `python script.py`.
+- `changes()` hay "đổi 0 dòng" **không** làm batch D1 rollback; mọi điều kiện phải là câu lệnh gây lỗi (UNIQUE/CHECK/NOT NULL, ví dụ bảng `inv_guard`), xem mục túi đồ.
+- Khi thêm cột mà truy vấn nhân vật nào cũng chọn (như `bag_tabs`, `constitution`), migration phải chạy trước khi deploy worker, nếu không không ai vào được phòng nào.
+
 - Kênh hợp lệ là 1 đến 8; `?ch=9` trả 400 và WebSocket báo 1006 (dễ nhầm với lỗi mạng).
 - Khi thử UI cục bộ, đừng sửa vị trí nhân vật trong D1 lúc trình duyệt còn mở WebSocket: socket cũ đóng lại sẽ ghi đè vị trí. Đóng trang trước (điều hướng sang `/api/health`), sửa D1, rồi mở lại.
 - Nhân vật để đứng ở rừng/hang bị quái giết rồi về thành; quên tab ở đó cũng tốn hạn mức (xem mục tick).
