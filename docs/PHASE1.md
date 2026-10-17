@@ -51,7 +51,7 @@ Mở rộng 1d theo yêu cầu của người dùng. Đã làm trong nhánh này
 - Cấp cao hơn cấp bản đồ một ít (người chơi hợp lực và có kỹ năng vẫn hạ được). Có kỹ năng đặc biệt, làm khi người chơi đã có kỹ năng (GĐ2).
 - Thông báo toàn bản đồ khi boss xuất hiện và khi bị giết. Quái hiếm thì không thông báo.
 - Chia thưởng: tỉ lệ đóng góp = 70% theo sát thương + 30% kết liễu (ví dụ đánh 20/70 phần máu nhưng kết liễu = 20% + 30% = 50%). **Tiền chia theo tỉ lệ; đồ chia ngẫu nhiên có trọng số theo tỉ lệ (tỉ lệ cao thì dễ ra đồ tốt); người dưới 10% không được chia.**
-- **Cần ghi nhớ khi làm:** "chỉ biến mất khi bị giết" mâu thuẫn với việc hiện nay bỏ quái khi phòng trống, nên trạng thái boss và bộ đếm quái bị giết phải lưu bền (DO storage, ghi gộp). Câu hỏi còn mở: giới hạn một boss cho mỗi kênh hay cho cả bản đồ qua 8 kênh; quy tắc loại dưới 10% có áp dụng cho tiền không hay chỉ cho đồ.
+- **Cần ghi nhớ khi làm:** "chỉ biến mất khi bị giết" mâu thuẫn với việc hiện nay bỏ quái khi phòng trống, nên trạng thái boss và bộ đếm quái bị giết phải lưu bền (DO storage, ghi gộp). **Đã chốt (2026-10-17): chỉ 1 boss cho mỗi bản đồ (cả 8 kênh), quy tắc dưới 10% áp dụng cho cả tiền lẫn đồ.**
 
 ## 1e. Kinh tế khung xương (`features_economy-core`)
 - Migration D1: `item_instances` (ID duy nhất), `currency_ledger` append-only (idempotency key, actor), `mailbox`; số dư là bản tổng hợp cập nhật bằng batch atomic có điều kiện.

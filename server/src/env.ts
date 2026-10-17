@@ -1,10 +1,12 @@
 import type { CharacterLock } from "./character-lock";
+import type { ChatHub } from "./chat-hub";
 import type { MapRoom } from "./map-room";
 import type { PasswordHasher } from "./password-hasher";
 
 export interface Env {
   MAP_ROOM: DurableObjectNamespace<MapRoom>;
   CHAR_LOCK: DurableObjectNamespace<CharacterLock>;
+  CHAT_HUB: DurableObjectNamespace<ChatHub>;
   PASSWORD_HASHER: DurableObjectNamespace<PasswordHasher>;
   DB: D1Database;
   ASSETS: Fetcher;

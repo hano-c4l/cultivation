@@ -6,6 +6,7 @@ import {
   CHAT_BURST,
   CHAT_MIN_GAP_MS,
   CHAT_WINDOW_MS,
+  checkChatRate,
   EMPTY_WALLET,
   MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
@@ -284,7 +285,8 @@ export class MapRoom extends DurableObject<Env> {
       case "portal":
         return this.handlePortal(ws, state);
       case "chat":
-        return this.handleChat(ws, state, msg.text);
+        // Only map chat belongs on this socket; a client that sends the others here is ignored.
+        return msg.channel === "map" ? this.handleChat(ws, state, msg.text) : undefined;
       case "allocate":
         return this.handleAllocate(ws, state, msg.points);
       case "attack":
@@ -377,16 +379,12 @@ export class MapRoom extends DurableObject<Env> {
 
   private handleChat(ws: WebSocket, state: PlayerState, text: string): void {
     const now = Date.now();
-    const recent = state.chatTimes.filter((t) => now - t < CHAT_WINDOW_MS);
-    const last = recent[recent.length - 1];
-    if (recent.length >= CHAT_BURST || (last !== undefined && now - last < CHAT_MIN_GAP_MS)) {
-      return this.send(ws, { t: "chat_error", reason: "rate" });
-    }
-    recent.push(now);
-    state.chatTimes = recent;
+    const times = checkChatRate(state.chatTimes, now, { burst: CHAT_BURST, windowMs: CHAT_WINDOW_MS, minGapMs: CHAT_MIN_GAP_MS });
+    if (!times) return this.send(ws, { t: "chat_error", reason: "rate" });
+    state.chatTimes = times;
     ws.serializeAttachment(state);
-    // Room-local chat: only players on this map channel receive it.
-    this.broadcast({ t: "chat", id: state.id, name: state.name, text: filterChat(text), ts: now });
+    // Room-local chat: only players on this map channel receive it. World chat and whispers go over the chat socket.
+    this.broadcast({ t: "chat", channel: "map", id: state.id, name: state.name, text: filterChat(text), ts: now });
   }
 
   /** Spends potential points. Always answers with the current sheet so the client resyncs after a rejection. */
