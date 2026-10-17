@@ -12,7 +12,14 @@ import {
   EMPTY_WALLET,
   INV_MIN_GAP_MS,
   POTION_COOLDOWN_MS,
-  applyOps,
+  applyBag,
+  equipmentBonus,
+  newDurability,
+  planDeathWear,
+  planEquip,
+  planReconcile,
+  planRepair,
+  planUnequip,
   getItemDef,
   itemAt,
   planAdd,
@@ -25,7 +32,11 @@ import {
   SORT_WINDOW_MS,
   firstFreeCell,
   type BagOp,
+  type EquipBlock,
+  type EquipSlot,
+  type EquipStats,
   type LootDrop,
+  type WearerCtx,
   MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
   MOVE_BUDGET_CAP,
@@ -74,6 +85,7 @@ import {
   listMail,
   loadBag,
   mailViews,
+  opStatements,
   pruneGrants,
   type BagState,
   type MailItem,
@@ -130,8 +142,15 @@ function baseOf(row: CharacterRow): BaseStats {
   return toCharacterSheet(row).base;
 }
 
-function seedOf(row: CharacterRow): ProfileSeed {
+/** Who is wearing the gear: requirements are judged against the character without it. */
+function wearerOfRow(row: CharacterRow): WearerCtx {
+  return { gender: row.gender, realm: row.realm, stage: row.stage, base: baseOf(row) };
+}
+
+function seedOf(row: CharacterRow, bag?: BagState): ProfileSeed {
   return {
+    gear: bag ? equipmentBonus(bag.equipped, wearerOfRow(row)) : undefined,
+    gender: row.gender,
     id: row.id,
     name: row.name,
     potentialPoints: row.potential_points,
@@ -154,6 +173,7 @@ function sheetOf(p: PlayerProfile): CharacterSheet {
     rootGrade: p.rootGrade,
     constitution: p.constitution,
     constitutionTier: p.constitutionTier,
+    gender: p.gender,
     realm: p.realm,
     stage: p.stage,
     exp: p.exp,
@@ -266,6 +286,14 @@ export class MapRoom extends DurableObject<Env> {
         }),
       ]);
       this.bags.set(row.id, bag);
+      // Gear the character no longer qualifies for (or that is already broken) comes off before the room sees them.
+      const removedAtJoin = await this.reconcileGear(row).catch((err) => {
+        console.error("gear reconcile failed", row.id, err);
+        return [];
+      });
+      const bagNow = this.bags.get(row.id) ?? bag;
+      // Pieces mailed because the bag was full must be in the mail list the welcome carries.
+      const mailNow = removedAtJoin.some((r) => r.mailed) ? await listMail(this.env.DB, row.id).catch(() => mail) : mail;
       // Names and descriptions of the constitutions are data: the client shows what the server's catalogue says. If it
       // cannot be read the default one is sent (display only; creation never falls back like this).
       const constitutions = await getConstitutionCatalog(this.env.DB).catch((err) => {
@@ -302,9 +330,9 @@ export class MapRoom extends DurableObject<Env> {
       // Includes the joining player so the client gets its own authoritative snapshot.
       const players = this.players().map((p) => this.snapshot(p));
       const sim = this.sim;
-      const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row))) : undefined;
+      const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow))) : undefined;
       if (sim) this.startTick();
-      const maxHp = profile?.maxHp ?? deriveStats(baseOf(row), row.realm, row.stage, row.root_grade).maxHp;
+      const maxHp = profile?.maxHp ?? deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row))).maxHp;
       this.send(server, {
         t: "welcome",
         self: state.id,
@@ -316,10 +344,12 @@ export class MapRoom extends DurableObject<Env> {
         hp: profile?.hp ?? maxHp,
         maxHp,
         wallet,
-        bag: { tabs: bag.tabs, items: bag.items },
-        mail: mailViews(mail),
+        bag: { tabs: bagNow.tabs, items: bagNow.items },
+        mail: mailViews(mailNow),
         constitutions,
+        equipped: bagNow.equipped,
       });
+      if (removedAtJoin.length > 0) this.send(server, { t: "eq_removed", items: removedAtJoin.map((r) => ({ type: r.item.type, reason: r.reason, mailed: r.mailed })) });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
       return new Response(null, { status: 101, webSocket: client });
     } catch (err) {
@@ -376,6 +406,10 @@ export class MapRoom extends DurableObject<Env> {
       case "inv_split":
       case "mail_claim":
         return this.handleInventory(ws, state, msg);
+      case "eq_equip":
+      case "eq_unequip":
+      case "eq_repair":
+        return this.handleEquipment(ws, state, msg);
     }
   }
 
@@ -586,7 +620,12 @@ export class MapRoom extends DurableObject<Env> {
       const present = this.players().filter((p) => !p.transferring);
       const rows = await Promise.all(present.map((p) => getCharacterById(this.env.DB, p.id)));
       const stillHere = new Set(this.players().filter((p) => !p.transferring).map((p) => p.id));
-      for (const row of rows) if (row && stillHere.has(row.id) && !sim.getPlayer(row.id)) sim.addPlayer(seedOf(row));
+      for (const row of rows) {
+        if (!row || !stillHere.has(row.id) || sim.getPlayer(row.id)) continue;
+        // The worn gear counts too, so the bag is read for every player the sim lost.
+        const bag = await this.getBag(row.id).catch(() => undefined);
+        sim.addPlayer(seedOf(row, bag));
+      }
     } catch (err) {
       this.sim = null; // the next move or attack retries the whole rebuild
       throw err;
@@ -660,7 +699,14 @@ export class MapRoom extends DurableObject<Env> {
 
   /** Dev-only (see /api/dev/loot): runs the real loot path (bag or mail, one key, one batch) without killing anything. */
   async devLoot(characterId: string, drops: LootDrop[]): Promise<void> {
-    this.enqueueLoot(characterId, drops);
+    // Gear starts with full durability, like a real drop.
+    this.enqueueLoot(
+      characterId,
+      drops.map((d) => {
+        const wear = newDurability(d.item);
+        return wear ? { ...d, dur: wear.dur, max: wear.max } : d;
+      }),
+    );
     await (this.bagQueues.get(characterId) ?? Promise.resolve());
   }
 
@@ -845,7 +891,8 @@ export class MapRoom extends DurableObject<Env> {
       if (!p) return { ok: false, reason: "invalid" };
       const r = await commitBagOps(this.env.DB, id, p.ops, { grantKey, mail: p.mail });
       if (r === "ok") {
-        const after = { tabs: before.tabs, items: applyOps(before.items, p.ops) };
+        const next = applyBag({ items: before.items, equipped: before.equipped }, p.ops);
+        const after: BagState = { tabs: before.tabs, items: next.items, equipped: next.equipped };
         this.bags.set(id, after);
         return { ok: true, before, after, mailed: p.mail ?? [] };
       }
@@ -855,21 +902,65 @@ export class MapRoom extends DurableObject<Env> {
     return { ok: false, reason: "failed" };
   }
 
-  private sendToCharacter(id: string, msg: ServerMessage): void {
+  /** `direct` is for a character who is leaving (death): its socket is already marked as transferring, so it is addressed itself. */
+  private sendToCharacter(id: string, msg: ServerMessage, direct?: WebSocket): void {
+    if (direct) return this.send(direct, msg);
     for (const ws of this.ctx.getWebSockets()) {
       const s = ws.deserializeAttachment() as PlayerState | null;
       if (s?.id === id && !s.transferring) this.send(ws, msg);
     }
   }
 
-  private sendBagDelta(id: string, before: BagState, after: BagState): void {
+  private sendBagDelta(id: string, before: BagState, after: BagState, direct?: WebSocket): void {
     const d = diffBag(before.items, after.items);
-    if (d.items.length === 0 && d.removed.length === 0) return;
-    this.sendToCharacter(id, { t: "inv", full: false, tabs: after.tabs, items: d.items, removed: d.removed });
+    if (d.items.length > 0 || d.removed.length > 0) this.sendToCharacter(id, { t: "inv", full: false, tabs: after.tabs, items: d.items, removed: d.removed }, direct);
+    if (JSON.stringify(before.equipped) !== JSON.stringify(after.equipped)) {
+      this.sendToCharacter(id, { t: "eq", items: after.equipped }, direct);
+      this.applyGear(id, after, direct);
+    }
   }
 
-  private async sendMailList(id: string): Promise<void> {
-    this.sendToCharacter(id, { t: "mail", mail: mailViews(await listMail(this.env.DB, id)) });
+  /** Worn gear changed (or wore down): the combat stats follow, in a combat map. In town the next join recomputes them. */
+  private applyGear(id: string, bag: BagState, direct?: WebSocket): void {
+    const p = this.sim?.getPlayer(id);
+    if (!p || !this.sim) return;
+    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base }));
+    this.sendToCharacter(id, { t: "hp", hp: p.hp, maxHp: p.maxHp }, direct);
+  }
+
+  /** Who is wearing: the live profile when there is one, otherwise the saved row. */
+  private async wearerOf(id: string): Promise<WearerCtx | null> {
+    const p = this.sim?.getPlayer(id);
+    if (p) return { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base };
+    const row = await getCharacterById(this.env.DB, id);
+    return row ? wearerOfRow(row) : null;
+  }
+
+  /** Reports pieces that came off on their own, and refreshes the mail list when some went there. */
+  private async announceRemoved(id: string, removed: Array<{ item: { type: string }; reason: EquipBlock; mailed: boolean }>, direct?: WebSocket): Promise<void> {
+    if (removed.length === 0) return;
+    this.sendToCharacter(id, { t: "eq_removed", items: removed.map((r) => ({ type: r.item.type, reason: r.reason, mailed: r.mailed })) }, direct);
+    if (removed.some((r) => r.mailed)) await this.sendMailList(id, direct);
+  }
+
+  /** At join: takes off worn pieces that are broken or no longer fit the character (bag first, permanent mail when full). */
+  private async reconcileGear(row: CharacterRow): Promise<ReturnType<typeof planReconcile>["removed"]> {
+    const bag = await this.getBag(row.id);
+    if (bag.equipped.length === 0) return [];
+    const w = wearerOfRow(row);
+    const preview = planReconcile({ items: bag.items, equipped: bag.equipped }, bag.tabs, w, () => crypto.randomUUID());
+    if (preview.ops.length === 0) return [];
+    let removed: typeof preview.removed = [];
+    const res = await this.mutateBag(row.id, (b) => {
+      const r = planReconcile({ items: b.items, equipped: b.equipped }, b.tabs, w, () => crypto.randomUUID());
+      removed = r.removed;
+      return r.ops.length > 0 ? { ops: r.ops } : null;
+    });
+    return res.ok ? removed : [];
+  }
+
+  private async sendMailList(id: string, direct?: WebSocket): Promise<void> {
+    this.sendToCharacter(id, { t: "mail", mail: mailViews(await listMail(this.env.DB, id)) }, direct);
   }
 
   /**
@@ -884,12 +975,13 @@ export class MapRoom extends DurableObject<Env> {
         const ops: BagOp[] = [];
         const mail: MailItem[] = [];
         for (const d of drops) {
-          const p = planAdd(items, bag.tabs, d.item, d.qty, () => crypto.randomUUID());
+          const wear = d.dur !== undefined && d.max !== undefined ? { dur: d.dur, max: d.max } : undefined;
+          const p = planAdd(items, bag.tabs, d.item, d.qty, () => crypto.randomUUID(), wear);
           if (p) {
             ops.push(...p);
-            items = applyOps(items, p);
+            items = applyBag({ items, equipped: [] }, p).items;
           } else {
-            mail.push({ type: d.item, qty: d.qty, subject: "bag_full" });
+            mail.push({ type: d.item, qty: d.qty, subject: "bag_full", ...(wear ?? {}) });
           }
         }
         return { ops, mail };
@@ -985,10 +1077,66 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** After a refused command the client's picture may be wrong: tell it why and send the real bag. */
-  private async resync(ws: WebSocket, id: string, reason: "invalid" | "busy" | "full" | "expired" | "not_needed" | "cooldown" | "no_room"): Promise<void> {
+  private async resync(ws: WebSocket, id: string, reason: Extract<ServerMessage, { t: "inv_error" }>["reason"]): Promise<void> {
     this.send(ws, { t: "inv_error", reason });
     const bag = await this.getBag(id);
     this.send(ws, { t: "inv", full: true, tabs: bag.tabs, items: bag.items, removed: [] });
+    this.send(ws, { t: "eq", items: bag.equipped });
+  }
+
+  /** Wear, take off and repair gear. One D1 batch each, rate-limited like the other bag commands. */
+  private handleEquipment(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "eq_equip" | "eq_unequip" | "eq_repair" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      if (msg.t === "eq_repair") return this.repairGear(ws, id, msg.slot);
+      const wearer = await this.wearerOf(id);
+      if (!wearer) return;
+      let refusal: "invalid" | EquipBlock | "full" | "nothing" | null = null;
+      const res = await this.mutateBag(id, (bag) => {
+        const state = { items: bag.items, equipped: bag.equipped };
+        const plan =
+          msg.t === "eq_equip" ? planEquip(state, bag.tabs, { tab: msg.tab, cell: msg.cell }, msg.slot, wearer) : planUnequip(state, bag.tabs, msg.slot);
+        if (!plan.ok) {
+          refusal = plan.error;
+          return null;
+        }
+        return { ops: plan.ops };
+      });
+      if (res.ok) return this.sendBagDelta(id, res.before, res.after);
+      if (res.reason === "invalid") return this.resync(ws, id, refusal ?? "invalid");
+      return this.resync(ws, id, "busy");
+    });
+  }
+
+  /**
+   * Repairs worn pieces. Paid in the same batch that restores the durability: the debit (ledger + balance) and the guarded
+   * durability writes commit together or not at all, so Linh Thạch is never taken without the repair or the other way round.
+   */
+  private async repairGear(ws: WebSocket, id: string, slot: EquipSlot | "all"): Promise<void> {
+    const bag = await this.getBag(id);
+    const plan = planRepair({ items: bag.items, equipped: bag.equipped }, slot);
+    if (!plan.ok) return this.resync(ws, id, plan.error);
+    const extra = plan.ops.flatMap((op) => opStatements(this.env.DB, id, op, Date.now()));
+    try {
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -plan.cost, reason: "repair", actor: "system", idempotencyKey: `repair:${crypto.randomUUID()}` }, extra);
+      if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+      if (r.status !== "applied") return this.resync(ws, id, "busy");
+      const next = applyBag({ items: bag.items, equipped: bag.equipped }, plan.ops);
+      const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+      this.bags.set(id, after);
+      this.sendBagDelta(id, bag, after);
+      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+      this.sendToCharacter(id, { t: "repaired", cost: plan.cost });
+    } catch (err) {
+      // A failed guard means the cached gear was stale: nothing was written, so reload and let the player retry.
+      if (!String(err).includes("inv_guard") && !String(err).includes("max_durability")) console.error("repair failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
   }
 
   /** Consumes one potion and heals. The potion is committed first; HP only changes after the write succeeded. */
@@ -1018,7 +1166,8 @@ export class MapRoom extends DurableObject<Env> {
       const bag = await this.getBag(id);
       const r = await claimMailItem(this.env.DB, id, mailId, bag);
       if (r.status === "claimed") {
-        const after = { tabs: bag.tabs, items: applyOps(bag.items, r.ops) };
+        const next = applyBag({ items: bag.items, equipped: bag.equipped }, r.ops);
+        const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
         this.bags.set(id, after);
         this.sendBagDelta(id, bag, after);
         this.sendToCharacter(id, { t: "loot", items: [{ type: r.type, qty: r.qty, mailed: false }] });
@@ -1048,9 +1197,50 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** Death: lose a little EXP (never a stage), then respawn in town through the normal handoff. */
+  /** Death wear as one guarded batch under a one-time key, retried with the same key (a retry after a lost answer is "duplicate"). */
+  private wearGearOnDeath(ws: WebSocket, id: string, wearer: WearerCtx): void {
+    const key = `death:${crypto.randomUUID()}`;
+    void this.bagTask(id, async () => {
+      let removed: Array<{ item: { type: string }; reason: EquipBlock; mailed: boolean }> = [];
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const res = await this.mutateBag(
+            id,
+            (bag) => {
+              const r = planDeathWear({ items: bag.items, equipped: bag.equipped }, bag.tabs, wearer, () => crypto.randomUUID());
+              removed = r.removed;
+              return r.ops.length > 0 ? { ops: r.ops } : null;
+            },
+            key,
+          );
+          // The dying socket is already marked as transferring, so it is addressed directly (it stays open until the bag settles).
+          if (res.ok) {
+            this.sendBagDelta(id, res.before, res.after, ws);
+            await this.announceRemoved(id, removed, ws);
+            if (res.after.equipped.length > 0) this.send(ws, { t: "eq_worn" });
+          } else if (res.reason === "duplicate") {
+            // An earlier attempt did commit: send the real state.
+            const bag = await this.getBag(id);
+            this.send(ws, { t: "inv", full: true, tabs: bag.tabs, items: bag.items, removed: [] });
+            this.send(ws, { t: "eq", items: bag.equipped });
+            await this.sendMailList(id, ws);
+          }
+          return;
+        } catch (err) {
+          console.error("death wear failed", id, attempt, err);
+          this.bags.delete(id);
+          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+        }
+      }
+    });
+  }
+
   private async handleDeath(ws: WebSocket, state: PlayerState, profile: PlayerProfile): Promise<void> {
     const expLost = expLostOnDeath(profile.exp);
     this.sim?.applyDeathPenalty(state.id, expLost);
+    // Every worn piece wears down (whatever killed the character). Queued before the handoff, which waits for the bag
+    // queue before the lock is released, so the town room reads the new durability.
+    this.wearGearOnDeath(ws, state.id, { gender: profile.gender, realm: profile.realm, stage: profile.stage, base: profile.base });
     this.send(ws, { t: "died", expLost });
     const [sx, sy] = getMap("town").spawn;
     await this.handoff(ws, state, "town", sx + 0.5, sy + 0.5, true);

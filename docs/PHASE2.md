@@ -1,11 +1,11 @@
 # Giai đoạn 2: Chiều sâu nhân vật — đề xuất chia nhánh (bản nháp)
 
-Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g xong (`features_chat-channels`), 2a xong (`features_inventory`), hệ thống thể chất (dữ liệu và hiển thị) xong (`features_constitution`); **kế tiếp là 2b**. Tất cả đã ở production (2026-10-17). Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
+Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g xong (`features_chat-channels`), 2a xong (`features_inventory`), hệ thống thể chất (dữ liệu và hiển thị) xong (`features_constitution`); **2b (trang bị, độ bền, giới tính) đã viết xong ở nhánh `features_equipment`, chờ duyệt rồi PR**. 2g, 2a và thể chất đã ở production (2026-10-17). Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
 
 Nghiệm thu chung của GĐ2 (từ PLAN): một nhân vật đi trọn chuỗi nhiệm vụ tân thủ; công thức sát thương ngũ hành đúng test; sát khí/rơi đồ/vệ binh theo đúng luật mặc định.
 
 ## Thứ tự phụ thuộc
-2g (xong) → 2a → 2b → 2c → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
+2g (xong) → 2a (xong) → 2b (xong, chờ PR) → 2c → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
 
 ## 2a. Vật phẩm và túi đồ (`features_inventory`) — ĐÃ LÀM
 Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và hòm thư (2a)". Quyết định thêm (2026-10-17): túi đầy thì đồ rơi được **gửi vào hòm thư, phải nhận trong 30 phút nếu không sẽ mất**.
@@ -16,10 +16,15 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và 
 - UI túi đồ (phím `I`), thông báo nhặt đồ.
 - Nghiệm thu: nhặt/dùng/bỏ đồ lưu và tải lại đúng; không nhân đôi đồ khi đăng nhập hai nơi; test chủ sở hữu.
 
-## 2b. Trang bị và độ bền (`features_equipment`)
-- Ô trang bị (vũ khí, giáp, trang sức, pháp bảo…), chỉ số cộng vào `deriveStats`, yêu cầu cảnh giới.
-- Độ bền giảm khi chết (luật mặc định), sửa đồ tốn Linh Thạch (tiền sink, ghi sổ cái).
-- Nghiệm thu: mặc/tháo đổi đúng chỉ số; chết giảm độ bền; sửa đồ trừ đúng tiền, không âm.
+## 2b. Trang bị và độ bền (`features_equipment`) — ĐÃ LÀM (chờ PR)
+Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Trang bị và độ bền (2b)". Quyết định của người dùng (2026-10-17):
+- **13 ô:** vũ khí, mũ, áo, bao cổ tay, 2 nhẫn, ngọc bội, dây chuyền, đai lưng, 4 pháp bảo. Mũ, áo, bao cổ tay, ngọc bội, dây chuyền có bản nam/nữ (tên khác nhau) và phải đúng kiểu đồ mới mặc được.
+- **Giới tính** chọn lúc tạo nhân vật: Nam, Nữ, Nam (mặc đồ nữ), Nữ (mặc đồ nam); hai bản sau chỉ mặc đồ của giới kia. Không đổi được (sau này cho đổi sang bản "chéo" của chính giới mình). Nhân vật có sẵn tung ngẫu nhiên Nam/Nữ.
+- **Cấp bậc đồ** theo cảnh giới (mở rộng theo `REALMS`) × bậc 1-9, **phẩm cấp** Hạ/Trung/Thượng/Cực; yêu cầu tối thiểu theo cảnh giới hoặc chỉ số gốc, có món không yêu cầu; chỉ số cố định theo mẫu (sau này khoảng min-max). Không còn đủ điều kiện thì đồ rớt ra túi, túi đầy thì vào hòm thư không hết hạn.
+- **Độ bền:** chết (mọi nguyên nhân) mất 5%; chỉ số giảm theo % độ bền còn lại; hết thì hỏng, xám, không sửa được, chỉ còn trong túi; có món độ bền vĩnh viễn. Giá sửa theo phẩm cấp × điểm đã mất.
+- **Rơi đồ** từ 2b: theo cấp bản đồ, quái hiếm có xác suất vượt cấp và phẩm cấp cao; túi đầy thì hòm thư 30 phút như đồ thường.
+- Pháp bảo ở 2b chỉ cộng chỉ số; kỹ năng đặc biệt của pháp bảo và vũ khí theo bí tịch làm ở 2c.
+- Nghiệm thu: mặc/tháo đổi đúng chỉ số; chết giảm độ bền; sửa đồ trừ đúng tiền, không âm (đã có test và `tools/equipment-smoke.mjs`).
 
 ## 2c. Kỹ năng, MP và ngũ hành đầy đủ (`features_skills`)
 - MP, thanh phím tắt kỹ năng, hồi chiêu, tầm đánh; kỹ năng theo hướng tu và ngũ hành. **Hiệu ứng buff của thể chất** (xem `docs/PLAN.md` mục 9, `shared/src/constitutions.ts`) cũng được áp dụng ở đây: sát thương và độ thuần thục của kỹ năng theo nguyên tố/vũ khí. **Thanh phím tắt này cũng chứa các ô dùng nhanh vật phẩm tiêu hao** (ví dụ Hồi Huyết Đan, kéo từ túi đồ vào ô; yêu cầu của người dùng, 2026-10-17), nên các ô dùng nhanh được làm ở đây chứ không ở 2a.

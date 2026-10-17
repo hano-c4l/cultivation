@@ -27,6 +27,7 @@ import {
 import { initCharacterPanel, type CharacterPanel } from "./character-ui";
 import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
+import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
@@ -120,6 +121,7 @@ export class GameScene extends Phaser.Scene {
   private chatNet!: Net;
   private chat!: ChatUi;
   private inventory!: InventoryUi;
+  private equipment!: EquipmentUi;
   private charPanel!: CharacterPanel;
   private vitals!: VitalsUi;
   private hud!: HTMLElement;
@@ -148,6 +150,7 @@ export class GameScene extends Phaser.Scene {
     }, this.registry.get("isAdmin") === true);
     this.vitals = initVitals();
     this.inventory = initInventory((msg) => this.net.send(msg));
+    this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
     this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
 
     const camera = this.cameras.main;
@@ -329,10 +332,13 @@ export class GameScene extends Phaser.Scene {
         for (const m of msg.monsters) this.upsertMonster(m);
         setCatalog(msg.constitutions);
         this.charPanel.update(msg.character);
+        this.equipment.setSheet(msg.character);
         this.selfSheet = msg.character;
         this.vitals.set(msg.hp, msg.maxHp);
         this.vitals.setWallet(msg.wallet);
         this.inventory.setBag(msg.bag);
+        this.equipment.setEquipped(msg.equipped);
+        this.charPanel.setEquipped(msg.equipped);
         this.inventory.setMail(msg.mail);
         this.refreshHud();
         break;
@@ -358,6 +364,7 @@ export class GameScene extends Phaser.Scene {
       case "stats": {
         const before = this.selfSheet;
         this.charPanel.update(msg.character);
+        this.equipment.setSheet(msg.character);
         this.selfSheet = msg.character;
         const c = msg.character;
         if (before && (c.realm > before.realm || (c.realm === before.realm && c.stage > before.stage))) {
@@ -394,6 +401,24 @@ export class GameScene extends Phaser.Scene {
       case "inv":
         if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items });
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
+        this.equipment.refresh();
+        break;
+      case "eq":
+        this.equipment.setEquipped(msg.items);
+        this.charPanel.setEquipped(msg.items);
+        break;
+      case "eq_removed":
+        for (const it of msg.items) {
+          const name = getItemDef(it.type)?.nameVi ?? it.type;
+          this.chat.system((vi.equip.removed[it.reason] ?? vi.equip.removed.slot!)(name), "important");
+          if (it.mailed) this.chat.system(vi.equip.removedMailed, "important");
+        }
+        break;
+      case "eq_worn":
+        this.chat.system(vi.equip.wornDown, "important");
+        break;
+      case "repaired":
+        this.chat.system(vi.equip.repaired(msg.cost));
         break;
       case "mail":
         this.inventory.setMail(msg.mail);

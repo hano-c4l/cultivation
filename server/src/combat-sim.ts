@@ -11,6 +11,7 @@ import {
   clusterSlots,
   killExp,
   levelIndex,
+  rollEquipmentDrop,
   rollLinhThachDrop,
   rollLoot,
   type LootDrop,
@@ -25,6 +26,8 @@ import {
   type BaseStats,
   type Combatant,
   type Element,
+  type EquipStats,
+  type Gender,
   type HitKind,
   type MapData,
   type MapId,
@@ -45,6 +48,9 @@ export interface ProfileSeed {
   rootGrade: number;
   constitution: string;
   constitutionTier: number;
+  gender: Gender;
+  /** Stats of the gear worn right now (equipmentBonus); recomputed by the room whenever gear or requirements change. */
+  gear?: EquipStats;
   realm: number;
   stage: number;
   exp: number;
@@ -125,7 +131,7 @@ function lastPoint(path: Vec2[]): Vec2 {
 }
 
 function derivedCombatant(seed: ProfileSeed, stage = seed.stage): { stats: Combatant; maxHp: number; expBonus: number } {
-  const d = deriveStats(seed.base, seed.realm, stage, seed.rootGrade);
+  const d = deriveStats(seed.base, seed.realm, stage, seed.rootGrade, seed.gear);
   return {
     stats: { attack: d.attack, defense: d.defense, critRate: d.critRate, dodgeRate: d.dodgeRate, element: seed.element },
     maxHp: d.maxHp,
@@ -278,6 +284,14 @@ export class CombatSim {
     const p = this.players.get(id);
     if (!p) return;
     p.base = base;
+    this.recompute(p, false);
+  }
+
+  /** Gear changed (worn, taken off, worn out): re-derive combat stats, keeping the HP ratio. */
+  updateGear(id: string, gear: EquipStats): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.gear = gear;
     this.recompute(p, false);
   }
 
@@ -508,6 +522,9 @@ export class CombatSim {
     const drop = rollLinhThachDrop(levelIndex(this.realm, m.tier), m.rank, this.rand(), this.rand());
     if (drop > 0) events.push({ t: "drop", playerId: winner.id, amount: drop });
     const loot = rollLoot(m.rank, this.rand);
+    // Drawn after every other roll of the kill, so the sequence of the older rolls does not change.
+    const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand);
+    if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
