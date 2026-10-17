@@ -18,7 +18,7 @@ Cập nhật: 2026-10-17. Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `
 - **1f** Kiểm thử tải 50 client, rà giới hạn gói Free
 
 Việc tồn đọng khác:
-- Chưa có giới hạn tốc độ di chuyển: client khai ô xuất phát, server tin trong `MAX_DESYNC_TILES` (3 ô) nên có thể nối chuỗi claim (TODO trong `server/src/map-room.ts`). Cần movement budget trước khi mở cho đông người.
+- Movement budget đã có (`shared/src/movement.ts`): server chỉ tin ô xuất phát client khai khi còn ngân sách (cap 3 ô, hồi 1 ô/giây), nên nối chuỗi claim chỉ tăng tối đa khoảng 25% tốc độ. Bấm quá dày thì server dùng vị trí của mình (client thấy bị kéo nhẹ).
 - Bản đồ vẽ bằng RenderTexture: chỉ mới thử với Canvas, chưa thử WebGL trên thiết bị thật (đặc biệt điện thoại). Có `?renderer=canvas` làm đường lùi.
 - Hình ảnh vật cản và nhân vật còn là placeholder (xem mục asset trong `docs/PLAN.md`).
 - Tài khoản thử `smoke-*` và `cpu-*@example.test` còn trong D1 preview; production có 2 tài khoản thử do người dùng tự tạo (thông tin đăng nhập do người dùng giữ, không ghi trong repo).

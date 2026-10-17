@@ -7,6 +7,7 @@ import {
   CHAT_WINDOW_MS,
   MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
+  MOVE_BUDGET_CAP,
   PING_MESSAGE,
   PONG_MESSAGE,
   findSmoothPath,
@@ -16,6 +17,7 @@ import {
   nearestStandablePoint,
   parseClientMessage,
   portalNear,
+  spendMoveBudget,
   positionAlongPath,
   type ClientMessage,
   type MapId,
@@ -48,6 +50,9 @@ interface PlayerState {
   /** Timestamps of recent chat messages, for rate limiting. */
   chatTimes: number[];
   lastAllocateAt?: number;
+  /** Movement budget (see shared/movement.ts) and when it was last updated. */
+  moveBudget?: number;
+  moveBudgetAt?: number;
 }
 
 /**
@@ -203,8 +208,17 @@ export class MapRoom extends DurableObject<Env> {
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     // Trust the client's start tile when it is close to the server's view (latency drift), so the
     // client's prediction and the server path start from the same tile and nothing is pulled back.
-    // TODO(phase 1): add a movement budget so repeated claims cannot be chained into a speed hack.
-    const claimedOk = isStandable(map, msg.fx, msg.fy) && Math.hypot(msg.fx - here.x, msg.fy - here.y) <= MAX_DESYNC_TILES;
+    // A movement budget bounds how much drift the server accepts over time, so claims cannot be chained into a speed hack.
+    const spent = spendMoveBudget(
+      state.moveBudget ?? MOVE_BUDGET_CAP,
+      now - (state.moveBudgetAt ?? now),
+      Math.hypot(msg.fx - here.x, msg.fy - here.y),
+      MAX_DESYNC_TILES,
+    );
+    const claimedOk = spent.accepted && isStandable(map, msg.fx, msg.fy);
+    // A claim that was refused (too far, or not standable) is not charged.
+    state.moveBudget = claimedOk ? spent.budget : spent.budget + (spent.accepted ? Math.hypot(msg.fx - here.x, msg.fy - here.y) : 0);
+    state.moveBudgetAt = now;
     const from: Vec2 = claimedOk ? [msg.fx, msg.fy] : [here.x, here.y];
     const path = findSmoothPath(map, from, [msg.x, msg.y]);
     if (!path) return reject();

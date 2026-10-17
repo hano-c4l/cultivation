@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SPIRITUAL_ROOTS } from "./character";
+import { MOVE_BUDGET_CAP, MOVE_BUDGET_REFILL_PER_S, spendMoveBudget } from "./movement";
 import { parseClientMessage } from "./protocol";
 import {
   applyExp,
@@ -187,5 +188,35 @@ describe("root grades", () => {
   it("clamps unknown grades", () => {
     expect(getRootGrade(-3).id).toBe(0);
     expect(getRootGrade(99).id).toBe(4);
+  });
+});
+
+describe("movement budget", () => {
+  it("accepts small drift and charges it", () => {
+    const r = spendMoveBudget(MOVE_BUDGET_CAP, 0, 1, 3);
+    expect(r).toEqual({ accepted: true, budget: MOVE_BUDGET_CAP - 1 });
+  });
+
+  it("refuses a claim larger than the per-claim limit or the budget, and does not charge it", () => {
+    expect(spendMoveBudget(MOVE_BUDGET_CAP, 0, 3.5, 3).accepted).toBe(false);
+    const r = spendMoveBudget(0.5, 0, 1, 3);
+    expect(r).toEqual({ accepted: false, budget: 0.5 });
+  });
+
+  it("refills with time up to the cap", () => {
+    expect(spendMoveBudget(0, 1000, 0, 3).budget).toBeCloseTo(MOVE_BUDGET_REFILL_PER_S);
+    expect(spendMoveBudget(0, 60_000, 0, 3).budget).toBe(MOVE_BUDGET_CAP);
+  });
+
+  it("chained claims cannot beat the refill rate", () => {
+    // One claim of 1 tile every 100 ms for 10 s: only the cap plus refill can be accepted.
+    let budget = MOVE_BUDGET_CAP;
+    let granted = 0;
+    for (let i = 0; i < 100; i++) {
+      const r = spendMoveBudget(budget, 100, 1, 3);
+      budget = r.budget;
+      if (r.accepted) granted += 1;
+    }
+    expect(granted).toBeLessThanOrEqual(MOVE_BUDGET_CAP + 10 * MOVE_BUDGET_REFILL_PER_S + 1);
   });
 });
