@@ -140,8 +140,11 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
 
   return {
     update(next) {
+      // A kill also sends a sheet; keep the player's unconfirmed clicks unless the stats changed (an allocate
+      // answer) or they no longer fit the available points.
+      const statsChanged = !sheet || STAT_DEFS.some((d) => sheet!.base[d.key] !== next.base[d.key]);
       sheet = next;
-      pending = {};
+      if (statsChanged || pendingTotal() > next.potentialPoints) pending = {};
       toggle.hidden = false;
       render();
     },

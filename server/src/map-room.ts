@@ -1,22 +1,31 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   ALLOCATE_MIN_GAP_MS,
+  ATTACK_MIN_GAP_MS,
   BASE_SPEED,
   CHAT_BURST,
   CHAT_MIN_GAP_MS,
   CHAT_WINDOW_MS,
   MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
+  MOVE_BUDGET_CAP,
   PING_MESSAGE,
   PONG_MESSAGE,
+  TICK_MS,
+  deriveStats,
+  expLostOnDeath,
   findSmoothPath,
   getMap,
   isMapId,
   isStandable,
+  lineClear,
   nearestStandablePoint,
   parseClientMessage,
   portalNear,
+  spendMoveBudget,
   positionAlongPath,
+  type BaseStats,
+  type CharacterSheet,
   type ClientMessage,
   type MapId,
   type PlayerSnapshot,
@@ -26,7 +35,15 @@ import {
   type Vec2,
 } from "@game/shared";
 import { filterChat } from "./chat";
-import { allocatePoints, getCharacterById, saveCharacterPosition, toCharacterSheet } from "./characters";
+import {
+  allocatePoints,
+  getCharacterById,
+  saveCharacterPosition,
+  saveCharacterProgress,
+  toCharacterSheet,
+  type CharacterRow,
+} from "./characters";
+import { CombatSim, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
@@ -48,6 +65,9 @@ interface PlayerState {
   /** Timestamps of recent chat messages, for rate limiting. */
   chatTimes: number[];
   lastAllocateAt?: number;
+  /** Movement budget (see shared/movement.ts) and when it was last updated. */
+  moveBudget?: number;
+  moveBudgetAt?: number;
 }
 
 /**
@@ -67,8 +87,46 @@ function round2(v: number): number {
 /** Moves are saved at most this often per room, so D1 writes stay low and the room can still hibernate. */
 const SAVE_DEBOUNCE_MS = 10_000;
 
+function baseOf(row: CharacterRow): BaseStats {
+  return toCharacterSheet(row).base;
+}
+
+function seedOf(row: CharacterRow): ProfileSeed {
+  return {
+    id: row.id,
+    name: row.name,
+    potentialPoints: row.potential_points,
+    element: row.spiritual_root,
+    base: baseOf(row),
+    rootGrade: row.root_grade,
+    realm: row.realm,
+    stage: row.stage,
+    exp: row.exp,
+  };
+}
+
+function sheetOf(p: PlayerProfile): CharacterSheet {
+  return {
+    id: p.id,
+    name: p.name,
+    spiritualRoot: p.element,
+    rootGrade: p.rootGrade,
+    realm: p.realm,
+    stage: p.stage,
+    exp: p.exp,
+    potentialPoints: p.potentialPoints,
+    base: p.base,
+  };
+}
+
 export class MapRoom extends DurableObject<Env> {
   private colo: string | null = null;
+  /** Monsters and fights; exists only while someone is in a non-safe map (the room is empty otherwise). */
+  private sim: CombatSim | null = null;
+  private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private ticking = false;
+  private lastTickAt = 0;
+  private tickStat = { count: 0, totalMs: 0, maxMs: 0, maxDriftMs: 0, skipped: 0 };
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -149,7 +207,21 @@ export class MapRoom extends DurableObject<Env> {
       server.serializeAttachment(state);
       // Includes the joining player so the client gets its own authoritative snapshot.
       const players = this.players().map((p) => this.snapshot(p));
-      this.send(server, { t: "welcome", self: state.id, map: mapId, players, colo, character: toCharacterSheet(row) });
+      const sim = this.ensureSim(mapId);
+      const profile = sim?.addPlayer(seedOf(row));
+      if (sim) this.startTick();
+      const maxHp = profile?.maxHp ?? deriveStats(baseOf(row), row.realm, row.stage, row.root_grade).maxHp;
+      this.send(server, {
+        t: "welcome",
+        self: state.id,
+        map: mapId,
+        players,
+        colo,
+        character: toCharacterSheet(row),
+        monsters: sim?.snapshots(Date.now()) ?? [],
+        hp: profile?.hp ?? maxHp,
+        maxHp,
+      });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
       return new Response(null, { status: 101, webSocket: client });
     } catch (err) {
@@ -165,6 +237,7 @@ export class MapRoom extends DurableObject<Env> {
       if (!state || state.id !== characterId) continue;
       ws.serializeAttachment(null);
       await this.save(state);
+      this.dropPlayer(state.id);
       this.send(ws, { t: "kicked", reason: "duplicate-login" });
       try {
         ws.close(4000, "duplicate-login");
@@ -191,6 +264,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleChat(ws, state, msg.text);
       case "allocate":
         return this.handleAllocate(ws, state, msg.points);
+      case "attack":
+        return this.handleAttack(ws, state, msg.id);
     }
   }
 
@@ -203,11 +278,21 @@ export class MapRoom extends DurableObject<Env> {
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     // Trust the client's start tile when it is close to the server's view (latency drift), so the
     // client's prediction and the server path start from the same tile and nothing is pulled back.
-    // TODO(phase 1): add a movement budget so repeated claims cannot be chained into a speed hack.
-    const claimedOk = isStandable(map, msg.fx, msg.fy) && Math.hypot(msg.fx - here.x, msg.fy - here.y) <= MAX_DESYNC_TILES;
+    // A movement budget bounds how much drift the server accepts over time, so claims cannot be chained into a speed hack.
+    const spent = spendMoveBudget(
+      state.moveBudget ?? MOVE_BUDGET_CAP,
+      now - (state.moveBudgetAt ?? now),
+      Math.hypot(msg.fx - here.x, msg.fy - here.y),
+      MAX_DESYNC_TILES,
+    );
+    const claimedOk = spent.accepted && isStandable(map, msg.fx, msg.fy);
+    // A claim that was refused (too far, or not standable) is not charged.
+    state.moveBudget = claimedOk ? spent.budget : spent.budget + (spent.accepted ? Math.hypot(msg.fx - here.x, msg.fy - here.y) : 0);
+    state.moveBudgetAt = now;
     const from: Vec2 = claimedOk ? [msg.fx, msg.fy] : [here.x, here.y];
     const path = findSmoothPath(map, from, [msg.x, msg.y]);
     if (!path) return reject();
+    this.sim?.clearTarget(state.id);
     state.path = path;
     state.startedAt = now;
     state.lastMoveAt = now;
@@ -219,26 +304,46 @@ export class MapRoom extends DurableObject<Env> {
     if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(now + SAVE_DEBOUNCE_MS);
   }
 
-  /** Map handoff: save at the destination, detach, release the lock, then tell the client to reconnect. */
+  /** Portal: verify the position, then hand the character to the destination map. */
   private async handlePortal(ws: WebSocket, state: PlayerState): Promise<void> {
     const here = positionAlongPath(state.path, Date.now() - state.startedAt, state.speed);
     const portal = portalNear(getMap(state.mapId), here.x, here.y);
     if (!portal) return;
+    await this.handoff(ws, state, portal.toMap, portal.toX + 0.5, portal.toY + 0.5);
+  }
+
+  /**
+   * Map handoff: save at the destination (together with any unwritten progression), detach, release the lock, then
+   * tell the client to reconnect. Used by portals and by death (back to town).
+   */
+  private async handoff(ws: WebSocket, state: PlayerState, toMap: MapId, x: number, y: number, closeOnFail = false): Promise<void> {
     state.transferring = true;
     // The destination row is written below; a pending debounced save must not overwrite it with the old map.
     state.dirty = false;
     ws.serializeAttachment(state);
+    const progress = this.sim?.beginFlush(state.id) ?? undefined;
     try {
-      await saveCharacterPosition(this.env.DB, state.id, portal.toMap, portal.toX + 0.5, portal.toY + 0.5);
+      await saveCharacterPosition(this.env.DB, state.id, toMap, x, y, progress);
     } catch (err) {
-      console.error("portal save failed", state.id, err);
+      console.error("handoff save failed", state.id, err);
+      if (progress) this.sim?.endFlush(state.id, progress, false);
       state.transferring = false;
       ws.serializeAttachment(state);
+      // A dead player would stay dead with no way out: closing the socket runs the normal leave (save, drop, rejoin).
+      if (closeOnFail) {
+        try {
+          ws.close(1011, "handoff-failed");
+        } catch {
+          // Already closed.
+        }
+      }
       return;
     }
+    if (progress) this.sim?.endFlush(state.id, progress, true);
     ws.serializeAttachment(null);
+    this.dropPlayer(state.id);
     this.broadcast({ t: "left", id: state.id }, ws);
-    this.send(ws, { t: "transfer", map: portal.toMap });
+    this.send(ws, { t: "transfer", map: toMap });
     await this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(state.id)).release(state.claimId);
     try {
       ws.close(4002, "transfer");
@@ -269,7 +374,18 @@ export class MapRoom extends DurableObject<Env> {
     ws.serializeAttachment(state);
     try {
       const row = (await allocatePoints(this.env.DB, state.id, points)) ?? (await getCharacterById(this.env.DB, state.id));
-      if (row) this.send(ws, { t: "stats", character: toCharacterSheet(row) });
+      if (!row) return;
+      // In a combat map the room's working copy of EXP is newer than D1, so the sheet is built from it.
+      const profile = this.sim?.getPlayer(state.id);
+      if (profile) {
+        // Points still in flight may or may not be in D1 yet; counting them keeps the number from dipping (off by at most that much for a moment).
+        profile.potentialPoints = row.potential_points + profile.pendingPoints + profile.inflightPoints;
+        this.sim?.updateBase(state.id, baseOf(row));
+        this.send(ws, { t: "stats", character: sheetOf(profile) });
+        this.send(ws, { t: "hp", hp: profile.hp, maxHp: profile.maxHp });
+      } else {
+        this.send(ws, { t: "stats", character: toCharacterSheet(row) });
+      }
     } catch (err) {
       console.error("allocate failed", state.id, err);
     }
@@ -279,7 +395,9 @@ export class MapRoom extends DurableObject<Env> {
   async alarm(): Promise<void> {
     for (const ws of this.ctx.getWebSockets()) {
       const state = ws.deserializeAttachment() as PlayerState | null;
-      if (!state?.dirty) continue;
+      if (!state) continue;
+      const profile = this.sim?.getPlayer(state.id);
+      if (!state.dirty && !profile?.expDirty && !profile?.pendingPoints) continue;
       state.dirty = false;
       ws.serializeAttachment(state);
       await this.save(state);
@@ -304,18 +422,202 @@ export class MapRoom extends DurableObject<Env> {
     // socket in evictCharacter() and wait for a save before the new room reads the character row.
     await this.save(state);
     ws.serializeAttachment(null);
+    this.dropPlayer(state.id);
     await this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(state.id)).release(state.claimId);
   }
 
-  /** Persists the current tile. Failures are logged; the next debounced save or disconnect retries. */
+  /** Persists the current tile and any unwritten progression. Failures are logged; the next save or disconnect retries. */
   private async save(state: PlayerState): Promise<void> {
-    if (state.transferring) return; // the portal handler owns the row until the handoff completes
+    if (state.transferring) return; // the handoff owns the row until it completes
     const pos = positionAlongPath(state.path, Date.now() - state.startedAt, state.speed);
+    const progress = this.sim?.beginFlush(state.id) ?? undefined;
     try {
-      await saveCharacterPosition(this.env.DB, state.id, state.mapId, round2(pos.x), round2(pos.y));
+      await saveCharacterPosition(this.env.DB, state.id, state.mapId, round2(pos.x), round2(pos.y), progress);
+      if (progress) this.sim?.endFlush(state.id, progress, true);
     } catch (err) {
       console.error("save failed", state.id, err);
+      if (progress) this.sim?.endFlush(state.id, progress, false);
     }
+  }
+
+  // --- combat -------------------------------------------------------------------------------------------------
+
+  private ensureSim(mapId: MapId): CombatSim | null {
+    const map = getMap(mapId);
+    if (map.safe) return null;
+    if (!this.sim) this.sim = new CombatSim(map, mapId, Math.random, Date.now());
+    return this.sim;
+  }
+
+  private startTick(): void {
+    if (this.tickTimer) return;
+    this.lastTickAt = Date.now();
+    this.tickTimer = setInterval(() => void this.tick(), TICK_MS);
+  }
+
+  /** Forgets a character's combat profile; with nobody left the tick stops and the monsters are discarded. */
+  private dropPlayer(id: string): void {
+    this.sim?.removePlayer(id);
+    if (this.sim && this.sim.playerCount === 0) {
+      if (this.tickTimer) clearInterval(this.tickTimer);
+      this.tickTimer = null;
+      this.sim = null;
+    }
+  }
+
+  /** Dev-only metrics (see /api/dev/tick-stats); never exposed unless ENABLE_DEV_GRANT is set. */
+  tickStats(): { count: number; avgMs: number; maxMs: number; maxDriftMs: number; skipped: number; players: number; monsters: number } {
+    const t = this.tickStat;
+    return {
+      count: t.count,
+      avgMs: t.count ? t.totalMs / t.count : 0,
+      maxMs: t.maxMs,
+      maxDriftMs: t.maxDriftMs,
+      skipped: t.skipped,
+      players: this.sim?.playerCount ?? 0,
+      monsters: this.sim?.monsterCount ?? 0,
+    };
+  }
+
+  private async tick(): Promise<void> {
+    const sim = this.sim;
+    if (!sim) return;
+    if (this.ticking) {
+      this.tickStat.skipped++;
+      return;
+    }
+    this.ticking = true;
+    const started = Date.now();
+    try {
+      const drift = started - this.lastTickAt - TICK_MS;
+      this.lastTickAt = started;
+      if (drift > this.tickStat.maxDriftMs) this.tickStat.maxDriftMs = drift;
+
+      const positions = new Map<string, Vec2>();
+      const sockets = new Map<string, { ws: WebSocket; state: PlayerState }>();
+      for (const ws of this.ctx.getWebSockets()) {
+        const state = ws.deserializeAttachment() as PlayerState | null;
+        if (!state || state.transferring) continue;
+        const p = positionAlongPath(state.path, started - state.startedAt, state.speed);
+        positions.set(state.id, [p.x, p.y]);
+        sockets.set(state.id, { ws, state });
+      }
+
+      const later: Promise<void>[] = [];
+      for (const ev of sim.tick(started, positions)) this.dispatch(ev, sockets, started, later);
+      await Promise.all(later);
+
+      const ms = Date.now() - started;
+      const t = this.tickStat;
+      t.count++;
+      t.totalMs += ms;
+      if (ms > t.maxMs) t.maxMs = ms;
+    } catch (err) {
+      console.error("tick failed", err);
+    } finally {
+      this.ticking = false;
+    }
+  }
+
+  private dispatch(
+    ev: SimEvent,
+    sockets: Map<string, { ws: WebSocket; state: PlayerState }>,
+    now: number,
+    later: Promise<void>[],
+  ): void {
+    switch (ev.t) {
+      case "mon":
+        return this.broadcast({ t: "mon", monster: ev.monster });
+      case "mon_gone":
+        return this.broadcast({ t: "mon_gone", id: ev.id });
+      case "hit":
+        return this.broadcast({ t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp });
+      case "hp": {
+        const entry = sockets.get(ev.playerId);
+        if (entry) this.send(entry.ws, { t: "hp", hp: ev.hp, maxHp: ev.maxHp });
+        return;
+      }
+      case "progress": {
+        const entry = sockets.get(ev.playerId);
+        const profile = this.sim?.getPlayer(ev.playerId);
+        if (!entry || !profile) return;
+        this.send(entry.ws, { t: "stats", character: sheetOf(profile) });
+        // A stage-up changes points, so it is written at once; plain EXP waits for the debounced save.
+        if (ev.stagesGained > 0) later.push(this.flushProgress(entry.state.id));
+        else later.push(this.ensureSaveAlarm(now));
+        return;
+      }
+      case "player_dead": {
+        const entry = sockets.get(ev.playerId);
+        const profile = this.sim?.getPlayer(ev.playerId);
+        if (!entry || !profile) return;
+        later.push(this.handleDeath(entry.ws, entry.state, profile));
+        return;
+      }
+      case "path_request": {
+        const entry = sockets.get(ev.playerId);
+        if (entry) this.chase(entry.ws, entry.state, ev.to, now);
+        return;
+      }
+    }
+  }
+
+  private async ensureSaveAlarm(now: number): Promise<void> {
+    if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(now + SAVE_DEBOUNCE_MS);
+  }
+
+  private async flushProgress(id: string): Promise<void> {
+    const progress = this.sim?.beginFlush(id);
+    if (!progress) return;
+    try {
+      await saveCharacterProgress(this.env.DB, id, progress);
+      this.sim?.endFlush(id, progress, true);
+    } catch (err) {
+      console.error("progress flush failed", id, err);
+      this.sim?.endFlush(id, progress, false);
+    }
+  }
+
+  /** Death: lose a little EXP (never a stage), then respawn in town through the normal handoff. */
+  private async handleDeath(ws: WebSocket, state: PlayerState, profile: PlayerProfile): Promise<void> {
+    const expLost = expLostOnDeath(profile.exp);
+    this.sim?.applyDeathPenalty(state.id, expLost);
+    this.send(ws, { t: "died", expLost });
+    const [sx, sy] = getMap("town").spawn;
+    await this.handoff(ws, state, "town", sx + 0.5, sy + 0.5, true);
+  }
+
+  /** The server walks a player toward their target; the new path goes to everyone, including the player. */
+  private chase(ws: WebSocket, state: PlayerState, to: Vec2, now: number): void {
+    const map = getMap(state.mapId);
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const from: Vec2 = [here.x, here.y];
+    const path = lineClear(map, from, to) ? ([from, to] as Vec2[]) : findSmoothPath(map, from, to);
+    if (!path) return;
+    state.path = path;
+    state.startedAt = now;
+    state.dirty = true;
+    ws.serializeAttachment(state);
+    const snap = this.snapshot(state);
+    this.broadcast({ t: "path", player: snap }, ws);
+    this.send(ws, { t: "path", player: snap });
+  }
+
+  private async handleAttack(ws: WebSocket, state: PlayerState, monsterId: string): Promise<void> {
+    const sim = this.ensureSim(state.mapId);
+    if (!sim) return;
+    let profile = sim.getPlayer(state.id);
+    if (!profile) {
+      // The room restarted while the socket survived: rebuild the working copy from D1.
+      const row = await getCharacterById(this.env.DB, state.id);
+      if (!row || !ws.deserializeAttachment()) return;
+      profile = sim.addPlayer(seedOf(row));
+      this.startTick();
+    }
+    const now = Date.now();
+    if (profile.dead || now - profile.lastAttackMsgAt < ATTACK_MIN_GAP_MS) return;
+    profile.lastAttackMsgAt = now;
+    sim.setTarget(state.id, monsterId);
   }
 
   private players(): PlayerState[] {

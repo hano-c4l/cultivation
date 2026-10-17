@@ -2,7 +2,10 @@ import Phaser from "phaser";
 import {
   TILE_H,
   TILE_W,
+  ATTACK_MIN_GAP_MS,
   MIN_MOVE_INTERVAL_MS,
+  getMonsterDef,
+  type MonsterSnapshot,
   CELLS_PER_TILE,
   findSmoothPath,
   getMap,
@@ -17,11 +20,16 @@ import {
 } from "@game/shared";
 import { initCharacterPanel, type CharacterPanel } from "./character-ui";
 import { initChat, type ChatUi } from "./chat-ui";
+import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { vi } from "./locales/vi";
 import { Net } from "./net";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
+
+const ELEMENT_COLOR: Record<string, number> = { kim: 0xe0e0e0, moc: 0x4caf50, thuy: 0x2196f3, hoa: 0xff5722, tho: 0x9c7a5b };
+/** A click within this many screen pixels of a monster (around its body) targets it instead of walking. */
+const MONSTER_PICK_PX = 34;
 
 /** Converts continuous tile coordinates to isometric screen pixels. */
 function toScreen(x: number, y: number): { x: number; y: number } {
@@ -46,6 +54,18 @@ interface Actor {
   offAt: number;
   body: Phaser.GameObjects.Ellipse;
   label: Phaser.GameObjects.Text;
+}
+
+interface MonsterActor {
+  id: string;
+  path: Vec2[];
+  startedAt: number;
+  speed: number;
+  hp: number;
+  maxHp: number;
+  body: Phaser.GameObjects.Rectangle;
+  label: Phaser.GameObjects.Text;
+  bar: Phaser.GameObjects.Graphics;
 }
 
 /** Time constant (ms) for blending away the offset left by a path correction. */
@@ -79,10 +99,14 @@ export class GameScene extends Phaser.Scene {
   private map: MapData = getMap("town");
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
   private actors = new Map<string, Actor>();
+  private monsters = new Map<string, MonsterActor>();
+  private targetId: string | null = null;
+  private lastAttackSentAt = 0;
   private selfId = "";
   private net!: Net;
   private chat!: ChatUi;
   private charPanel!: CharacterPanel;
+  private vitals!: VitalsUi;
   private hud!: HTMLElement;
   private ping = 0;
   private pingSentAt = 0;
@@ -102,6 +126,7 @@ export class GameScene extends Phaser.Scene {
     this.drawMap();
     this.marker = this.add.graphics().setDepth(1);
     this.chat = initChat((text) => this.net.send({ t: "chat", text }));
+    this.vitals = initVitals();
     this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
 
     const camera = this.cameras.main;
@@ -223,6 +248,17 @@ export class GameScene extends Phaser.Scene {
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
     const tx = Math.round(t.x * 100) / 100;
     const ty = Math.round(t.y * 100) / 100;
+    const picked = this.pickMonster(world.x, world.y);
+    if (picked) {
+      const nowMs = performance.now();
+      if (nowMs - this.lastAttackSentAt >= ATTACK_MIN_GAP_MS + 20) {
+        this.lastAttackSentAt = nowMs;
+        this.targetId = picked;
+        this.net.send({ t: "attack", id: picked });
+      }
+      return;
+    }
+    this.targetId = null;
     // Client-side throttle matches the server's, so a dropped click never desyncs the prediction.
     const now = performance.now();
     if (now - this.lastMoveSentAt < MIN_MOVE_INTERVAL_MS + 20) return;
@@ -258,8 +294,25 @@ export class GameScene extends Phaser.Scene {
         this.switchMap(msg.map);
         this.clearActors();
         this.upsertActor(msg.players);
+        for (const m of msg.monsters) this.upsertMonster(m);
         this.charPanel.update(msg.character);
+        this.vitals.set(msg.hp, msg.maxHp);
         this.refreshHud();
+        break;
+      case "mon":
+        this.upsertMonster(msg.monster);
+        break;
+      case "mon_gone":
+        this.removeMonster(msg.id);
+        break;
+      case "hit":
+        this.showHit(msg);
+        break;
+      case "hp":
+        this.vitals.set(msg.hp, msg.maxHp);
+        break;
+      case "died":
+        this.chat.system(vi.combat.died(msg.expLost));
         break;
       case "stats":
         this.charPanel.update(msg.character);
@@ -334,6 +387,85 @@ export class GameScene extends Phaser.Scene {
 
   private clearActors(): void {
     for (const id of [...this.actors.keys()]) this.removeActor(id);
+    for (const id of [...this.monsters.keys()]) this.removeMonster(id);
+    this.targetId = null;
+  }
+
+  /** The monster nearest to a click, measured on screen so clicking the body, label or HP bar all count. */
+  private pickMonster(wx: number, wy: number): string | null {
+    const now = performance.now();
+    let best: string | null = null;
+    let bestD = MONSTER_PICK_PX;
+    for (const m of this.monsters.values()) {
+      const pos = positionAlongPath(m.path, now - m.startedAt, m.speed);
+      const s = toScreen(pos.x, pos.y);
+      const d = Math.hypot(s.x - wx, s.y - 20 - wy);
+      if (d <= bestD) {
+        bestD = d;
+        best = m.id;
+      }
+    }
+    return best;
+  }
+
+  private upsertMonster(snap: MonsterSnapshot): void {
+    const def = getMonsterDef(snap.kind);
+    let m = this.monsters.get(snap.id);
+    if (!m) {
+      const color = ELEMENT_COLOR[def?.element ?? ""] ?? 0xcccccc;
+      const body = this.add.rectangle(0, 0, 26, 26, color).setStrokeStyle(2, 0x000000, 0.7);
+      const label = this.add
+        .text(0, 0, def?.nameVi ?? snap.kind, { fontFamily: FONT, fontSize: "12px", color: "#ffd0d0", stroke: "#000000", strokeThickness: 3 })
+        .setOrigin(0.5, 1);
+      m = { id: snap.id, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
+      this.monsters.set(snap.id, m);
+    }
+    const now = performance.now();
+    // Monsters are re-planned often; blending keeps them from snapping, but a plain swap is fine at their speed.
+    const before = positionAlongPath(m.path, now - m.startedAt, m.speed);
+    m.path = snap.path.length > 0 ? snap.path : [[before.x, before.y]];
+    m.speed = snap.speed;
+    m.startedAt = now - snap.ageMs;
+    m.hp = snap.hp;
+    m.maxHp = snap.maxHp;
+  }
+
+  private removeMonster(id: string): void {
+    const m = this.monsters.get(id);
+    if (!m) return;
+    m.body.destroy();
+    m.label.destroy();
+    m.bar.destroy();
+    this.monsters.delete(id);
+    if (this.targetId === id) this.targetId = null;
+  }
+
+  /** Floating damage number over the target; also keeps a monster's HP bar current. */
+  private showHit(msg: Extract<ServerMessage, { t: "hit" }>): void {
+    const monster = this.monsters.get(msg.to);
+    if (monster) monster.hp = msg.hp;
+    const now = performance.now();
+    let x: number;
+    let y: number;
+    if (monster) {
+      const p = positionAlongPath(monster.path, now - monster.startedAt, monster.speed);
+      x = p.x;
+      y = p.y;
+    } else {
+      const actor = this.actors.get(msg.to);
+      if (!actor) return;
+      const p = currentPos(actor, now);
+      x = p.x;
+      y = p.y;
+    }
+    const s = toScreen(x, y);
+    const text = msg.kind === "miss" ? vi.combat.miss : msg.kind === "crit" ? `${msg.damage}!` : String(msg.damage);
+    const color = msg.to === this.selfId ? "#ff6b6b" : msg.kind === "crit" ? "#ffd54a" : "#ffffff";
+    const label = this.add
+      .text(s.x, s.y - 50, text, { fontFamily: FONT, fontSize: msg.kind === "crit" ? "18px" : "14px", color, stroke: "#000000", strokeThickness: 3 })
+      .setOrigin(0.5, 1)
+      .setDepth(1000);
+    this.tweens.add({ targets: label, y: label.y - 28, alpha: 0, duration: 800, onComplete: () => label.destroy() });
   }
 
   update(): void {
@@ -346,6 +478,20 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       actor.label.setDepth(depth + 0.1);
+    }
+
+    for (const m of this.monsters.values()) {
+      const pos = positionAlongPath(m.path, now - m.startedAt, m.speed);
+      const s = toScreen(pos.x, pos.y);
+      const depth = 10 + pos.x + pos.y;
+      m.body.setPosition(s.x, s.y - 13).setDepth(depth);
+      m.label.setPosition(s.x, s.y - 40).setDepth(depth + 0.1);
+      m.bar.clear().setDepth(depth + 0.1);
+      const w = 34;
+      m.bar.fillStyle(0x000000, 0.7).fillRect(s.x - w / 2, s.y - 36, w, 5);
+      m.bar.fillStyle(0xe53935, 1).fillRect(s.x - w / 2 + 1, s.y - 35, (w - 2) * Math.max(0, m.hp / m.maxHp), 3);
+      if (m.id === this.targetId) m.body.setStrokeStyle(3, 0xffe08a, 1);
+      else m.body.setStrokeStyle(2, 0x000000, 0.7);
     }
 
     // Standing still on a portal tile asks the server to transfer us (the server re-checks the position).
