@@ -96,7 +96,7 @@ export function rootGradeFromRoll(roll: number): number {
 }
 
 /** Base stats and potential points of a freshly created character; a better root grade starts with more points. */
-export function startingStats(root: SpiritualRoot, grade = 0): { base: BaseStats; potentialPoints: number } {
+export function startingStats(root: SpiritualRoot, grade: number): { base: BaseStats; potentialPoints: number } {
   const base = {} as BaseStats;
   for (const key of STAT_KEYS) base[key] = BASE_STAT_START;
   base[ROOT_FAVOURED_STAT[root]] += ROOT_STAT_BONUS;
@@ -122,7 +122,7 @@ export interface DerivedStats {
 const RATE_CAP = 60;
 
 /** Combat stats from base stats and cultivation level. Formulas live here so client and server always agree. */
-export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade = 0): DerivedStats {
+export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number): DerivedStats {
   const lv = levelIndex(realm, stage);
   return {
     maxHp: 100 + base.canCot * 15 + lv * 25,

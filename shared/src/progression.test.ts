@@ -78,7 +78,7 @@ describe("applyExp", () => {
 describe("starting stats", () => {
   it("favours one stat per root and grants the starting points", () => {
     for (const root of SPIRITUAL_ROOTS) {
-      const { base, potentialPoints } = startingStats(root);
+      const { base, potentialPoints } = startingStats(root, 0);
       const values = STAT_KEYS.map((k) => base[k]).sort();
       expect(values).toEqual([5, 5, 5, 5, 5, 7]);
       expect(potentialPoints).toBe(STARTING_POTENTIAL_POINTS);
@@ -87,17 +87,17 @@ describe("starting stats", () => {
 });
 
 describe("deriveStats", () => {
-  const base = startingStats("kim").base;
+  const base = startingStats("kim", 0).base;
 
   it("grows with stats and with cultivation level", () => {
-    const low = deriveStats(base, 0, 1);
-    expect(deriveStats({ ...base, canCot: base.canCot + 10 }, 0, 1).maxHp).toBeGreaterThan(low.maxHp);
-    expect(deriveStats({ ...base, linhLuc: base.linhLuc + 10 }, 0, 1).attack).toBeGreaterThan(low.attack);
-    expect(deriveStats(base, 1, 1).maxHp).toBeGreaterThan(deriveStats(base, 0, 9).maxHp);
+    const low = deriveStats(base, 0, 1, 0);
+    expect(deriveStats({ ...base, canCot: base.canCot + 10 }, 0, 1, 0).maxHp).toBeGreaterThan(low.maxHp);
+    expect(deriveStats({ ...base, linhLuc: base.linhLuc + 10 }, 0, 1, 0).attack).toBeGreaterThan(low.attack);
+    expect(deriveStats(base, 1, 1, 0).maxHp).toBeGreaterThan(deriveStats(base, 0, 9, 0).maxHp);
   });
 
   it("caps rates", () => {
-    const d = deriveStats({ ...base, thanThuc: 9999, thanPhap: 9999, phucDuyen: 9999 }, 0, 1);
+    const d = deriveStats({ ...base, thanThuc: 9999, thanPhap: 9999, phucDuyen: 9999 }, 0, 1, 0);
     expect(d.critRate).toBe(60);
     expect(d.dodgeRate).toBe(60);
     expect(d.dropBonus).toBe(60);
@@ -179,7 +179,7 @@ describe("root grades", () => {
   it("adds starting points and EXP bonus by grade", () => {
     expect(startingStats("kim", 0).potentialPoints).toBe(STARTING_POTENTIAL_POINTS);
     expect(startingStats("kim", 4).potentialPoints).toBe(STARTING_POTENTIAL_POINTS + 6);
-    const base = startingStats("kim").base;
+    const base = startingStats("kim", 0).base;
     expect(deriveStats(base, 0, 1, 0).expBonus).toBe(base.ngoTinh - 10);
     expect(deriveStats(base, 0, 1, 4).expBonus).toBe(base.ngoTinh + 50);
   });
