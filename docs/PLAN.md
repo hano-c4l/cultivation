@@ -108,16 +108,16 @@ Con số cố định (có thể chỉnh trước khi bắt đầu, sau đó kh�
 - Chết: mất 10% EXP của tầng hiện tại (không xuống tầng; đã làm ở GĐ1), giảm độ bền (chờ có trang bị, GĐ2); hồi sinh ở thành.
 - Đột phá cảnh giới có tỉ lệ thất bại, dùng đan dược tăng tỉ lệ.
 
-## 9a. Chat nhiều chế độ (yêu cầu của người dùng, làm ở GĐ2)
-Hiện (GĐ1b) chỉ có chat theo bản đồ. Khung chat sẽ có 5 thẻ hiển thị:
-| Thẻ | Nội dung | Ghi chú thiết kế |
+## 9a. Chat nhiều chế độ (yêu cầu của người dùng; ĐÃ LÀM ở 2g)
+Khung chat có 5 thẻ hiển thị, mỗi kênh một màu để phân biệt ở thẻ "Tất cả":
+| Thẻ | Nội dung | Cách làm |
 |---|---|---|
-| Tất cả | Gộp mọi loại bên dưới | Chỉ là cách xem phía client, không phải kênh gửi. Ô nhập có bộ chọn kênh gửi (Thế giới / Bản đồ / Truyền âm) |
-| Thế giới | Mọi người chơi, không phụ thuộc bản đồ hay kênh | Cần một nơi phát tin toàn cục (ví dụ một Durable Object `ChatHub` nhận từ các `MapRoom` rồi phát lại). Giới hạn tần suất chặt hơn chat bản đồ (và có thể tốn Linh Thạch hoặc hồi chiêu); lọc từ như cũ. Chi phí request DO phải đo theo giới hạn gói (mục 2a) |
-| Bản đồ | Người chơi cùng bản đồ và cùng kênh | Đúng như chat hiện tại |
-| Truyền âm | Chat riêng giữa hai người theo đạo hiệu | Cần tra người nhận đang online ở phòng nào (qua `CharacterLock`/`ChatHub`). Người nhận offline thì báo lỗi, chưa gửi qua hòm thư ở GĐ2. Cho phép chặn người (danh sách chặn) |
-| Hệ thống | Tin do máy chủ gửi: tử vong, nhặt tiền/đồ, lên tầng, thông báo boss, kết quả giao dịch… | Chỉ máy chủ gửi, người chơi không gửi được. Thêm kiểu tin `sys` với mã loại để client dịch/định dạng (chuỗi hiển thị nằm trong `vi.ts`). Hiện các thông báo này đang là chữ nổi/HUD, sẽ chuyển một phần sang thẻ này |
-Giao thức: tin `chat` mang thêm trường `channel` (`world | map | whisper`); tin `sys` riêng. Mỗi thẻ có đếm tin chưa đọc; lịch sử chỉ giữ ở client (không lưu D1). Cần thay giới hạn tần suất theo từng kênh trong `MapRoom`.
+| Tất cả | Gộp mọi loại bên dưới | Chỉ là cách xem phía client. Ô nhập có bộ chọn kênh gửi (Thế giới / Bản đồ / Truyền âm) |
+| Thế giới | Mọi người chơi, không phụ thuộc bản đồ hay kênh | Socket chat riêng `/ws/chat` tới `ChatHub` (không RPC chéo phòng, vì mỗi RPC tốn một request và đánh thức phòng ngủ). Cách nhau 5 giây, tối đa 3 tin/phút; lọc từ như cũ. Chưa tốn Linh Thạch |
+| Bản đồ | Người chơi cùng bản đồ và cùng kênh (phòng) | Như chat cũ, qua socket game |
+| Truyền âm | Chat riêng giữa hai người theo đạo hiệu | Qua `ChatHub`, tra người nhận trong các socket chat đang mở. Offline thì báo lỗi, chưa gửi qua hòm thư. Danh sách chặn: chưa làm |
+| Hệ thống | Tử vong, nhặt tiền/đồ, lên tầng, thông báo boss, kết quả giao dịch… | Client tự dựng dòng từ sự kiện sẵn có (không có tin `sys` từ server); thông báo boss sau này cần một đường server riêng |
+Giao thức: tin `chat` mang `channel` (`world | map | whisper`), thiếu thì coi là `map`; bản sao truyền âm của người gửi mang `toName`. Mỗi thẻ có đếm tin chưa đọc; lịch sử chỉ giữ ở client. Chi tiết vận hành và giới hạn: `docs/STATUS.md`.
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
 

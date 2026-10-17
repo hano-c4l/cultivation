@@ -192,8 +192,23 @@ describe("chat parsing", () => {
     expect(normalizeChatText("  xin   chào\n\tđạo hữu ")).toBe("xin chào đạo hữu");
     expect(normalizeChatText("   ")).toBeNull();
     expect([...(normalizeChatText("a".repeat(500)) ?? "")].length).toBe(120);
-    expect(parseClientMessage(JSON.stringify({ t: "chat", text: "chào" }))).toEqual({ t: "chat", text: "chào" });
+    // No channel means map chat, so clients cached from before the channels existed keep working.
+    expect(parseClientMessage(JSON.stringify({ t: "chat", text: "chào" }))).toEqual({ t: "chat", channel: "map", text: "chào" });
     expect(parseClientMessage(JSON.stringify({ t: "chat", text: 5 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "world", text: "chào" }))).toEqual({ t: "chat", channel: "world", text: "chào" });
+    expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "guild", text: "chào" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "whisper", to: "  Lão Tổ ", text: "chào" }))).toEqual({
+      t: "chat",
+      channel: "whisper",
+      text: "chào",
+      to: "Lão Tổ",
+    });
+    // A whisper needs a usable recipient.
+    expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "whisper", text: "chào" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "whisper", to: "   ", text: "chào" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "whisper", to: "x".repeat(40), text: "chào" }))).toBeNull();
+    // `to` is ignored outside whispers.
+    expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "map", to: "ai đó", text: "chào" }))).toEqual({ t: "chat", channel: "map", text: "chào" });
     expect(parseClientMessage(JSON.stringify({ t: "portal" }))).toEqual({ t: "portal" });
   });
 });

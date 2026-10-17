@@ -114,6 +114,7 @@ export class GameScene extends Phaser.Scene {
   private lastAttackSentAt = 0;
   private selfId = "";
   private net!: Net;
+  private chatNet!: Net;
   private chat!: ChatUi;
   private charPanel!: CharacterPanel;
   private vitals!: VitalsUi;
@@ -135,7 +136,12 @@ export class GameScene extends Phaser.Scene {
     this.hud = document.getElementById("hud")!;
     this.drawMap();
     this.marker = this.add.graphics().setDepth(1);
-    this.chat = initChat((text) => this.net.send({ t: "chat", text }));
+    this.chat = initChat((channel, text, to) => {
+      if (channel === "map") return this.net.send({ t: "chat", channel, text });
+      // World chat and whispers use the chat socket; without it they would vanish silently.
+      if (!this.chatNet.isOpen()) return this.chat.system(vi.chat.chatUnavailable, true);
+      this.chatNet.send(to ? { t: "chat", channel, text, to } : { t: "chat", channel, text });
+    });
     this.vitals = initVitals();
     this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
 
@@ -165,6 +171,15 @@ export class GameScene extends Phaser.Scene {
     });
     this.net.connect();
 
+    // Second socket for world chat and whispers: it survives portals and deaths, which reconnect the game socket.
+    this.chatNet = new Net(`${proto}://${location.host}/ws/chat`, {
+      onMessage: (msg) => this.handleChatMessage(msg),
+      onAuthLost: () => undefined, // the game socket reloads the page
+      onPong: () => undefined,
+      onStatus: () => undefined,
+    });
+    this.chatNet.connect();
+
     this.time.addEvent({
       delay: 2000,
       loop: true,
@@ -173,6 +188,8 @@ export class GameScene extends Phaser.Scene {
         this.net.sendPing();
       },
     });
+    // The chat socket needs no round-trip timing, only a keep-alive, so it pings far less often.
+    this.time.addEvent({ delay: 30_000, loop: true, callback: () => this.chatNet.sendPing() });
   }
 
   /** (Re)draws the current map's tiles and portals, destroying whatever was drawn for the previous map. */
@@ -311,9 +328,6 @@ export class GameScene extends Phaser.Scene {
         this.vitals.setWallet(msg.wallet);
         this.refreshHud();
         break;
-      case "wallet":
-        this.vitals.setBalance(msg.currency, msg.balance);
-        break;
       case "mon":
         this.upsertMonster(msg.monster);
         break;
@@ -329,10 +343,20 @@ export class GameScene extends Phaser.Scene {
       case "died":
         this.chat.system(vi.combat.died(msg.expLost));
         break;
-      case "stats":
+      case "wallet":
+        this.vitals.setBalance(msg.currency, msg.balance);
+        if (msg.gained) this.chat.system(vi.chat.gainedCurrency(msg.gained, vi.economy.currency[msg.currency]));
+        break;
+      case "stats": {
+        const before = this.selfSheet;
         this.charPanel.update(msg.character);
         this.selfSheet = msg.character;
+        const c = msg.character;
+        if (before && (c.realm > before.realm || (c.realm === before.realm && c.stage > before.stage))) {
+          this.chat.system(vi.chat.levelUp(REALMS[c.realm]?.nameVi ?? "", c.stage));
+        }
         break;
+      }
       case "joined":
       case "path":
         this.upsertActor([msg.player]);
@@ -348,6 +372,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "kicked":
         this.hud.textContent = vi.kicked;
+        this.chatNet.close();
         break;
       case "transfer":
         // The server closes the socket right after; Net reconnects and the welcome brings the new map.
@@ -355,11 +380,19 @@ export class GameScene extends Phaser.Scene {
         this.hud.textContent = vi.transferring;
         break;
       case "chat":
-        this.chat.add(msg.name, msg.text, msg.id === this.selfId);
-        break;
       case "chat_error":
-        this.chat.system(msg.reason === "rate" ? vi.chatRateLimited : vi.chatInvalid);
+        this.handleChatMessage(msg);
         break;
+    }
+  }
+
+  /** Chat lines and chat errors arrive on both sockets (map chat on the game socket, world and whispers on the chat socket). */
+  private handleChatMessage(msg: ServerMessage): void {
+    if (msg.t === "chat") {
+      this.chat.add(msg, this.selfId);
+    } else if (msg.t === "chat_error") {
+      const text = msg.reason === "rate" ? vi.chat.rateLimited : msg.reason === "offline" ? vi.chat.offline : vi.chat.invalid;
+      this.chat.system(text, true);
     }
   }
 

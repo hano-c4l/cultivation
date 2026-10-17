@@ -19,6 +19,15 @@ export const CHAT_MAX_LENGTH = 120;
 export const CHAT_BURST = 5;
 export const CHAT_WINDOW_MS = 10_000;
 export const CHAT_MIN_GAP_MS = 500;
+/** World chat reaches every player and costs the hub a broadcast, so it is limited much harder. */
+export const WORLD_CHAT_MIN_GAP_MS = 5_000;
+export const WORLD_CHAT_BURST = 3;
+export const WORLD_CHAT_WINDOW_MS = 60_000;
+export const CHAT_TARGET_MAX_LENGTH = 32;
+
+/** Where a chat line goes: everyone online (world), the sender's map room (map), or one named player (whisper). */
+export type ChatChannel = "world" | "map" | "whisper";
+export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper"];
 /** How far (tiles) the client-claimed start tile may differ from the server position and still be trusted. */
 export const MAX_DESYNC_TILES = 3;
 /** Minimum gap between stat allocations; each one is a D1 write. */
@@ -29,7 +38,8 @@ export type ClientMessage =
   | { t: "move"; x: number; y: number; fx: number; fy: number; seq: number }
   /** Ask to use the portal the character is standing on; the server verifies the position. */
   | { t: "portal" }
-  | { t: "chat"; text: string }
+  /** `channel` defaults to "map" when absent (older clients). `to` is the recipient's name and only used for whispers. World and whisper go over the chat socket, map over the game socket. */
+  | { t: "chat"; channel: ChatChannel; text: string; to?: string }
   /** Spend potential points: stat key to points. One message per confirmation, one D1 write. */
   | { t: "allocate"; points: Partial<BaseStats> }
   /** Target a monster: the server walks into range and auto-attacks until the target dies or the player moves. */
@@ -69,8 +79,9 @@ export type ServerMessage =
   | { t: "kicked"; reason: string }
   /** The character moved to another map; the client reconnects and receives a fresh welcome. */
   | { t: "transfer"; map: string }
-  | { t: "chat"; id: string; name: string; text: string; ts: number }
-  | { t: "chat_error"; reason: "rate" | "invalid" }
+  /** `id`/`name` is the sender. For a whisper the sender's own copy also carries `toName`. */
+  | { t: "chat"; channel: ChatChannel; id: string; name: string; text: string; ts: number; toName?: string }
+  | { t: "chat_error"; reason: "rate" | "invalid" | "offline" }
   /** Current character sheet; sent after every allocation attempt (also when it was rejected). */
   | { t: "stats"; character: CharacterSheet }
   /** A monster appeared or changed its path. */
@@ -114,7 +125,12 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "chat": {
       if (typeof m.text !== "string") return null;
       const text = normalizeChatText(m.text);
-      return text ? { t: "chat", text } : null;
+      if (!text) return null;
+      const channel = m.channel === undefined ? "map" : m.channel;
+      if (!CHAT_CHANNELS.includes(channel as ChatChannel)) return null;
+      if (channel !== "whisper") return { t: "chat", channel: channel as ChatChannel, text };
+      const to = typeof m.to === "string" ? normalizeChatTarget(m.to) : null;
+      return to ? { t: "chat", channel: "whisper", text, to } : null;
     }
     case "allocate": {
       const points = parseAllocation(m.points);
@@ -125,6 +141,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     default:
       return null;
   }
+}
+
+/** A whisper recipient's name: trimmed, no control characters, at most CHAT_TARGET_MAX_LENGTH characters. */
+export function normalizeChatTarget(raw: string): string | null {
+  const name = raw.normalize("NFC").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  const chars = [...name];
+  return chars.length === 0 || chars.length > CHAT_TARGET_MAX_LENGTH ? null : name;
 }
 
 /** Strips control characters, collapses whitespace and caps the length. Returns null for empty text. */

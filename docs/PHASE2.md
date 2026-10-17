@@ -1,13 +1,14 @@
 # Giai đoạn 2: Chiều sâu nhân vật — đề xuất chia nhánh (bản nháp)
 
-Trạng thái: **ĐỀ XUẤT, chưa bắt đầu.** Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
+Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g đã làm xong ở nhánh `features_chat-channels`. Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
 
 Nghiệm thu chung của GĐ2 (từ PLAN): một nhân vật đi trọn chuỗi nhiệm vụ tân thủ; công thức sát thương ngũ hành đúng test; sát khí/rơi đồ/vệ binh theo đúng luật mặc định.
 
 ## Thứ tự phụ thuộc
-2a → 2b → 2c → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2g độc lập, làm được bất cứ lúc nào; 2h cuối.
+2g (xong) → 2a → 2b → 2c → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
 
 ## 2a. Vật phẩm và túi đồ (`features_inventory`)
+- **Túi đồ (đã chốt):** mỗi tab 8×16 ô, mở rộng bằng cách thêm tab; kích thước tab và số tab nằm trong cấu hình để đổi sau; **chưa có giới hạn trọng lượng** (làm sau).
 - Dữ liệu vật phẩm trong `shared/` (`name_vi`, `desc_vi`, loại, phẩm cấp, xếp chồng hay không). `item_instances` (đã có từ 1e) là bản chính; DO giữ cache khi nhân vật online (PLAN mục 3).
 - Quái rơi vật phẩm theo bảng rơi có trọng số (chỗ móc `reward` trong `combat-sim.ts` và hàng đợi ghi riêng như Linh Thạch). Nhặt đồ, bỏ đồ, dùng đồ (thuốc hồi HP).
 - Giao thức: tin `inventory` (đầy đủ khi vào phòng, delta khi đổi), `use_item`, `drop_item`. Giới hạn ô túi.
@@ -42,7 +43,8 @@ Nghiệm thu chung của GĐ2 (từ PLAN): một nhân vật đi trọn chuỗi 
 - Area-of-interest (hiện mọi sự kiện gửi cả phòng) nên làm trước hoặc cùng nhánh này, vì PvP đông người làm tăng băng thông.
 - Nghiệm thu: sát khí, rơi đồ và vệ binh theo đúng luật mặc định (test thuần trong `shared/`).
 
-## 2g. Chat nhiều chế độ (`features_chat-channels`)
+## 2g. Chat nhiều chế độ (`features_chat-channels`) — ĐÃ LÀM
+- Kiến trúc thực tế (socket chat riêng tới `ChatHub`, không RPC) và các giới hạn: xem `docs/STATUS.md` mục "Chat nhiều kênh (2g)".
 - Theo `docs/PLAN.md` mục 9a: 5 thẻ Tất cả / Thế giới / Bản đồ / Truyền âm / Hệ thống.
 - Cần `ChatHub` Durable Object cho chat thế giới (chú ý chi phí request, mục 2a của PLAN); truyền âm cần tra người nhận online; tin hệ thống có mã loại để client dịch.
 - Làm sau 2a nếu muốn có sẵn tin "nhặt đồ" cho thẻ Hệ thống, nhưng không bắt buộc.
@@ -51,9 +53,11 @@ Nghiệm thu chung của GĐ2 (từ PLAN): một nhân vật đi trọn chuỗi 
 - Bảng xếp hạng (cảnh giới/tầng/EXP; đọc từ D1, cache ngắn).
 - Boss bản đồ theo quy tắc đã chốt ở `docs/PHASE1.md` mục "Boss" (cần vật phẩm 2a, kỹ năng 2c, và lưu trạng thái boss bền trong DO storage). Lưu ý rủi ro đã ghi trong STATUS: đổi kênh vẫn tung lại hạng quái.
 
-## Câu hỏi cần chốt trước khi bắt đầu
-1. **Thứ tự**: làm đúng 2a → 2b → 2c → 2d → 2e → 2f như trên, hay đưa mục nào lên sớm (ví dụ PvP hoặc chat)?
-2. **Boss**: ở 2h hay đưa lên sớm hơn? Một boss cho mỗi kênh hay cho cả bản đồ qua 8 kênh? Quy tắc loại dưới 10% có áp dụng cho tiền không?
-3. **Túi đồ**: số ô ban đầu và có giới hạn trọng lượng không?
-4. **Giá trị tạm đang chờ xác nhận** từ GĐ1 (xem `docs/STATUS.md`): tên và tỉ lệ quái hiếm, `KILLS_BASE`/`KILLS_GROWTH`, lượng rơi Linh Thạch.
-5. **Gói Cloudflare**: PvP đông người, `ChatHub` và nhiều bản đồ sẽ tăng mức dùng; khi có số đo thật thì quyết định nâng Workers Paid (xem dấu hiệu trong `docs/STATUS.md`).
+## Quyết định đã chốt (2026-10-17)
+1. **Thứ tự:** 2g (chat) lên trước vì độc lập, mỗi kênh một màu để phân biệt ở thẻ "Tất cả"; sau đó 2a → 2b → 2c → 2d → 2e → 2f → 2h.
+2. **Boss:** mỗi bản đồ chỉ có đúng 1 boss cùng lúc (cho cả 8 kênh, cần điều phối toàn cục theo bản đồ); quy tắc loại dưới 10% áp dụng cho cả tiền lẫn đồ.
+3. **Túi đồ:** tab 8×16 ô, mở rộng bằng cách thêm tab, kích thước đổi được qua cấu hình, chưa tính trọng lượng.
+4. **Giá trị tạm của GĐ1** (tên và tỉ lệ quái hiếm, `KILLS_BASE`/`KILLS_GROWTH`, lượng rơi Linh Thạch): giữ nguyên như đã thống nhất, chỉnh khi cân bằng.
+
+## Còn mở
+- **Gói Cloudflare:** PvP đông người, `ChatHub` và nhiều bản đồ sẽ tăng mức dùng; khi có số đo thật thì quyết định nâng Workers Paid (dấu hiệu trong `docs/STATUS.md`).

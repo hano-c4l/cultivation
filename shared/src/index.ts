@@ -4,6 +4,7 @@ export * from "./movement";
 export * from "./monsters";
 export * from "./combat";
 export * from "./protocol";
+export * from "./chat";
 export * from "./character";
 export * from "./progression-data";
 export * from "./progression";
