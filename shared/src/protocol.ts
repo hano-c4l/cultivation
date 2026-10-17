@@ -70,7 +70,7 @@ export type ClientMessage =
 export interface MailView {
   id: string;
   subject: string;
-  item: { type: string; qty: number; dur?: number; max?: number } | null;
+  item: { type: string; qty: number; dur?: number; max?: number; lv?: number; xp?: number } | null;
   expiresInMs: number | null;
 }
 

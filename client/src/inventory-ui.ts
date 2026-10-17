@@ -173,7 +173,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
         if (item.dur !== undefined && item.dur <= 0) slot.classList.add("broken");
         slot.title = itemName(item.type);
         slot.append(el("span", "bag-name", itemName(item.type)));
-        const tag = itemTierTag(item.type);
+        const tag = itemTierTag(item.type, item.lv);
         if (tag) slot.append(el("span", "bag-tag", tag));
         const dot = elementDot(item.type);
         if (dot) {
@@ -209,7 +209,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     }
     const def = getItemDef(item.type);
     const sel = selected;
-    box.append(describeItem(item.type, { dur: item.dur, max: item.max, qty: item.qty }));
+    box.append(describeItem(item.type, { dur: item.dur, max: item.max, qty: item.qty, lv: item.lv, xp: item.xp }));
     if (moveMode) box.append(el("div", "muted", vi.inventory.swapHint));
     if (splitQty !== null && item.qty > 1) {
       box.append(renderSplit(item, sel));
@@ -263,7 +263,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     if (def?.equip) {
       for (const w of worn.filter((e) => equipmentInfo(e.type)?.kind === def.equip!.kind)) {
         const cmp = el("div", "bag-compare");
-        cmp.append(el("div", "muted", `${vi.inventory.wornNow}:`), describeItem(w.type, { dur: w.dur, max: w.max }));
+        cmp.append(el("div", "muted", `${vi.inventory.wornNow}:`), describeItem(w.type, { dur: w.dur, max: w.max, lv: w.lv, xp: w.xp }));
         box.append(cmp);
       }
     }

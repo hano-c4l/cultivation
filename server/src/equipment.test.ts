@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { applyBag, equipmentInfo, planAdd, planDeathWear, planEquip, planRemove, planRepair, planUnequip, type BagContents, type BagOp, type WearerCtx } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyCurrencyDelta } from "./economy";
-import { claimMailItem, commitBagOps, deleteExpiredMail, listMail, loadBag, opStatements, type BagState } from "./inventory";
+import { claimMailItem, commitBagOps, deleteExpiredMail, listMail, loadBag, opStatements, saveRefine, type BagState } from "./inventory";
 import { makeDb } from "./test-db";
 
 const A = "char-a";
@@ -241,5 +241,40 @@ describe("migration 0010 (elements for old gear)", () => {
     expect(type("a2")).toBe("eq.ring.u.1.4.3.moc");
     expect(type("a3")).toBe("eqs.van_co_gioi");
     expect(type("a4")).toBe("linh_thao");
+  });
+});
+
+describe("pháp bảo bản mệnh training in D1", () => {
+  const BONDED = "eq.bonded.u.0.1.2.kim";
+
+  it("is saved on the item, survives wearing, taking off and a trip through the mailbox", async () => {
+    const id = await give(BONDED);
+    let bag = await loadBag(db, A);
+    const eq = planEquip(st(bag), bag.tabs, { tab: 0, cell: 0 }, undefined, wearer);
+    await commit(eq.ok ? eq.ops : []);
+    await saveRefine(db, A, id, 5, 123);
+    bag = await loadBag(db, A);
+    expect(bag.equipped).toEqual([{ id, type: BONDED, slot: "bonded", dur: 100, max: 100, lv: 5, xp: 123 }]);
+
+    const off = planUnequip(st(bag), bag.tabs, "bonded");
+    await commit(off.ok ? off.ops : []);
+    bag = await loadBag(db, A);
+    expect(bag.items[0]).toMatchObject({ id, lv: 5, xp: 123 });
+
+    // Worn again, then mailed (full bag), then claimed back: the training is still there.
+    const on = planEquip(st(bag), bag.tabs, { tab: 0, cell: 0 }, undefined, wearer);
+    await commit(on.ok ? on.ops : []);
+    await commit([{ op: "mailequip", id, slot: "bonded", mailId: "m-b", subject: "equip_removed" }], { now: NOW });
+    const mail = await listMail(db, A, NOW + 1);
+    expect(mail[0]!.item).toMatchObject({ lv: 5, xp: 123 });
+    const claimed = await claimMailItem(db, A, "m-b", await loadBag(db, A), NOW + 2);
+    expect(claimed.status).toBe("claimed");
+    expect((await loadBag(db, A)).items[0]).toMatchObject({ id, lv: 5, xp: 123 });
+  });
+
+  it("an untrained one has no level or EXP stored", async () => {
+    const id = await give(BONDED);
+    expect(row(id)).toMatchObject({ refine_level: null, refine_exp: null });
+    expect((await loadBag(db, A)).items[0]!.lv).toBeUndefined();
   });
 });

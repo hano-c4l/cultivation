@@ -110,6 +110,8 @@ export type SimEvent =
   | { t: "hp"; playerId: string; hp: number; maxHp: number }
   /** EXP changed after a kill; `stagesGained > 0` means points changed and the room must persist right away. */
   | { t: "progress"; playerId: string; stagesGained: number }
+  /** The kill's EXP, which the pháp bảo bản mệnh of the winner also receives (its own stream, no effect on the character's EXP). */
+  | { t: "refine"; playerId: string; gain: number }
   /** A kill dropped items for this player; the room puts them in the bag (or mails them when it is full). */
   | { t: "loot"; playerId: string; drops: LootDrop[] }
   /** A kill dropped Linh Thạch for this player; the room writes it to the ledger. */
@@ -517,8 +519,9 @@ export class CombatSim {
       m.rank === "normal"
         ? p
         : this.players.get(topContributor(m.damage, m.maxHp, p.id, (id) => !!this.players.get(id) && !this.players.get(id)!.dead) ?? p.id) ?? p;
-    const stagesGained = this.reward(winner, m);
+    const { stagesGained, gain } = this.reward(winner, m);
     events.push({ t: "progress", playerId: winner.id, stagesGained });
+    events.push({ t: "refine", playerId: winner.id, gain });
     const drop = rollLinhThachDrop(levelIndex(this.realm, m.tier), m.rank, this.rand(), this.rand());
     if (drop > 0) events.push({ t: "drop", playerId: winner.id, amount: drop });
     const loot = rollLoot(m.rank, this.rand);
@@ -531,7 +534,7 @@ export class CombatSim {
   }
 
   /** Gives the killer EXP (with their bonus) and applies any stage-ups. Linh Thạch drops are rolled by the caller. */
-  private reward(p: PlayerProfile, m: Monster): number {
+  private reward(p: PlayerProfile, m: Monster): { stagesGained: number; gain: number } {
     const gain = killExp({ realm: this.realm, tier: m.tier, rank: m.rank }, p.realm, p.expBonus);
     const r = applyExp({ realm: p.realm, stage: p.stage, exp: p.exp, potentialPoints: 0 }, gain);
     p.exp = r.exp;
@@ -542,7 +545,7 @@ export class CombatSim {
       p.potentialPoints += r.potentialPoints;
       this.recompute(p, true);
     }
-    return r.stagesGained;
+    return { stagesGained: r.stagesGained, gain };
   }
 
   /** Death handling by the room: EXP penalty is applied to the working copy; the room then persists and transfers. */
