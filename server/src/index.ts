@@ -53,6 +53,7 @@ async function handleChatSocket(request: Request, env: Env): Promise<Response> {
   headers.set("x-char-id", character.id);
   // Header values are Latin-1; names carry Vietnamese diacritics, so they travel encoded.
   headers.set("x-char-name", encodeURIComponent(character.name));
+  headers.set("x-char-admin", session.role === "admin" ? "1" : "0");
   const stub = env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" });
   return stub.fetch(new Request(request, { headers }));
 }

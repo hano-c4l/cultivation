@@ -6,7 +6,7 @@ const MAX_LINES = 120;
 /** What a tab shows. "all" shows every line; "system" is only written by the client. */
 export type ChatTab = "all" | ChatChannel | "system";
 const TABS: readonly ChatTab[] = ["all", "world", "map", "whisper", "system"];
-const SEND_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper"];
+const PLAYER_SEND_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper"];
 
 export interface ChatLineData {
   channel: ChatChannel;
@@ -25,7 +25,9 @@ export interface ChatUi {
 }
 
 /** Wires the HTML chat overlay. All text is inserted with textContent, so chat can never inject markup. */
-export function initChat(send: (channel: ChatChannel, text: string, to?: string) => void): ChatUi {
+export function initChat(send: (channel: ChatChannel, text: string, to?: string) => void, isAdmin = false): ChatUi {
+  // Admins can also announce in the system tab; the server checks the role again, this only decides what to offer.
+  const SEND_CHANNELS: readonly ChatChannel[] = isAdmin ? [...PLAYER_SEND_CHANNELS, "system"] : PLAYER_SEND_CHANNELS;
   const root = document.getElementById("chat")!;
   const log = document.getElementById("chat-log")!;
   const tabsBar = document.getElementById("chat-tabs")!;
@@ -80,7 +82,7 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
     for (const t of TABS) renderTab(t);
     log.scrollTop = log.scrollHeight;
     // Opening a sendable tab also selects it as the channel to speak in.
-    if (tab === "world" || tab === "map" || tab === "whisper") setSendChannel(tab);
+    if (tab === "world" || tab === "map" || tab === "whisper" || (tab === "system" && isAdmin)) setSendChannel(tab);
   };
 
   for (const tab of TABS) {
@@ -157,7 +159,10 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
       tag.textContent = `[${vi.chat.channels[line.channel]}] `;
       el.append(tag);
       const isSelf = line.id === selfId;
-      if (line.channel === "whisper") {
+      if (line.channel === "system") {
+        // An announcement: shown as an official line without the sender's name.
+        el.append(document.createTextNode(line.text));
+      } else if (line.channel === "whisper") {
         // Own copy: "Bạn → X"; incoming: "X → bạn". Either way clicking the other person's name starts a reply.
         const other = isSelf ? (line.toName ?? "") : line.name;
         const from = isSelf ? nameButton(vi.chat.you, true, null) : nameButton(line.name, false, other);

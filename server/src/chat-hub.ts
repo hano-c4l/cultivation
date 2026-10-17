@@ -21,6 +21,9 @@ interface ChatSocket {
   name: string;
   worldTimes: number[];
   whisperTimes: number[];
+  systemTimes: number[];
+  /** Taken from the account role when the socket opened; a role change applies from the next connection. */
+  admin: boolean;
 }
 
 /** Close code sent to an older chat socket of the same character; the client must not reconnect after it. */
@@ -71,7 +74,8 @@ export class ChatHub extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server, [id]);
-    const attachment: ChatSocket = { id, name, worldTimes: this.worldByChar.get(id) ?? [], whisperTimes: [] };
+    const admin = request.headers.get("x-char-admin") === "1";
+    const attachment: ChatSocket = { id, name, worldTimes: this.worldByChar.get(id) ?? [], whisperTimes: [], systemTimes: [], admin };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -81,9 +85,20 @@ export class ChatHub extends DurableObject<Env> {
     const self = ws.deserializeAttachment() as ChatSocket | null;
     if (!self) return;
     const msg = parseClientMessage(raw);
-    if (!msg || msg.t !== "chat" || msg.channel === "map") return; // the hub serves world and whisper only
+    if (!msg || msg.t !== "chat" || msg.channel === "map") return; // the hub serves world, whisper and system only
 
     const now = Date.now();
+    if (msg.channel === "system") {
+      // An announcement to everyone, shown in the system tab. The role comes from the Worker's header, never from the client.
+      if (!self.admin) return this.send(ws, { t: "chat_error", reason: "forbidden" });
+      const times = checkChatRate(self.systemTimes ?? [], now, { burst: CHAT_BURST, windowMs: CHAT_WINDOW_MS, minGapMs: CHAT_MIN_GAP_MS });
+      if (!times) return this.send(ws, { t: "chat_error", reason: "rate" });
+      self.systemTimes = times;
+      ws.serializeAttachment(self);
+      console.log("system announcement", self.name, msg.text);
+      this.broadcast({ t: "chat", channel: "system", id: self.id, name: self.name, text: msg.text, ts: now });
+      return;
+    }
     const text = filterChat(msg.text);
     if (msg.channel === "world") {
       // Both records may be missing part of the history (a new socket, or the hub slept), so use their union.

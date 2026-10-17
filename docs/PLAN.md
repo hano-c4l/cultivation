@@ -116,7 +116,7 @@ Khung chat có 5 thẻ hiển thị, mỗi kênh một màu để phân biệt �
 | Thế giới | Mọi người chơi, không phụ thuộc bản đồ hay kênh | Socket chat riêng `/ws/chat` tới `ChatHub` (không RPC chéo phòng, vì mỗi RPC tốn một request và đánh thức phòng ngủ). Cách nhau 5 giây, tối đa 3 tin/phút; lọc từ như cũ. Chưa tốn Linh Thạch |
 | Bản đồ | Người chơi cùng bản đồ và cùng kênh (phòng) | Như chat cũ, qua socket game |
 | Truyền âm | Chat riêng giữa hai người theo đạo hiệu | Qua `ChatHub`, tra người nhận trong các socket chat đang mở. Offline thì báo lỗi, chưa gửi qua hòm thư. Danh sách chặn: chưa làm |
-| Hệ thống | Tử vong, nhặt tiền/đồ, lên tầng, thông báo boss, kết quả giao dịch… | Client tự dựng dòng từ sự kiện sẵn có (không có tin `sys` từ server); thông báo boss sau này cần một đường server riêng |
+| Hệ thống | Tử vong, nhặt tiền/đồ, lên tầng, thông báo boss, kết quả giao dịch… | Client tự dựng dòng từ sự kiện sẵn có. Tài khoản admin còn gửi được thông báo hệ thống tới toàn bộ người online qua `ChatHub` (kênh gửi "Hệ thống"). Thông báo boss do server sau này cần một đường server riêng |
 Giao thức: tin `chat` mang `channel` (`world | map | whisper`), thiếu thì coi là `map`; bản sao truyền âm của người gửi mang `toName`. Mỗi thẻ có đếm tin chưa đọc; lịch sử chỉ giữ ở client. Chi tiết vận hành và giới hạn: `docs/STATUS.md`.
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
