@@ -17,7 +17,7 @@ Thứ tự phụ thuộc: 1a → 1b → 1c → 1d → 1e → 1f.
 ## 1b. Thế giới và trò chuyện (`features_world-chat`)
 - Nhiều bản đồ (thành thị an toàn + 2 bản đồ luyện cấp), portal, chuyển bản đồ theo thứ tự *lưu → giải phóng → vào*.
 - Lưu nhân vật theo chu kỳ và khi ngắt kết nối; tải lại đúng trạng thái.
-- Chat theo bản đồ (giới hạn tần suất, lọc từ cơ bản, giới hạn độ dài).
+- Chat theo bản đồ (giới hạn tần suất, lọc từ cơ bản, giới hạn độ dài). **Chế độ Thế giới / Truyền âm / Hệ thống và 5 thẻ hiển thị không nằm trong GĐ1**: đã ghi vào `docs/PLAN.md` mục 9a, làm ở GĐ2.
 - Nghiệm thu: đi qua portal, vị trí và bản đồ lưu đúng; chat hai người thấy nhau; spam chat bị chặn.
 
 ## 1c. Chỉ số, cảnh giới, tiềm năng (`features_progression`)

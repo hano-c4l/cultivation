@@ -308,11 +308,11 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.update(msg.character);
         this.selfSheet = msg.character;
         this.vitals.set(msg.hp, msg.maxHp);
-        this.vitals.setLinhThach(msg.wallet.linh_thach);
+        this.vitals.setWallet(msg.wallet);
         this.refreshHud();
         break;
       case "wallet":
-        if (msg.currency === "linh_thach") this.vitals.setLinhThach(msg.balance);
+        this.vitals.setBalance(msg.currency, msg.balance);
         break;
       case "mon":
         this.upsertMonster(msg.monster);

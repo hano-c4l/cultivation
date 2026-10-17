@@ -29,7 +29,7 @@ export const vi = {
   logout: "Đăng xuất",
   loading: "Đang tải…",
   economy: {
-    linhThach: "Linh Thạch",
+    currency: { linh_thach: "Linh Thạch", cong_hien: "Cống Hiến", tien_ngoc: "Tiên Ngọc" } as Record<"linh_thach" | "cong_hien" | "tien_ngoc", string>,
   },
   combat: {
     miss: "Trượt",
