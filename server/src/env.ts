@@ -10,4 +10,6 @@ export interface Env {
   ASSETS: Fetcher;
   /** Set only in local .dev.vars so repeated local smoke runs are not rate limited. */
   DISABLE_RATE_LIMIT?: string;
+  /** Set only in local .dev.vars to enable POST /api/dev/grant-exp. */
+  ENABLE_DEV_GRANT?: string;
 }

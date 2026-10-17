@@ -1,11 +1,7 @@
-export interface PublicCharacter {
-  id: string;
-  name: string;
-  spiritualRoot: string;
-  realm: number;
-  stage: number;
-  exp: number;
-}
+import type { CharacterSheet } from "@game/shared";
+
+/** The server sends the shared character sheet shape, so client and server cannot drift. */
+export type PublicCharacter = CharacterSheet;
 
 export interface Me {
   account: { email: string; role: string };

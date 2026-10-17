@@ -24,6 +24,20 @@
       .card .note { margin: 0; font-size: 13px; color: #aab3c5; }
       #logout { position: fixed; right: 12px; top: 12px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+      #char-btn { position: fixed; right: 12px; top: 52px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+      #char-btn[hidden], #char-panel[hidden] { display: none; }
+      #char-panel { position: fixed; right: 12px; top: 92px; width: min(300px, calc(100vw - 24px)); max-height: calc(100vh - 110px); overflow-y: auto;
+        padding: 12px; border-radius: 10px; background: rgba(27, 33, 48, 0.95); color: #e8e4d8; box-sizing: border-box;
+        font: 14px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 5; }
+      #char-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; min-width: 32px; min-height: 32px; }
+      #char-panel button:disabled { opacity: 0.4; cursor: default; }
+      .cp-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; } .cp-head span { flex: 1; color: #9db4e0; }
+      .cp-realm { font-weight: 600; color: #ffd54a; } .cp-exp, .cp-points { margin: 4px 0; font-size: 13px; }
+      .cp-bar { height: 8px; border-radius: 4px; background: #10141c; overflow: hidden; } .cp-fill { height: 100%; background: #6fcf97; }
+      .cp-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; } .cp-name { flex: 1; } .cp-val { min-width: 32px; text-align: center; }
+      .cp-changed { color: #6fcf97; font-weight: 600; } .cp-confirm { width: 100%; margin: 8px 0; padding: 8px 12px; }
+      .cp-derived { border-top: 1px solid #3a4560; padding-top: 6px; font-size: 13px; color: #c9d1e3; }
       #chat { position: fixed; left: 12px; bottom: 12px; width: min(360px, calc(100vw - 24px)); font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; color: #e8e4d8; }
       #chat[hidden] { display: none; }
       #chat-log { max-height: 140px; overflow-y: auto; padding: 6px 8px; border-radius: 8px 8px 0 0; background: rgba(0, 0, 0, 0.45); word-break: break-word; }

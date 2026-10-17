@@ -1,4 +1,5 @@
-// Smoke test: accounts, characters, WebSocket auth, movement, duplicate-login lock across channels, persistence.
+// Smoke test: accounts, characters, WebSocket auth, movement, duplicate-login lock across channels, persistence,
+// chat, portals, potential point allocation (the EXP grant step needs ENABLE_DEV_GRANT=1 in .dev.vars, skipped otherwise).
 // Usage: node tools/smoke.mjs [baseWsUrl]   (default ws://localhost:8787)
 // Registers throwaway accounts, so it only runs against local dev and preview, never production.
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -10,6 +11,7 @@ if (!allowed) {
   process.exit(2);
 }
 
+const connections = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const run = Date.now().toString(36);
 const password = "correct-horse-battery";
@@ -228,9 +230,38 @@ await c3.opened;
 const wc3 = await c3.wait((m) => m.t === "welcome");
 assert(wc3.map === "town" && wc3.players.find((p) => p.id === C.character.id).path[0].join() === "20.5,36.5", "return trip lands at the town arrival tile");
 
+// --- progression: allocate potential points, overspend rejected, persisted across reconnect ---
+const sheet0 = wc3.character;
+assert(sheet0.rootGrade >= 0 && sheet0.rootGrade <= 4 && sheet0.potentialPoints >= 5 && sheet0.realm === 0 && sheet0.stage === 1, "new character starts at Luyện Khí tầng 1 with starting points");
+c3.send({ t: "allocate", points: { canCot: 2, linhLuc: 1 } });
+const st1 = await c3.wait((m) => m.t === "stats");
+assert(st1.character.potentialPoints === sheet0.potentialPoints - 3 && st1.character.base.canCot === sheet0.base.canCot + 2 && st1.character.base.linhLuc === sheet0.base.linhLuc + 1, "allocation spends points and raises stats");
+await sleep(600);
+c3.inbox.length = 0;
+c3.send({ t: "allocate", points: { canCot: 50 } });
+const st2 = await c3.wait((m) => m.t === "stats");
+assert(st2.character.potentialPoints === st1.character.potentialPoints && st2.character.base.canCot === st1.character.base.canCot, "overspending is rejected and nothing changes");
+await sleep(600);
+c3.send({ t: "allocate", points: { hacker: 5 } });
+c3.send({ t: "allocate", points: { canCot: -3 } });
+await sleep(600);
+assert(!c3.inbox.some((m) => m.t === "stats" && m !== st2), "malformed allocation is ignored");
+const c4 = connect(C.cookie, 1);
+await c4.opened;
+const wc4 = await c4.wait((m) => m.t === "welcome");
+assert(wc4.character.potentialPoints === st1.character.potentialPoints && wc4.character.base.canCot === st1.character.base.canCot, "allocation survives reconnect");
+const grant = await api("POST", "/api/dev/grant-exp", { body: { exp: 1e12 }, cookie: C.cookie });
+if (grant.status === 404) {
+  console.log("skip: dev grant is not enabled here (set ENABLE_DEV_GRANT=1 in .dev.vars for local runs)");
+} else {
+  assert(grant.status === 200 && grant.data.character.stage === 9 && grant.data.character.realm === 0, "dev EXP grant reaches stage 9 and stops there");
+  assert(grant.data.character.potentialPoints === st1.character.potentialPoints + 8 * 5, "each stage granted potential points");
+}
+connections.push(c4);
+
 // --- logout invalidates the session ---
 await api("POST", "/api/logout", { cookie: A.cookie });
 assert((await api("GET", "/api/me", { cookie: A.cookie })).status === 401, "logout invalidates the session");
 
-for (const conn of [a, a2, a3, a4, b, c, c2, c3, r1, r2, r3]) conn.ws.close();
+for (const conn of [a, a2, a3, a4, b, c, c2, c3, r1, r2, r3, ...connections]) conn.ws.close();
 console.log("smoke passed");
