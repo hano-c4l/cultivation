@@ -85,7 +85,19 @@
       #bag-panel .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; line-height: 1; text-shadow: 0 0 2px #000; pointer-events: none; }
       #bag-panel .bag-mark.x { color: #ff5252; } #bag-panel .bag-mark.plus { color: #ffd54a; }
       #bag-panel .bag-actions button.active { background: #6fcf97; }
-      .bag-ghost { position: fixed; z-index: 20; padding: 3px 8px; border-radius: 6px; background: rgba(214, 169, 75, 0.92); color: #1b1405; font: 600 12px "Be Vietnam Pro", system-ui, sans-serif; pointer-events: none; }
+      /* The dragged copy of a cell lives outside the panel, so it carries its own styling. */
+      .bag-ghost { position: fixed; z-index: 20; box-sizing: border-box; padding: 1px; border: 1px solid; border-radius: 6px; overflow: hidden; opacity: 0.9; pointer-events: none;
+        color: #e8e4d8; font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
+      .bag-ghost .bag-name { display: block; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
+      .bag-ghost .bag-qty { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-weight: 700; }
+      .bag-ghost .bag-tag, #bag-panel .bag-tag { position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; line-height: 1; color: #ffd54a; text-shadow: 0 0 2px #000; }
+      .bag-ghost .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; }
+      .bag-ghost .bag-mark.x { color: #ff5252; } .bag-ghost .bag-mark.plus { color: #ffd54a; }
+      #bag-panel .bag-cell .bag-name, .bag-ghost .bag-name { padding-top: 7px; }
+      #bag-panel .bag-compare { margin-top: 6px; padding-top: 4px; border-top: 1px dashed #3a4560; }
+      #bag-panel .bag-detail { max-height: 240px; overflow-y: auto; }
+      #eq-panel .eq-item, #eq-panel .eq-text { position: relative; } #eq-panel .eq-item { padding-top: 9px; } #eq-panel .eq-text { padding-top: 9px; }
+      #eq-panel .eq-tag { position: absolute; top: 0; left: 0; font-size: 9px; font-weight: 700; line-height: 1; color: #ffd54a; }
       #bag-panel .bag-cell.broken { opacity: 0.45; filter: grayscale(1); }
       #bag-panel .bag-cell.selected { border-color: #ffd54a; box-shadow: 0 0 0 1px #ffd54a inset; }
       #bag-panel .bag-cell.cat-equipment { background: rgba(255, 183, 77, 0.25); }

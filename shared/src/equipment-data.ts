@@ -104,6 +104,17 @@ export const DEFAULT_MAX_DURABILITY = 100;
 /** Share of the maximum durability every worn piece loses when its owner dies, by any cause. */
 export const DEATH_DURABILITY_FRACTION = 0.05;
 
+/**
+ * Weapon families (kiếm, đao, thương, rìu, cung, quyền). The ids are the same as WEAPON_TAGS in constitutions.ts, so a
+ * constitution or skill that targets "kiếm" can find the weapons it applies to. Only weapons have one.
+ */
+export const WEAPON_TYPES = ["kiem", "dao", "thuong", "riu", "cung", "quyen"] as const;
+export type WeaponType = (typeof WEAPON_TYPES)[number];
+/** Elements gear can carry: the five (ngũ hành) plus the variant elements planned for phase 2c (same ids as ELEMENT_TAGS). */
+export const GEAR_ELEMENTS = ["kim", "moc", "thuy", "hoa", "tho", "loi", "bang", "phong"] as const;
+/** What drops from monsters: the five only. */
+export const DROP_ELEMENTS = GEAR_ELEMENTS.slice(0, 5);
+
 export interface EquipRequirement {
   /** Minimum flat level index (see levelIndex), or null when the piece asks nothing of the wearer's level. */
   level: number | null;
@@ -117,6 +128,10 @@ export interface EquipInfo {
   realm: number;
   tier: number;
   grade: number;
+  /** Element (ngũ hành) of the piece, or null for pieces without one. No effect yet: reserved for buffs that match it to the wearer's root or constitution. */
+  element: string | null;
+  /** Weapon family, only for weapons (and null for older weapons made before families existed). */
+  weaponType: string | null;
   /** Full stats at 100% durability. */
   stats: EquipStats;
   /** NULL: never wears out (special pieces). */
@@ -126,17 +141,18 @@ export interface EquipInfo {
   descVi: string;
 }
 
-const ID_PATTERN = /^eq\.([a-z]+)\.([mfu])\.(\d+)\.(\d+)\.(\d+)$/;
+/** `eq.<kind>.<style>.<realm>.<tier>.<grade>` with an optional `.<element>` and, for weapons, `.<element>.<weapon type>`. Older six-part ids stay valid. */
+const ID_PATTERN = /^eq\.([a-z]+)\.([mfu])\.(\d+)\.(\d+)\.(\d+)(?:\.([a-z]+))?(?:\.([a-z]+))?$/;
 
-export function makeEquipmentId(kind: EquipKind, style: EquipStyle, realm: number, tier: number, grade: number): string {
-  return `eq.${kind}.${style}.${realm}.${tier}.${grade}`;
+export function makeEquipmentId(kind: EquipKind, style: EquipStyle, realm: number, tier: number, grade: number, element?: string, weaponType?: string): string {
+  return `eq.${kind}.${style}.${realm}.${tier}.${grade}${element ? `.${element}` : ""}${element && weaponType ? `.${weaponType}` : ""}`;
 }
 
 function unitsOf(realm: number, tier: number, grade: number): number {
   return (1 + levelIndex(realm, tier) * 0.6) * (GRADE_MULT[grade - 1] ?? 1);
 }
 
-function buildInfo(kind: EquipKind, style: EquipStyle, realm: number, tier: number, grade: number): EquipInfo {
+function buildInfo(kind: EquipKind, style: EquipStyle, realm: number, tier: number, grade: number, element: string | null, weaponType: string | null): EquipInfo {
   const units = unitsOf(realm, tier, grade);
   const lv = levelIndex(realm, tier);
   const stats = emptyEquipStats();
@@ -149,7 +165,6 @@ function buildInfo(kind: EquipKind, style: EquipStyle, realm: number, tier: numb
   // high-grade pieces also for a base stat.
   const level = lv <= 1 && grade === 1 ? null : lv;
   const stat = grade >= 3 ? { key: KIND_REQ_STAT[kind], value: BASE_STAT_START + 3 + Math.round(lv * 1.2) + (grade === 4 ? 3 : 0) } : null;
-  const realmName = REALMS[realm]?.nameVi ?? "";
   const kindName = KIND_NAMES[kind][style] ?? "";
   return {
     kind,
@@ -157,10 +172,13 @@ function buildInfo(kind: EquipKind, style: EquipStyle, realm: number, tier: numb
     realm,
     tier,
     grade,
+    element,
+    weaponType,
     stats,
     maxDurability: DEFAULT_MAX_DURABILITY,
     req: { level, stat },
-    nameVi: `${kindName} ${realmName} ${tier}`,
+    // The realm and bậc are not part of the name: they show as a small tag (equipTierTag) and in the details.
+    nameVi: kindName,
     descVi: style === "m" ? "Trang bị dành cho nam." : style === "f" ? "Trang bị dành cho nữ." : "Trang bị dùng chung.",
   };
 }
@@ -173,6 +191,8 @@ export const SPECIAL_EQUIPMENT: Readonly<Record<string, EquipInfo>> = {
     realm: 0,
     tier: 1,
     grade: 4,
+    element: null,
+    weaponType: null,
     stats: { attack: 4, defense: 0, maxHp: 0, critRate: 1, dodgeRate: 0 },
     maxDurability: null,
     req: { level: null, stat: null },
@@ -196,15 +216,25 @@ export function equipmentInfo(type: string): EquipInfo | undefined {
       const realm = Number(m[3]);
       const tier = Number(m[4]);
       const grade = Number(m[5]);
+      const element = m[6] ?? null;
+      const weaponType = m[7] ?? null;
+      const attrOk =
+        (element === null || (GEAR_ELEMENTS as readonly string[]).includes(element)) &&
+        (weaponType === null || (kind === "weapon" && (WEAPON_TYPES as readonly string[]).includes(weaponType)));
       const kindOk = (EQUIP_KINDS as readonly string[]).includes(kind);
       const styleOk = kindOk && (GENDERED_KINDS.has(kind) ? style !== "u" : style === "u");
-      if (kindOk && styleOk && realm < REALMS.length && tier >= 1 && tier <= STAGES_PER_REALM && grade >= 1 && grade <= MAX_EQUIP_GRADE) {
-        info = buildInfo(kind, style, realm, tier, grade);
+      if (kindOk && styleOk && attrOk && realm < REALMS.length && tier >= 1 && tier <= STAGES_PER_REALM && grade >= 1 && grade <= MAX_EQUIP_GRADE) {
+        info = buildInfo(kind, style, realm, tier, grade, element, weaponType);
       }
     }
   }
   cache.set(type, info);
   return info ?? undefined;
+}
+
+/** Small label for a piece's realm and bậc, e.g. "LK3" for Luyện Khí 3 or "TC4" for Trúc Cơ 4. */
+export function equipTierTag(info: { realm: number; tier: number }): string {
+  return `${REALMS[info.realm]?.shortVi ?? ""}${info.tier}`;
 }
 
 export function isEquipmentType(type: string): boolean {
@@ -313,8 +343,8 @@ export interface EquipDrop {
 
 /**
  * Gear dropped by one kill, or null. Normally the gear belongs to the map's realm and a bậc at or just below the
- * monster's; rare monsters may instead drop over-level gear (the next realm). Uses exactly seven rolls so the order of
- * a seeded sequence stays stable: chance, kind, style, bậc, grade, over-level, over-level bậc.
+ * monster's; rare monsters may instead drop over-level gear (the next realm). Uses exactly nine rolls so the order of
+ * a seeded sequence stays stable: chance, kind, style, bậc, grade, over-level, over-level bậc, element, weapon type.
  */
 export function rollEquipmentDrop(mapRealm: number, monsterTier: number, rank: MonsterRank, rand: () => number): EquipDrop | null {
   const cfg = EQUIP_DROP[rank];
@@ -325,6 +355,8 @@ export function rollEquipmentDrop(mapRealm: number, monsterTier: number, rank: M
   const gradeRoll = rand();
   const overRoll = rand();
   const overTierRoll = rand();
+  const elementRoll = rand();
+  const weaponRoll = rand();
   if (chance >= cfg.chance) return null;
   const kind = EQUIP_KINDS[Math.floor(kindRoll * EQUIP_KINDS.length)] as EquipKind;
   const style: EquipStyle = GENDERED_KINDS.has(kind) ? (styleRoll < 0.5 ? "m" : "f") : "u";
@@ -345,7 +377,9 @@ export function rollEquipmentDrop(mapRealm: number, monsterTier: number, rank: M
       break;
     }
   }
-  const type = makeEquipmentId(kind, style, realm, tier, grade);
+  const element = DROP_ELEMENTS[Math.floor(elementRoll * DROP_ELEMENTS.length)] as string;
+  const weaponType = kind === "weapon" ? (WEAPON_TYPES[Math.floor(weaponRoll * WEAPON_TYPES.length)] as string) : undefined;
+  const type = makeEquipmentId(kind, style, realm, tier, grade, element, weaponType);
   const d = newDurability(type);
   return d ? { type, dur: d.dur, max: d.max } : { type };
 }

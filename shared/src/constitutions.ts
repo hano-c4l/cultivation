@@ -93,7 +93,7 @@ export const CONSTITUTION_STATS: Readonly<Record<string, StatMeta>> = {
 
 /** Elements an effect can target: the five (ngũ hành) plus the variant elements planned for phase 2c. */
 export const ELEMENT_TAGS: readonly string[] = ["kim", "moc", "thuy", "hoa", "tho", "loi", "bang", "phong"];
-export const WEAPON_TAGS: readonly string[] = ["kiem", "dao", "thuong", "cung", "quyen", "phap_khi"];
+export const WEAPON_TAGS: readonly string[] = ["kiem", "dao", "thuong", "riu", "cung", "quyen", "phap_khi"];
 /** A skill id: lowercase letters, digits and underscore. Whether the skill exists is checked when skills exist. */
 export const SKILL_TAG_PATTERN = /^[a-z0-9_]{1,32}$/;
 

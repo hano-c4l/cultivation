@@ -9,6 +9,8 @@ export interface RealmDef {
   id: number;
   key: string;
   nameVi: string;
+  /** Two-letter tag for small labels, e.g. "LK" in "LK3" (Luyện Khí 3). */
+  shortVi: string;
   /** EXP needed to leave stage 1 of this realm; later stages grow by STAGE_EXP_GROWTH. */
   expBase: number;
   /** Potential points granted on reaching each new stage in this realm. */
@@ -32,10 +34,10 @@ export const LOW_MAP_EXP_MULT = 1;
 export const STAGE_EXP_GROWTH = 1.35;
 
 export const REALMS: readonly RealmDef[] = [
-  { id: 0, key: "luyen_khi", nameVi: "Luyện Khí", expBase: 1_000, pointsPerStage: 5 },
-  { id: 1, key: "truc_co", nameVi: "Trúc Cơ", expBase: 20_000, pointsPerStage: 6 },
-  { id: 2, key: "kim_dan", nameVi: "Kim Đan", expBase: 400_000, pointsPerStage: 8 },
-  { id: 3, key: "nguyen_anh", nameVi: "Nguyên Anh", expBase: 8_000_000, pointsPerStage: 10 },
+  { id: 0, key: "luyen_khi", nameVi: "Luyện Khí", shortVi: "LK", expBase: 1_000, pointsPerStage: 5 },
+  { id: 1, key: "truc_co", nameVi: "Trúc Cơ", shortVi: "TC", expBase: 20_000, pointsPerStage: 6 },
+  { id: 2, key: "kim_dan", nameVi: "Kim Đan", shortVi: "KĐ", expBase: 400_000, pointsPerStage: 8 },
+  { id: 3, key: "nguyen_anh", nameVi: "Nguyên Anh", shortVi: "NA", expBase: 8_000_000, pointsPerStage: 10 },
 ];
 
 export interface RootGradeDef {
