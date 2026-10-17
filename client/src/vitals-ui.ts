@@ -15,6 +15,11 @@ export function initVitals(): VitalsUi {
   const text = document.getElementById("vitals-text")!;
   const fill = document.getElementById("vitals-fill")!;
   const walletBox = document.getElementById("wallet")!;
+  // The status line wraps to several lines on a phone; the HP bar sits right under whatever height it really has.
+  const hud = document.getElementById("hud");
+  if (hud && "ResizeObserver" in window) {
+    new ResizeObserver(() => document.documentElement.style.setProperty("--hud-bottom", `${hud.offsetTop + hud.offsetHeight}px`)).observe(hud);
+  }
   const balances: Wallet = { ...EMPTY_WALLET };
   const render = () => {
     walletBox.hidden = false;

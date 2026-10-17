@@ -22,6 +22,8 @@ export const vi = {
     tabs: { all: "Tất cả", world: "Thế giới", map: "Bản đồ", whisper: "Truyền âm", system: "Hệ thống" },
     channels: { world: "Thế giới", map: "Bản đồ", whisper: "Truyền âm", system: "Hệ thống" },
     gainedCurrency: (amount: number, currency: string) => `Nhặt được ${amount.toLocaleString("vi-VN")} ${currency}.`,
+    gainedExp: (amount: number) => `Nhận được ${amount.toLocaleString("vi-VN")} tu vi.`,
+    transferTo: (map: string) => `Bạn đang chuyển tới ${map}.`,
     levelUp: (realm: string, stage: number) => `Chúc mừng! Bạn đã đạt ${realm} tầng ${stage}.`,
     chatUnavailable: "Kênh Thế giới và Truyền âm tạm thời mất kết nối.",
   },
