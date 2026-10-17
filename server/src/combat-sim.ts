@@ -43,6 +43,8 @@ export interface ProfileSeed {
   element: Element;
   base: BaseStats;
   rootGrade: number;
+  constitution: string;
+  constitutionTier: number;
   realm: number;
   stage: number;
   exp: number;

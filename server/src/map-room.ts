@@ -8,6 +8,7 @@ import {
   CHAT_WINDOW_MS,
   checkChatRate,
   retryAfterMs,
+  DEFAULT_CATALOG,
   EMPTY_WALLET,
   INV_MIN_GAP_MS,
   POTION_COOLDOWN_MS,
@@ -63,6 +64,7 @@ import {
   toCharacterSheet,
   type CharacterRow,
 } from "./characters";
+import { getConstitutionCatalog } from "./constitution-catalog";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import {
   claimMailItem,
@@ -136,6 +138,8 @@ function seedOf(row: CharacterRow): ProfileSeed {
     element: row.spiritual_root,
     base: baseOf(row),
     rootGrade: row.root_grade,
+    constitution: row.constitution,
+    constitutionTier: row.constitution_tier,
     realm: row.realm,
     stage: row.stage,
     exp: row.exp,
@@ -148,6 +152,8 @@ function sheetOf(p: PlayerProfile): CharacterSheet {
     name: p.name,
     spiritualRoot: p.element,
     rootGrade: p.rootGrade,
+    constitution: p.constitution,
+    constitutionTier: p.constitutionTier,
     realm: p.realm,
     stage: p.stage,
     exp: p.exp,
@@ -260,6 +266,12 @@ export class MapRoom extends DurableObject<Env> {
         }),
       ]);
       this.bags.set(row.id, bag);
+      // Names and descriptions of the constitutions are data: the client shows what the server's catalogue says. If it
+      // cannot be read the default one is sent (display only; creation never falls back like this).
+      const constitutions = await getConstitutionCatalog(this.env.DB).catch((err) => {
+        console.error("constitution catalogue read failed", err);
+        return DEFAULT_CATALOG;
+      });
       if (Math.random() < 0.05) {
         // Rare global housekeeping: mail that expired while its owner was offline, and old loot keys.
         this.ctx.waitUntil(
@@ -306,6 +318,7 @@ export class MapRoom extends DurableObject<Env> {
         wallet,
         bag: { tabs: bag.tabs, items: bag.items },
         mail: mailViews(mail),
+        constitutions,
       });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
       return new Response(null, { status: 101, webSocket: client });

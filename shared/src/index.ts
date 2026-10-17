@@ -10,4 +10,5 @@ export * from "./inventory";
 export * from "./character";
 export * from "./progression-data";
 export * from "./progression";
+export * from "./constitutions";
 export * from "./economy";
