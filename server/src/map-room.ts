@@ -494,17 +494,19 @@ export class MapRoom extends DurableObject<Env> {
       if (drift > this.tickStat.maxDriftMs) this.tickStat.maxDriftMs = drift;
 
       const positions = new Map<string, Vec2>();
+      const moving = new Set<string>();
       const sockets = new Map<string, { ws: WebSocket; state: PlayerState }>();
       for (const ws of this.ctx.getWebSockets()) {
         const state = ws.deserializeAttachment() as PlayerState | null;
         if (!state || state.transferring) continue;
         const p = positionAlongPath(state.path, started - state.startedAt, state.speed);
         positions.set(state.id, [p.x, p.y]);
+        if (p.moving) moving.add(state.id);
         sockets.set(state.id, { ws, state });
       }
 
       const later: Promise<void>[] = [];
-      for (const ev of sim.tick(started, positions)) this.dispatch(ev, sockets, started, later);
+      for (const ev of sim.tick(started, positions, moving)) this.dispatch(ev, sockets, started, later);
       await Promise.all(later);
 
       const ms = Date.now() - started;

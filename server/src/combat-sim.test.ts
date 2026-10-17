@@ -1,4 +1,4 @@
-import { CLUSTERS, RANKS, expToNext, getMap, killExp, monsterBaseExp, startingStats, type Vec2 } from "@game/shared";
+import { CLUSTERS, RANKS, expToNext, getMap, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -75,6 +75,39 @@ describe("CombatSim", () => {
     const events = run(sim, 0, 8000, new Map([["p1", near]]));
     expect(events.some((e) => e.t === "hit" && e.to === "p1")).toBe(true);
     expect(p.hp).toBeLessThan(p.maxHp);
+  });
+
+  it("an idle player hit by a monster fights back on their own", () => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    const p = sim.addPlayer(seed());
+    const near: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+    const events = run(sim, 0, 6000, new Map([["p1", near]]));
+    expect(events.some((e) => e.t === "hit" && e.from === "p1" && e.to === m.id)).toBe(true);
+    expect(p.targetId === m.id || events.some((e) => e.t === "mon_gone")).toBe(true);
+  });
+
+  it("a walking player does not retaliate, and keeps an existing target", () => {
+    const sim = forestSim();
+    const [a, b] = sim.snapshots(0);
+    const p = sim.addPlayer(seed());
+    // Stand on open ground next to the first monster (cluster neighbours may also aggro, which is fine here).
+    const near = nearestStandablePoint(getMap("forest"), a!.path[0]![0] + 1, a!.path[0]![1], 2)!;
+    const positions = new Map<string, Vec2>([["p1", near]]);
+    const moving = new Set(["p1"]);
+    const walking: SimEvent[] = [];
+    for (let t = 0; t <= 4000; t += 100) walking.push(...sim.tick(t, positions, moving));
+    expect(walking.some((e) => e.t === "hit" && e.to === "p1")).toBe(true);
+    expect(walking.some((e) => e.t === "hit" && e.from === "p1")).toBe(false);
+    expect(p.targetId).toBeNull();
+    // With an explicit target on another monster, being hit does not change it.
+    sim.setTarget("p1", b!.id);
+    let hurt = false;
+    for (let t = 4100; t <= 12_000 && !hurt; t += 100) {
+      hurt = sim.tick(t, positions).some((e) => e.t === "hit" && e.to === "p1");
+    }
+    expect(hurt).toBe(true);
+    expect(p.targetId).toBe(b!.id); // the explicit target was kept when another monster hit the idle player
   });
 
   it("a killed player is flagged dead once and not attacked further", () => {
@@ -178,7 +211,10 @@ describe("CombatSim", () => {
     const here: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
     sim.setTarget("p1", m.id);
     sim.clearTarget("p1");
-    expect(run(sim, 0, 3000, new Map([["p1", here]])).some((e) => e.t === "hit" && e.to === m.id)).toBe(false);
+    // Walking away (moving) so the monster's attacks do not trigger the idle retaliation.
+    const out: SimEvent[] = [];
+    for (let t = 0; t <= 3000; t += 100) out.push(...sim.tick(t, new Map([["p1", here]]), new Set(["p1"])));
+    expect(out.some((e) => e.t === "hit" && e.to === m.id)).toBe(false);
     sim.removePlayer("p1");
     expect(sim.playerCount).toBe(0);
   });
