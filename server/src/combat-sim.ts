@@ -10,6 +10,8 @@ import {
   deriveStats,
   clusterSlots,
   killExp,
+  levelIndex,
+  rollLinhThachDrop,
   monsterStats,
   rollRank,
   topContributor,
@@ -96,6 +98,8 @@ export type SimEvent =
   | { t: "hp"; playerId: string; hp: number; maxHp: number }
   /** EXP changed after a kill; `stagesGained > 0` means points changed and the room must persist right away. */
   | { t: "progress"; playerId: string; stagesGained: number }
+  /** A kill dropped Linh Thạch for this player; the room writes it to the ledger. */
+  | { t: "drop"; playerId: string; amount: number }
   | { t: "player_dead"; playerId: string }
   /** The server wants this player to walk to `to` (chasing their target). */
   | { t: "path_request"; playerId: string; to: Vec2 };
@@ -452,11 +456,13 @@ export class CombatSim {
         : this.players.get(topContributor(m.damage, m.maxHp, p.id, (id) => !!this.players.get(id) && !this.players.get(id)!.dead) ?? p.id) ?? p;
     const stagesGained = this.reward(winner, m);
     events.push({ t: "progress", playerId: winner.id, stagesGained });
+    const drop = rollLinhThachDrop(levelIndex(this.realm, m.tier), m.rank, this.rand(), this.rand());
+    if (drop > 0) events.push({ t: "drop", playerId: winner.id, amount: drop });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
   }
 
-  /** Gives the killer EXP (with their bonus) and applies any stage-ups. A hook for 1e's Linh Thạch drops goes here. */
+  /** Gives the killer EXP (with their bonus) and applies any stage-ups. Linh Thạch drops are rolled by the caller. */
   private reward(p: PlayerProfile, m: Monster): number {
     const gain = killExp({ realm: this.realm, tier: m.tier, rank: m.rank }, p.realm, p.expBonus);
     const r = applyExp({ realm: p.realm, stage: p.stage, exp: p.exp, potentialPoints: 0 }, gain);
