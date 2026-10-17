@@ -56,7 +56,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   const wearer = (): WearerCtx | null => (sheet ? { gender: sheet.gender, realm: sheet.realm, stage: sheet.stage, base: sheet.base } : null);
   const nameOf = (type: string) => getItemDef(type)?.nameVi ?? type;
   /** The small realm/bậc label ("LK3") in the top left corner of a row. */
-  const tagOf = (type: string): HTMLElement => el("span", "eq-tag", itemTierTag(type) ?? "");
+  const tagOf = (type: string, lv?: number): HTMLElement => el("span", "eq-tag", itemTierTag(type, lv) ?? "");
 
   function renderChooser(slot: EquipSlot, w: WearerCtx): HTMLElement {
     const box = el("div", "eq-choose");
@@ -74,7 +74,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       const optDot = elementDot(item.type);
       const optName = el("div", undefined, nameOf(item.type));
       if (optDot) optName.prepend(optDot);
-      text.append(tagOf(item.type), optName, el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
+      text.append(tagOf(item.type, item.lv), optName, el("div", "muted", equipLines(item.type, item.dur, item.max, item.lv).join(" · ")));
       const btn = el("button", undefined, vi.inventory.wear);
       btn.onclick = () => {
         send({ t: "eq_equip", tab: item.tab, cell: item.cell, slot });
@@ -95,7 +95,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   /** Full description of a worn piece: grade, rarity, stats at the current durability, durability, requirements, style. */
   function renderInfo(piece: EquippedItem): HTMLElement {
     const box = el("div", `eq-info rar-${getItemDef(piece.type)?.rarity ?? "common"}`);
-    box.append(describeItem(piece.type, { dur: piece.dur, max: piece.max }));
+    box.append(describeItem(piece.type, { dur: piece.dur, max: piece.max, lv: piece.lv, xp: piece.xp }));
     return box;
   }
 
@@ -134,7 +134,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
         const dot = elementDot(piece.type);
         if (dot) middle.append(dot);
         middle.append(el("span", broken ? "eq-broken" : "eq-label", nameOf(piece.type)));
-        tier.textContent = itemTierTag(piece.type) ?? "";
+        tier.textContent = itemTierTag(piece.type, piece.lv) ?? "";
         durability.textContent = durabilityShort(piece.dur, piece.max);
         if (broken) durability.classList.add("eq-broken");
         // Tapping the piece opens or closes its details just below the row.

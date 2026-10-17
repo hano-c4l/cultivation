@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MAX_DURABILITY,
+  applyRefineExp,
+  baseStatsAt,
+  refineExpNeeded,
   EQUIP_KINDS,
   SPECIAL_EQUIPMENT,
   equipBlock,
@@ -147,7 +150,7 @@ describe("durability", () => {
 
   it("the bonus reaches the derived stats", () => {
     const plain = deriveStats(base(), 0, 5, 1);
-    const geared = deriveStats(base(), 0, 5, 1, { attack: 10, defense: 5, maxHp: 50, critRate: 2, dodgeRate: 1 });
+    const geared = deriveStats(base(), 0, 5, 1, { attack: 10, defense: 5, maxHp: 50, critRate: 2, dodgeRate: 1, moveSpeed: 0 });
     expect(geared.attack).toBe(plain.attack + 10);
     expect(geared.defense).toBe(plain.defense + 5);
     expect(geared.maxHp).toBe(plain.maxHp + 50);
@@ -346,5 +349,64 @@ describe("equipment drops", () => {
 
   it("no drop when the chance roll fails", () => {
     expect(rollEquipmentDrop(0, 1, "normal", () => 0.5)).toBeNull();
+  });
+});
+
+describe("pháp bảo bản mệnh and pháp bảo phi hành", () => {
+  const bonded = "eq.bonded.u.0.1.2.kim";
+  const flight = "eq.flight.u.0.1.2.moc";
+
+  it("have their own slot each, one piece per slot", () => {
+    expect(equipmentInfo(bonded)).toMatchObject({ kind: "bonded", nameVi: "Pháp Bảo Bản Mệnh" });
+    expect(equipmentInfo(flight)).toMatchObject({ kind: "flight", nameVi: "Pháp Bảo Phi Hành" });
+    const st: BagContents = { items: [bagItem("b", bonded, 0, 0, 100), bagItem("f", flight, 0, 1, 100)], equipped: [] };
+    const a = planEquip(st, 1, { tab: 0, cell: 0 }, undefined, maleWearer);
+    expect(a.ok && a.ops[0]).toMatchObject({ op: "equip", slot: "bonded" });
+    const b = planEquip(st, 1, { tab: 0, cell: 1 }, undefined, maleWearer);
+    expect(b.ok && b.ops[0]).toMatchObject({ op: "equip", slot: "flight" });
+    expect(planEquip(st, 1, { tab: 0, cell: 0 }, "flight", maleWearer)).toEqual({ ok: false, error: "slot" });
+  });
+
+  it("the flight artifact gives speed (a stat that is shown but does not move anyone yet)", () => {
+    expect(equipmentInfo(flight)!.stats.moveSpeed).toBeGreaterThan(0);
+    expect(equipmentBonus([{ id: "f", type: flight, slot: "flight", dur: 100, max: 100 }], maleWearer).moveSpeed).toBeGreaterThan(0);
+    const plain = deriveStats(base(), 0, 5, 1);
+    const fast = deriveStats(base(), 0, 5, 1, { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 10 });
+    expect(fast.moveSpeed).toBeGreaterThan(plain.moveSpeed);
+  });
+
+  it("the bonded artifact needs half a character's EXP per level", () => {
+    expect(refineExpNeeded(0)).toBe(500); // Luyện Khí 1: a character needs 1000
+    expect(refineExpNeeded(9)).toBe(10_000); // Trúc Cơ 1: 20000
+  });
+
+  it("levels up on its own EXP, never above the owner's level, and the overflow at the cap is dropped", () => {
+    expect(applyRefineExp(0, 0, 499, 5)).toEqual({ lv: 0, xp: 499, levelsGained: 0 });
+    expect(applyRefineExp(0, 0, 500, 5)).toEqual({ lv: 1, xp: 0, levelsGained: 1 });
+    const two = applyRefineExp(0, 0, 500 + refineExpNeeded(1) + 25, 5);
+    expect(two).toEqual({ lv: 2, xp: 25, levelsGained: 2 });
+    const capped = applyRefineExp(2, 0, 1_000_000, 3);
+    expect(capped.lv).toBe(3);
+    expect(capped.xp).toBe(refineExpNeeded(3));
+    expect(applyRefineExp(3, 10, 1_000_000, 3)).toEqual({ lv: 3, xp: refineExpNeeded(3), levelsGained: 0 });
+  });
+
+  it("its stats grow with the trained level, and the worn bonus follows", () => {
+    const info = equipmentInfo(bonded)!;
+    expect(baseStatsAt(info, 8).attack).toBeGreaterThan(baseStatsAt(info, undefined).attack);
+    const lo = equipmentBonus([{ id: "b", type: bonded, slot: "bonded", dur: 100, max: 100 }], maleWearer).attack;
+    const hi = equipmentBonus([{ id: "b", type: bonded, slot: "bonded", dur: 100, max: 100, lv: 8, xp: 0 }], maleWearer).attack;
+    expect(hi).toBeGreaterThan(lo);
+    // Other kinds ignore a stray level.
+    expect(baseStatsAt(equipmentInfo("eq.weapon.u.0.1.1")!, 20)).toEqual(equipmentInfo("eq.weapon.u.0.1.1")!.stats);
+  });
+
+  it("its training travels with it between the bag and the slot", () => {
+    const worn: EquippedItem = { id: "b", type: bonded, slot: "bonded", dur: 90, max: 100, lv: 4, xp: 77 };
+    const off = planUnequip({ items: [], equipped: [worn] }, 1, "bonded");
+    const after = applyBag({ items: [], equipped: [worn] }, off.ok ? off.ops : []);
+    expect(after.items[0]).toMatchObject({ id: "b", lv: 4, xp: 77, dur: 90 });
+    const on = planEquip(after, 1, { tab: 0, cell: 0 }, undefined, maleWearer);
+    expect(applyBag(after, on.ok ? on.ops : []).equipped[0]).toMatchObject({ lv: 4, xp: 77 });
   });
 });

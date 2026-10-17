@@ -154,7 +154,7 @@ export function deriveStats(base: BaseStats, realm: number, stage: number, rootG
     dodgeRate: Math.min(RATE_CAP, base.thanPhap * 0.5 + (gear?.dodgeRate ?? 0)),
     expBonus: Math.max(-50, base.ngoTinh + getRootGrade(rootGrade).expBonusPct),
     dropBonus: Math.min(RATE_CAP, base.phucDuyen * 0.5),
-    moveSpeed: Math.round(BASE_SPEED * (1 + base.thanPhap * 0.01) * 100) / 100,
+    moveSpeed: Math.round(BASE_SPEED * (1 + base.thanPhap * 0.01) * (1 + (gear?.moveSpeed ?? 0) / 100) * 100) / 100,
   };
 }
 

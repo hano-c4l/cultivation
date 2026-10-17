@@ -1,10 +1,9 @@
-import { EQUIP_STAT_KEYS, REALMS, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
+import { EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, baseStatsAt, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
 import { vi } from "./locales/vi";
 
 /** "+12 Công kích" style text for one stat; rates are percentage points. */
 export function statText(key: EquipStatKey, value: number): string {
-  const rate = key === "critRate" || key === "dodgeRate";
-  return `+${value}${rate ? "%" : ""} ${vi.equip.statNames[key]}`;
+  return `+${value}${EQUIP_RATE_KEYS.includes(key) ? "%" : ""} ${vi.equip.statNames[key]}`;
 }
 
 /** Small round icon for a piece's element (white rim, fill by ngũ hành), or null when it has none. */
@@ -34,15 +33,26 @@ export function itemTypeText(type: string): string {
 }
 
 /** Realm and bậc of a piece of gear ("Luyện Khí 1"), or null for items without one. */
-export function itemTierText(type: string): string | null {
+export function itemTierText(type: string, lv?: number): string | null {
   const info = equipmentInfo(type);
-  return info ? `${REALMS[info.realm]?.nameVi ?? ""} ${info.tier}` : null;
+  if (!info) return null;
+  // A trained pháp bảo bản mệnh shows the level it has reached, not the one it was made at.
+  if (info.kind === "bonded") {
+    const level = refineLevelOf(info, lv);
+    return `${REALMS[Math.floor(level / STAGES_PER_REALM)]?.nameVi ?? ""} ${(level % STAGES_PER_REALM) + 1}`;
+  }
+  return `${REALMS[info.realm]?.nameVi ?? ""} ${info.tier}`;
 }
 
 /** The small tag for a cell or row ("LK1"), or null for items without a realm. */
-export function itemTierTag(type: string): string | null {
+export function itemTierTag(type: string, lv?: number): string | null {
   const info = equipmentInfo(type);
-  return info ? equipTierTag(info) : null;
+  if (!info) return null;
+  if (info.kind === "bonded") {
+    const level = refineLevelOf(info, lv);
+    return equipTierTag({ realm: Math.floor(level / STAGES_PER_REALM), tier: (level % STAGES_PER_REALM) + 1 });
+  }
+  return equipTierTag(info);
 }
 
 /** Durability as "63/100 (63%)", or the never-wears-out note. */
@@ -52,11 +62,11 @@ export function durabilityText(dur?: number, max?: number): string {
 }
 
 /** "+5 Công kích, +5 Sinh lực" at the current durability; a stat that wore down shows its maximum too. */
-function statsText(type: string, dur?: number, max?: number): string {
+function statsText(type: string, dur?: number, max?: number, lv?: number): string {
   const info = equipmentInfo(type);
   if (!info) return "";
-  const full = info.stats;
-  const now = scaledStats(info, dur, max);
+  const full = baseStatsAt(info, lv);
+  const now = scaledStats(info, dur, max, lv);
   const parts: string[] = [];
   for (const key of EQUIP_STAT_KEYS) {
     if (full[key] <= 0) continue;
@@ -79,10 +89,10 @@ function requirementText(type: string): string | null {
 }
 
 /** Short one-paragraph description of a piece of gear for the equipment chooser: stats, durability, requirement (no style, the list is already filtered). */
-export function equipLines(type: string, dur?: number, max?: number): string[] {
+export function equipLines(type: string, dur?: number, max?: number, lv?: number): string[] {
   if (!equipmentInfo(type)) return [];
   const req = requirementText(type);
-  return [statsText(type, dur, max), durabilityText(dur, max), ...(req ? [`${vi.equip.requires}: ${req}`] : [])];
+  return [statsText(type, dur, max, lv), durabilityText(dur, max), ...(req ? [`${vi.equip.requires}: ${req}`] : [])];
 }
 
 /** The element name for display ("Thủy"), or null. */
@@ -100,7 +110,7 @@ function elementName(type: string): string | null {
  *   Độ bền: ...            (gear)
  *   Yêu cầu: ...           (gear, only when it asks something)
  */
-export function describeItem(type: string, opts: { dur?: number; max?: number; qty?: number } = {}): HTMLElement {
+export function describeItem(type: string, opts: { dur?: number; max?: number; qty?: number; lv?: number; xp?: number } = {}): HTMLElement {
   const box = document.createElement("div");
   box.className = "item-desc";
   const def = getItemDef(type);
@@ -120,10 +130,12 @@ export function describeItem(type: string, opts: { dur?: number; max?: number; q
   box.append(name);
 
   const element = elementName(type);
-  line([itemTypeText(type), itemTierText(type), element ? vi.equip.elementShort(element) : null].filter(Boolean).join(" · "));
+  line([itemTypeText(type), itemTierText(type, opts.lv), element ? vi.equip.elementShort(element) : null].filter(Boolean).join(" · "));
   if (def) line(`${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.grades[def.grade] ?? def.grade}`);
   if (info) {
-    line(`${vi.equip.statsLabel}: ${statsText(type, opts.dur, opts.max)}`);
+    line(`${vi.equip.statsLabel}: ${statsText(type, opts.dur, opts.max, opts.lv)}`);
+    // The pháp bảo bản mệnh trains on its own EXP, up to the level of its owner.
+    if (info.kind === "bonded") line(vi.equip.refine(opts.xp ?? 0, refineExpNeeded(refineLevelOf(info, opts.lv))));
     line(durabilityText(opts.dur, opts.max));
     const req = requirementText(type);
     if (req) line(`${vi.equip.requires}: ${req}`);

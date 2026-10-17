@@ -1,6 +1,6 @@
 import { gearStyleOf, type Gender } from "./gender";
 import type { MonsterRank } from "./monsters";
-import { levelIndex } from "./progression";
+import { expToNext, levelIndex } from "./progression";
 import { BASE_STAT_START, REALMS, STAGES_PER_REALM, type BaseStats, type StatKey } from "./progression-data";
 
 /**
@@ -13,11 +13,14 @@ import { BASE_STAT_START, REALMS, STAGES_PER_REALM, type BaseStats, type StatKey
  * listed in SPECIAL_EQUIPMENT.
  */
 
-/** Slots, in display order. Rings take two slots and pháp bảo (charms) four. */
-export const EQUIP_SLOTS = ["weapon", "hat", "robe", "bracer", "ring1", "ring2", "jade", "necklace", "belt", "charm1", "charm2", "charm3", "charm4"] as const;
+/**
+ * Slots, in display order. Rings take two slots and pháp bảo (charms) four; then one slot each for the pháp bảo bản mệnh
+ * (bonded artifact: levels up with its owner) and the pháp bảo phi hành (flight artifact: speed).
+ */
+export const EQUIP_SLOTS = ["weapon", "hat", "robe", "bracer", "ring1", "ring2", "jade", "necklace", "belt", "charm1", "charm2", "charm3", "charm4", "bonded", "flight"] as const;
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
 
-export const EQUIP_KINDS = ["weapon", "hat", "robe", "bracer", "ring", "jade", "necklace", "belt", "charm"] as const;
+export const EQUIP_KINDS = ["weapon", "hat", "robe", "bracer", "ring", "jade", "necklace", "belt", "charm", "bonded", "flight"] as const;
 export type EquipKind = (typeof EQUIP_KINDS)[number];
 
 export const KIND_SLOTS: Readonly<Record<EquipKind, readonly EquipSlot[]>> = {
@@ -30,6 +33,8 @@ export const KIND_SLOTS: Readonly<Record<EquipKind, readonly EquipSlot[]>> = {
   necklace: ["necklace"],
   belt: ["belt"],
   charm: ["charm1", "charm2", "charm3", "charm4"],
+  bonded: ["bonded"],
+  flight: ["flight"],
 };
 
 /** Pieces of these kinds come in a male and a female version and must match the wearer's gear style. */
@@ -47,12 +52,15 @@ export function slotKind(slot: EquipSlot): EquipKind {
 }
 
 /** Stats gear can add. Limited to what combat already uses (docs/STATUS.md, 2b). Rates are percentage points. */
-export const EQUIP_STAT_KEYS = ["attack", "defense", "maxHp", "critRate", "dodgeRate"] as const;
+/** moveSpeed is a percentage; it is shown but does not move anyone yet (the server walks everyone at BASE_SPEED). */
+export const EQUIP_STAT_KEYS = ["attack", "defense", "maxHp", "critRate", "dodgeRate", "moveSpeed"] as const;
+/** Stats given in percentage points, shown with one decimal. */
+export const EQUIP_RATE_KEYS: readonly EquipStatKey[] = ["critRate", "dodgeRate", "moveSpeed"];
 export type EquipStatKey = (typeof EQUIP_STAT_KEYS)[number];
 export type EquipStats = Record<EquipStatKey, number>;
 
 export function emptyEquipStats(): EquipStats {
-  return { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0 };
+  return { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0 };
 }
 
 /** Vietnamese names per kind and style. Display data, like monster names. */
@@ -66,6 +74,8 @@ const KIND_NAMES: Readonly<Record<EquipKind, { m?: string; f?: string; u?: strin
   necklace: { m: "Hổ Phù Liên", f: "Châu Ngọc Liên" },
   belt: { u: "Yêu Đái" },
   charm: { u: "Pháp Bảo" },
+  bonded: { u: "Pháp Bảo Bản Mệnh" },
+  flight: { u: "Pháp Bảo Phi Hành" },
 };
 
 /** Per kind: how many "power units" of each stat one piece gives (see unitsOf). */
@@ -79,6 +89,8 @@ const KIND_WEIGHTS: Readonly<Record<EquipKind, Partial<EquipStats>>> = {
   necklace: { maxHp: 5, defense: 0.8 },
   belt: { defense: 1.5, maxHp: 3 },
   charm: { attack: 1.5, defense: 0.5 },
+  bonded: { attack: 2, defense: 1, maxHp: 3 },
+  flight: { moveSpeed: 0.6 },
 };
 
 /** The base stat a high-grade piece of each kind asks for. */
@@ -92,6 +104,8 @@ const KIND_REQ_STAT: Readonly<Record<EquipKind, StatKey>> = {
   necklace: "ngoTinh",
   belt: "canCot",
   charm: "thanThuc",
+  bonded: "linhLuc",
+  flight: "thanPhap",
 };
 
 export const MAX_EQUIP_GRADE = 4;
@@ -152,15 +166,21 @@ function unitsOf(realm: number, tier: number, grade: number): number {
   return (1 + levelIndex(realm, tier) * 0.6) * (GRADE_MULT[grade - 1] ?? 1);
 }
 
-function buildInfo(kind: EquipKind, style: EquipStyle, realm: number, tier: number, grade: number, element: string | null, weaponType: string | null): EquipInfo {
-  const units = unitsOf(realm, tier, grade);
-  const lv = levelIndex(realm, tier);
+/** Stats of a piece of this kind and grade at flat level `lv` (see levelIndex). */
+function statsFor(kind: EquipKind, lv: number, grade: number): EquipStats {
+  const units = (1 + lv * 0.6) * (GRADE_MULT[grade - 1] ?? 1);
   const stats = emptyEquipStats();
   for (const key of EQUIP_STAT_KEYS) {
     const w = KIND_WEIGHTS[kind][key];
     if (!w) continue;
-    stats[key] = key === "critRate" || key === "dodgeRate" ? Math.round(units * w * 10) / 10 : Math.max(1, Math.round(units * w));
+    stats[key] = EQUIP_RATE_KEYS.includes(key) ? Math.round(units * w * 10) / 10 : Math.max(1, Math.round(units * w));
   }
+  return stats;
+}
+
+function buildInfo(kind: EquipKind, style: EquipStyle, realm: number, tier: number, grade: number, element: string | null, weaponType: string | null): EquipInfo {
+  const lv = levelIndex(realm, tier);
+  const stats = statsFor(kind, lv, grade);
   // The very first, lowest-grade pieces ask for nothing; everything else asks for the level it is made for, and
   // high-grade pieces also for a base stat.
   const level = lv <= 1 && grade === 1 ? null : lv;
@@ -193,7 +213,7 @@ export const SPECIAL_EQUIPMENT: Readonly<Record<string, EquipInfo>> = {
     grade: 4,
     element: null,
     weaponType: null,
-    stats: { attack: 4, defense: 0, maxHp: 0, critRate: 1, dodgeRate: 0 },
+    stats: { attack: 4, defense: 0, maxHp: 0, critRate: 1, dodgeRate: 0, moveSpeed: 0 },
     maxDurability: null,
     req: { level: null, stat: null },
     nameVi: "Vạn Cổ Giới",
@@ -254,16 +274,60 @@ export interface EquippedItem {
   slot: EquipSlot;
   dur?: number;
   max?: number;
+  /** Pháp bảo bản mệnh only: its trained level (flat level index) and the EXP towards the next one. Absent: still at its own level, no EXP. */
+  lv?: number;
+  xp?: number;
+}
+
+/** Level and EXP of the pháp bảo bản mệnh, which has its own EXP stream (half of what a character needs per level, never above the owner's level). */
+export function isBonded(type: string): boolean {
+  return equipmentInfo(type)?.kind === "bonded";
+}
+
+/** The level a bonded artifact is at: its trained level, or the level it was made at. */
+export function refineLevelOf(info: EquipInfo, lv: number | undefined): number {
+  return lv ?? levelIndex(info.realm, info.tier);
+}
+
+/** EXP the artifact needs to go from `level` to the next: half of the character's need at the same level. */
+export function refineExpNeeded(level: number): number {
+  const realm = Math.floor(level / STAGES_PER_REALM);
+  const stage = (level % STAGES_PER_REALM) + 1;
+  return Math.max(1, Math.round(expToNext(realm, stage) / 2));
+}
+
+/**
+ * Adds EXP to a bonded artifact: it levels up as long as the EXP pays for it, but never beyond `cap` (the owner's own level).
+ * At the cap the EXP stops at the amount that would be needed (the overflow is dropped), like a character at stage 9.
+ */
+export function applyRefineExp(level: number, xp: number, gain: number, cap: number): { lv: number; xp: number; levelsGained: number } {
+  let lv = level;
+  let exp = xp + Math.max(0, Math.floor(gain));
+  let gained = 0;
+  while (lv < cap) {
+    const need = refineExpNeeded(lv);
+    if (exp < need) break;
+    exp -= need;
+    lv += 1;
+    gained += 1;
+  }
+  if (lv >= cap) exp = Math.min(exp, refineExpNeeded(lv));
+  return { lv, xp: exp, levelsGained: gained };
 }
 
 /** Stats at the current durability: a piece at 60% gives 60% (rounded down) of each stat; a broken one gives nothing. */
-export function scaledStats(info: EquipInfo, dur: number | undefined, max: number | undefined): EquipStats {
-  if (dur === undefined || max === undefined || max <= 0) return { ...info.stats };
+export function baseStatsAt(info: EquipInfo, lv: number | undefined): EquipStats {
+  return info.kind === "bonded" && lv !== undefined ? statsFor(info.kind, lv, info.grade) : { ...info.stats };
+}
+
+export function scaledStats(info: EquipInfo, dur: number | undefined, max: number | undefined, lv?: number): EquipStats {
+  const base = baseStatsAt(info, lv);
+  if (dur === undefined || max === undefined || max <= 0) return base;
   const out = emptyEquipStats();
   const f = Math.min(1, Math.max(0, dur / max));
   for (const key of EQUIP_STAT_KEYS) {
-    const v = info.stats[key] * f;
-    out[key] = key === "critRate" || key === "dodgeRate" ? Math.floor(v * 10) / 10 : Math.floor(v);
+    const v = base[key] * f;
+    out[key] = EQUIP_RATE_KEYS.includes(key) ? Math.floor(v * 10) / 10 : Math.floor(v);
   }
   return out;
 }
@@ -298,7 +362,7 @@ export function equipmentBonus(items: readonly EquippedItem[], w: WearerCtx): Eq
   for (const it of items) {
     const info = equipmentInfo(it.type);
     if (!info || equipBlock(info, it.slot, it.dur, w)) continue;
-    const s = scaledStats(info, it.dur, it.max);
+    const s = scaledStats(info, it.dur, it.max, it.lv);
     for (const key of EQUIP_STAT_KEYS) total[key] += s[key];
   }
   for (const key of EQUIP_STAT_KEYS) total[key] = Math.round(total[key] * 10) / 10;

@@ -13,7 +13,11 @@ import {
   INV_MIN_GAP_MS,
   POTION_COOLDOWN_MS,
   applyBag,
+  applyRefineExp,
   equipmentBonus,
+  equipmentInfo,
+  levelIndex,
+  refineLevelOf,
   newDurability,
   planDeathWear,
   planEquip,
@@ -87,6 +91,7 @@ import {
   mailViews,
   opStatements,
   pruneGrants,
+  saveRefine,
   type BagState,
   type MailItem,
 } from "./inventory";
@@ -202,6 +207,8 @@ export class MapRoom extends DurableObject<Env> {
   private bags = new Map<string, BagState>();
   /** Bag changes of one character run one after another, so loot and commands never plan against the same snapshot. */
   private bagQueues = new Map<string, Promise<void>>();
+  /** Characters whose pháp bảo bản mệnh EXP changed since it was last written. */
+  private refineDirty = new Set<string>();
   private pauses = 0;
   private wakes = 0;
   private tickStat = { count: 0, totalMs: 0, maxMs: 0, maxDriftMs: 0, skipped: 0 };
@@ -537,6 +544,7 @@ export class MapRoom extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets()) {
       const state = ws.deserializeAttachment() as PlayerState | null;
       if (!state) continue;
+      await this.flushRefine(state.id);
       const profile = this.sim?.getPlayer(state.id);
       if (!state.dirty && !profile?.expDirty && !profile?.pendingPoints) continue;
       state.dirty = false;
@@ -792,6 +800,9 @@ export class MapRoom extends DurableObject<Env> {
       case "drop":
         this.enqueueDrop(ev.playerId, ev.amount);
         return;
+      case "refine":
+        later.push(this.addRefineExp(ev.playerId, ev.gain, now));
+        return;
       case "loot":
         this.enqueueLoot(ev.playerId, ev.drops);
         return;
@@ -863,7 +874,48 @@ export class MapRoom extends DurableObject<Env> {
   /** Waits for the character's pending bag writes and forgets the cached bag. Called before the lock is released. */
   private async settleBag(id: string): Promise<void> {
     await (this.bagQueues.get(id) ?? Promise.resolve());
+    await this.flushRefine(id); // the artifact's EXP is written before the lock is released
     this.bags.delete(id);
+  }
+
+  /**
+   * The pháp bảo bản mệnh worn by a character gets the kill's EXP in its own stream. The EXP lives in the cached bag and
+   * is written with the next save (a level-up writes at once), so a kill costs no D1 write. The artifact never passes the
+   * owner's level; at the cap its EXP stops at the amount a level needs.
+   */
+  private async addRefineExp(characterId: string, gain: number, now: number): Promise<void> {
+    const profile = this.sim?.getPlayer(characterId);
+    const bag = this.bags.get(characterId);
+    const piece = bag?.equipped.find((e) => e.slot === "bonded");
+    const info = piece ? equipmentInfo(piece.type) : undefined;
+    if (!profile || !bag || !piece || !info || (piece.dur !== undefined && piece.dur <= 0)) return;
+    const level = refineLevelOf(info, piece.lv);
+    const r = applyRefineExp(level, piece.xp ?? 0, gain, levelIndex(profile.realm, profile.stage));
+    if (r.lv === piece.lv && r.xp === piece.xp) return;
+    piece.lv = r.lv;
+    piece.xp = r.xp;
+    this.refineDirty.add(characterId);
+    if (r.levelsGained > 0) {
+      await this.flushRefine(characterId);
+      this.applyGear(characterId, bag);
+    } else {
+      await this.ensureSaveAlarm(now);
+    }
+  }
+
+  /** Writes the unsaved pháp bảo bản mệnh progress of a character (if any) and tells the client the new values. */
+  private async flushRefine(characterId: string): Promise<void> {
+    if (!this.refineDirty.delete(characterId)) return;
+    const piece = this.bags.get(characterId)?.equipped.find((e) => e.slot === "bonded");
+    if (!piece || piece.lv === undefined) return;
+    try {
+      await saveRefine(this.env.DB, characterId, piece.id, piece.lv, piece.xp ?? 0);
+      const bag = this.bags.get(characterId);
+      if (bag) this.sendToCharacter(characterId, { t: "eq", items: bag.equipped });
+    } catch (err) {
+      console.error("refine save failed", characterId, err);
+      this.refineDirty.add(characterId);
+    }
   }
 
   private async getBag(id: string): Promise<BagState> {

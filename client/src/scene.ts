@@ -1,6 +1,8 @@
 import Phaser from "phaser";
 import {
+  equipmentInfo,
   getItemDef,
+  refineLevelOf,
   TILE_H,
   TILE_W,
   ATTACK_MIN_GAP_MS,
@@ -27,6 +29,7 @@ import {
 import { initCharacterPanel, type CharacterPanel } from "./character-ui";
 import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
+import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
@@ -122,6 +125,8 @@ export class GameScene extends Phaser.Scene {
   private chat!: ChatUi;
   private inventory!: InventoryUi;
   private equipment!: EquipmentUi;
+  /** Level of the worn pháp bảo bản mệnh, to report level-ups. */
+  private bondedLv: number | undefined;
   private charPanel!: CharacterPanel;
   private vitals!: VitalsUi;
   private hud!: HTMLElement;
@@ -339,6 +344,8 @@ export class GameScene extends Phaser.Scene {
         this.vitals.setWallet(msg.wallet);
         this.inventory.setBag(msg.bag);
         this.equipment.setEquipped(msg.equipped);
+        const wornBonded = msg.equipped.find((e) => e.slot === "bonded");
+        this.bondedLv = wornBonded ? bondedLevel(wornBonded) : undefined;
         this.inventory.setEquipped(msg.equipped);
         this.charPanel.setEquipped(msg.equipped);
         this.inventory.setMail(msg.mail);
@@ -406,11 +413,19 @@ export class GameScene extends Phaser.Scene {
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
         this.equipment.refresh();
         break;
-      case "eq":
+      case "eq": {
+        // The pháp bảo bản mệnh reaching a new training level is worth a line.
+        const bonded = msg.items.find((e) => e.slot === "bonded");
+        const level = bonded ? bondedLevel(bonded) : undefined;
+        if (bonded && level !== undefined && this.bondedLv !== undefined && level > this.bondedLv) {
+          this.chat.system(vi.equip.refined(getItemDef(bonded.type)?.nameVi ?? bonded.type, itemTierText(bonded.type, bonded.lv) ?? ""));
+        }
+        this.bondedLv = level;
         this.equipment.setEquipped(msg.items);
         this.inventory.setEquipped(msg.items);
         this.charPanel.setEquipped(msg.items);
         break;
+      }
       case "eq_removed":
         for (const it of msg.items) {
           const name = getItemDef(it.type)?.nameVi ?? it.type;
@@ -655,4 +670,10 @@ export class GameScene extends Phaser.Scene {
       }
     }
   }
+}
+
+/** The level a worn pháp bảo bản mệnh is at (its trained level, or the one it was made at). */
+function bondedLevel(piece: { type: string; lv?: number }): number | undefined {
+  const info = equipmentInfo(piece.type);
+  return info ? refineLevelOf(info, piece.lv) : undefined;
 }
