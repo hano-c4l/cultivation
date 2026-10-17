@@ -7,6 +7,21 @@ export function statText(key: EquipStatKey, value: number): string {
   return `+${value}${rate ? "%" : ""} ${vi.equip.statNames[key]}`;
 }
 
+/** Small round icon for a piece's element (white rim, fill by ngũ hành), or null when it has none. */
+export function elementDot(type: string): HTMLElement | null {
+  const element = equipmentInfo(type)?.element;
+  if (!element) return null;
+  const dot = document.createElement("span");
+  dot.className = `elem-dot elem-${element}`;
+  dot.title = vi.equip.element(vi.roots[element] ?? vi.equip.variantElements[element] ?? element);
+  return dot;
+}
+
+/** Durability for a one-line row: "63/100", or the infinity sign for gear that never wears out. */
+export function durabilityShort(dur?: number, max?: number): string {
+  return dur === undefined || max === undefined ? "∞" : `${dur}/${max}`;
+}
+
 /** The kind of an item for the details: "Vũ khí · Kiếm", "Nhẫn", "Đan dược", "Nguyên liệu"... */
 export function itemTypeText(type: string): string {
   const info = equipmentInfo(type);
