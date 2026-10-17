@@ -103,7 +103,7 @@ Con số cố định (có thể chỉnh trước khi bắt đầu, sau đó kh�
   - **Không cho đổi linh căn ở GĐ1.** Sau này chỉ đổi qua vật phẩm hiếm trong game (ghi sổ cái, không bán trực tiếp bằng tiền nạp), làm ở giai đoạn khác.
   - **Trục số hệ** (đơn/song/tam/tứ/ngũ linh căn, linh căn biến dị Lôi/Băng/Phong) làm ở **GĐ2**, cùng lúc ngũ hành đầy đủ vào chiến đấu; thiết kế bảng sát thương ngũ hành hiện tại phải mở rộng được cho hệ này.
 - **Đột phá cảnh giới** (đã chốt cho GĐ1): tiến độ **dừng ở tầng 9** của mỗi cảnh giới, EXP bị chặn ở mức đầy, phần dư bị bỏ. Cơ chế đột phá (tỉ lệ thất bại, đan dược) làm ở GĐ2.
-- Chết: mất ít EXP (không xuống tầng), giảm độ bền; hồi sinh ở thành.
+- Chết: mất 10% EXP của tầng hiện tại (không xuống tầng; đã làm ở GĐ1), giảm độ bền (chờ có trang bị, GĐ2); hồi sinh ở thành.
 - Đột phá cảnh giới có tỉ lệ thất bại, dùng đan dược tăng tỉ lệ.
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu

@@ -55,6 +55,8 @@ export interface PlayerProfile extends ProfileSeed {
   lastRepathAt: number;
   lastAttackMsgAt: number;
   pendingPoints: number;
+  /** Points carried by a D1 write that has started but not finished; never sent twice. */
+  inflightPoints: number;
   expDirty: boolean;
   dead: boolean;
 }
@@ -163,6 +165,7 @@ export class CombatSim {
       lastRepathAt: 0,
       lastAttackMsgAt: 0,
       pendingPoints: 0,
+      inflightPoints: 0,
       expDirty: false,
       dead: false,
     };
@@ -410,13 +413,28 @@ export class CombatSim {
   }
 
   /**
-   * Marks the progression that was written to D1 as flushed. `written` is what the UPDATE carried; anything gained
-   * while the write was in flight stays pending for the next flush.
+   * Reserves the unwritten progression for a D1 write: the pending point delta is taken (so an overlapping save,
+   * leave or portal cannot send it a second time) and must be settled with `endFlush`. Returns null when nothing
+   * is waiting. EXP is absolute, so writing it twice would be harmless, but it is reserved the same way.
    */
-  markFlushed(id: string, written: { exp: number; pendingPoints: number }): void {
+  beginFlush(id: string): { stage: number; exp: number; addPoints: number } | null {
+    const p = this.players.get(id);
+    if (!p || (!p.expDirty && p.pendingPoints === 0)) return null;
+    const write = { stage: p.stage, exp: p.exp, addPoints: p.pendingPoints };
+    p.inflightPoints += write.addPoints;
+    p.pendingPoints = 0;
+    p.expDirty = false;
+    return write;
+  }
+
+  /** Settles a reserved write; on failure the points and the dirty flag are put back for the next attempt. */
+  endFlush(id: string, write: { addPoints: number }, ok: boolean): void {
     const p = this.players.get(id);
     if (!p) return;
-    p.pendingPoints -= written.pendingPoints;
-    if (p.exp === written.exp) p.expDirty = false;
+    p.inflightPoints -= write.addPoints;
+    if (!ok) {
+      p.pendingPoints += write.addPoints;
+      p.expDirty = true;
+    }
   }
 }

@@ -28,8 +28,8 @@ import { Net } from "./net";
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
 
 const ELEMENT_COLOR: Record<string, number> = { kim: 0xe0e0e0, moc: 0x4caf50, thuy: 0x2196f3, hoa: 0xff5722, tho: 0x9c7a5b };
-/** A click within this many tiles of a monster targets it instead of walking. */
-const MONSTER_PICK_RADIUS = 0.9;
+/** A click within this many screen pixels of a monster (around its body) targets it instead of walking. */
+const MONSTER_PICK_PX = 34;
 
 /** Converts continuous tile coordinates to isometric screen pixels. */
 function toScreen(x: number, y: number): { x: number; y: number } {
@@ -248,7 +248,7 @@ export class GameScene extends Phaser.Scene {
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
     const tx = Math.round(t.x * 100) / 100;
     const ty = Math.round(t.y * 100) / 100;
-    const picked = this.pickMonster(t.x, t.y);
+    const picked = this.pickMonster(world.x, world.y);
     if (picked) {
       const nowMs = performance.now();
       if (nowMs - this.lastAttackSentAt >= ATTACK_MIN_GAP_MS + 20) {
@@ -391,14 +391,15 @@ export class GameScene extends Phaser.Scene {
     this.targetId = null;
   }
 
-  /** The monster nearest to a clicked tile position, if one is close enough. */
-  private pickMonster(tx: number, ty: number): string | null {
+  /** The monster nearest to a click, measured on screen so clicking the body, label or HP bar all count. */
+  private pickMonster(wx: number, wy: number): string | null {
     const now = performance.now();
     let best: string | null = null;
-    let bestD = MONSTER_PICK_RADIUS;
+    let bestD = MONSTER_PICK_PX;
     for (const m of this.monsters.values()) {
       const pos = positionAlongPath(m.path, now - m.startedAt, m.speed);
-      const d = Math.hypot(pos.x - tx, pos.y - ty);
+      const s = toScreen(pos.x, pos.y);
+      const d = Math.hypot(s.x - wx, s.y - 20 - wy);
       if (d <= bestD) {
         bestD = d;
         best = m.id;

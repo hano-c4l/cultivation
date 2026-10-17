@@ -115,18 +115,58 @@ describe("CombatSim", () => {
     expect(p.pendingPoints).toBe(5);
     expect(p.potentialPoints).toBe(10);
     expect(p.hp).toBe(p.maxHp);
-    sim.markFlushed("p1", { exp: p.exp, pendingPoints: 5 });
+    const write = sim.beginFlush("p1")!;
+    expect(write).toMatchObject({ stage: 2, addPoints: 5 });
+    sim.endFlush("p1", write, true);
     expect(p.pendingPoints).toBe(0);
+    expect(p.inflightPoints).toBe(0);
     expect(p.expDirty).toBe(false);
   });
 
-  it("EXP gained while a flush is in flight stays pending", () => {
+  it("points are reserved while a write is in flight, so an overlapping save cannot send them twice", () => {
+    const sim = forestSim();
+    const p = sim.addPlayer(seed());
+    p.pendingPoints = 5;
+    p.expDirty = true;
+    const first = sim.beginFlush("p1")!;
+    expect(first.addPoints).toBe(5);
+    // A save, leave or portal starting now sees nothing left to write.
+    expect(sim.beginFlush("p1")).toBeNull();
+    expect(p.inflightPoints).toBe(5);
+    sim.endFlush("p1", first, true);
+    expect(p.inflightPoints).toBe(0);
+    expect(p.pendingPoints).toBe(0);
+  });
+
+  it("a failed write puts points and the dirty flag back", () => {
+    const sim = forestSim();
+    const p = sim.addPlayer(seed());
+    p.pendingPoints = 5;
+    p.expDirty = true;
+    const write = sim.beginFlush("p1")!;
+    sim.endFlush("p1", write, false);
+    expect(p.pendingPoints).toBe(5);
+    expect(p.expDirty).toBe(true);
+    expect(p.inflightPoints).toBe(0);
+    expect(sim.beginFlush("p1")).not.toBeNull();
+  });
+
+  it("nothing to write returns null", () => {
+    const sim = forestSim();
+    sim.addPlayer(seed());
+    expect(sim.beginFlush("p1")).toBeNull();
+  });
+
+  it("EXP gained while a write is in flight is written by the next flush", () => {
     const sim = forestSim();
     const p = sim.addPlayer(seed());
     p.exp = 50;
     p.expDirty = true;
-    sim.markFlushed("p1", { exp: 40, pendingPoints: 0 });
-    expect(p.expDirty).toBe(true);
+    const write = sim.beginFlush("p1")!;
+    p.exp = 60;
+    p.expDirty = true;
+    sim.endFlush("p1", write, true);
+    expect(sim.beginFlush("p1")).toMatchObject({ exp: 60, addPoints: 0 });
   });
 
   it("clearing the target stops the attack, and removing the player releases monsters", () => {

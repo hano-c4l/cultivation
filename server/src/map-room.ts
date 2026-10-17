@@ -42,7 +42,6 @@ import {
   saveCharacterProgress,
   toCharacterSheet,
   type CharacterRow,
-  type ProgressWrite,
 } from "./characters";
 import { CombatSim, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
@@ -317,22 +316,30 @@ export class MapRoom extends DurableObject<Env> {
    * Map handoff: save at the destination (together with any unwritten progression), detach, release the lock, then
    * tell the client to reconnect. Used by portals and by death (back to town).
    */
-  private async handoff(ws: WebSocket, state: PlayerState, toMap: MapId, x: number, y: number): Promise<void> {
+  private async handoff(ws: WebSocket, state: PlayerState, toMap: MapId, x: number, y: number, closeOnFail = false): Promise<void> {
     state.transferring = true;
     // The destination row is written below; a pending debounced save must not overwrite it with the old map.
     state.dirty = false;
     ws.serializeAttachment(state);
-    const profile = this.sim?.getPlayer(state.id);
-    const progress = profile ? this.progressOf(profile) : undefined;
+    const progress = this.sim?.beginFlush(state.id) ?? undefined;
     try {
       await saveCharacterPosition(this.env.DB, state.id, toMap, x, y, progress);
     } catch (err) {
       console.error("handoff save failed", state.id, err);
+      if (progress) this.sim?.endFlush(state.id, progress, false);
       state.transferring = false;
       ws.serializeAttachment(state);
+      // A dead player would stay dead with no way out: closing the socket runs the normal leave (save, drop, rejoin).
+      if (closeOnFail) {
+        try {
+          ws.close(1011, "handoff-failed");
+        } catch {
+          // Already closed.
+        }
+      }
       return;
     }
-    if (progress) this.sim?.markFlushed(state.id, { exp: progress.exp, pendingPoints: progress.addPoints });
+    if (progress) this.sim?.endFlush(state.id, progress, true);
     ws.serializeAttachment(null);
     this.dropPlayer(state.id);
     this.broadcast({ t: "left", id: state.id }, ws);
@@ -371,7 +378,8 @@ export class MapRoom extends DurableObject<Env> {
       // In a combat map the room's working copy of EXP is newer than D1, so the sheet is built from it.
       const profile = this.sim?.getPlayer(state.id);
       if (profile) {
-        profile.potentialPoints = row.potential_points + profile.pendingPoints;
+        // Points still in flight may or may not be in D1 yet; counting them keeps the number from dipping (off by at most that much for a moment).
+        profile.potentialPoints = row.potential_points + profile.pendingPoints + profile.inflightPoints;
         this.sim?.updateBase(state.id, baseOf(row));
         this.send(ws, { t: "stats", character: sheetOf(profile) });
         this.send(ws, { t: "hp", hp: profile.hp, maxHp: profile.maxHp });
@@ -422,18 +430,14 @@ export class MapRoom extends DurableObject<Env> {
   private async save(state: PlayerState): Promise<void> {
     if (state.transferring) return; // the handoff owns the row until it completes
     const pos = positionAlongPath(state.path, Date.now() - state.startedAt, state.speed);
-    const profile = this.sim?.getPlayer(state.id);
-    const progress = profile && (profile.expDirty || profile.pendingPoints !== 0) ? this.progressOf(profile) : undefined;
+    const progress = this.sim?.beginFlush(state.id) ?? undefined;
     try {
       await saveCharacterPosition(this.env.DB, state.id, state.mapId, round2(pos.x), round2(pos.y), progress);
-      if (progress) this.sim?.markFlushed(state.id, { exp: progress.exp, pendingPoints: progress.addPoints });
+      if (progress) this.sim?.endFlush(state.id, progress, true);
     } catch (err) {
       console.error("save failed", state.id, err);
+      if (progress) this.sim?.endFlush(state.id, progress, false);
     }
-  }
-
-  private progressOf(p: PlayerProfile): ProgressWrite {
-    return { stage: p.stage, exp: p.exp, addPoints: p.pendingPoints };
   }
 
   // --- combat -------------------------------------------------------------------------------------------------
@@ -539,7 +543,7 @@ export class MapRoom extends DurableObject<Env> {
         if (!entry || !profile) return;
         this.send(entry.ws, { t: "stats", character: sheetOf(profile) });
         // A stage-up changes points, so it is written at once; plain EXP waits for the debounced save.
-        if (ev.stagesGained > 0) later.push(this.flushProgress(entry.state.id, profile));
+        if (ev.stagesGained > 0) later.push(this.flushProgress(entry.state.id));
         else later.push(this.ensureSaveAlarm(now));
         return;
       }
@@ -562,13 +566,15 @@ export class MapRoom extends DurableObject<Env> {
     if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(now + SAVE_DEBOUNCE_MS);
   }
 
-  private async flushProgress(id: string, profile: PlayerProfile): Promise<void> {
-    const progress = this.progressOf(profile);
+  private async flushProgress(id: string): Promise<void> {
+    const progress = this.sim?.beginFlush(id);
+    if (!progress) return;
     try {
       await saveCharacterProgress(this.env.DB, id, progress);
-      this.sim?.markFlushed(id, { exp: progress.exp, pendingPoints: progress.addPoints });
+      this.sim?.endFlush(id, progress, true);
     } catch (err) {
       console.error("progress flush failed", id, err);
+      this.sim?.endFlush(id, progress, false);
     }
   }
 
@@ -578,7 +584,7 @@ export class MapRoom extends DurableObject<Env> {
     this.sim?.applyDeathPenalty(state.id, expLost);
     this.send(ws, { t: "died", expLost });
     const [sx, sy] = getMap("town").spawn;
-    await this.handoff(ws, state, "town", sx + 0.5, sy + 0.5);
+    await this.handoff(ws, state, "town", sx + 0.5, sy + 0.5, true);
   }
 
   /** The server walks a player toward their target; the new path goes to everyone, including the player. */

@@ -53,12 +53,18 @@ function open(cookie) {
 
 const stats = { joined: 0, failed: 0, hits: 0, kills: 0, deaths: 0, attacks: 0 };
 
-async function client(i) {
+/** Accounts are created before the room exists: password hashing is CPU-heavy and would otherwise pollute the tick metrics. */
+async function prepare(i) {
+  const reg = await post("/api/register", { email: `load-${run}-${i}@example.test`, password: "correct-horse-battery" });
+  if (reg.status !== 201) throw new Error(`register ${reg.status}`);
+  const ch = await post("/api/character", { name: `Tải ${run.slice(-4)}${i}` }, reg.cookie);
+  if (ch.status !== 201) throw new Error(`character ${ch.status}`);
+  return { reg, ch };
+}
+
+async function client(i, account) {
   try {
-    const reg = await post("/api/register", { email: `load-${run}-${i}@example.test`, password: "correct-horse-battery" });
-    if (reg.status !== 201) throw new Error(`register ${reg.status}`);
-    const ch = await post("/api/character", { name: `Tải ${run.slice(-4)}${i}` }, reg.cookie);
-    if (ch.status !== 201) throw new Error(`character ${ch.status}`);
+    const { reg, ch } = account;
 
     let c = open(reg.cookie);
     await c.opened;
@@ -100,8 +106,18 @@ async function client(i) {
   }
 }
 
+const accounts = [];
+for (let i = 0; i < clients; i++) {
+  try {
+    accounts.push(await prepare(i));
+  } catch (err) {
+    stats.failed++;
+    accounts.push(null);
+    console.error(`prepare ${i}: ${err.message}`);
+  }
+}
 const started = Date.now();
-await Promise.all(Array.from({ length: clients }, (_, i) => sleep(i * 120).then(() => client(i))));
+await Promise.all(accounts.map((a, i) => (a ? sleep(i * 120).then(() => client(i, a)) : Promise.resolve())));
 // Clients are closed by now, so read the metrics while a final probe is not needed: the room keeps its counters.
 const res = await fetch(`${httpBase}/api/dev/tick-stats?room=forest:${CHANNEL}`);
 const tick = res.ok ? await res.json() : null;
