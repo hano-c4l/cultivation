@@ -53,11 +53,16 @@
       #eq-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #eq-panel .eq-head b { flex: 1; font-size: 15px; }
       #eq-panel .eq-wide { width: 100%; padding: 8px 10px; margin-bottom: 6px; } #eq-panel .eq-small { padding: 4px 8px; min-height: 28px; }
       #eq-panel .muted { opacity: 0.65; font-size: 12px; } #eq-panel .eq-broken { color: #ff8a80; text-decoration: line-through; }
-      #eq-panel .eq-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 4px 6px; background: rgba(255, 255, 255, 0.06); border-radius: 6px; }
+      #eq-panel .eq-row.rar-uncommon, #eq-panel .eq-opt.rar-uncommon, #eq-panel .eq-info.rar-uncommon { border-color: #4fc3f7; }
+      #eq-panel .eq-row.rar-rare, #eq-panel .eq-opt.rar-rare, #eq-panel .eq-info.rar-rare { border-color: #ba68c8; }
+      #eq-panel .eq-row.rar-epic, #eq-panel .eq-opt.rar-epic, #eq-panel .eq-info.rar-epic { border-color: #ffb300; }
+      #eq-panel .eq-item.clickable { cursor: pointer; }
+      #eq-panel .eq-info { margin: 2px 0 0; padding: 6px 8px; border: 1px solid #3a4560; border-radius: 6px; background: rgba(0, 0, 0, 0.25); }
+      #eq-panel .eq-row { border: 1px solid #3a4560; display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 4px 6px; background: rgba(255, 255, 255, 0.06); border-radius: 6px; }
       #eq-panel .eq-slot { width: 76px; flex: none; color: #c8a8ff; } #eq-panel .eq-item { flex: 1; min-width: 0; }
       #eq-panel .eq-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 150px; }
       #eq-panel .eq-choose { margin: 4px 0 0; padding: 6px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; }
-      #eq-panel .eq-opt { display: flex; align-items: center; gap: 8px; margin-top: 6px; } #eq-panel .eq-opt > div { flex: 1; min-width: 0; }
+      #eq-panel .eq-opt { border: 1px solid #3a4560; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 8px; margin-top: 6px; } #eq-panel .eq-opt > div { flex: 1; min-width: 0; }
       #eq-panel .eq-opt button { max-width: 120px; padding: 4px 8px; min-height: 28px; font-size: 12px; }
       #bag-btn[hidden], #bag-panel[hidden] { display: none; }
       #bag-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
@@ -77,6 +82,10 @@
       #bag-panel::-webkit-scrollbar-thumb, #bag-panel .bag-grid::-webkit-scrollbar-thumb { background: #6b7a99; border-radius: 4px; }
       #bag-panel .bag-cell { position: relative; height: 100%; min-width: 0; padding: 1px; background: rgba(255, 255, 255, 0.07); color: #e8e4d8; border: 1px solid #3a4560; overflow: hidden; }
       #bag-panel .bag-cell.rar-uncommon { border-color: #4fc3f7; } #bag-panel .bag-cell.rar-rare { border-color: #ba68c8; } #bag-panel .bag-cell.rar-epic { border-color: #ffb300; }
+      #bag-panel .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; line-height: 1; text-shadow: 0 0 2px #000; pointer-events: none; }
+      #bag-panel .bag-mark.x { color: #ff5252; } #bag-panel .bag-mark.plus { color: #ffd54a; }
+      #bag-panel .bag-actions button.active { background: #6fcf97; }
+      .bag-ghost { position: fixed; z-index: 20; padding: 3px 8px; border-radius: 6px; background: rgba(214, 169, 75, 0.92); color: #1b1405; font: 600 12px "Be Vietnam Pro", system-ui, sans-serif; pointer-events: none; }
       #bag-panel .bag-cell.broken { opacity: 0.45; filter: grayscale(1); }
       #bag-panel .bag-cell.selected { border-color: #ffd54a; box-shadow: 0 0 0 1px #ffd54a inset; }
       #bag-panel .bag-cell.cat-equipment { background: rgba(255, 183, 77, 0.25); }

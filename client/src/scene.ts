@@ -333,6 +333,7 @@ export class GameScene extends Phaser.Scene {
         setCatalog(msg.constitutions);
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
+        this.inventory.setSheet(msg.character);
         this.selfSheet = msg.character;
         this.vitals.set(msg.hp, msg.maxHp);
         this.vitals.setWallet(msg.wallet);
@@ -365,6 +366,7 @@ export class GameScene extends Phaser.Scene {
         const before = this.selfSheet;
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
+        this.inventory.setSheet(msg.character);
         this.selfSheet = msg.character;
         const c = msg.character;
         if (before && (c.realm > before.realm || (c.realm === before.realm && c.stage > before.stage))) {

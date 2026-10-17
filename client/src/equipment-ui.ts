@@ -16,6 +16,7 @@ import {
 } from "@game/shared";
 import { durabilityText, equipLines, statText } from "./equip-text";
 import { vi } from "./locales/vi";
+import { registerWindow } from "./window-manager";
 
 export interface EquipmentUi {
   setSheet(sheet: CharacterSheet): void;
@@ -44,10 +45,13 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   panel.id = "eq-panel";
   panel.hidden = true;
   document.body.append(toggle, panel);
+  registerWindow("equipment", panel, 1);
 
   let sheet: CharacterSheet | null = null;
   let worn: EquippedItem[] = [];
   let choosing: EquipSlot | null = null;
+  /** The worn piece whose details are open. */
+  let inspecting: EquipSlot | null = null;
 
   const wearer = (): WearerCtx | null => (sheet ? { gender: sheet.gender, realm: sheet.realm, stage: sheet.stage, base: sheet.base } : null);
   const nameOf = (type: string) => getItemDef(type)?.nameVi ?? type;
@@ -56,16 +60,17 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
     const box = el("div", "eq-choose");
     box.append(el("b", undefined, `${vi.equip.choose} · ${vi.equip.slots[slot]}`));
     const kind = slotKind(slot);
-    const options = getBag().filter((i) => equipmentInfo(i.type)?.kind === kind);
+    // Only pieces this character can actually wear here: right slot kind, gender style, level and stats, not broken.
+    const options = getBag().filter((i) => {
+      const info = equipmentInfo(i.type);
+      return info?.kind === kind && equipBlock(info, slot, i.dur, w) === null;
+    });
     if (options.length === 0) box.append(el("div", "muted", vi.equip.noCandidates));
     for (const item of options) {
-      const info = equipmentInfo(item.type)!;
-      const why = equipBlock(info, slot, item.dur, w);
-      const row = el("div", "eq-opt");
+      const row = el("div", `eq-opt rar-${getItemDef(item.type)?.rarity ?? "common"}`);
       const text = el("div");
       text.append(el("div", undefined, nameOf(item.type)), el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
-      const btn = el("button", undefined, why ? (vi.inventory.errors[why] ?? vi.inventory.errors.invalid!) : vi.inventory.wear);
-      btn.disabled = why !== null;
+      const btn = el("button", undefined, vi.inventory.wear);
       btn.onclick = () => {
         send({ t: "eq_equip", tab: item.tab, cell: item.cell, slot });
         choosing = null;
@@ -79,6 +84,16 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       render();
     };
     box.append(cancel);
+    return box;
+  }
+
+  /** Full description of a worn piece: grade, rarity, stats at the current durability, durability, requirements, style. */
+  function renderInfo(piece: EquippedItem): HTMLElement {
+    const box = el("div", `eq-info rar-${getItemDef(piece.type)?.rarity ?? "common"}`);
+    const def = getItemDef(piece.type);
+    box.append(el("b", undefined, nameOf(piece.type)));
+    if (def) box.append(el("div", "muted", `${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.gradeLabel}: ${vi.inventory.grades[def.grade] ?? def.grade}`));
+    for (const line of equipLines(piece.type, piece.dur, piece.max)) box.append(el("div", undefined, line));
     return box;
   }
 
@@ -106,14 +121,19 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
 
     for (const slot of EQUIP_SLOTS) {
       const piece = worn.find((e) => e.slot === slot);
-      const row = el("div", "eq-row");
+      const row = el("div", piece ? `eq-row rar-${getItemDef(piece.type)?.rarity ?? "common"}` : "eq-row");
       row.append(el("span", "eq-slot", vi.equip.slots[slot]));
       const middle = el("div", "eq-item");
       if (piece) {
         const broken = piece.dur !== undefined && piece.dur <= 0;
         const nm = el("div", broken ? "eq-broken" : undefined, nameOf(piece.type));
-        nm.title = equipLines(piece.type, piece.dur, piece.max).join("\n");
         middle.append(nm, el("div", "muted", durabilityText(piece.dur, piece.max)));
+        // Tapping the piece opens or closes its details just below the row.
+        middle.classList.add("clickable");
+        middle.onclick = () => {
+          inspecting = inspecting === slot ? null : slot;
+          render();
+        };
       } else {
         middle.append(el("div", "muted", vi.equip.empty));
       }
@@ -137,6 +157,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       }
       row.append(middle, actions);
       panel.append(row);
+      if (piece && inspecting === slot) panel.append(renderInfo(piece));
       if (choosing === slot) panel.append(renderChooser(slot, w));
     }
     panel.append(el("div", "muted", vi.equip.chooseHint));
@@ -144,7 +165,10 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
 
   function setOpen(open: boolean): void {
     panel.hidden = !open;
-    if (!open) choosing = null;
+    if (!open) {
+      choosing = null;
+      inspecting = null;
+    }
     render();
   }
 

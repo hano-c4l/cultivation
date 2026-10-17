@@ -17,6 +17,7 @@ import {
 } from "@game/shared";
 import { getCatalog } from "./constitution-store";
 import { vi } from "./locales/vi";
+import { registerWindow } from "./window-manager";
 
 export interface CharacterPanel {
   update(sheet: CharacterSheet): void;
@@ -43,6 +44,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
   panel.id = "char-panel";
   panel.hidden = true;
   document.body.append(toggle, panel);
+  registerWindow("character", panel, 0);
 
   let sheet: CharacterSheet | null = null;
   let pending: Partial<Record<StatKey, number>> = {};
