@@ -1,6 +1,7 @@
-import { MAX_LEDGER_AMOUNT, isCurrency } from "@game/shared";
+import { MAX_BAG_TABS, MAX_LEDGER_AMOUNT, isCurrency } from "@game/shared";
 import { getSession } from "./auth";
 import { applyCurrencyDelta, getWallet } from "./economy";
+import { expandBag } from "./inventory";
 import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
 
@@ -91,7 +92,7 @@ export async function adminCharacter(request: Request, env: Env, url: URL): Prom
   const admin = await requireAdmin(request, env);
   if (admin instanceof Response) return admin;
   const id = url.searchParams.get("id") ?? "";
-  const character = await env.DB.prepare("SELECT id, name FROM characters WHERE id = ?").bind(id).first<{ id: string; name: string }>();
+  const character = await env.DB.prepare("SELECT id, name, bag_tabs AS bagTabs FROM characters WHERE id = ?").bind(id).first<{ id: string; name: string; bagTabs: number }>();
   if (!character) return errorResponse("character_not_found", 404);
   const wallet = await getWallet(env.DB, id);
   const { results: ledger } = await env.DB.prepare(
@@ -101,6 +102,24 @@ export async function adminCharacter(request: Request, env: Env, url: URL): Prom
     .bind(id)
     .all();
   return json({ character, wallet, ledger });
+}
+
+/**
+ * Adds bag tabs to a character (the unlock mechanism; what players pay for it is not decided yet). The character's room
+ * keeps its own copy of the bag, so the new tab shows up the next time the character enters a room.
+ */
+export async function adminBagTabs(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  const body = await readJson(request);
+  const characterId = typeof body?.characterId === "string" ? body.characterId : "";
+  const by = body?.by === undefined ? 1 : body.by;
+  if (!characterId || characterId.length > 64) return errorResponse("invalid_character", 400);
+  if (typeof by !== "number" || !Number.isInteger(by) || by < 1 || by > MAX_BAG_TABS) return errorResponse("invalid_amount", 400);
+  const tabs = await expandBag(env.DB, characterId, MAX_BAG_TABS, by);
+  if (tabs === null) return errorResponse("cannot_expand", 409);
+  console.log("bag expanded", admin, characterId, tabs);
+  return json({ ok: true, bagTabs: tabs });
 }
 
 /** Total supply per currency (sum of all balances), the start of the PLAN section 4 monitoring dashboard. */

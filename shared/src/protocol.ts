@@ -1,6 +1,8 @@
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
+import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
+import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
 import { parseAllocation, type CharacterSheet } from "./progression";
 import type { BaseStats } from "./progression-data";
@@ -46,7 +48,31 @@ export type ClientMessage =
   /** Spend potential points: stat key to points. One message per confirmation, one D1 write. */
   | { t: "allocate"; points: Partial<BaseStats> }
   /** Target a monster: the server walks into range and auto-attacks until the target dies or the player moves. */
-  | { t: "attack"; id: string };
+  | { t: "attack"; id: string }
+  /** Bag commands name a cell, never an item id: the server resolves the item from its own copy of the bag. */
+  | { t: "inv_use"; tab: number; cell: number }
+  | { t: "inv_drop"; tab: number; cell: number; qty?: number }
+  | { t: "inv_move"; from: BagPos; to: BagPos }
+  /** Merge split stacks and order the whole bag by `mode`. */
+  | { t: "inv_sort"; mode: SortMode }
+  /** Split `qty` off a stack into the first free cell. */
+  | { t: "inv_split"; tab: number; cell: number; qty: number }
+  /** Claim the item attached to a mail into the bag. */
+  | { t: "mail_claim"; id: string };
+
+/** A mail as the client sees it. `expiresInMs` is relative to when it was sent (null: never expires), so clock skew does not matter. */
+export interface MailView {
+  id: string;
+  subject: string;
+  item: { type: string; qty: number } | null;
+  expiresInMs: number | null;
+}
+
+/** The bag as the client sees it. */
+export interface BagView {
+  tabs: number;
+  items: BagItem[];
+}
 
 /** Snapshot of one player: where they started walking, the path, and how long ago they started. */
 /** A monster: path-based like players, so clients interpolate and the server sends updates only when the path changes. */
@@ -73,7 +99,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
@@ -96,11 +122,29 @@ export type ServerMessage =
   | { t: "hp"; hp: number; maxHp: number }
   /** One of the receiving character's balances changed; `gained` is the amount just added, when it is a gain. */
   | { t: "wallet"; currency: Currency; balance: number; gained?: number }
+  /** Bag contents. `full` replaces everything; otherwise `items` are added or changed (by id) and `removed` are deleted. */
+  | { t: "inv"; full: boolean; tabs: number; items: BagItem[]; removed: string[] }
+  /** Items from a kill: `mailed` ones did not fit in the bag and were sent by mail (claim them in time). */
+  | { t: "loot"; items: Array<{ type: string; qty: number; mailed: boolean }> }
+  /** The current unclaimed mail (full list). */
+  | { t: "mail"; mail: MailView[] }
+  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room"; retryMs?: number }
   /** The receiving character died; a transfer to town follows. */
   | { t: "died"; expLost: number }
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
+}
+
+/** A bag cell inside the largest bag any character can own; the server checks it against the character's own tab count. */
+function cellOk(tab: number, cell: number): boolean {
+  return tab >= 0 && tab < MAX_BAG_TABS && cell >= 0 && cell < BAG_CELLS_PER_TAB;
+}
+
+function parseBagPos(v: unknown): BagPos | null {
+  if (typeof v !== "object" || v === null) return null;
+  const p = v as Record<string, unknown>;
+  return isInt(p.tab) && isInt(p.cell) && cellOk(p.tab, p.cell) ? { tab: p.tab, cell: p.cell } : null;
 }
 
 /** A finite coordinate in a sane range; the server still validates it against the map. */
@@ -141,6 +185,26 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     }
     case "attack":
       return isMonsterId(m.id) ? { t: "attack", id: m.id } : null;
+    case "inv_use":
+      return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) ? { t: "inv_use", tab: m.tab, cell: m.cell } : null;
+    case "inv_drop": {
+      if (!isInt(m.tab) || !isInt(m.cell) || !cellOk(m.tab, m.cell)) return null;
+      if (m.qty === undefined) return { t: "inv_drop", tab: m.tab, cell: m.cell };
+      return isInt(m.qty) && m.qty >= 1 && m.qty <= 9999 ? { t: "inv_drop", tab: m.tab, cell: m.cell, qty: m.qty } : null;
+    }
+    case "inv_move": {
+      const from = parseBagPos(m.from);
+      const to = parseBagPos(m.to);
+      return from && to ? { t: "inv_move", from, to } : null;
+    }
+    case "inv_sort":
+      return typeof m.mode === "string" && (SORT_MODES as readonly string[]).includes(m.mode) ? { t: "inv_sort", mode: m.mode as SortMode } : null;
+    case "inv_split":
+      return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999
+        ? { t: "inv_split", tab: m.tab, cell: m.cell, qty: m.qty }
+        : null;
+    case "mail_claim":
+      return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:
       return null;
   }

@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import {
+  getItemDef,
   TILE_H,
   TILE_W,
   ATTACK_MIN_GAP_MS,
@@ -25,6 +26,8 @@ import {
 } from "@game/shared";
 import { initCharacterPanel, type CharacterPanel } from "./character-ui";
 import { initChat, type ChatUi } from "./chat-ui";
+import { setCatalog } from "./constitution-store";
+import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { vi } from "./locales/vi";
@@ -116,6 +119,7 @@ export class GameScene extends Phaser.Scene {
   private net!: Net;
   private chatNet!: Net;
   private chat!: ChatUi;
+  private inventory!: InventoryUi;
   private charPanel!: CharacterPanel;
   private vitals!: VitalsUi;
   private hud!: HTMLElement;
@@ -143,6 +147,7 @@ export class GameScene extends Phaser.Scene {
       this.chatNet.send(to ? { t: "chat", channel, text, to } : { t: "chat", channel, text });
     }, this.registry.get("isAdmin") === true);
     this.vitals = initVitals();
+    this.inventory = initInventory((msg) => this.net.send(msg));
     this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
 
     const camera = this.cameras.main;
@@ -322,10 +327,13 @@ export class GameScene extends Phaser.Scene {
         this.clearActors();
         this.upsertActor(msg.players);
         for (const m of msg.monsters) this.upsertMonster(m);
+        setCatalog(msg.constitutions);
         this.charPanel.update(msg.character);
         this.selfSheet = msg.character;
         this.vitals.set(msg.hp, msg.maxHp);
         this.vitals.setWallet(msg.wallet);
+        this.inventory.setBag(msg.bag);
+        this.inventory.setMail(msg.mail);
         this.refreshHud();
         break;
       case "mon":
@@ -382,6 +390,30 @@ export class GameScene extends Phaser.Scene {
         this.transferring = true;
         this.hud.textContent = vi.transferring;
         this.chat.system(vi.chat.transferTo(vi.maps[msg.map] ?? msg.map), "important");
+        break;
+      case "inv":
+        if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items });
+        else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
+        break;
+      case "mail":
+        this.inventory.setMail(msg.mail);
+        break;
+      case "loot":
+        for (const it of msg.items) {
+          const name = getItemDef(it.type)?.nameVi ?? it.type;
+          if (it.mailed) this.chat.system(vi.inventory.mailed(name, it.qty), "important");
+          else this.chat.system(vi.inventory.picked(name, it.qty));
+        }
+        break;
+      case "inv_error":
+        // A sort refused for being too frequent locks the button with a countdown and is reported once, in the system tab.
+        if (msg.reason === "wait") {
+          if (this.inventory.rejected("wait", msg.retryMs)) this.chat.system(vi.inventory.sortBlocked(Math.max(1, Math.ceil((msg.retryMs ?? 5000) / 1000))), "warning");
+          break;
+        }
+        // Rate-limit refusals are silent: they only happen when commands are sent faster than a person taps.
+        this.inventory.rejected(msg.reason);
+        if (msg.reason !== "rate") this.chat.system(vi.inventory.errors[msg.reason] ?? vi.inventory.errors.invalid!, "error");
         break;
       case "chat":
       case "chat_error":

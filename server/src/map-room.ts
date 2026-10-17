@@ -7,7 +7,25 @@ import {
   CHAT_MIN_GAP_MS,
   CHAT_WINDOW_MS,
   checkChatRate,
+  retryAfterMs,
+  DEFAULT_CATALOG,
   EMPTY_WALLET,
+  INV_MIN_GAP_MS,
+  POTION_COOLDOWN_MS,
+  applyOps,
+  getItemDef,
+  itemAt,
+  planAdd,
+  planMove,
+  planRemove,
+  planSort,
+  planSplit,
+  SORT_BURST,
+  SORT_MIN_GAP_MS,
+  SORT_WINDOW_MS,
+  firstFreeCell,
+  type BagOp,
+  type LootDrop,
   MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
   MOVE_BUDGET_CAP,
@@ -46,7 +64,20 @@ import {
   toCharacterSheet,
   type CharacterRow,
 } from "./characters";
+import { getConstitutionCatalog } from "./constitution-catalog";
 import { applyCurrencyDelta, getWallet } from "./economy";
+import {
+  claimMailItem,
+  commitBagOps,
+  deleteExpiredMail,
+  diffBag,
+  listMail,
+  loadBag,
+  mailViews,
+  pruneGrants,
+  type BagState,
+  type MailItem,
+} from "./inventory";
 import { CombatSim, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
 
@@ -62,6 +93,10 @@ interface PlayerState {
   startedAt: number;
   speed: number;
   lastMoveAt: number;
+  /** Last bag command, to rate-limit them (each one is a D1 write). */
+  lastInvAt?: number;
+  /** Times of recent sorts: a sort rewrites many rows, so it has its own, stricter limit. */
+  sortTimes?: number[];
   /** Position changed since the last save to D1. */
   dirty: boolean;
   /** Set while a portal transfer is in flight so moves and repeated portal requests are ignored. */
@@ -103,6 +138,8 @@ function seedOf(row: CharacterRow): ProfileSeed {
     element: row.spiritual_root,
     base: baseOf(row),
     rootGrade: row.root_grade,
+    constitution: row.constitution,
+    constitutionTier: row.constitution_tier,
     realm: row.realm,
     stage: row.stage,
     exp: row.exp,
@@ -115,6 +152,8 @@ function sheetOf(p: PlayerProfile): CharacterSheet {
     name: p.name,
     spiritualRoot: p.element,
     rootGrade: p.rootGrade,
+    constitution: p.constitution,
+    constitutionTier: p.constitutionTier,
     realm: p.realm,
     stage: p.stage,
     exp: p.exp,
@@ -136,6 +175,13 @@ export class MapRoom extends DurableObject<Env> {
   private waking: Promise<void> | null = null;
   /** JSON of the monster classes last written to storage, to skip identical writes. */
   private ranksJson: string | null = null;
+  /**
+   * Each online character's bag as this room last wrote it (the room is the only writer while it holds the character
+   * lock). Too big for the socket attachment, so it lives in memory and is reloaded lazily after a sleep.
+   */
+  private bags = new Map<string, BagState>();
+  /** Bag changes of one character run one after another, so loot and commands never plan against the same snapshot. */
+  private bagQueues = new Map<string, Promise<void>>();
   private pauses = 0;
   private wakes = 0;
   private tickStat = { count: 0, totalMs: 0, maxMs: 0, maxDriftMs: 0, skipped: 0 };
@@ -209,6 +255,33 @@ export class MapRoom extends DurableObject<Env> {
         return { ...EMPTY_WALLET };
       });
 
+      // The bag and the mail are read here too (before accepting), for the same reason as the wallet.
+      const joinedAt = Date.now();
+      await deleteExpiredMail(this.env.DB, joinedAt, row.id).catch((err) => console.error("mail sweep failed", err));
+      const [bag, mail] = await Promise.all([
+        loadBag(this.env.DB, row.id),
+        listMail(this.env.DB, row.id, joinedAt).catch((err) => {
+          console.error("mail read failed", err);
+          return [];
+        }),
+      ]);
+      this.bags.set(row.id, bag);
+      // Names and descriptions of the constitutions are data: the client shows what the server's catalogue says. If it
+      // cannot be read the default one is sent (display only; creation never falls back like this).
+      const constitutions = await getConstitutionCatalog(this.env.DB).catch((err) => {
+        console.error("constitution catalogue read failed", err);
+        return DEFAULT_CATALOG;
+      });
+      if (Math.random() < 0.05) {
+        // Rare global housekeeping: mail that expired while its owner was offline, and old loot keys.
+        this.ctx.waitUntil(
+          Promise.all([deleteExpiredMail(this.env.DB, joinedAt), pruneGrants(this.env.DB, joinedAt)]).then(
+            () => undefined,
+            (err) => console.error("housekeeping failed", err),
+          ),
+        );
+      }
+
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
       this.ctx.acceptWebSocket(server);
@@ -243,10 +316,14 @@ export class MapRoom extends DurableObject<Env> {
         hp: profile?.hp ?? maxHp,
         maxHp,
         wallet,
+        bag: { tabs: bag.tabs, items: bag.items },
+        mail: mailViews(mail),
+        constitutions,
       });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
       return new Response(null, { status: 101, webSocket: client });
     } catch (err) {
+      this.bags.delete(characterId);
       await lock.release(claimId);
       throw err;
     }
@@ -259,6 +336,7 @@ export class MapRoom extends DurableObject<Env> {
       if (!state || state.id !== characterId) continue;
       ws.serializeAttachment(null);
       await this.save(state);
+      await this.settleBag(state.id);
       this.dropPlayer(state.id);
       this.send(ws, { t: "kicked", reason: "duplicate-login" });
       try {
@@ -291,6 +369,13 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleAllocate(ws, state, msg.points);
       case "attack":
         return this.handleAttack(ws, state, msg.id);
+      case "inv_use":
+      case "inv_drop":
+      case "inv_move":
+      case "inv_sort":
+      case "inv_split":
+      case "mail_claim":
+        return this.handleInventory(ws, state, msg);
     }
   }
 
@@ -366,6 +451,7 @@ export class MapRoom extends DurableObject<Env> {
     }
     if (progress) this.sim?.endFlush(state.id, progress, true);
     ws.serializeAttachment(null);
+    await this.settleBag(state.id);
     this.dropPlayer(state.id);
     this.broadcast({ t: "left", id: state.id }, ws);
     this.send(ws, { t: "transfer", map: toMap });
@@ -442,6 +528,9 @@ export class MapRoom extends DurableObject<Env> {
     // Keep the attachment until the save finished: a claim arriving meanwhile must still find this
     // socket in evictCharacter() and wait for a save before the new room reads the character row.
     await this.save(state);
+    // Pending bag writes finish while the attachment is still set, so a login that claims the lock meanwhile still
+    // finds this socket in evictCharacter() and waits, and its new room reads the finished bag.
+    await this.settleBag(state.id);
     ws.serializeAttachment(null);
     this.dropPlayer(state.id);
     await this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(state.id)).release(state.claimId);
@@ -569,6 +658,12 @@ export class MapRoom extends DurableObject<Env> {
     };
   }
 
+  /** Dev-only (see /api/dev/loot): runs the real loot path (bag or mail, one key, one batch) without killing anything. */
+  async devLoot(characterId: string, drops: LootDrop[]): Promise<void> {
+    this.enqueueLoot(characterId, drops);
+    await (this.bagQueues.get(characterId) ?? Promise.resolve());
+  }
+
   /** Dev-only (see /api/dev/evict): imitates the runtime evicting a paused object, which wrangler dev does not do reliably. */
   devEvict(): boolean {
     if (this.tickTimer || !this.sim) return false;
@@ -651,6 +746,9 @@ export class MapRoom extends DurableObject<Env> {
       case "drop":
         this.enqueueDrop(ev.playerId, ev.amount);
         return;
+      case "loot":
+        this.enqueueLoot(ev.playerId, ev.drops);
+        return;
       case "player_dead": {
         const entry = sockets.get(ev.playerId);
         const profile = this.sim?.getPlayer(ev.playerId);
@@ -701,6 +799,240 @@ export class MapRoom extends DurableObject<Env> {
         }
       }
     });
+  }
+
+  /** Runs a bag change after the earlier ones of the same character. Errors are logged and the cached bag is dropped (reloaded next time). */
+  private bagTask(id: string, fn: () => Promise<void>): Promise<void> {
+    const next = (this.bagQueues.get(id) ?? Promise.resolve()).then(fn).catch((err) => {
+      console.error("bag task failed", id, err);
+      this.bags.delete(id);
+    });
+    this.bagQueues.set(id, next);
+    void next.then(() => {
+      if (this.bagQueues.get(id) === next) this.bagQueues.delete(id);
+    });
+    return next;
+  }
+
+  /** Waits for the character's pending bag writes and forgets the cached bag. Called before the lock is released. */
+  private async settleBag(id: string): Promise<void> {
+    await (this.bagQueues.get(id) ?? Promise.resolve());
+    this.bags.delete(id);
+  }
+
+  private async getBag(id: string): Promise<BagState> {
+    let bag = this.bags.get(id);
+    if (!bag) {
+      bag = await loadBag(this.env.DB, id);
+      this.bags.set(id, bag);
+    }
+    return bag;
+  }
+
+  /**
+   * Plans against the cached bag and writes the plan as one batch. If D1 says the plan is stale (the bag changed under
+   * the cache) the bag is reloaded and planned again, up to three times, always with the same grant key. The cache is
+   * only updated after the commit, so it never claims items that were not written.
+   */
+  private async mutateBag(
+    id: string,
+    plan: (bag: BagState) => { ops: BagOp[]; mail?: MailItem[] } | null,
+    grantKey?: string,
+  ): Promise<{ ok: true; before: BagState; after: BagState; mailed: MailItem[] } | { ok: false; reason: "invalid" | "failed" | "duplicate" }> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const before = await this.getBag(id);
+      const p = plan(before);
+      if (!p) return { ok: false, reason: "invalid" };
+      const r = await commitBagOps(this.env.DB, id, p.ops, { grantKey, mail: p.mail });
+      if (r === "ok") {
+        const after = { tabs: before.tabs, items: applyOps(before.items, p.ops) };
+        this.bags.set(id, after);
+        return { ok: true, before, after, mailed: p.mail ?? [] };
+      }
+      this.bags.delete(id); // stale (or a repeated key): resync from D1
+      if (r === "duplicate") return { ok: false, reason: "duplicate" };
+    }
+    return { ok: false, reason: "failed" };
+  }
+
+  private sendToCharacter(id: string, msg: ServerMessage): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      const s = ws.deserializeAttachment() as PlayerState | null;
+      if (s?.id === id && !s.transferring) this.send(ws, msg);
+    }
+  }
+
+  private sendBagDelta(id: string, before: BagState, after: BagState): void {
+    const d = diffBag(before.items, after.items);
+    if (d.items.length === 0 && d.removed.length === 0) return;
+    this.sendToCharacter(id, { t: "inv", full: false, tabs: after.tabs, items: d.items, removed: d.removed });
+  }
+
+  private async sendMailList(id: string): Promise<void> {
+    this.sendToCharacter(id, { t: "mail", mail: mailViews(await listMail(this.env.DB, id)) });
+  }
+
+  /**
+   * Puts the items of one kill into the bag; what does not fit goes to the mailbox (claim within 30 minutes). One loot
+   * key and one batch per kill, so a retry never creates the items twice.
+   */
+  private enqueueLoot(characterId: string, drops: LootDrop[]): void {
+    const key = `loot:${crypto.randomUUID()}`;
+    void this.bagTask(characterId, async () => {
+      const plan = (bag: BagState) => {
+        let items = bag.items;
+        const ops: BagOp[] = [];
+        const mail: MailItem[] = [];
+        for (const d of drops) {
+          const p = planAdd(items, bag.tabs, d.item, d.qty, () => crypto.randomUUID());
+          if (p) {
+            ops.push(...p);
+            items = applyOps(items, p);
+          } else {
+            mail.push({ type: d.item, qty: d.qty, subject: "bag_full" });
+          }
+        }
+        return { ops, mail };
+      };
+      // A thrown D1 error is retried with the SAME key, like the Linh Thạch drop: if an attempt did commit but its answer
+      // was lost, the retry sees "duplicate" and the bag is resynced instead of the loot being created twice.
+      let res: Awaited<ReturnType<MapRoom["mutateBag"]>> | null = null;
+      for (let attempt = 0; attempt < 3 && !res; attempt++) {
+        try {
+          res = await this.mutateBag(characterId, plan, key);
+        } catch (err) {
+          console.error("loot write failed", characterId, attempt, err);
+          this.bags.delete(characterId);
+          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+        }
+      }
+      if (!res) return;
+      if (!res.ok) {
+        if (res.reason === "duplicate") {
+          // An earlier attempt did commit: send the real bag and mail instead of a delta.
+          const bag = await this.getBag(characterId);
+          this.sendToCharacter(characterId, { t: "inv", full: true, tabs: bag.tabs, items: bag.items, removed: [] });
+          await this.sendMailList(characterId);
+        }
+        return;
+      }
+      this.sendBagDelta(characterId, res.before, res.after);
+      const mailedTypes = new Set(res.mailed.map((m) => m.type + ":" + m.qty));
+      this.sendToCharacter(characterId, {
+        t: "loot",
+        items: drops.map((d) => ({ type: d.item, qty: d.qty, mailed: mailedTypes.has(d.item + ":" + d.qty) })),
+      });
+      if (res.mailed.length > 0) await this.sendMailList(characterId);
+    });
+  }
+
+  private handleInventory(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "inv_use" | "inv_drop" | "inv_move" | "inv_sort" | "inv_split" | "mail_claim" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    if (msg.t === "inv_sort") {
+      const times = checkChatRate(state.sortTimes ?? [], now, { burst: SORT_BURST, windowMs: SORT_WINDOW_MS, minGapMs: SORT_MIN_GAP_MS });
+      if (!times) {
+        // Tell the client how long the button must stay locked, so it can count down instead of asking again.
+        const retryMs = retryAfterMs(state.sortTimes ?? [], now, { burst: SORT_BURST, windowMs: SORT_WINDOW_MS, minGapMs: SORT_MIN_GAP_MS });
+        return this.send(ws, { t: "inv_error", reason: "wait", retryMs });
+      }
+      state.sortTimes = times;
+    }
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      if (msg.t === "mail_claim") return this.claimMail(ws, id, msg.id);
+      if (msg.t === "inv_move") {
+        const res = await this.mutateBag(id, (bag) => {
+          const ops = planMove(bag.items, bag.tabs, msg.from, msg.to);
+          return ops ? { ops } : null;
+        });
+        if (!res.ok) return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
+        return this.sendBagDelta(id, res.before, res.after);
+      }
+      if (msg.t === "inv_sort") {
+        const res = await this.mutateBag(id, (bag) => {
+          const ops = planSort(bag.items, bag.tabs, msg.mode);
+          return ops ? { ops } : null; // null: already in order, nothing to write
+        });
+        if (res.ok) return this.sendBagDelta(id, res.before, res.after);
+        if (res.reason === "invalid") return; // nothing to change
+        return this.resync(ws, id, "busy");
+      }
+      if (msg.t === "inv_split") {
+        const res = await this.mutateBag(id, (bag) => {
+          const ops = planSplit(bag.items, bag.tabs, { tab: msg.tab, cell: msg.cell }, msg.qty, () => crypto.randomUUID());
+          return ops ? { ops } : null;
+        });
+        if (res.ok) return this.sendBagDelta(id, res.before, res.after);
+        if (res.reason === "invalid") {
+          const bag = await this.getBag(id);
+          return this.resync(ws, id, firstFreeCell(bag.items, bag.tabs) ? "invalid" : "no_room");
+        }
+        return this.resync(ws, id, "busy");
+      }
+      if (msg.t === "inv_drop") {
+        const res = await this.mutateBag(id, (bag) => {
+          const ops = planRemove(bag.items, bag.tabs, { tab: msg.tab, cell: msg.cell }, msg.qty);
+          return ops ? { ops } : null;
+        });
+        if (!res.ok) return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
+        return this.sendBagDelta(id, res.before, res.after);
+      }
+      return this.usePotion(ws, id, msg.tab, msg.cell);
+    });
+  }
+
+  /** After a refused command the client's picture may be wrong: tell it why and send the real bag. */
+  private async resync(ws: WebSocket, id: string, reason: "invalid" | "busy" | "full" | "expired" | "not_needed" | "cooldown" | "no_room"): Promise<void> {
+    this.send(ws, { t: "inv_error", reason });
+    const bag = await this.getBag(id);
+    this.send(ws, { t: "inv", full: true, tabs: bag.tabs, items: bag.items, removed: [] });
+  }
+
+  /** Consumes one potion and heals. The potion is committed first; HP only changes after the write succeeded. */
+  private async usePotion(ws: WebSocket, id: string, tab: number, cell: number): Promise<void> {
+    const bag = await this.getBag(id);
+    const item = itemAt(bag.items, { tab, cell });
+    const heal = item ? getItemDef(item.type)?.healFraction : undefined;
+    if (!item || heal === undefined) return this.resync(ws, id, "invalid");
+    const profile = this.sim?.getPlayer(id);
+    const now = Date.now();
+    if (!profile || profile.dead || profile.hp >= profile.maxHp) return this.send(ws, { t: "inv_error", reason: "not_needed" });
+    if (now < profile.potionReadyAt) return this.send(ws, { t: "inv_error", reason: "cooldown" });
+    profile.potionReadyAt = now + POTION_COOLDOWN_MS;
+    const res = await this.mutateBag(id, (b) => {
+      const ops = planRemove(b.items, b.tabs, { tab, cell }, 1);
+      return ops ? { ops } : null;
+    });
+    if (!res.ok) return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
+    this.sendBagDelta(id, res.before, res.after);
+    const hp = this.sim?.heal(id, heal);
+    const p = this.sim?.getPlayer(id);
+    if (hp !== null && hp !== undefined && p) this.sendToCharacter(id, { t: "hp", hp, maxHp: p.maxHp });
+  }
+
+  private async claimMail(ws: WebSocket, id: string, mailId: string): Promise<void> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const bag = await this.getBag(id);
+      const r = await claimMailItem(this.env.DB, id, mailId, bag);
+      if (r.status === "claimed") {
+        const after = { tabs: bag.tabs, items: applyOps(bag.items, r.ops) };
+        this.bags.set(id, after);
+        this.sendBagDelta(id, bag, after);
+        this.sendToCharacter(id, { t: "loot", items: [{ type: r.type, qty: r.qty, mailed: false }] });
+        return this.sendMailList(id);
+      }
+      if (r.status === "stale") {
+        this.bags.delete(id);
+        continue;
+      }
+      if (r.status === "bag_full") return this.send(ws, { t: "inv_error", reason: "full" });
+      await this.sendMailList(id); // expired, already claimed or unknown: show what is really there
+      return this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+    }
+    this.send(ws, { t: "inv_error", reason: "busy" });
   }
 
   private async flushProgress(id: string): Promise<void> {
