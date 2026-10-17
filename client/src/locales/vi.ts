@@ -23,6 +23,9 @@ export const vi = {
   characterName: "Đạo hiệu (2-16 ký tự)",
   createCharacter: "Nhập đạo",
   linhCanNote: "Linh căn sẽ được thiên đạo quyết định khi bạn nhập đạo.",
+  rootRevealTitle: "Thiên đạo đã định",
+  rootReveal: (element: string, grade: string) => `Linh căn của bạn là ${element} hệ, phẩm cấp: ${grade}.`,
+  enterWorld: "Vào thế giới",
   logout: "Đăng xuất",
   loading: "Đang tải…",
   character: {

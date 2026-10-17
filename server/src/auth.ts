@@ -1,5 +1,6 @@
 import {
   SPIRITUAL_ROOTS,
+  rootGradeFromRoll,
   STAT_DEFS,
   getMap,
   startingStats,
@@ -163,15 +164,16 @@ async function createCharacter(request: Request, env: Env): Promise<Response> {
   // The server rolls the spiritual root; the client cannot choose it.
   const root = SPIRITUAL_ROOTS[crypto.getRandomValues(new Uint32Array(1))[0]! % SPIRITUAL_ROOTS.length]!;
   const [sx, sy] = getMap("town").spawn;
-  const start = startingStats(root);
+  const rootGrade = rootGradeFromRoll(crypto.getRandomValues(new Uint32Array(1))[0]! % 100);
+  const start = startingStats(root, rootGrade);
   const now = Date.now();
   const id = crypto.randomUUID();
   try {
     await env.DB.prepare(
-      `INSERT INTO characters (id, account_id, name, spiritual_root, map_id, x, y, potential_points, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
-        `VALUES (?, ?, ?, ?, 'town', ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
+      `INSERT INTO characters (id, account_id, name, spiritual_root, map_id, x, y, potential_points, root_grade, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
+        `VALUES (?, ?, ?, ?, 'town', ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
     )
-      .bind(id, session.accountId, name, root, sx, sy, start.potentialPoints, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
+      .bind(id, session.accountId, name, root, sx, sy, start.potentialPoints, rootGrade, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
       .run();
   } catch (err) {
     if (String(err).includes("characters.name")) return errorResponse("name_taken", 409);

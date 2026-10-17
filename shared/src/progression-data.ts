@@ -25,6 +25,28 @@ export const REALMS: readonly RealmDef[] = [
   { id: 3, key: "nguyen_anh", nameVi: "Nguyên Anh", expBase: 800_000, pointsPerStage: 10 },
 ];
 
+export interface RootGradeDef {
+  /** Stored in characters.root_grade (0 = lowest). */
+  id: number;
+  key: string;
+  nameVi: string;
+  /** Out of 100: the grade is rolled once at creation; weights sum to 100. */
+  weight: number;
+  /** Percent added to EXP gained (can be negative). */
+  expBonusPct: number;
+  /** Extra potential points granted at creation. Keep in sync with migration 0004. */
+  bonusPoints: number;
+}
+
+/** Spiritual root quality (phẩm cấp linh căn), independent of the element. The element-count axis comes in phase 2. */
+export const ROOT_GRADES: readonly RootGradeDef[] = [
+  { id: 0, key: "ha", nameVi: "Hạ phẩm linh căn", weight: 50, expBonusPct: -10, bonusPoints: 0 },
+  { id: 1, key: "trung", nameVi: "Trung phẩm linh căn", weight: 30, expBonusPct: 0, bonusPoints: 1 },
+  { id: 2, key: "thuong", nameVi: "Thượng phẩm linh căn", weight: 13, expBonusPct: 10, bonusPoints: 2 },
+  { id: 3, key: "dia", nameVi: "Địa linh căn", weight: 5, expBonusPct: 25, bonusPoints: 4 },
+  { id: 4, key: "thien", nameVi: "Thiên linh căn", weight: 2, expBonusPct: 50, bonusPoints: 6 },
+];
+
 /** Potential points a new character can spend right away (there is no EXP source before combat). */
 export const STARTING_POTENTIAL_POINTS = 5;
 

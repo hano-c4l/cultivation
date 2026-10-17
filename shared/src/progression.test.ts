@@ -6,11 +6,13 @@ import {
   deriveStats,
   elementMultiplier,
   expToNext,
+  getRootGrade,
   levelIndex,
   parseAllocation,
+  rootGradeFromRoll,
   startingStats,
 } from "./progression";
-import { REALMS, STAGES_PER_REALM, STAT_KEYS, STARTING_POTENTIAL_POINTS } from "./progression-data";
+import { REALMS, ROOT_GRADES, STAGES_PER_REALM, STAT_KEYS, STARTING_POTENTIAL_POINTS } from "./progression-data";
 
 const fresh = { realm: 0, stage: 1, exp: 0, potentialPoints: 0 };
 
@@ -150,5 +152,40 @@ describe("elementMultiplier", () => {
   it("same element is neutral and generating gives a small bonus", () => {
     expect(elementMultiplier("kim", "kim")).toBe(1);
     expect(elementMultiplier("kim", "thuy")).toBe(1.05);
+  });
+});
+
+describe("root grades", () => {
+  it("weights sum to 100 and every roll maps to a valid grade", () => {
+    expect(ROOT_GRADES.reduce((a, g) => a + g.weight, 0)).toBe(100);
+    const counts = new Array(ROOT_GRADES.length).fill(0) as number[];
+    for (let roll = 0; roll < 100; roll++) {
+      const g = rootGradeFromRoll(roll);
+      expect(g).toBeGreaterThanOrEqual(0);
+      expect(g).toBeLessThan(ROOT_GRADES.length);
+      counts[g]!++;
+    }
+    expect(counts).toEqual(ROOT_GRADES.map((g) => g.weight));
+  });
+
+  it("rarer grades are strictly better", () => {
+    for (let i = 1; i < ROOT_GRADES.length; i++) {
+      expect(ROOT_GRADES[i]!.expBonusPct).toBeGreaterThan(ROOT_GRADES[i - 1]!.expBonusPct);
+      expect(ROOT_GRADES[i]!.bonusPoints).toBeGreaterThanOrEqual(ROOT_GRADES[i - 1]!.bonusPoints);
+      expect(ROOT_GRADES[i]!.weight).toBeLessThan(ROOT_GRADES[i - 1]!.weight);
+    }
+  });
+
+  it("adds starting points and EXP bonus by grade", () => {
+    expect(startingStats("kim", 0).potentialPoints).toBe(STARTING_POTENTIAL_POINTS);
+    expect(startingStats("kim", 4).potentialPoints).toBe(STARTING_POTENTIAL_POINTS + 6);
+    const base = startingStats("kim").base;
+    expect(deriveStats(base, 0, 1, 0).expBonus).toBe(base.ngoTinh - 10);
+    expect(deriveStats(base, 0, 1, 4).expBonus).toBe(base.ngoTinh + 50);
+  });
+
+  it("clamps unknown grades", () => {
+    expect(getRootGrade(-3).id).toBe(0);
+    expect(getRootGrade(99).id).toBe(4);
   });
 });

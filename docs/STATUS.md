@@ -9,6 +9,7 @@ Cập nhật: 2026-10-17. Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `
 | 1a Tài khoản và nhân vật | Email + mật khẩu, phiên bằng cookie, tạo nhân vật (server tung linh căn), WebSocket xác thực bằng cookie, khóa nhân vật xuyên kênh, lưu vị trí |
 | 1b Thế giới và chat | 3 bản đồ (Thanh Vân Thành an toàn, Hắc Mộc Lâm, U Minh Động) nối bằng cổng, chat theo bản đồ có lọc từ và giới hạn tốc độ |
 | 1c Chỉ số, cảnh giới, tiềm năng | Bảng 4 cảnh giới × 9 tầng, EXP, chỉ số gốc/dẫn xuất, ngũ hành (`shared/src/progression*.ts`), bảng nhân vật (phím `C`), cộng điểm một lần xác nhận một lần ghi D1. Chưa có nguồn EXP trong game (chờ 1d) |
+| Phẩm cấp linh căn | 5 bậc Hạ/Trung/Thượng phẩm, Địa, Thiên (`ROOT_GRADES`), server tung một lần khi tạo nhân vật; cho điểm tiềm năng khởi đầu và thưởng/phạt tu vi. Nhân vật cũ đã được tung lại trong migration 0004 |
 | Di chuyển | Dự đoán phía client, hòa trộn khi server sửa, ping tự trả lời (DO ngủ được), đích đến chính xác, đường đi làm thẳng, **va chạm lưới mịn 4x4 mỗi ô** (vật cản tròn, vát góc, hàng rào mỏng) |
 
 ## Còn lại của giai đoạn 1 (xem `docs/PHASE1.md`)
@@ -51,7 +52,7 @@ tools/   smoke.mjs
 - **Lưu vị trí:** khi ngắt kết nối và debounce 10 giây bằng alarm sau khi di chuyển (không có alarm định kỳ).
 - **Va chạm:** `CELLS_PER_TILE = 4`, bán kính thân `BODY_RADIUS = 0.25`. A* trên lưới điều hướng mịn rồi kéo căng bằng line-of-sight (`findSmoothPath`). Click vào vật cản đi tới điểm đứng được gần nhất.
 - **Giao thức:** xem `shared/src/protocol.ts`. Client gửi `move` (x, y, fx, fy, seq), `portal`, `chat`, `allocate` (điểm theo chỉ số, một tin một lần ghi); server trả `welcome` (kèm `character`), `stats` (sau mỗi lần cộng điểm, kể cả bị từ chối), `joined`, `left`, `path`, `ack`, `transfer`, `chat`, `chat_error`, `kicked`.
-- **D1:** migration trong `server/migrations/` (`0001`, `0002`, `0003` thêm 6 cột `stat_*`). Bảng `accounts`, `sessions`, `characters` (một nhân vật mỗi tài khoản), `auth_attempts`. Vai trò `admin` gán thủ công bằng `wrangler d1 execute`.
+- **D1:** migration trong `server/migrations/` (`0001`, `0002`, `0003` thêm 6 cột `stat_*`, `0004` thêm `root_grade`). Bảng `accounts`, `sessions`, `characters` (một nhân vật mỗi tài khoản), `auth_attempts`. Vai trò `admin` gán thủ công bằng `wrangler d1 execute`.
 
 ## Quy trình làm việc
 - Nhánh và deploy: xem `CLAUDE.md` (`features_*` từ `preview` → PR vào `preview` → deploy preview → PR vào `main` → deploy production). Trước khi deploy chạy `npm run db:migrate:preview` hoặc `npm run db:migrate:remote` nếu có migration mới.

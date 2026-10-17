@@ -1,3 +1,4 @@
+import { getRootGrade } from "@game/shared";
 import { api, type ApiResult } from "./api";
 import { vi } from "./locales/vi";
 
@@ -89,7 +90,24 @@ export function showCharacterCreate(): Promise<void> {
       submit.disabled = true;
       error.textContent = "";
       const res = await api.createCharacter(name.value);
-      if (res.ok || res.error === "character_exists") return resolve();
+      if (res.ok && res.data?.character) {
+        // Reveal the rolled spiritual root before entering the world.
+        const c = res.data.character;
+        const enter = el("button", { type: "button", textContent: vi.enterWorld });
+        enter.style.cssText = "margin-top:12px;width:100%";
+        enter.onclick = () => resolve();
+        mount(
+          el(
+            "div",
+            { className: "card" },
+            el("h1", { textContent: vi.rootRevealTitle }),
+            el("p", { className: "note", textContent: vi.rootReveal(vi.roots[c.spiritualRoot] ?? c.spiritualRoot, getRootGrade(c.rootGrade).nameVi) }),
+            enter,
+          ),
+        );
+        return;
+      }
+      if (res.error === "character_exists") return resolve();
       error.textContent = errorText(res.error);
       submit.disabled = false;
     };

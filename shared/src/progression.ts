@@ -14,7 +14,9 @@ import {
   STARTING_POTENTIAL_POINTS,
   STAGE_EXP_GROWTH,
   type BaseStats,
+  ROOT_GRADES,
   type RealmDef,
+  type RootGradeDef,
   type StatKey,
 } from "./progression-data";
 
@@ -30,6 +32,8 @@ export interface CharacterSheet extends CharacterProgress {
   id: string;
   name: string;
   spiritualRoot: SpiritualRoot;
+  /** Index into ROOT_GRADES. */
+  rootGrade: number;
   base: BaseStats;
 }
 
@@ -76,12 +80,27 @@ export function applyExp(progress: CharacterProgress, gain: number): ExpResult {
   return { realm, stage, exp, potentialPoints, stagesGained };
 }
 
-/** Base stats and potential points of a freshly created character. */
-export function startingStats(root: SpiritualRoot): { base: BaseStats; potentialPoints: number } {
+export function getRootGrade(grade: number): RootGradeDef {
+  const def = ROOT_GRADES[Math.min(Math.max(Math.trunc(grade), 0), ROOT_GRADES.length - 1)];
+  return def ?? (ROOT_GRADES[0] as RootGradeDef);
+}
+
+/** Maps a uniform integer roll in 0..99 to a root grade by the configured weights. */
+export function rootGradeFromRoll(roll: number): number {
+  let acc = 0;
+  for (const g of ROOT_GRADES) {
+    acc += g.weight;
+    if (roll < acc) return g.id;
+  }
+  return ROOT_GRADES.length - 1;
+}
+
+/** Base stats and potential points of a freshly created character; a better root grade starts with more points. */
+export function startingStats(root: SpiritualRoot, grade = 0): { base: BaseStats; potentialPoints: number } {
   const base = {} as BaseStats;
   for (const key of STAT_KEYS) base[key] = BASE_STAT_START;
   base[ROOT_FAVOURED_STAT[root]] += ROOT_STAT_BONUS;
-  return { base, potentialPoints: STARTING_POTENTIAL_POINTS };
+  return { base, potentialPoints: STARTING_POTENTIAL_POINTS + getRootGrade(grade).bonusPoints };
 }
 
 export interface DerivedStats {
@@ -103,7 +122,7 @@ export interface DerivedStats {
 const RATE_CAP = 60;
 
 /** Combat stats from base stats and cultivation level. Formulas live here so client and server always agree. */
-export function deriveStats(base: BaseStats, realm: number, stage: number): DerivedStats {
+export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade = 0): DerivedStats {
   const lv = levelIndex(realm, stage);
   return {
     maxHp: 100 + base.canCot * 15 + lv * 25,
@@ -112,7 +131,7 @@ export function deriveStats(base: BaseStats, realm: number, stage: number): Deri
     defense: Math.floor(2 + base.canCot * 1.5 + lv * 2),
     critRate: Math.min(RATE_CAP, 5 + base.thanThuc * 0.5),
     dodgeRate: Math.min(RATE_CAP, base.thanPhap * 0.5),
-    expBonus: base.ngoTinh,
+    expBonus: Math.max(-50, base.ngoTinh + getRootGrade(rootGrade).expBonusPct),
     dropBonus: Math.min(RATE_CAP, base.phucDuyen * 0.5),
     moveSpeed: Math.round(BASE_SPEED * (1 + base.thanPhap * 0.01) * 100) / 100,
   };
