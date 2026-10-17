@@ -58,6 +58,13 @@ export default {
         const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
         return json(await stub.tickStats());
       }
+      if (url.pathname === "/api/dev/evict") {
+        // Local testing only (same gate as tick-stats): imitates the runtime evicting a paused room.
+        const room = url.searchParams.get("room") ?? "";
+        if (env.ENABLE_DEV_GRANT !== "1" || !/^(forest|cave):\d{1,3}$/.test(room)) return errorResponse("not_found", 404);
+        const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
+        return json({ evicted: await stub.devEvict() });
+      }
       if (url.pathname.startsWith("/api/")) return await handleApi(request, env, url);
       if (url.pathname === "/ws") return await handleWebSocket(request, env, url);
       return new Response("Not found", { status: 404 });

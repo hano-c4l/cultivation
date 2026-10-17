@@ -320,3 +320,101 @@ describe("CombatSim", () => {
     expect(killExp({ realm: 1, tier: 7, rank: "normal" }, 1, 0)).toBe(monsterBaseExp(1, 7));
   });
 });
+
+describe("CombatSim.isIdle (the room may stop ticking)", () => {
+  it("is idle with a healthy, untargeted, standing player and untouched monsters", () => {
+    const sim = forestSim();
+    sim.addPlayer(seed());
+    expect(sim.isIdle(new Map())).toBe(true);
+  });
+
+  it("is busy while a player walks", () => {
+    const sim = forestSim();
+    sim.addPlayer(seed());
+    expect(sim.isIdle(new Map(), new Set(["p1"]))).toBe(false);
+  });
+
+  it("is busy while a player has a target", () => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    sim.addPlayer(seed());
+    sim.setTarget("p1", m.id);
+    expect(sim.isIdle(new Map())).toBe(false);
+  });
+
+  it("is busy while a player is below max HP (regeneration is driven by ticks)", () => {
+    const sim = forestSim();
+    const p = sim.addPlayer(seed());
+    p.hp = p.maxHp - 1;
+    expect(sim.isIdle(new Map())).toBe(false);
+  });
+
+  it("is busy while a monster chases, then idle again once it is back home at full health", () => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    sim.addPlayer(seed());
+    const near: Vec2 = [m.path[0]![0] + 2, m.path[0]![1]];
+    sim.tick(0, new Map([["p1", near]]));
+    expect(sim.isIdle(new Map())).toBe(false);
+    // The player leaves for good; the monster gives up, walks home and heals.
+    const out = new Map<string, Vec2>(); // the player is no longer in the room's reach
+    let t = 100;
+    for (; t < 60_000 && !sim.isIdle(new Map()); t += 100) sim.tick(t, out);
+    expect(sim.isIdle(new Map())).toBe(true);
+  });
+
+  it("is busy while a monster is dead waiting to respawn, and idle after it came back", () => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    const p = sim.addPlayer(seed());
+    sim.setTarget("p1", m.id);
+    const here: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+    run(sim, 0, 10_000, new Map([["p1", here]]));
+    expect(sim.isIdle(new Map())).toBe(false);
+    p.hp = p.maxHp; // isolate the monster conditions from the player's own regeneration
+    p.targetId = null;
+    const away = new Map<string, Vec2>();
+    let t = 10_100;
+    for (; t < 200_000 && !sim.isIdle(new Map()); t += 100) sim.tick(t, away);
+    expect(sim.isIdle(new Map())).toBe(true);
+  });
+
+  it("is busy when a living player stands within a monster's aggro range, even if the monster is idle", () => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    sim.addPlayer(seed());
+    const onTop: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+    expect(sim.isIdle(new Map([["p1", onTop]]))).toBe(false);
+    // The next tick turns that into a chase, which is exactly why pausing now would have been wrong.
+    sim.tick(0, new Map([["p1", onTop]]));
+    expect(sim.isIdle(new Map([["p1", onTop]]))).toBe(false);
+  });
+
+  it("a player far from every monster does not keep the room busy", () => {
+    const sim = forestSim();
+    sim.addPlayer(seed());
+    expect(sim.isIdle(new Map([["p1", [0.5, 0.5]]]))).toBe(true);
+  });
+
+  it("is busy when a player is dead", () => {
+    const sim = forestSim();
+    const p = sim.addPlayer(seed());
+    p.dead = true;
+    expect(sim.isIdle(new Map())).toBe(false);
+  });
+});
+
+describe("CombatSim ranks across a sleep", () => {
+  it("a rebuilt sim restores the saved classes instead of rolling again", () => {
+    const first = new CombatSim(getMap("forest"), "forest", () => 0.01, 0); // 0.01 rolls the rarest class everywhere
+    const saved = first.ranks();
+    expect(Object.values(saved).every((r) => r === "rare2")).toBe(true);
+    const rebuilt = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, saved); // would roll "normal" everywhere
+    expect(rebuilt.ranks()).toEqual(saved);
+  });
+
+  it("an unknown saved class is ignored and rolled normally", () => {
+    const sim = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, { m1: "bogus" as never });
+    expect(sim.ranks()["m1"]).toBe("normal");
+  });
+});
