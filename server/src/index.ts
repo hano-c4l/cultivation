@@ -51,6 +51,13 @@ export default {
         const cf = request.cf as { colo?: string; country?: string } | undefined;
         return json({ edge: cf?.colo ?? null, country: cf?.country ?? null });
       }
+      if (url.pathname === "/api/dev/tick-stats") {
+        // Local load testing only: answers 404 unless ENABLE_DEV_GRANT=1, so it does not exist on preview or production.
+        const room = url.searchParams.get("room") ?? "";
+        if (env.ENABLE_DEV_GRANT !== "1" || !/^(forest|cave):\d{1,3}$/.test(room)) return errorResponse("not_found", 404);
+        const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
+        return json(await stub.tickStats());
+      }
       if (url.pathname.startsWith("/api/")) return await handleApi(request, env, url);
       if (url.pathname === "/ws") return await handleWebSocket(request, env, url);
       return new Response("Not found", { status: 404 });

@@ -1,0 +1,422 @@
+import {
+  PLAYER_ATTACK_COOLDOWN_MS,
+  PLAYER_ATTACK_RANGE,
+  REGEN_DELAY_MS,
+  REGEN_PER_S,
+  SPAWNS,
+  applyExp,
+  computeDamage,
+  deriveStats,
+  expForKill,
+  findSmoothPath,
+  getMonsterDef,
+  lineClear,
+  nearestStandablePoint,
+  positionAlongPath,
+  type BaseStats,
+  type Combatant,
+  type Element,
+  type HitKind,
+  type MapData,
+  type MapId,
+  type MonsterDef,
+  type MonsterSnapshot,
+  type Vec2,
+} from "@game/shared";
+
+/** Everything the simulation needs to know about a character when it joins. */
+export interface ProfileSeed {
+  id: string;
+  name: string;
+  /** Spendable potential points as last known (D1 value plus unflushed stage-up points). */
+  potentialPoints: number;
+  element: Element;
+  base: BaseStats;
+  rootGrade: number;
+  realm: number;
+  stage: number;
+  exp: number;
+}
+
+/**
+ * Working copy of a character's combat state. It lives in the room's memory only: HP is not persisted, and EXP
+ * (the room's working copy, see docs/PLAN.md section 3) is flushed to D1 on stage-up, leave, portal, death and by the
+ * debounced save. Points gained from stage-ups are written as a relative delta (`pendingPoints`).
+ */
+export interface PlayerProfile extends ProfileSeed {
+  stats: Combatant;
+  expBonus: number;
+  hp: number;
+  maxHp: number;
+  targetId: string | null;
+  nextAttackAt: number;
+  lastHurtAt: number;
+  lastRegenAt: number;
+  lastRepathAt: number;
+  lastAttackMsgAt: number;
+  pendingPoints: number;
+  expDirty: boolean;
+  dead: boolean;
+}
+
+type MonsterState = "idle" | "chase" | "return" | "dead";
+
+interface Monster {
+  id: string;
+  def: MonsterDef;
+  combatant: Combatant;
+  home: Vec2;
+  hp: number;
+  state: MonsterState;
+  path: Vec2[];
+  startedAt: number;
+  targetId: string | null;
+  nextAttackAt: number;
+  lastRepathAt: number;
+  respawnAt: number;
+}
+
+export type SimEvent =
+  | { t: "mon"; monster: MonsterSnapshot }
+  | { t: "mon_gone"; id: string }
+  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number }
+  | { t: "hp"; playerId: string; hp: number; maxHp: number }
+  /** EXP changed after a kill; `stagesGained > 0` means points changed and the room must persist right away. */
+  | { t: "progress"; playerId: string; stagesGained: number }
+  | { t: "player_dead"; playerId: string }
+  /** The server wants this player to walk to `to` (chasing their target). */
+  | { t: "path_request"; playerId: string; to: Vec2 };
+
+/** Re-plan a chase at most this often, and only when the target moved more than REPATH_DISTANCE. */
+const REPATH_MS = 500;
+const REPATH_DISTANCE = 0.5;
+
+function dist(a: Vec2, b: Vec2): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1]);
+}
+
+function lastPoint(path: Vec2[]): Vec2 {
+  return path[path.length - 1] ?? [0, 0];
+}
+
+function derivedCombatant(seed: ProfileSeed, stage = seed.stage): { stats: Combatant; maxHp: number; expBonus: number } {
+  const d = deriveStats(seed.base, seed.realm, stage, seed.rootGrade);
+  return {
+    stats: { attack: d.attack, defense: d.defense, critRate: d.critRate, dodgeRate: d.dodgeRate, element: seed.element },
+    maxHp: d.maxHp,
+    expBonus: d.expBonus,
+  };
+}
+
+/**
+ * Monsters, targets and fights for one map room. Pure logic: it never touches sockets or D1, so it can be tested and
+ * the room only has to deliver the events it returns. Time is passed in; randomness is injected.
+ */
+export class CombatSim {
+  private monsters = new Map<string, Monster>();
+  private players = new Map<string, PlayerProfile>();
+  private nextMonsterId = 1;
+
+  constructor(
+    private readonly map: MapData,
+    mapId: MapId,
+    private readonly rand: () => number,
+    now: number,
+  ) {
+    for (const spawn of SPAWNS[mapId]) {
+      const def = getMonsterDef(spawn.kind);
+      if (!def) continue;
+      const home = nearestStandablePoint(map, spawn.x, spawn.y, 2);
+      if (!home) continue;
+      const id = `m${this.nextMonsterId++}`;
+      this.monsters.set(id, {
+        id,
+        def,
+        combatant: { attack: def.attack, defense: def.defense, critRate: 5, dodgeRate: 0, element: def.element },
+        home,
+        hp: def.maxHp,
+        state: "idle",
+        path: [home],
+        startedAt: now,
+        targetId: null,
+        nextAttackAt: 0,
+        lastRepathAt: 0,
+        respawnAt: 0,
+      });
+    }
+  }
+
+  get monsterCount(): number {
+    return this.monsters.size;
+  }
+
+  addPlayer(seed: ProfileSeed): PlayerProfile {
+    const d = derivedCombatant(seed);
+    const profile: PlayerProfile = {
+      ...seed,
+      ...d,
+      hp: d.maxHp,
+      targetId: null,
+      nextAttackAt: 0,
+      lastHurtAt: 0,
+      lastRegenAt: 0,
+      lastRepathAt: 0,
+      lastAttackMsgAt: 0,
+      pendingPoints: 0,
+      expDirty: false,
+      dead: false,
+    };
+    this.players.set(seed.id, profile);
+    return profile;
+  }
+
+  removePlayer(id: string): void {
+    this.players.delete(id);
+    for (const m of this.monsters.values()) {
+      if (m.targetId === id && m.state === "chase") m.state = "return";
+    }
+  }
+
+  getPlayer(id: string): PlayerProfile | undefined {
+    return this.players.get(id);
+  }
+
+  get playerCount(): number {
+    return this.players.size;
+  }
+
+  /** Re-reads base stats after the player spent potential points; HP keeps its ratio. */
+  updateBase(id: string, base: BaseStats): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.base = base;
+    this.recompute(p, false);
+  }
+
+  private recompute(p: PlayerProfile, fullHeal: boolean): void {
+    const d = derivedCombatant(p);
+    const ratio = p.maxHp > 0 ? p.hp / p.maxHp : 1;
+    p.stats = d.stats;
+    p.maxHp = d.maxHp;
+    p.expBonus = d.expBonus;
+    p.hp = fullHeal ? d.maxHp : Math.max(p.hp > 0 ? 1 : 0, Math.round(d.maxHp * ratio));
+  }
+
+  setTarget(playerId: string, monsterId: string): boolean {
+    const p = this.players.get(playerId);
+    const m = this.monsters.get(monsterId);
+    if (!p || p.dead || !m || m.state === "dead") return false;
+    p.targetId = monsterId;
+    p.lastRepathAt = Number.NEGATIVE_INFINITY;
+    return true;
+  }
+
+  clearTarget(playerId: string): void {
+    const p = this.players.get(playerId);
+    if (p) p.targetId = null;
+  }
+
+  private snapshot(m: Monster, now: number): MonsterSnapshot {
+    return { id: m.id, kind: m.def.id, path: m.path, ageMs: now - m.startedAt, speed: m.def.speed, hp: m.hp, maxHp: m.def.maxHp };
+  }
+
+  snapshots(now: number): MonsterSnapshot[] {
+    const out: MonsterSnapshot[] = [];
+    for (const m of this.monsters.values()) if (m.state !== "dead") out.push(this.snapshot(m, now));
+    return out;
+  }
+
+  private position(m: Monster, now: number): Vec2 {
+    const p = positionAlongPath(m.path, now - m.startedAt, m.def.speed);
+    return [p.x, p.y];
+  }
+
+  /** Replans the monster's walk; straight when the line is clear, A* otherwise. Returns false if unreachable. */
+  private walk(m: Monster, from: Vec2, to: Vec2, now: number): boolean {
+    const path = lineClear(this.map, from, to) ? ([from, to] as Vec2[]) : findSmoothPath(this.map, from, to);
+    if (!path) return false;
+    m.path = path;
+    m.startedAt = now;
+    m.lastRepathAt = now;
+    return true;
+  }
+
+  /** Advances the simulation. `positions` holds the live, non-transferring players' current positions. */
+  tick(now: number, positions: ReadonlyMap<string, Vec2>): SimEvent[] {
+    const events: SimEvent[] = [];
+    this.tickMonsters(now, positions, events);
+    this.tickPlayers(now, positions, events);
+    return events;
+  }
+
+  private tickMonsters(now: number, positions: ReadonlyMap<string, Vec2>, events: SimEvent[]): void {
+    for (const m of this.monsters.values()) {
+      if (m.state === "dead") {
+        if (now >= m.respawnAt) {
+          m.hp = m.def.maxHp;
+          m.state = "idle";
+          m.path = [m.home];
+          m.startedAt = now;
+          m.targetId = null;
+          events.push({ t: "mon", monster: this.snapshot(m, now) });
+        }
+        continue;
+      }
+      const pos = this.position(m, now);
+
+      if (m.state === "idle") {
+        let best: string | null = null;
+        let bestD = m.def.aggroRadius;
+        for (const [id, p] of positions) {
+          const profile = this.players.get(id);
+          if (!profile || profile.dead) continue;
+          const d = dist(pos, p);
+          if (d <= bestD) {
+            bestD = d;
+            best = id;
+          }
+        }
+        if (best) {
+          m.state = "chase";
+          m.targetId = best;
+          m.lastRepathAt = Number.NEGATIVE_INFINITY;
+        }
+      }
+
+      if (m.state === "chase") {
+        const target = m.targetId ? positions.get(m.targetId) : undefined;
+        const profile = m.targetId ? this.players.get(m.targetId) : undefined;
+        if (!target || !profile || profile.dead || dist(pos, m.home) > m.def.leashRadius) {
+          m.state = "return";
+          m.targetId = null;
+        } else if (dist(pos, target) <= m.def.attackRange) {
+          if (m.path.length > 1) {
+            m.path = [pos];
+            m.startedAt = now;
+            events.push({ t: "mon", monster: this.snapshot(m, now) });
+          }
+          if (now >= m.nextAttackAt) this.monsterAttack(m, profile, now, events);
+        } else if (now - m.lastRepathAt >= REPATH_MS && dist(lastPoint(m.path), target) > REPATH_DISTANCE) {
+          if (this.walk(m, pos, target, now)) events.push({ t: "mon", monster: this.snapshot(m, now) });
+          else m.lastRepathAt = now;
+        }
+      }
+
+      if (m.state === "return") {
+        if (dist(pos, m.home) < 0.3) {
+          m.state = "idle";
+          m.hp = m.def.maxHp;
+          m.path = [m.home];
+          m.startedAt = now;
+          events.push({ t: "mon", monster: this.snapshot(m, now) });
+        } else if (dist(lastPoint(m.path), m.home) > 0.05 && this.walk(m, pos, m.home, now)) {
+          events.push({ t: "mon", monster: this.snapshot(m, now) });
+        }
+      }
+    }
+  }
+
+  private monsterAttack(m: Monster, p: PlayerProfile, now: number, events: SimEvent[]): void {
+    m.nextAttackAt = now + m.def.attackCooldownMs;
+    const hit = computeDamage(m.combatant, p.stats, this.rand);
+    p.hp = Math.max(0, p.hp - hit.damage);
+    p.lastHurtAt = now;
+    events.push({ t: "hit", from: m.id, to: p.id, kind: hit.kind, damage: hit.damage, hp: p.hp });
+    events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+    if (p.hp <= 0) {
+      p.dead = true;
+      p.targetId = null;
+      events.push({ t: "player_dead", playerId: p.id });
+    }
+  }
+
+  private tickPlayers(now: number, positions: ReadonlyMap<string, Vec2>, events: SimEvent[]): void {
+    for (const p of this.players.values()) {
+      if (p.dead) continue;
+      const pos = positions.get(p.id);
+      if (!pos) continue;
+
+      if (p.hp < p.maxHp && now - p.lastHurtAt >= REGEN_DELAY_MS && now - p.lastRegenAt >= 1000) {
+        p.lastRegenAt = now;
+        p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(p.maxHp * REGEN_PER_S)));
+        events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+      }
+
+      if (!p.targetId) continue;
+      const m = this.monsters.get(p.targetId);
+      if (!m || m.state === "dead") {
+        p.targetId = null;
+        continue;
+      }
+      const mpos = this.position(m, now);
+      const d = dist(pos, mpos);
+      if (d <= PLAYER_ATTACK_RANGE) {
+        if (now >= p.nextAttackAt) this.playerAttack(p, m, mpos, now, events);
+      } else if (now - p.lastRepathAt >= REPATH_MS) {
+        p.lastRepathAt = now;
+        // Stop about one tile short of the monster, on the line from the monster to the player.
+        const k = d > 0 ? 1 / d : 0;
+        events.push({ t: "path_request", playerId: p.id, to: [mpos[0] + (pos[0] - mpos[0]) * k, mpos[1] + (pos[1] - mpos[1]) * k] });
+      }
+    }
+  }
+
+  private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[]): void {
+    p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
+    const hit = computeDamage(p.stats, m.combatant, this.rand);
+    m.hp = Math.max(0, m.hp - hit.damage);
+    events.push({ t: "hit", from: p.id, to: m.id, kind: hit.kind, damage: hit.damage, hp: m.hp });
+    if (m.hp > 0) {
+      // Being hit pulls an idle or retreating monster onto the attacker.
+      if (m.state === "idle" || m.state === "return") {
+        m.state = "chase";
+        m.targetId = p.id;
+        m.lastRepathAt = Number.NEGATIVE_INFINITY;
+      }
+      return;
+    }
+    m.state = "dead";
+    m.respawnAt = now + m.def.respawnMs;
+    m.targetId = null;
+    m.path = [mpos];
+    events.push({ t: "mon_gone", id: m.id });
+    for (const other of this.players.values()) if (other.targetId === m.id) other.targetId = null;
+    const stagesGained = this.reward(p, m.def);
+    events.push({ t: "progress", playerId: p.id, stagesGained });
+    if (stagesGained > 0) events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+  }
+
+  /** Gives the killer EXP (with their bonus) and applies any stage-ups. A hook for 1e's Linh Thạch drops goes here. */
+  private reward(p: PlayerProfile, def: MonsterDef): number {
+    const gain = expForKill(def.exp, p.expBonus);
+    const r = applyExp({ realm: p.realm, stage: p.stage, exp: p.exp, potentialPoints: 0 }, gain);
+    p.exp = r.exp;
+    p.expDirty = true;
+    if (r.stagesGained > 0) {
+      p.stage = r.stage;
+      p.pendingPoints += r.potentialPoints;
+      p.potentialPoints += r.potentialPoints;
+      this.recompute(p, true);
+    }
+    return r.stagesGained;
+  }
+
+  /** Death handling by the room: EXP penalty is applied to the working copy; the room then persists and transfers. */
+  applyDeathPenalty(id: string, expLost: number): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.exp = Math.max(0, p.exp - expLost);
+    p.expDirty = true;
+  }
+
+  /**
+   * Marks the progression that was written to D1 as flushed. `written` is what the UPDATE carried; anything gained
+   * while the write was in flight stays pending for the next flush.
+   */
+  markFlushed(id: string, written: { exp: number; pendingPoints: number }): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.pendingPoints -= written.pendingPoints;
+    if (p.exp === written.exp) p.expDirty = false;
+  }
+}

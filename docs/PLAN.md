@@ -64,7 +64,7 @@ Quy tắc bổ sung:
 
 ## 5. Vòng đời Map DO và netcode
 - Mỗi **bản đồ + kênh** là một `MapRoom` DO (SQLite-backed, WebSocket Hibernation API).
-- **Tick loop chỉ chạy khi có người chơi** (interval giữ DO không ngủ và tính phí thời lượng). Phòng trống: dừng tick, dùng **alarm** cho hồi sinh quái/tài nguyên.
+- **Tick loop chỉ chạy khi có người chơi** (interval giữ DO không ngủ và tính phí thời lượng). Phòng trống: dừng tick và bỏ trạng thái quái; hồi sinh quái/tài nguyên chạy bằng bộ đếm trong tick (không dùng alarm: alarm tính như request DO và không có quan sát viên khi phòng trống). Bản đồ an toàn không tick.
 - **Click-to-move**: client gửi ô đích → server chạy A* trên lưới đi được dùng chung → server phát `đường đi + thời điểm bắt đầu + tốc độ` → client nội suy. Không gửi vị trí mỗi frame.
 - Chiến đấu xử lý trên tick server (~10-15Hz); client chỉ dự đoán hiệu ứng.
 - **Area-of-interest**: chỉ gửi thực thể trong bán kính nhìn thấy, để 100 người không làm nghẽn client mobile.

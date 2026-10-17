@@ -28,6 +28,11 @@ export const vi = {
   enterWorld: "Vào thế giới",
   logout: "Đăng xuất",
   loading: "Đang tải…",
+  combat: {
+    miss: "Trượt",
+    died: (expLost: number) => `Bạn đã tử vong${expLost > 0 ? `, mất ${expLost} tu vi` : ""}. Hồi sinh tại Thanh Vân Thành.`,
+    hp: "Sinh lực",
+  },
   character: {
     button: "Nhân vật",
     root: "Linh căn",

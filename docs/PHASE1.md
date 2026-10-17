@@ -26,9 +26,14 @@ Thứ tự phụ thuộc: 1a → 1b → 1c → 1d → 1e → 1f.
 - Nghiệm thu: test tự động cho công thức và bảng EXP; cộng điểm lưu và tải lại đúng.
 
 ## 1d. Quái và chiến đấu realtime (`features_combat`)
-- Vòng lặp tick chỉ chạy khi có người chơi (dừng khi phòng trống, alarm cho hồi sinh).
+- Vòng lặp tick (`setInterval` 10 Hz) chỉ chạy ở bản đồ có quái và chỉ khi có người chơi; thành không tick nên vẫn ngủ được. Phòng trống thì dừng tick và bỏ quái; lần vào đầu tiên spawn lại từ đầu. **Hồi sinh quái chạy trong tick, không dùng alarm** (đã đổi so với bản đầu; alarm chỉ còn lo lưu định kỳ).
 - Quái spawn theo bản đồ, click chọn mục tiêu, auto-attack có cooldown, sát thương theo chỉ số và ngũ hành, chết/hồi sinh ở thành, nhận EXP.
-- Nghiệm thu: đánh quái → lên tầng; 50 client giả lập trên một bản đồ giữ tick ổn định.
+- Đã làm: `shared/src/monsters.ts` (4 loại quái, bảng spawn), `shared/src/combat.ts` (`computeDamage` thuần với RNG truyền vào, EXP kill, phạt chết), `server/src/combat-sim.ts` (mô phỏng thuần, không đụng socket/D1), nối vào `MapRoom`. Giao thức: client `attack`; server `mon`, `mon_gone`, `hit`, `hp`, `died`, và `welcome` mang `monsters`, `hp`, `maxHp`.
+- **EXP/tầng do phòng giữ bản làm việc trong bộ nhớ** (đúng bảng sở hữu trạng thái ở PLAN mục 3): ghi D1 ngay khi lên tầng, còn lại gộp vào lần lưu debounce. Điểm tiềm năng từ lên tầng ghi theo delta tương đối (`potential_points + ?`) để không đè `allocate`. **Mọi đường nhả khóa phải ghi tiến độ trước** (rời phòng, bị đá, portal, chết). HP không lưu: vào lại thì đầy máu.
+- Quái: đứng yên đến khi người chơi vào bán kính aggro thì đuổi theo (thẳng nếu thông, A* nếu không, tối đa 2 lần/giây), đánh khi trong tầm, bị kéo quá xa thì bỏ cuộc và về chỗ cũ, hồi đầy máu. Người chơi click quái: server tự đuổi và auto-attack (1 lần/giây). Click mặt đất thì hủy mục tiêu.
+- Chết: mất 10% EXP của tầng hiện tại (không tụt tầng), về Thanh Vân Thành bằng đúng cơ chế portal. Chưa có độ bền (chưa có trang bị).
+- Chưa có: rơi vật phẩm/Linh Thạch (có chỗ móc `reward` trong `combat-sim.ts` cho 1e), PvP, kỹ năng/MP, area-of-interest (mọi sự kiện gửi cả phòng), số quái tăng theo số người (hiện 6 quái ở rừng và 5 ở hang cho mỗi kênh).
+- Nghiệm thu: đánh quái → lên tầng (smoke đã kiểm: đánh chết quái nhận EXP, lưu khi thoát, chết mất EXP về thành); `tools/load.mjs` 50 client trên một phòng chạy local: tick trung bình ~7 ms, 0 tick bị bỏ, độ trễ tick tối đa ~460 ms (cao nhất lúc 50 người vào cùng lúc). Số đo local, chưa đại diện cho Cloudflare thật (xem 1f).
 
 ## 1e. Kinh tế khung xương (`features_economy-core`)
 - Migration D1: `item_instances` (ID duy nhất), `currency_ledger` append-only (idempotency key, actor), `mailbox`; số dư là bản tổng hợp cập nhật bằng batch atomic có điều kiện.
@@ -43,6 +48,7 @@ Thứ tự phụ thuộc: 1a → 1b → 1c → 1d → 1e → 1f.
 1. **PBKDF2 trên gói Free:** 100.000 vòng đo được ~24 ms (Node), vượt 10 ms CPU của Worker Free. Chọn băm trong Durable Object (đã chốt với người dùng), xác nhận lại trên preview; dự phòng là Workers Paid.
 2. **Admin:** vai trò `admin` được gán bằng cách nào (mặc định đề xuất: gán thủ công qua lệnh `wrangler d1 execute`, không có đăng ký admin qua giao diện).
 3. **Email:** không xác minh email ở GĐ1 (đã ghi nhận ở kế hoạch gốc).
+0b. **Gói Free và tick (1d):** người dùng chọn làm trên Free, giảm tối đa: chỉ tick ở bản đồ có quái khi có người, dùng `setInterval` (không alarm mỗi tick), thành không tick. Một phòng có người cả ngày tốn khoảng 10.800 GB-s trên hạn mức 13.000 GB-s/ngày, nên chơi thật nhiều người hoặc kiểm thử tải trên preview ở 1f sẽ cần Workers Paid: khi đó phải báo người dùng.
 4. **Tầng 9 (1c):** tiến độ dừng ở tầng 9 của mỗi cảnh giới, EXP bị chặn ở mức đầy và phần dư bị bỏ, cho đến khi có cơ chế đột phá (giai đoạn 2). Người dùng đã chọn phương án này.
 5. **Điểm thử (1c):** nhân vật mới có 5 điểm tiềm năng ở Luyện Khí tầng 1 (migration 0003 điền cho nhân vật cũ); thêm `POST /api/dev/grant-exp` chỉ chạy khi `ENABLE_DEV_GRANT=1` trong `.dev.vars`.
 6. **Phẩm cấp linh căn:** trục chất lượng (Hạ phẩm 50%, Trung phẩm 30%, Thượng phẩm 13%, Địa 5%, Thiên 2%), thưởng tu vi -10/0/+10/+25/+50% và điểm khởi đầu +0/1/2/4/6. Không cho đổi linh căn ở giai đoạn này (sau này qua vật phẩm hiếm, ghi sổ cái). Trục số hệ (song linh căn, biến dị) làm ở giai đoạn 2. Nhân vật cũ được tung lại trong migration 0004.

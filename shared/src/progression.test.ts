@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SPIRITUAL_ROOTS } from "./character";
+import { computeDamage, expForKill, expLostOnDeath, isMonsterId } from "./combat";
 import { MOVE_BUDGET_CAP, MOVE_BUDGET_REFILL_PER_S, spendMoveBudget } from "./movement";
 import { parseClientMessage } from "./protocol";
 import {
@@ -218,5 +219,52 @@ describe("movement budget", () => {
       if (r.accepted) granted += 1;
     }
     expect(granted).toBeLessThanOrEqual(MOVE_BUDGET_CAP + 10 * MOVE_BUDGET_REFILL_PER_S + 1);
+  });
+});
+
+describe("combat formulas", () => {
+  const att = { attack: 20, defense: 5, critRate: 0, dodgeRate: 0, element: "kim" as const };
+  const def = { attack: 5, defense: 20, critRate: 0, dodgeRate: 0, element: "tho" as const };
+
+  it("defense reduces damage and the minimum is 1", () => {
+    const hi = computeDamage(att, { ...def, defense: 0 }, () => 0.5);
+    const lo = computeDamage(att, { ...def, defense: 100 }, () => 0.5);
+    expect(hi.damage).toBeGreaterThan(lo.damage);
+    expect(computeDamage({ ...att, attack: 0 }, def, () => 0.5).damage).toBe(1);
+  });
+
+  it("element advantage multiplies damage", () => {
+    const neutral = computeDamage(att, { ...def, element: "kim" }, () => 0.5).damage;
+    const strong = computeDamage(att, { ...def, element: "moc" }, () => 0.5).damage;
+    const weak = computeDamage(att, { ...def, element: "hoa" }, () => 0.5).damage;
+    expect(strong).toBeGreaterThan(neutral);
+    expect(weak).toBeLessThan(neutral);
+  });
+
+  it("dodge and crit follow the injected rolls", () => {
+    const dodger = { ...def, dodgeRate: 50 };
+    expect(computeDamage(att, dodger, () => 0.1).kind).toBe("miss");
+    expect(computeDamage(att, dodger, () => 0.9).kind).toBe("hit");
+    const crit = { ...att, critRate: 50 };
+    const seq = [0.99, 0.1, 0.5]; // no dodge, crit roll passes, spread
+    let i = 0;
+    const r = computeDamage(crit, def, () => seq[i++ % seq.length]!);
+    expect(r.kind).toBe("crit");
+    expect(r.damage).toBeGreaterThan(computeDamage(att, def, () => 0.5).damage);
+  });
+
+  it("EXP for a kill scales by the bonus and death costs a tenth of the EXP", () => {
+    expect(expForKill(100, 0)).toBe(100);
+    expect(expForKill(100, 50)).toBe(150);
+    expect(expForKill(100, -10)).toBe(90);
+    expect(expLostOnDeath(55)).toBe(5);
+    expect(expLostOnDeath(-5)).toBe(0);
+  });
+
+  it("only m<digits> is a valid monster id", () => {
+    expect(isMonsterId("m12")).toBe(true);
+    for (const bad of ["12", "m", "m1x", "mm1", "", 5, null, "m1234567"]) expect(isMonsterId(bad)).toBe(false);
+    expect(parseClientMessage(JSON.stringify({ t: "attack", id: "m3" }))).toEqual({ t: "attack", id: "m3" });
+    expect(parseClientMessage(JSON.stringify({ t: "attack", id: "../x" }))).toBeNull();
   });
 });
