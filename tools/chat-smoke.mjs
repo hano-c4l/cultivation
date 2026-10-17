@@ -10,6 +10,8 @@ if (!(host.startsWith("localhost") || host.startsWith("127.0.0.1"))) {
   process.exit(1);
 }
 
+import { execFileSync } from "node:child_process";
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const run = Date.now().toString(36);
 let failures = 0;
@@ -43,11 +45,15 @@ function open(url, cookie) {
   return { ws, log, opened, closeCode: () => closeCode, send: (m) => ws.send(JSON.stringify(m)) };
 }
 
-/** Registers a player and opens the game socket on `ch` plus the chat socket. */
-async function player(tag, ch) {
-  const reg = await post("/api/register", { email: `chat-${run}-${tag}@example.test`, password: "correct-horse-battery" });
+/** Registers a player and opens the game socket on `ch` plus the chat socket. An admin is promoted before connecting. */
+async function player(tag, ch, admin = false) {
+  const email = `chat-${run}-${tag}@example.test`;
+  const reg = await post("/api/register", { email, password: "correct-horse-battery" });
   const name = `Đạo Hữu ${tag}${run.slice(-3)}`; // diacritics also exercise the encoded name header
   await post("/api/character", { name }, reg.cookie);
+  if (admin) {
+    execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", `"UPDATE accounts SET role='admin' WHERE email='${email}'"`], { stdio: "ignore", shell: true });
+  }
   const game = open(`${base}/ws?ch=${ch}`, reg.cookie);
   await game.opened;
   const chat = open(`${base}/ws/chat`, reg.cookie);
@@ -60,6 +66,7 @@ const lines = (c, channel) => c.log.filter((m) => m.t === "chat" && m.channel ==
 const a = await player("a", 1);
 const b = await player("b", 2); // another channel of the same map: map chat must not reach it
 const c = await player("c", 1);
+const d = await player("d", 3, true); // an admin, in yet another channel
 
 // Map chat: same room only.
 a.game.send({ t: "chat", channel: "map", text: "xin chào bản đồ" });
@@ -110,6 +117,17 @@ c.chat.send({ t: "chat", channel: "whisper", to: b.name, text: "tới socket m�
 await sleep(500);
 check("whispers go to the newer socket only", again.log.some((m) => m.t === "chat" && m.text === "tới socket mới"));
 
+// System announcements: admins only, shown to everyone.
+c.chat.send({ t: "chat", channel: "system", text: "tôi không phải quản trị" });
+await sleep(500);
+check("a player cannot send a system announcement", c.chat.log.some((m) => m.t === "chat_error" && m.reason === "forbidden") && lines(a.chat, "system").length === 0);
+d.chat.send({ t: "chat", channel: "system", text: "Bảo trì lúc 22:00" });
+await sleep(600);
+check("an admin's system announcement reaches everyone, in every room", [a, { chat: again }, c, d].every((p) => lines(p.chat, "system").some((m) => m.text === "Bảo trì lúc 22:00")));
+d.game.send({ t: "chat", channel: "system", text: "sai ổ cắm" });
+await sleep(400);
+check("a system announcement on the game socket is ignored", !lines(a.chat, "system").some((m) => m.text === "sai ổ cắm"));
+
 // The chat socket needs a session.
 const anon = new WebSocket(`${base}/ws/chat`);
 const anonOpened = await new Promise((res) => {
@@ -119,7 +137,7 @@ const anonOpened = await new Promise((res) => {
 });
 check("the chat socket refuses clients without a session", anonOpened === false);
 
-for (const p of [a, b, c]) {
+for (const p of [a, b, c, d]) {
   p.game.ws.close();
   p.chat.ws.close();
 }

@@ -25,9 +25,12 @@ export const WORLD_CHAT_BURST = 3;
 export const WORLD_CHAT_WINDOW_MS = 60_000;
 export const CHAT_TARGET_MAX_LENGTH = 32;
 
-/** Where a chat line goes: everyone online (world), the sender's map room (map), or one named player (whisper). */
-export type ChatChannel = "world" | "map" | "whisper";
-export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper"];
+/**
+ * Where a chat line goes: everyone online (world), the sender's map room (map), one named player (whisper), or an
+ * announcement to everyone shown in the system tab (system, only accepted from admins).
+ */
+export type ChatChannel = "world" | "map" | "whisper" | "system";
+export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper", "system"];
 /** How far (tiles) the client-claimed start tile may differ from the server position and still be trusted. */
 export const MAX_DESYNC_TILES = 3;
 /** Minimum gap between stat allocations; each one is a D1 write. */
@@ -81,7 +84,7 @@ export type ServerMessage =
   | { t: "transfer"; map: string }
   /** `id`/`name` is the sender. For a whisper the sender's own copy also carries `toName`. */
   | { t: "chat"; channel: ChatChannel; id: string; name: string; text: string; ts: number; toName?: string }
-  | { t: "chat_error"; reason: "rate" | "invalid" | "offline" }
+  | { t: "chat_error"; reason: "rate" | "invalid" | "offline" | "forbidden" }
   /** Current character sheet; sent after every allocation attempt (also when it was rejected). */
   | { t: "stats"; character: CharacterSheet }
   /** A monster appeared or changed its path. */

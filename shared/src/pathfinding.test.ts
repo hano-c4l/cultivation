@@ -203,6 +203,8 @@ describe("chat parsing", () => {
       text: "chào",
       to: "Lão Tổ",
     });
+    // System announcements parse like any chat; whether the sender may use them is the server's decision.
+    expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "system", text: "bảo trì" }))).toEqual({ t: "chat", channel: "system", text: "bảo trì" });
     // A whisper needs a usable recipient.
     expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "whisper", text: "chào" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: "chat", channel: "whisper", to: "   ", text: "chào" }))).toBeNull();

@@ -141,7 +141,7 @@ export class GameScene extends Phaser.Scene {
       // World chat and whispers use the chat socket; without it they would vanish silently.
       if (!this.chatNet.isOpen()) return this.chat.system(vi.chat.chatUnavailable, true);
       this.chatNet.send(to ? { t: "chat", channel, text, to } : { t: "chat", channel, text });
-    });
+    }, this.registry.get("isAdmin") === true);
     this.vitals = initVitals();
     this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
 
@@ -391,7 +391,14 @@ export class GameScene extends Phaser.Scene {
     if (msg.t === "chat") {
       this.chat.add(msg, this.selfId);
     } else if (msg.t === "chat_error") {
-      const text = msg.reason === "rate" ? vi.chat.rateLimited : msg.reason === "offline" ? vi.chat.offline : vi.chat.invalid;
+      const text =
+        msg.reason === "rate"
+          ? vi.chat.rateLimited
+          : msg.reason === "offline"
+            ? vi.chat.offline
+            : msg.reason === "forbidden"
+              ? vi.chat.forbidden
+              : vi.chat.invalid;
       this.chat.system(text, true);
     }
   }
