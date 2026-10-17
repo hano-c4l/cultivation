@@ -8,6 +8,8 @@ export type ChatTab = "all" | ChatChannel | "system";
 const TABS: readonly ChatTab[] = ["all", "world", "map", "whisper", "system"];
 const PLAYER_SEND_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper"];
 
+export type SystemKind = "info" | "important" | "error";
+
 export interface ChatLineData {
   channel: ChatChannel;
   /** Sender. */
@@ -20,8 +22,11 @@ export interface ChatLineData {
 
 export interface ChatUi {
   add(line: ChatLineData, selfId: string): void;
-  /** A client-made line for the "Hệ thống" tab. `error` lines (rejected chat) stay visible in every tab. */
-  system(text: string, error?: boolean): void;
+  /**
+   * A client-made line for the "Hệ thống" tab. "info" (green, e.g. loot) shows in the system and all tabs; "important"
+   * (red, e.g. death, map change) and "error" (red, rejected chat) stay visible in every tab.
+   */
+  system(text: string, kind?: SystemKind): void;
 }
 
 /** Wires the HTML chat overlay. All text is inserted with textContent, so chat can never inject markup. */
@@ -160,7 +165,8 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
       el.append(tag);
       const isSelf = line.id === selfId;
       if (line.channel === "system") {
-        // An announcement: shown as an official line without the sender's name.
+        // An admin announcement: an important (red) line without the sender's name, visible in every tab.
+        el.classList.add("important");
         el.append(document.createTextNode(line.text));
       } else if (line.channel === "whisper") {
         // Own copy: "Bạn → X"; incoming: "X → bạn". Either way clicking the other person's name starts a reply.
@@ -171,13 +177,13 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
       } else {
         el.append(nameButton(line.name, isSelf, isSelf ? null : line.name), document.createTextNode(`: ${line.text}`));
       }
-      append(el, line.channel);
+      append(el, line.channel, line.channel === "system");
     },
-    system(text, error = false) {
+    system(text, kind = "info") {
       const el = document.createElement("div");
-      el.className = `line ch-system${error ? " err" : ""}`;
+      el.className = `line ch-system${kind === "info" ? "" : kind === "error" ? " err" : " important"}`;
       el.textContent = text;
-      append(el, "system", error);
+      append(el, "system", kind !== "info");
     },
   };
 }

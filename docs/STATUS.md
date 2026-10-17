@@ -47,9 +47,10 @@ Việc tồn đọng khác:
 - UI: 5 thẻ (Tất cả/Thế giới/Bản đồ/Truyền âm/Hệ thống), mỗi kênh một màu (Thế giới cam, Bản đồ trắng, Truyền âm hồng, Hệ thống xanh ngọc, lỗi đỏ), đếm tin chưa đọc theo thẻ, ô chọn kênh gửi, bấm tên để trả lời riêng. Lịch sử chỉ ở client.
 - Chi phí: theo trang giá Cloudflare, tin tự trả lời của `setWebSocketAutoResponse` (ping/pong) không tính thêm thời lượng và không bị tính phí (tóm tắt từ một lần đọc tài liệu, nên kiểm lại trên trang giá nếu số request lạ). Socket chat chỉ ping mỗi 30 giây, socket game 2 giây. Mỗi tin chat thật gửi lên socket tính 1/20 request.
 - `x-char-name` truyền đạo hiệu qua header HTTP nên được mã hoá `encodeURIComponent` (header chỉ chắc chắn đúng với Latin-1).
-- Hạn chế nhỏ: so khớp tên truyền âm dùng `toLocaleLowerCase("vi")` còn D1 `NOCASE` chỉ gập chữ ASCII, nên hai đạo hiệu chỉ khác Đ/đ có thể cùng tồn tại; hub khớp cái nó gặp trước. Khung chat giờ cao cố định 140 px kể cả khi trống, che một phần màn hình điện thoại.
+- Hạn chế nhỏ: so khớp tên truyền âm dùng `toLocaleLowerCase("vi")` còn D1 `NOCASE` chỉ gập chữ ASCII, nên hai đạo hiệu chỉ khác Đ/đ có thể cùng tồn tại; hub khớp cái nó gặp trước.
 - Kiểm thử: `node tools/chat-smoke.mjs` (chỉ local), `shared/src/chat.test.ts`.
-- Lỗi bố cục có từ trước: ở bề rộng điện thoại, dòng HUD trên cùng xuống 3 dòng và đè lên thanh sinh lực (chưa sửa).
+- Bố cục điện thoại đã sửa: thanh sinh lực nằm ngay dưới dòng HUD dù nó xuống nhiều dòng (biến CSS `--hud-bottom` theo `ResizeObserver`), khung chat chỉ cao bằng nội dung (tối đa 140 px, 96 px trên màn hẹp) và ẩn khi trống.
+- **Mức độ dòng hệ thống** (`ChatUi.system(text, kind)`): `info` xanh ngọc như cũ (nhặt tiền, nhận tu vi, lên tầng; chỉ hiện ở thẻ Hệ thống và Tất cả), `important` đỏ đậm (tử vong, chuyển bản đồ, thông báo của admin; hiện ở **mọi thẻ**), `error` đỏ (chat bị từ chối, hiện ở mọi thẻ). Tin tu vi nhận được tính bằng chênh lệch EXP giữa hai lần `stats` cùng tầng. **Chưa có nguồn phát** cho: boss xuất hiện và bị người khác tấn công (PvP, GĐ2); khi làm thì gọi `system(..., "important")`. Nhặt đồ (GĐ2a) dùng `info`.
 - Hạn chế đã biết: `ChatHub` là một object cho cả game, là giới hạn thông lượng của chat Thế giới; cần chia nhỏ nếu số người rất lớn.
 
 ## Kinh tế: lưu ý vận hành

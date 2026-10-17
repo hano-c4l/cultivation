@@ -139,7 +139,7 @@ export class GameScene extends Phaser.Scene {
     this.chat = initChat((channel, text, to) => {
       if (channel === "map") return this.net.send({ t: "chat", channel, text });
       // World chat and whispers use the chat socket; without it they would vanish silently.
-      if (!this.chatNet.isOpen()) return this.chat.system(vi.chat.chatUnavailable, true);
+      if (!this.chatNet.isOpen()) return this.chat.system(vi.chat.chatUnavailable, "error");
       this.chatNet.send(to ? { t: "chat", channel, text, to } : { t: "chat", channel, text });
     }, this.registry.get("isAdmin") === true);
     this.vitals = initVitals();
@@ -341,7 +341,7 @@ export class GameScene extends Phaser.Scene {
         this.vitals.set(msg.hp, msg.maxHp);
         break;
       case "died":
-        this.chat.system(vi.combat.died(msg.expLost));
+        this.chat.system(vi.combat.died(msg.expLost), "important");
         break;
       case "wallet":
         this.vitals.setBalance(msg.currency, msg.balance);
@@ -354,6 +354,9 @@ export class GameScene extends Phaser.Scene {
         const c = msg.character;
         if (before && (c.realm > before.realm || (c.realm === before.realm && c.stage > before.stage))) {
           this.chat.system(vi.chat.levelUp(REALMS[c.realm]?.nameVi ?? "", c.stage));
+        } else if (before && c.realm === before.realm && c.stage === before.stage && c.exp > before.exp) {
+          // EXP from a kill (a stage-up resets the counter, so that case is covered by the line above).
+          this.chat.system(vi.chat.gainedExp(c.exp - before.exp));
         }
         break;
       }
@@ -378,6 +381,7 @@ export class GameScene extends Phaser.Scene {
         // The server closes the socket right after; Net reconnects and the welcome brings the new map.
         this.transferring = true;
         this.hud.textContent = vi.transferring;
+        this.chat.system(vi.chat.transferTo(vi.maps[msg.map] ?? msg.map), "important");
         break;
       case "chat":
       case "chat_error":
@@ -399,7 +403,7 @@ export class GameScene extends Phaser.Scene {
             : msg.reason === "forbidden"
               ? vi.chat.forbidden
               : vi.chat.invalid;
-      this.chat.system(text, true);
+      this.chat.system(text, "error");
     }
   }
 
