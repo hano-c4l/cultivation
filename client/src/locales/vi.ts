@@ -47,7 +47,7 @@ export const vi = {
     title: "Túi đồ",
     used: (n: number, total: number) => `${n} / ${total} ô`,
     tab: (n: number) => `Tab ${n}`,
-    hint: "Chạm vào vật phẩm để chọn, rồi chạm ô khác để chuyển hoặc đổi chỗ.",
+    hint: "Chạm vào vật phẩm để xem thông tin. Chọn xong, chạm ô khác để chuyển, gộp hoặc đổi chỗ.",
     use: "Dùng",
     dropOne: "Bỏ 1",
     dropAll: "Bỏ hết",

@@ -85,6 +85,9 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       panel.append(bar);
     }
 
+    // Item info and actions come first (fixed height), so they are visible without scrolling on a short screen.
+    panel.append(renderDetail());
+
     const grid = el("div", "bag-grid");
     grid.style.gridTemplateColumns = `repeat(${BAG_COLS}, 1fr)`;
     for (let cell = 0; cell < BAG_CELLS_PER_TAB; cell++) {
@@ -103,7 +106,6 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     }
     panel.append(grid);
 
-    panel.append(renderDetail());
     panel.append(renderMail());
   }
 
