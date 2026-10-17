@@ -60,6 +60,7 @@ Mở rộng 1d theo yêu cầu của người dùng. Đã làm trong nhánh này
 - **Đã làm (nhánh `features_economy-core`):** xem `docs/STATUS.md`. Điểm thiết kế quan trọng: một câu lệnh đổi 0 dòng **không** rollback batch D1, nên lặp khóa và âm tiền được ép thành lỗi (UNIQUE và CHECK) để cả batch rollback; số dư dùng `INSERT OR IGNORE` + `UPDATE` thay vì upsert vì SQLite kiểm CHECK của dòng INSERT (âm) trước khi xử lý xung đột. Người dùng chọn ghi đồng bộ từng lần rơi (phương án A). Khóa idempotency của lần rơi là UUID tạo lúc giết (id quái lặp lại mỗi lần hồi sinh nên không dùng làm khóa).
 
 ## 1f. Kiểm thử tải và hoàn thiện (`features_phase1-hardening`)
+**Hoãn (2026-10-17, quyết định của người dùng):** không đo tải thật trên Cloudflare lúc này, chỉ nâng Workers Paid khi gặp dấu hiệu nêu ở `docs/STATUS.md`. Giai đoạn 1 coi như xong; phần dưới giữ lại làm danh sách việc khi cần.
 - Smoke/E2E cho toàn luồng, giả lập 50 client, kiểm tra tick, rà soát giới hạn Free, cập nhật tài liệu.
 
 ## Quyết định đã chốt

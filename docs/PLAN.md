@@ -138,6 +138,7 @@ Nghiệm thu:
 - 50 client giả lập trên 1 bản đồ giữ tick ổn định.
 
 ### Giai đoạn 2: Chiều sâu nhân vật
+(Bản nháp chia nhánh: `docs/PHASE2.md`.)
 Túi đồ, trang bị, pháp bảo, kỹ năng/bí pháp, chọn chủ tu/phụ tu, NPC thương nhân, nhiệm vụ (chuỗi), ngũ hành đầy đủ, PvP + sát khí, vệ binh NPC, bảng xếp hạng.
 **Chat nhiều chế độ** (xem mục 9a). Nghiệm thu: một nhân vật đi trọn chuỗi nhiệm vụ tân thủ; công thức sát thương ngũ hành đúng test; sát khí/rơi đồ/vệ binh theo đúng luật mặc định.
 
