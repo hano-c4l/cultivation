@@ -1,5 +1,5 @@
-import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, type CharacterSheet, type ClientMessage, type MailView, type WearerCtx } from "@game/shared";
-import { equipLines } from "./equip-text";
+import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type WearerCtx } from "@game/shared";
+import { equipLines, itemTierTag, itemTierText, itemTypeText } from "./equip-text";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -11,6 +11,8 @@ export interface InventoryUi {
   setMail(mail: MailView[]): void;
   /** Who the player is: gear that does not fit them gets a mark on its cell. */
   setSheet(sheet: CharacterSheet): void;
+  /** The worn gear, shown next to a bag piece of the same kind so the two can be compared. */
+  setEquipped(items: EquippedItem[]): void;
   /** The bag items right now (the equipment window lists the ones that can be worn). */
   list(): BagItem[];
   /**
@@ -60,6 +62,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
   /** "Đổi chỗ" is on: the next tap on a cell moves the selected item there. */
   let moveMode = false;
   let wearer: WearerCtx | null = null;
+  let worn: EquippedItem[] = [];
   /** Set when a mouse drag just ended, so the click that follows it does not also select. */
   let justDragged = false;
   let confirmDrop: "one" | "all" | null = null;
@@ -170,6 +173,8 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
         if (item.dur !== undefined && item.dur <= 0) slot.classList.add("broken");
         slot.title = itemName(item.type);
         slot.append(el("span", "bag-name", itemName(item.type)));
+        const tag = itemTierTag(item.type);
+        if (tag) slot.append(el("span", "bag-tag", tag));
         if (item.qty > 1) slot.append(el("span", "bag-qty", String(item.qty)));
         // Gear this character cannot use: X for the wrong gender, + when more level or stats are needed.
         if (def?.equip && wearer) {
@@ -177,7 +182,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
           if (why === "gender") slot.append(mark("bag-mark x", "✕", vi.inventory.markGender));
           else if (why === "level" || why === "stat") slot.append(mark("bag-mark plus", "+", vi.inventory.markLevel));
         }
-        slot.onpointerdown = (ev) => startDrag(ev, activeTab, cell, item);
+        slot.onpointerdown = (ev) => startDrag(ev, activeTab, cell, item, slot);
       }
       slot.onclick = () => {
         if (justDragged) return;
@@ -203,6 +208,8 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     if (moveMode) {
       box.append(el("div", "muted", vi.inventory.swapHint));
     }
+    const typeLine = [itemTypeText(item.type), itemTierText(item.type)].filter(Boolean).join(" · ");
+    if (typeLine) box.append(el("div", "muted", typeLine));
     if (def) box.append(el("div", "muted", `${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.gradeLabel}: ${vi.inventory.grades[def.grade] ?? def.grade}`));
     if (splitQty !== null && item.qty > 1) {
       box.append(renderSplit(item, sel));
@@ -254,6 +261,15 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     };
     actions.append(cancel);
     box.append(actions);
+    // Gear: what is worn in the same kind of slot, so the two can be compared before wearing.
+    if (def?.equip) {
+      for (const w of worn.filter((e) => equipmentInfo(e.type)?.kind === def.equip!.kind)) {
+        const cmp = el("div", "bag-compare");
+        const tag = itemTierTag(w.type);
+        cmp.append(el("b", undefined, `${vi.inventory.wornNow}: ${itemName(w.type)}${tag ? ` (${tag})` : ""}`), el("div", "muted", equipLines(w.type, w.dur, w.max).join(" · ")));
+        box.append(cmp);
+      }
+    }
     return box;
   }
 
@@ -359,19 +375,26 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
   }
 
   /** Mouse drag and drop of an item onto another cell of the tab being shown (touch uses "Đổi chỗ" instead, so scrolling stays possible). */
-  function startDrag(ev: PointerEvent, tab: number, cell: number, item: BagItem): void {
+  function startDrag(ev: PointerEvent, tab: number, cell: number, item: BagItem, source: HTMLElement): void {
     if (ev.pointerType !== "mouse" || ev.button !== 0) return;
     const sx = ev.clientX;
     const sy = ev.clientY;
     let ghost: HTMLElement | null = null;
     const move = (e: PointerEvent) => {
       if (!ghost && Math.hypot(e.clientX - sx, e.clientY - sy) > 6) {
-        ghost = el("div", "bag-ghost", itemName(item.type));
+        // The dragged thing looks like the cell it came from, not just its name.
+        const look = getComputedStyle(source);
+        ghost = source.cloneNode(true) as HTMLElement;
+        ghost.className = "bag-ghost";
+        ghost.style.width = `${source.offsetWidth}px`;
+        ghost.style.height = `${source.offsetHeight}px`;
+        ghost.style.backgroundColor = look.backgroundColor;
+        ghost.style.borderColor = look.borderTopColor;
         document.body.append(ghost);
       }
       if (ghost) {
-        ghost.style.left = `${e.clientX + 8}px`;
-        ghost.style.top = `${e.clientY + 8}px`;
+        ghost.style.left = `${e.clientX - source.offsetWidth / 2}px`;
+        ghost.style.top = `${e.clientY - source.offsetHeight / 2}px`;
       }
     };
     const up = (e: PointerEvent) => {
@@ -470,6 +493,10 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     },
     setSheet(sheet) {
       wearer = { gender: sheet.gender, realm: sheet.realm, stage: sheet.stage, base: sheet.base };
+      render();
+    },
+    setEquipped(items) {
+      worn = items;
       render();
     },
     list() {

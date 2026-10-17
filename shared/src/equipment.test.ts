@@ -6,6 +6,7 @@ import {
   equipBlock,
   equipmentBonus,
   equipmentInfo,
+  equipTierTag,
   makeEquipmentId,
   repairCost,
   rollEquipmentDrop,
@@ -261,19 +262,59 @@ describe("death, repair and auto take-off", () => {
   });
 });
 
+describe("element and weapon family", () => {
+  it("are parsed from the id; older six-part ids still work and have neither", () => {
+    const sword = equipmentInfo("eq.weapon.u.0.2.1.hoa.kiem")!;
+    expect([sword.element, sword.weaponType]).toEqual(["hoa", "kiem"]);
+    expect(equipmentInfo("eq.robe.m.0.2.1.thuy")).toMatchObject({ element: "thuy", weaponType: null });
+    expect(equipmentInfo("eq.weapon.u.0.2.1")).toMatchObject({ element: null, weaponType: null });
+    expect(equipmentInfo(makeEquipmentId("weapon", "u", 0, 2, 1, "hoa", "riu"))!.weaponType).toBe("riu");
+  });
+
+  it("rejects an unknown element, a weapon family on a non-weapon and an unknown family", () => {
+    for (const bad of ["eq.robe.m.0.2.1.nothing", "eq.robe.m.0.2.1.hoa.kiem", "eq.weapon.u.0.2.1.hoa.sling", "eq.weapon.u.0.2.1.hoa.kiem.extra"]) {
+      expect(equipmentInfo(bad), bad).toBeUndefined();
+    }
+  });
+
+  it("do not change the stats, and the name has no realm or bậc (they are a tag)", () => {
+    const a = equipmentInfo("eq.weapon.u.0.2.1")!;
+    const b = equipmentInfo("eq.weapon.u.0.2.1.hoa.kiem")!;
+    expect(b.stats).toEqual(a.stats);
+    expect(b.nameVi).toBe("Phi Kiếm");
+    expect(equipTierTag(b)).toBe("LK2");
+    expect(equipTierTag(equipmentInfo("eq.robe.m.1.4.1")!)).toBe("TC4");
+  });
+
+  it("drops carry one of the five elements, and weapons a family", () => {
+    const seen = new Set<string>();
+    for (let t = 0; t < 400; t++) {
+      let s = t + 7;
+      const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+      const drop = rollEquipmentDrop(0, 4, "rare2", rand);
+      if (!drop) continue;
+      const info = equipmentInfo(drop.type)!;
+      expect(["kim", "moc", "thuy", "hoa", "tho"]).toContain(info.element);
+      expect(info.kind === "weapon" ? info.weaponType !== null : info.weaponType === null).toBe(true);
+      seen.add(info.element!);
+    }
+    expect(seen.size).toBe(5);
+  });
+});
+
 describe("equipment drops", () => {
   const seq = (values: number[]) => {
     let i = 0;
     return () => values[i++ % values.length]!;
   };
 
-  it("uses seven rolls whatever the outcome", () => {
+  it("uses nine rolls whatever the outcome", () => {
     let calls = 0;
     rollEquipmentDrop(0, 4, "normal", () => (calls++, 0.99));
-    expect(calls).toBe(7);
+    expect(calls).toBe(9);
     calls = 0;
     rollEquipmentDrop(0, 4, "rare2", () => (calls++, 0));
-    expect(calls).toBe(7);
+    expect(calls).toBe(9);
   });
 
   it("normal drops stay in the map's realm at or below the monster's bậc", () => {
@@ -292,14 +333,14 @@ describe("equipment drops", () => {
 
   it("rare monsters can drop over-level gear and high grades", () => {
     // chance, kind=weapon, style, tier, grade roll high, over-level roll low
-    const drop = rollEquipmentDrop(0, 7, "rare2", seq([0, 0, 0, 0, 0.99, 0, 0]));
+    const drop = rollEquipmentDrop(0, 7, "rare2", seq([0, 0, 0, 0, 0.99, 0, 0, 0, 0]));
     const info = equipmentInfo(drop!.type)!;
     expect(info.realm).toBe(1);
     expect(info.grade).toBe(4);
   });
 
   it("a normal monster never drops the top grade", () => {
-    const drop = rollEquipmentDrop(0, 7, "normal", seq([0, 0, 0, 0, 0.9999, 0.9, 0]));
+    const drop = rollEquipmentDrop(0, 7, "normal", seq([0, 0, 0, 0, 0.9999, 0.9, 0, 0, 0]));
     expect(equipmentInfo(drop!.type)!.grade).toBeLessThan(4);
   });
 

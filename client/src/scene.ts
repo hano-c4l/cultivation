@@ -339,6 +339,7 @@ export class GameScene extends Phaser.Scene {
         this.vitals.setWallet(msg.wallet);
         this.inventory.setBag(msg.bag);
         this.equipment.setEquipped(msg.equipped);
+        this.inventory.setEquipped(msg.equipped);
         this.charPanel.setEquipped(msg.equipped);
         this.inventory.setMail(msg.mail);
         this.refreshHud();
@@ -407,6 +408,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "eq":
         this.equipment.setEquipped(msg.items);
+        this.inventory.setEquipped(msg.items);
         this.charPanel.setEquipped(msg.items);
         break;
       case "eq_removed":

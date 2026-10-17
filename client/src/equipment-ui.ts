@@ -14,7 +14,7 @@ import {
   type EquippedItem,
   type WearerCtx,
 } from "@game/shared";
-import { durabilityText, equipLines, statText } from "./equip-text";
+import { durabilityText, equipLines, itemTierTag, itemTierText, itemTypeText, statText } from "./equip-text";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -55,6 +55,8 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
 
   const wearer = (): WearerCtx | null => (sheet ? { gender: sheet.gender, realm: sheet.realm, stage: sheet.stage, base: sheet.base } : null);
   const nameOf = (type: string) => getItemDef(type)?.nameVi ?? type;
+  /** The small realm/bậc label ("LK3") in the top left corner of a row. */
+  const tagOf = (type: string): HTMLElement => el("span", "eq-tag", itemTierTag(type) ?? "");
 
   function renderChooser(slot: EquipSlot, w: WearerCtx): HTMLElement {
     const box = el("div", "eq-choose");
@@ -68,8 +70,8 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
     if (options.length === 0) box.append(el("div", "muted", vi.equip.noCandidates));
     for (const item of options) {
       const row = el("div", `eq-opt rar-${getItemDef(item.type)?.rarity ?? "common"}`);
-      const text = el("div");
-      text.append(el("div", undefined, nameOf(item.type)), el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
+      const text = el("div", "eq-text");
+      text.append(tagOf(item.type), el("div", undefined, nameOf(item.type)), el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
       const btn = el("button", undefined, vi.inventory.wear);
       btn.onclick = () => {
         send({ t: "eq_equip", tab: item.tab, cell: item.cell, slot });
@@ -91,7 +93,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   function renderInfo(piece: EquippedItem): HTMLElement {
     const box = el("div", `eq-info rar-${getItemDef(piece.type)?.rarity ?? "common"}`);
     const def = getItemDef(piece.type);
-    box.append(el("b", undefined, nameOf(piece.type)));
+    box.append(el("b", undefined, nameOf(piece.type)), el("div", "muted", `${itemTypeText(piece.type)} · ${itemTierText(piece.type) ?? ""}`));
     if (def) box.append(el("div", "muted", `${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.gradeLabel}: ${vi.inventory.grades[def.grade] ?? def.grade}`));
     for (const line of equipLines(piece.type, piece.dur, piece.max)) box.append(el("div", undefined, line));
     return box;
@@ -127,7 +129,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       if (piece) {
         const broken = piece.dur !== undefined && piece.dur <= 0;
         const nm = el("div", broken ? "eq-broken" : undefined, nameOf(piece.type));
-        middle.append(nm, el("div", "muted", durabilityText(piece.dur, piece.max)));
+        middle.append(tagOf(piece.type), nm, el("div", "muted", durabilityText(piece.dur, piece.max)));
         // Tapping the piece opens or closes its details just below the row.
         middle.classList.add("clickable");
         middle.onclick = () => {
