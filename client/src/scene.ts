@@ -15,6 +15,7 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
+import { initCharacterPanel, type CharacterPanel } from "./character-ui";
 import { initChat, type ChatUi } from "./chat-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { vi } from "./locales/vi";
@@ -81,6 +82,7 @@ export class GameScene extends Phaser.Scene {
   private selfId = "";
   private net!: Net;
   private chat!: ChatUi;
+  private charPanel!: CharacterPanel;
   private hud!: HTMLElement;
   private ping = 0;
   private pingSentAt = 0;
@@ -100,6 +102,7 @@ export class GameScene extends Phaser.Scene {
     this.drawMap();
     this.marker = this.add.graphics().setDepth(1);
     this.chat = initChat((text) => this.net.send({ t: "chat", text }));
+    this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
 
     const camera = this.cameras.main;
     const center = toScreen(this.map.spawn[0] + 0.5, this.map.spawn[1] + 0.5);
@@ -255,7 +258,11 @@ export class GameScene extends Phaser.Scene {
         this.switchMap(msg.map);
         this.clearActors();
         this.upsertActor(msg.players);
+        this.charPanel.update(msg.character);
         this.refreshHud();
+        break;
+      case "stats":
+        this.charPanel.update(msg.character);
         break;
       case "joined":
       case "path":

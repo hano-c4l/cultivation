@@ -1,4 +1,6 @@
 import type { Vec2 } from "./map";
+import { parseAllocation, type CharacterSheet } from "./progression";
+import type { BaseStats } from "./progression-data";
 
 /**
  * Keep-alive and RTT probe: the runtime answers PING_MESSAGE with PONG_MESSAGE without waking the
@@ -16,13 +18,17 @@ export const CHAT_WINDOW_MS = 10_000;
 export const CHAT_MIN_GAP_MS = 500;
 /** How far (tiles) the client-claimed start tile may differ from the server position and still be trusted. */
 export const MAX_DESYNC_TILES = 3;
+/** Minimum gap between stat allocations; each one is a D1 write. */
+export const ALLOCATE_MIN_GAP_MS = 500;
 
 export type ClientMessage =
   /** `x`/`y` is the exact destination and `fx`/`fy` the exact position the client starts from, in tile units; `seq` is echoed back in the ack. */
   | { t: "move"; x: number; y: number; fx: number; fy: number; seq: number }
   /** Ask to use the portal the character is standing on; the server verifies the position. */
   | { t: "portal" }
-  | { t: "chat"; text: string };
+  | { t: "chat"; text: string }
+  /** Spend potential points: stat key to points. One message per confirmation, one D1 write. */
+  | { t: "allocate"; points: Partial<BaseStats> };
 
 /** Snapshot of one player: where they started walking, the path, and how long ago they started. */
 export interface PlayerSnapshot {
@@ -35,7 +41,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
@@ -45,7 +51,9 @@ export type ServerMessage =
   /** The character moved to another map; the client reconnects and receives a fresh welcome. */
   | { t: "transfer"; map: string }
   | { t: "chat"; id: string; name: string; text: string; ts: number }
-  | { t: "chat_error"; reason: "rate" | "invalid" };
+  | { t: "chat_error"; reason: "rate" | "invalid" }
+  /** Current character sheet; sent after every allocation attempt (also when it was rejected). */
+  | { t: "stats"; character: CharacterSheet };
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
@@ -77,6 +85,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (typeof m.text !== "string") return null;
       const text = normalizeChatText(m.text);
       return text ? { t: "chat", text } : null;
+    }
+    case "allocate": {
+      const points = parseAllocation(m.points);
+      return points ? { t: "allocate", points } : null;
     }
     default:
       return null;

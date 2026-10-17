@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import {
+  ALLOCATE_MIN_GAP_MS,
   BASE_SPEED,
   CHAT_BURST,
   CHAT_MIN_GAP_MS,
@@ -25,7 +26,7 @@ import {
   type Vec2,
 } from "@game/shared";
 import { filterChat } from "./chat";
-import { getCharacterById, saveCharacterPosition } from "./characters";
+import { allocatePoints, getCharacterById, saveCharacterPosition, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
@@ -46,6 +47,7 @@ interface PlayerState {
   transferring?: boolean;
   /** Timestamps of recent chat messages, for rate limiting. */
   chatTimes: number[];
+  lastAllocateAt?: number;
 }
 
 /**
@@ -147,7 +149,7 @@ export class MapRoom extends DurableObject<Env> {
       server.serializeAttachment(state);
       // Includes the joining player so the client gets its own authoritative snapshot.
       const players = this.players().map((p) => this.snapshot(p));
-      this.send(server, { t: "welcome", self: state.id, map: mapId, players, colo });
+      this.send(server, { t: "welcome", self: state.id, map: mapId, players, colo, character: toCharacterSheet(row) });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
       return new Response(null, { status: 101, webSocket: client });
     } catch (err) {
@@ -187,6 +189,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handlePortal(ws, state);
       case "chat":
         return this.handleChat(ws, state, msg.text);
+      case "allocate":
+        return this.handleAllocate(ws, state, msg.points);
     }
   }
 
@@ -255,6 +259,20 @@ export class MapRoom extends DurableObject<Env> {
     ws.serializeAttachment(state);
     // Room-local chat: only players on this map channel receive it.
     this.broadcast({ t: "chat", id: state.id, name: state.name, text: filterChat(text), ts: now });
+  }
+
+  /** Spends potential points. Always answers with the current sheet so the client resyncs after a rejection. */
+  private async handleAllocate(ws: WebSocket, state: PlayerState, points: Extract<ClientMessage, { t: "allocate" }>["points"]): Promise<void> {
+    const now = Date.now();
+    if (now - (state.lastAllocateAt ?? 0) < ALLOCATE_MIN_GAP_MS) return;
+    state.lastAllocateAt = now;
+    ws.serializeAttachment(state);
+    try {
+      const row = (await allocatePoints(this.env.DB, state.id, points)) ?? (await getCharacterById(this.env.DB, state.id));
+      if (row) this.send(ws, { t: "stats", character: toCharacterSheet(row) });
+    } catch (err) {
+      console.error("allocate failed", state.id, err);
+    }
   }
 
   /** Debounced save of every player whose position changed. */
