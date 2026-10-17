@@ -44,9 +44,10 @@
       #bag-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
         overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96); color: #e8e4d8; box-sizing: border-box;
         font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #bag-panel button:disabled { opacity: 0.45; cursor: default; }
       #bag-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
       #bag-panel .bag-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-      #bag-panel .bag-head b { flex: 1; font-size: 15px; } #bag-panel .bag-used { opacity: 0.7; } #bag-panel .bag-head button { padding: 2px 8px; }
+      #bag-panel .bag-head b { flex: 1; font-size: 15px; } #bag-panel .bag-used { opacity: 0.7; } #bag-panel .bag-head button { padding: 2px 8px; } #bag-panel .bag-head .bag-sort { padding: 4px 8px; font-size: 12px; }
       #bag-panel .bag-tabs { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
       #bag-panel .bag-tabs button { padding: 3px 8px; background: #3a4560; color: #e8e4d8; } #bag-panel .bag-tabs button.active { background: #d6a94b; color: #1b1405; }
       /* About 5.5 rows are visible; the rest of the 16 rows scrolls, so the grid never pushes the details off a phone. */
@@ -56,14 +57,18 @@
       #bag-panel::-webkit-scrollbar, #bag-panel .bag-grid::-webkit-scrollbar { width: 8px; }
       #bag-panel::-webkit-scrollbar-thumb, #bag-panel .bag-grid::-webkit-scrollbar-thumb { background: #6b7a99; border-radius: 4px; }
       #bag-panel .bag-cell { position: relative; height: 100%; min-width: 0; padding: 1px; background: rgba(255, 255, 255, 0.07); color: #e8e4d8; border: 1px solid #3a4560; overflow: hidden; }
+      #bag-panel .bag-cell.rar-uncommon { border-color: #4fc3f7; } #bag-panel .bag-cell.rar-rare { border-color: #ba68c8; } #bag-panel .bag-cell.rar-epic { border-color: #ffb300; }
       #bag-panel .bag-cell.selected { border-color: #ffd54a; box-shadow: 0 0 0 1px #ffd54a inset; }
       #bag-panel .bag-cell.cat-consumable { background: rgba(229, 57, 53, 0.35); } #bag-panel .bag-cell.cat-material { background: rgba(102, 187, 106, 0.3); }
       #bag-panel .bag-name { display: block; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
       #bag-panel .bag-qty { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-weight: 700; text-shadow: 0 0 2px #000; }
       /* The detail box sits above the grid with a fixed minimum height, so selecting an item never shifts the cells under a finger. */
-      #bag-panel .bag-detail { margin: 0 0 8px; padding: 6px 8px; min-height: 96px; box-sizing: border-box; background: rgba(255, 255, 255, 0.06); border-radius: 6px; }
+      #bag-panel .bag-detail { margin: 0 0 8px; padding: 6px 8px; min-height: 120px; box-sizing: border-box; background: rgba(255, 255, 255, 0.06); border-radius: 6px; }
       #bag-panel .bag-mail { margin-top: 8px; padding-top: 6px; border-top: 1px solid #3a4560; }
       #bag-panel .muted { opacity: 0.65; font-size: 12px; }
+      #bag-panel .bag-split { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+      #bag-panel .bag-split button { padding: 6px 10px; min-height: 32px; } #bag-panel .bag-split input { width: 64px; padding: 6px; border-radius: 6px; border: 1px solid #3a4560;
+        background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; text-align: center; }
       #bag-panel .bag-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; } #bag-panel .bag-actions button { padding: 6px 10px; min-height: 32px; }
       #bag-panel .bag-actions button.danger { background: #8e2b2b; color: #fff; }
       #bag-panel .mail-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; } #bag-panel .mail-row > div { flex: 1; }
@@ -100,7 +105,10 @@
       #chat-log:not(.tab-all) .tag { display: none; }
       #chat-log.tab-world .line:not(.ch-world), #chat-log.tab-map .line:not(.ch-map), #chat-log.tab-whisper .line:not(.ch-whisper),
       #chat-log.tab-system .line:not(.ch-system) { display: none; }
-      #chat-log .line.err, #chat-log .line.important { display: block !important; }
+      /* A rejection ("you talk too fast") shows in the tab it happened in, and in "all"; nowhere else. */
+      #chat-log .line.err { display: none; }
+      #chat-log.tab-all .line.err, #chat-log.tab-world .line.err[data-origin="world"], #chat-log.tab-map .line.err[data-origin="map"],
+      #chat-log.tab-whisper .line.err[data-origin="whisper"], #chat-log.tab-system .line.err[data-origin="system"] { display: block; }
       /* The "all" tab leaves out routine system lines (loot, EXP); they live in the system tab. Red lines stay everywhere. */
       #chat-log.tab-all .line.ch-system:not(.important):not(.err) { display: none; }
       #chat-form { display: flex; gap: 4px; flex-wrap: wrap; }

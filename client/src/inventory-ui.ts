@@ -1,4 +1,4 @@
-import { BAG_CELLS_PER_TAB, BAG_COLS, getItemDef, type BagItem, type BagView, type ClientMessage, type MailView } from "@game/shared";
+import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, getItemDef, type BagItem, type BagView, type ClientMessage, type MailView } from "@game/shared";
 import { vi } from "./locales/vi";
 
 export interface InventoryUi {
@@ -7,6 +7,8 @@ export interface InventoryUi {
   /** Applies a delta from the server. */
   applyDelta(tabs: number, items: BagItem[], removed: string[]): void;
   setMail(mail: MailView[]): void;
+  /** The server refused a command; a refused sort must not leave the button showing a mode that was not applied. */
+  rejected(reason: string): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -45,6 +47,14 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
   let activeTab = 0;
   let selected: { tab: number; cell: number } | null = null;
   let confirmDrop: "one" | "all" | null = null;
+  /** Each click on the sort button uses the next mode; -1 until the first click. */
+  let sortStep = -1;
+  /** The step before the last click, restored when the server refuses that sort. */
+  let prevSortStep = -1;
+  /** The button is dimmed briefly after a click, matching the server's minimum gap. */
+  let sortLockedUntil = 0;
+  /** Quantity chosen in the split controls, or null while they are closed. */
+  let splitQty: number | null = null;
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
   let clock: ReturnType<typeof setInterval> | undefined;
 
@@ -65,9 +75,23 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     const head = el("div", "bag-head");
     head.append(el("b", undefined, vi.inventory.title));
     const used = el("span", "bag-used", vi.inventory.used(items.size, tabs * BAG_CELLS_PER_TAB));
+    const sort = el("button", "bag-sort", sortStep < 0 ? vi.inventory.sort : vi.inventory.sortBy(vi.inventory.sortModes[SORT_MODES[sortStep]!] ?? ""));
+    sort.disabled = Date.now() < sortLockedUntil;
+    sort.onclick = () => {
+      if (Date.now() < sortLockedUntil) return;
+      prevSortStep = sortStep;
+      sortLockedUntil = Date.now() + SORT_MIN_GAP_MS + 100;
+      setTimeout(render, SORT_MIN_GAP_MS + 150);
+      sortStep = (sortStep + 1) % SORT_MODES.length;
+      selected = null;
+      splitQty = null;
+      resetConfirm();
+      send({ t: "inv_sort", mode: SORT_MODES[sortStep]! });
+      render();
+    };
     const close = el("button", undefined, "✕");
     close.onclick = () => setOpen(false);
-    head.append(used, close);
+    head.append(used, sort, close);
     panel.append(head);
 
     if (tabs > 1) {
@@ -96,7 +120,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       if (selected && selected.tab === activeTab && selected.cell === cell) slot.classList.add("selected");
       if (item) {
         const def = getItemDef(item.type);
-        slot.classList.add(`cat-${def?.category ?? "material"}`);
+        slot.classList.add(`cat-${def?.category ?? "material"}`, `rar-${def?.rarity ?? "common"}`);
         slot.title = itemName(item.type);
         slot.append(el("span", "bag-name", itemName(item.type)));
         if (item.qty > 1) slot.append(el("span", "bag-qty", String(item.qty)));
@@ -119,12 +143,26 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     const def = getItemDef(item.type);
     const sel = selected;
     box.append(el("b", undefined, `${itemName(item.type)}${item.qty > 1 ? ` × ${item.qty}` : ""}`));
+    if (def) box.append(el("div", "muted", `${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.gradeLabel}: ${vi.inventory.grades[def.grade] ?? def.grade}`));
+    if (splitQty !== null && item.qty > 1) {
+      box.append(renderSplit(item, sel));
+      return box;
+    }
     box.append(el("div", "muted", def?.descVi ?? ""));
     const actions = el("div", "bag-actions");
     if (def?.healFraction !== undefined) {
       const use = el("button", undefined, vi.inventory.use);
       use.onclick = () => send({ t: "inv_use", tab: sel.tab, cell: sel.cell });
       actions.append(use);
+    }
+    if (item.qty > 1 && (def?.maxStack ?? 1) > 1) {
+      const split = el("button", undefined, vi.inventory.split);
+      split.onclick = () => {
+        resetConfirm();
+        splitQty = Math.max(1, Math.floor(item.qty / 2));
+        render();
+      };
+      actions.append(split);
     }
     const dropOne = el("button", "danger", confirmDrop === "one" ? vi.inventory.sure : vi.inventory.dropOne);
     dropOne.onclick = () => confirmedDrop("one", () => send({ t: "inv_drop", tab: sel.tab, cell: sel.cell, qty: 1 }));
@@ -137,12 +175,48 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     const cancel = el("button", undefined, vi.inventory.cancel);
     cancel.onclick = () => {
       selected = null;
+      splitQty = null;
       resetConfirm();
       render();
     };
     actions.append(cancel);
     box.append(actions);
     return box;
+  }
+
+  /** The split controls replace the description while open: how many to take off the stack, then confirm. */
+  function renderSplit(item: BagItem, sel: { tab: number; cell: number }): HTMLElement {
+    const row = el("div", "bag-split");
+    const max = item.qty - 1;
+    const qty = Math.min(Math.max(1, splitQty ?? 1), max);
+    const set = (n: number) => {
+      splitQty = Math.min(Math.max(1, n), max);
+      render();
+    };
+    const minus = el("button", undefined, "−");
+    minus.onclick = () => set(qty - 1);
+    const value = el("input");
+    value.type = "number";
+    value.min = "1";
+    value.max = String(max);
+    value.value = String(qty);
+    value.onchange = () => set(Number(value.value) || 1);
+    const plus = el("button", undefined, "+");
+    plus.onclick = () => set(qty + 1);
+    const ok = el("button", undefined, vi.inventory.splitConfirm(qty));
+    ok.onclick = () => {
+      send({ t: "inv_split", tab: sel.tab, cell: sel.cell, qty });
+      splitQty = null;
+      selected = null;
+      render();
+    };
+    const cancel = el("button", undefined, vi.inventory.cancel);
+    cancel.onclick = () => {
+      splitQty = null;
+      render();
+    };
+    row.append(el("span", "muted", vi.inventory.splitHow), minus, value, plus, ok, cancel);
+    return row;
   }
 
   /** Throwing an item away needs a second tap within three seconds. */
@@ -187,6 +261,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
 
   function onCell(tab: number, cell: number): void {
     resetConfirm();
+    splitQty = null;
     const here = at(tab, cell);
     if (!selected) {
       if (here) selected = { tab, cell };
@@ -253,7 +328,16 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       for (const i of changed) items.set(i.id, i);
       // The selection may point at a cell that just changed under it.
       if (selected && !at(selected.tab, selected.cell)) selected = null;
+      if (!selected) splitQty = null;
       render();
+    },
+    rejected(reason) {
+      if (reason === "wait" || reason === "rate") {
+        // The sort did not happen: show the mode that is really applied, and let the button be used again.
+        sortStep = prevSortStep;
+        sortLockedUntil = 0;
+        render();
+      }
     },
     setMail(next) {
       const now = Date.now();

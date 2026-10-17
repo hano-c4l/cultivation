@@ -1,4 +1,4 @@
-import { getItemDef } from "./items";
+import { ITEM_RARITIES, getItemDef } from "./items";
 
 /**
  * Bag layout. Each tab is BAG_COLS x BAG_ROWS cells; a character owns `bagTabs` tabs. An item sits at (tab, cell),
@@ -13,6 +13,17 @@ export const MAX_BAG_TABS = 10;
 export const MAIL_ITEM_EXPIRY_MS = 30 * 60_000;
 /** Minimum time between inventory commands from one player; each is a D1 write. */
 export const INV_MIN_GAP_MS = 150;
+
+/** How the sort button orders the bag. Each click uses the next mode. */
+export const SORT_MODES = ["name", "rarity", "grade"] as const;
+export type SortMode = (typeof SORT_MODES)[number];
+/**
+ * A sort rewrites many rows (about 4 D1 rows per moved item, so a full bag costs hundreds), so it is limited: three
+ * sorts per minute, at least a second apart. That is enough to click through the three modes, then the button waits.
+ */
+export const SORT_BURST = 3;
+export const SORT_WINDOW_MS = 60_000;
+export const SORT_MIN_GAP_MS = 1_000;
 
 export interface BagItem {
   id: string;
@@ -37,7 +48,12 @@ export type BagOp =
   /** Deletes the whole row; `qty` is what the row must still hold for the write to be accepted. */
   | { op: "remove"; id: string; qty: number }
   | { op: "move"; id: string; tab: number; cell: number; fromTab: number; fromCell: number }
-  | { op: "swap"; a: BagItem; b: BagItem };
+  | { op: "swap"; a: BagItem; b: BagItem }
+  /**
+   * Rewrites many rows at once (the sort). `before` is every row that changes or disappears, as it must still be in the
+   * database; `after` is the final state of the rows that stay. Rows in `before` but not in `after` are deleted (merged).
+   */
+  | { op: "arrange"; before: BagItem[]; after: BagItem[] };
 
 export function inBounds(pos: BagPos, bagTabs: number): boolean {
   return Number.isInteger(pos.tab) && Number.isInteger(pos.cell) && pos.tab >= 0 && pos.tab < bagTabs && pos.cell >= 0 && pos.cell < BAG_CELLS_PER_TAB;
@@ -89,6 +105,11 @@ export function applyOps(bag: readonly BagItem[], ops: readonly BagOp[]): BagIte
           i.id === op.a.id ? { ...i, tab: op.b.tab, cell: op.b.cell } : i.id === op.b.id ? { ...i, tab: op.a.tab, cell: op.a.cell } : i,
         );
         break;
+      case "arrange": {
+        const gone = new Set(op.before.map((i) => i.id));
+        next = [...next.filter((i) => !gone.has(i.id)), ...op.after.map((i) => ({ ...i }))];
+        break;
+      }
     }
   }
   return next;
@@ -154,6 +175,76 @@ export function planRemove(bag: readonly BagItem[], bagTabs: number, pos: BagPos
   const n = qty ?? item.qty;
   if (!Number.isInteger(n) || n <= 0 || n > item.qty) return null;
   return [n === item.qty ? { op: "remove", id: item.id, qty: n } : { op: "setqty", id: item.id, from: item.qty, to: item.qty - n }];
+}
+
+/**
+ * Plans splitting `qty` off the stack at `pos` into the first free cell. Returns null when it is not a stack with more
+ * than `qty` items, `qty` is invalid, or no cell is free (the caller reports which with `firstFreeCell`).
+ */
+export function planSplit(bag: readonly BagItem[], bagTabs: number, pos: BagPos, qty: number, newId: () => string): BagOp[] | null {
+  if (!inBounds(pos, bagTabs) || !Number.isInteger(qty) || qty < 1) return null;
+  const item = itemAt(bag, pos);
+  if (!item || qty >= item.qty) return null;
+  const free = firstFreeCell(bag, bagTabs);
+  if (!free) return null;
+  return [
+    { op: "setqty", id: item.id, from: item.qty, to: item.qty - qty },
+    { op: "add", id: newId(), type: item.type, tab: free.tab, cell: free.cell, qty },
+  ];
+}
+
+/** Sort key per mode: rarity and grade sort best first; every mode falls back to the name so the order is stable. */
+function compareTypes(a: string, b: string, mode: SortMode): number {
+  const da = getItemDef(a);
+  const db = getItemDef(b);
+  const byName = (da?.nameVi ?? a).localeCompare(db?.nameVi ?? b, "vi");
+  const rarity = (db ? ITEM_RARITIES.indexOf(db.rarity) : 0) - (da ? ITEM_RARITIES.indexOf(da.rarity) : 0);
+  const grade = (db?.grade ?? 0) - (da?.grade ?? 0);
+  if (mode === "name") return byName || a.localeCompare(b);
+  if (mode === "rarity") return rarity || grade || byName || a.localeCompare(b);
+  return grade || rarity || byName || a.localeCompare(b);
+}
+
+/**
+ * Plans sorting the whole bag: stacks of one type are merged (full stacks first, the remainder last), types are ordered
+ * by `mode`, and everything is packed from the first cell onwards across the tabs. Returns null when nothing would change.
+ * Existing rows are reused (the lowest-positioned rows of a type keep living), the surplus rows are deleted.
+ */
+export function planSort(bag: readonly BagItem[], bagTabs: number, mode: SortMode): BagOp[] | null {
+  const byType = new Map<string, BagItem[]>();
+  for (const i of [...bag].sort((a, b) => a.tab - b.tab || a.cell - b.cell)) {
+    const rows = byType.get(i.type) ?? [];
+    rows.push(i);
+    byType.set(i.type, rows);
+  }
+  const types = [...byType.keys()].sort((a, b) => compareTypes(a, b, mode));
+  const after: BagItem[] = [];
+  let position = 0;
+  for (const type of types) {
+    const rows = byType.get(type)!;
+    const limit = stackLimit(type);
+    let left = rows.reduce((s, r) => s + r.qty, 0);
+    for (const row of rows) {
+      if (left === 0) break;
+      const put = Math.min(left, limit);
+      after.push({ id: row.id, type, tab: Math.floor(position / BAG_CELLS_PER_TAB), cell: position % BAG_CELLS_PER_TAB, qty: put });
+      position++;
+      left -= put;
+    }
+  }
+  if (position > bagTabs * BAG_CELLS_PER_TAB) return null; // cannot happen: sorting never needs more cells than the bag uses
+  const finalById = new Map(after.map((i) => [i.id, i]));
+  const before: BagItem[] = [];
+  const changed: BagItem[] = [];
+  for (const row of bag) {
+    const f = finalById.get(row.id);
+    if (!f) before.push(row); // merged away
+    else if (f.tab !== row.tab || f.cell !== row.cell || f.qty !== row.qty) {
+      before.push(row);
+      changed.push(f);
+    }
+  }
+  return before.length === 0 ? null : [{ op: "arrange", before, after: changed }];
 }
 
 /** Bag cells in use and the total, for display and for deciding when a bag is full. */

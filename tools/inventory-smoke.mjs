@@ -219,6 +219,53 @@ check("the reconnected bag keeps the same set of items as before the writes", b.
   t.ws.close();
 }
 
+// Split and sort, on a fresh character so the cells above do not matter.
+{
+  const reg3 = await post("/api/register", { email: `inv3-${run}@example.test`, password: "correct-horse-battery" });
+  const ch3 = await post("/api/character", { name: `Xếp ${run.slice(-4)}` }, reg3.cookie);
+  const id3 = ch3.data.character.id;
+  const g3 = (item, qty) => fetch(`${httpBase}/api/dev/loot?room=${ROOM}&char=${id3}&item=${item}&qty=${qty}`).then((r) => r.json());
+  const rows3 = () => sql(`SELECT item_type AS type, qty, bag_tab AS tab, cell FROM item_instances WHERE owner_character_id='${id3}' AND cell IS NOT NULL ORDER BY cell`);
+  const t = await connect(reg3.cookie);
+  await g3("linh_thao", 100); // 99 + 1
+  await g3("thu_cot", 5);
+  await g3("yeu_dan", 1);
+  await sleep(600);
+  const sum = (type) => rows3().filter((r) => r.type === type).reduce((s, r) => s + r.qty, 0);
+  const start = rows3();
+  const bigCell = start.find((r) => r.type === "linh_thao" && r.qty === 99).cell;
+
+  let msgs = await after(t, () => t.send({ t: "inv_split", tab: 0, cell: bigCell, qty: 20 }));
+  check("splitting 20 off a stack of 99 leaves 79 and a new stack of 20", rows3().filter((r) => r.type === "linh_thao").map((r) => r.qty).sort((x, y) => y - x).join() === "79,20,1" && msgs.some((m) => m.t === "inv"), JSON.stringify(rows3().filter((r) => r.type === "linh_thao")));
+  await sleep(200);
+  msgs = await after(t, () => t.send({ t: "inv_split", tab: 0, cell: bigCell, qty: 79 }));
+  check("splitting off the whole stack is refused and the bag is resent", msgs.some((m) => m.t === "inv_error" && m.reason === "invalid") && sum("linh_thao") === 100);
+
+  // Three sorts are allowed in a row (one per mode), at least a second apart; the fourth within a minute is refused.
+  // No slow database check in between: each wrangler call takes seconds and would eat into the window.
+  const wait = (ms) => sleep(ms);
+  await wait(300);
+  const sort1 = await after(t, () => t.send({ t: "inv_sort", mode: "rarity" }), 300);
+  const tooSoon = await after(t, () => t.send({ t: "inv_sort", mode: "name" }), 300); // 0.3 s after the first: inside the 1 s gap
+  await wait(700);
+  const sort2 = await after(t, () => t.send({ t: "inv_sort", mode: "name" }), 1250);
+  const afterName = rows3();
+  const sort3 = await after(t, () => t.send({ t: "inv_sort", mode: "grade" }), 1250);
+  const sort4 = await after(t, () => t.send({ t: "inv_sort", mode: "rarity" }), 500);
+
+  check("sorting by rarity merges the split stacks (79 + 20 + 1 -> 99 + 1), nothing lost", sort1.some((m) => m.t === "inv" && m.removed.length >= 1) && sum("linh_thao") === 100 && sum("thu_cot") === 5 && sum("yeu_dan") === 1);
+  check("a sort inside the 1 second gap is refused", tooSoon.some((m) => m.t === "inv_error" && m.reason === "wait") && !tooSoon.some((m) => m.t === "inv"));
+  check("sorting by name puts Linh Thảo first and packs from the first cell", afterName[0].type === "linh_thao" && afterName.map((r) => r.cell).join() === afterName.map((_, i) => i).join() && sort2.some((m) => m.t === "inv"), JSON.stringify(afterName.map((r) => r.type)));
+  check("sorting by grade puts the Trung phẩm item first", rows3()[0].type === "yeu_dan" && sort3.some((m) => m.t === "inv"));
+  check("a fourth sort within a minute is refused and changes nothing", sort4.some((m) => m.t === "inv_error" && m.reason === "wait") && !sort4.some((m) => m.t === "inv") && rows3()[0].type === "yeu_dan");
+  check("all four stacks survived the sorts", rows3().length === 4 && sum("linh_thao") === 100);
+  // The layout survives a reconnect.
+  const rejoin = await connect(reg3.cookie);
+  check("the sorted layout is what a new connection receives", rejoin.welcome.bag.items.length === 4 && rejoin.welcome.bag.items.sort((x, y) => x.cell - y.cell)[0].type === "yeu_dan");
+  rejoin.ws.close();
+  t.ws.close();
+}
+
 a.ws.close();
 b.ws.close();
 await sleep(400);

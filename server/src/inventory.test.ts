@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { BAG_CELLS_PER_TAB, MAIL_ITEM_EXPIRY_MS, MAX_BAG_TABS, applyOps, planAdd, planMove, planRemove, type BagItem, type BagOp } from "@game/shared";
+import { BAG_CELLS_PER_TAB, MAIL_ITEM_EXPIRY_MS, MAX_BAG_TABS, applyOps, planAdd, planMove, planRemove, planSort, planSplit, type BagItem, type BagOp } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { claimMailItem, commitBagOps, deleteExpiredMail, expandBag, listMail, loadBag, pruneGrants } from "./inventory";
 import { makeDb } from "./test-db";
@@ -270,5 +270,82 @@ describe("invariant", () => {
     expect(new Set(cells).size).toBe(cells.length);
     expect(final.every((i) => i.qty >= 1 && i.qty <= 99)).toBe(true);
     expect(totalQty("linh_thao") + totalQty("thu_cot")).toBe(12 * 37);
+  });
+});
+
+describe("sort and split in D1", () => {
+  const put = (type: string, qty: number, tab: number, cell: number) =>
+    raw.prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, created_at) VALUES (?, ?, ?, ?, ?, ?, 0)").run(newId(), A, type, qty, tab, cell);
+
+  it("a sort merges split stacks, deletes the merged rows and packs the bag, matching the planned cache", async () => {
+    put("linh_thao", 40, 0, 10);
+    put("linh_thao", 70, 0, 3);
+    put("yeu_dan", 2, 0, 50);
+    put("thu_cot", 5, 0, 0);
+    const bag = await loadBag(db, A);
+    const ops = planSort(bag.items, bag.tabs, "rarity")!;
+    expect(await commitBagOps(db, A, ops)).toBe("ok");
+    const after = await loadBag(db, A);
+    const planned = applyOps(bag.items, ops);
+    const key = (i: BagItem) => `${i.tab}:${i.cell}:${i.type}:${i.qty}`;
+    expect(after.items.map(key).sort()).toEqual(planned.map(key).sort());
+    expect(count("item_instances")).toBe(4); // 40 + 70 merged into 99 + 11
+    expect(totalQty("linh_thao")).toBe(110);
+    expect(after.items.find((i) => i.cell === 0)!.type).toBe("yeu_dan"); // rarest first
+  });
+
+  it("a large bag sorts in chunks within D1's parameter limit and keeps every item", async () => {
+    for (let i = 0; i < 200; i++) put(i % 2 ? "linh_thao" : "thu_cot", 1 + (i % 9), i < 128 ? 0 : 1, i % 128);
+    await expandBag(db, A, MAX_BAG_TABS);
+    const bag = await loadBag(db, A);
+    const ops = planSort(bag.items, bag.tabs, "name")!;
+    expect(await commitBagOps(db, A, ops)).toBe("ok");
+    const before = { herb: totalQty("linh_thao"), bone: totalQty("thu_cot") };
+    const final = (await loadBag(db, A)).items;
+    expect(final.reduce((s, i) => s + i.qty, 0)).toBe(before.herb + before.bone);
+    expect(new Set(final.map((i) => `${i.tab}:${i.cell}`)).size).toBe(final.length);
+    expect(final.every((i) => i.qty <= 99)).toBe(true);
+    // Sorting again changes nothing.
+    expect(planSort(final, bag.tabs, "name")).toBeNull();
+  });
+
+  it("a stale sort rolls back entirely: nothing is left parked, merged or deleted", async () => {
+    put("linh_thao", 40, 0, 10);
+    put("linh_thao", 70, 0, 3);
+    const cached = await loadBag(db, A);
+    raw.exec("UPDATE item_instances SET qty = qty + 1"); // the rows changed after the cache was loaded
+    const ops = planSort(cached.items, cached.tabs, "name")!;
+    expect(await commitBagOps(db, A, ops)).toBe("stale");
+    const rows = raw.prepare("SELECT qty, bag_tab, cell FROM item_instances ORDER BY cell").all() as Array<{ qty: number; bag_tab: number | null; cell: number | null }>;
+    expect(rows).toEqual([{ qty: 71, bag_tab: 0, cell: 3 }, { qty: 41, bag_tab: 0, cell: 10 }]);
+  });
+
+  it("a sort cannot touch another character's rows", async () => {
+    put("linh_thao", 5, 0, 4);
+    raw.prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, created_at) VALUES ('b1', ?, 'thu_cot', 7, 0, 9, 0)").run(B);
+    const cached = await loadBag(db, A);
+    const evil: BagOp[] = [{ op: "arrange", before: [...cached.items, { id: "b1", type: "thu_cot", tab: 0, cell: 9, qty: 7 }], after: [{ id: "b1", type: "thu_cot", tab: 0, cell: 0, qty: 7 }] }];
+    expect(await commitBagOps(db, A, evil)).toBe("stale");
+    expect((raw.prepare("SELECT cell FROM item_instances WHERE id = 'b1'").get() as { cell: number }).cell).toBe(9);
+  });
+
+  it("a split writes the reduced stack and the new one together", async () => {
+    put("linh_thao", 10, 0, 0);
+    const bag = await loadBag(db, A);
+    const ops = planSplit(bag.items, bag.tabs, { tab: 0, cell: 0 }, 4, newId)!;
+    expect(await commitBagOps(db, A, ops)).toBe("ok");
+    const after = (await loadBag(db, A)).items.sort((x, y) => x.cell - y.cell);
+    expect(after.map((i) => [i.cell, i.qty])).toEqual([[0, 6], [1, 4]]);
+    expect(totalQty("linh_thao")).toBe(10);
+  });
+
+  it("a split planned against a stale stack fails and creates nothing", async () => {
+    put("linh_thao", 10, 0, 0);
+    const bag = await loadBag(db, A);
+    const ops = planSplit(bag.items, bag.tabs, { tab: 0, cell: 0 }, 4, newId)!;
+    raw.exec("UPDATE item_instances SET qty = 3");
+    expect(await commitBagOps(db, A, ops)).toBe("stale");
+    expect(count("item_instances")).toBe(1);
+    expect(totalQty("linh_thao")).toBe(3);
   });
 });

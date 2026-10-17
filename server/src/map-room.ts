@@ -16,6 +16,12 @@ import {
   planAdd,
   planMove,
   planRemove,
+  planSort,
+  planSplit,
+  SORT_BURST,
+  SORT_MIN_GAP_MS,
+  SORT_WINDOW_MS,
+  firstFreeCell,
   type BagOp,
   type LootDrop,
   MAX_DESYNC_TILES,
@@ -86,6 +92,8 @@ interface PlayerState {
   lastMoveAt: number;
   /** Last bag command, to rate-limit them (each one is a D1 write). */
   lastInvAt?: number;
+  /** Times of recent sorts: a sort rewrites many rows, so it has its own, stricter limit. */
+  sortTimes?: number[];
   /** Position changed since the last save to D1. */
   dirty: boolean;
   /** Set while a portal transfer is in flight so moves and repeated portal requests are ignored. */
@@ -350,6 +358,8 @@ export class MapRoom extends DurableObject<Env> {
       case "inv_use":
       case "inv_drop":
       case "inv_move":
+      case "inv_sort":
+      case "inv_split":
       case "mail_claim":
         return this.handleInventory(ws, state, msg);
     }
@@ -902,9 +912,14 @@ export class MapRoom extends DurableObject<Env> {
     });
   }
 
-  private handleInventory(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "inv_use" | "inv_drop" | "inv_move" | "mail_claim" }>): void {
+  private handleInventory(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "inv_use" | "inv_drop" | "inv_move" | "inv_sort" | "inv_split" | "mail_claim" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    if (msg.t === "inv_sort") {
+      const times = checkChatRate(state.sortTimes ?? [], now, { burst: SORT_BURST, windowMs: SORT_WINDOW_MS, minGapMs: SORT_MIN_GAP_MS });
+      if (!times) return this.send(ws, { t: "inv_error", reason: "wait" });
+      state.sortTimes = times;
+    }
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
@@ -917,6 +932,27 @@ export class MapRoom extends DurableObject<Env> {
         });
         if (!res.ok) return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
         return this.sendBagDelta(id, res.before, res.after);
+      }
+      if (msg.t === "inv_sort") {
+        const res = await this.mutateBag(id, (bag) => {
+          const ops = planSort(bag.items, bag.tabs, msg.mode);
+          return ops ? { ops } : null; // null: already in order, nothing to write
+        });
+        if (res.ok) return this.sendBagDelta(id, res.before, res.after);
+        if (res.reason === "invalid") return; // nothing to change
+        return this.resync(ws, id, "busy");
+      }
+      if (msg.t === "inv_split") {
+        const res = await this.mutateBag(id, (bag) => {
+          const ops = planSplit(bag.items, bag.tabs, { tab: msg.tab, cell: msg.cell }, msg.qty, () => crypto.randomUUID());
+          return ops ? { ops } : null;
+        });
+        if (res.ok) return this.sendBagDelta(id, res.before, res.after);
+        if (res.reason === "invalid") {
+          const bag = await this.getBag(id);
+          return this.resync(ws, id, firstFreeCell(bag.items, bag.tabs) ? "invalid" : "no_room");
+        }
+        return this.resync(ws, id, "busy");
       }
       if (msg.t === "inv_drop") {
         const res = await this.mutateBag(id, (bag) => {
@@ -931,7 +967,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** After a refused command the client's picture may be wrong: tell it why and send the real bag. */
-  private async resync(ws: WebSocket, id: string, reason: "invalid" | "busy" | "full" | "expired" | "not_needed" | "cooldown"): Promise<void> {
+  private async resync(ws: WebSocket, id: string, reason: "invalid" | "busy" | "full" | "expired" | "not_needed" | "cooldown" | "no_room"): Promise<void> {
     this.send(ws, { t: "inv_error", reason });
     const bag = await this.getBag(id);
     this.send(ws, { t: "inv", full: true, tabs: bag.tabs, items: bag.items, removed: [] });
