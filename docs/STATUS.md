@@ -11,15 +11,26 @@ Cập nhật: 2026-10-17. Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `
 | 1c Chỉ số, cảnh giới, tiềm năng | Bảng 4 cảnh giới × 9 tầng, EXP, chỉ số gốc/dẫn xuất, ngũ hành (`shared/src/progression*.ts`), bảng nhân vật (phím `C`), cộng điểm một lần xác nhận một lần ghi D1. Chưa có nguồn EXP trong game (chờ 1d) |
 | Phẩm cấp linh căn | 5 bậc Hạ/Trung/Thượng phẩm, Địa, Thiên (`ROOT_GRADES`), server tung một lần khi tạo nhân vật; cho điểm tiềm năng khởi đầu và thưởng/phạt tu vi. Nhân vật cũ đã được tung lại trong migration 0004 |
 | 1d Quái và chiến đấu | 6 loài quái (9 quái mỗi bản đồ, 3 cụm) ở rừng và hang, tick 10 Hz chỉ khi có người, click quái để tự đuổi và đánh, sát thương theo chỉ số và ngũ hành, EXP và lên tầng, chết mất 10% EXP rồi về thành, thanh sinh lực và số sát thương. Chưa có rơi đồ (1e) |
+| Tự đánh trả | Đứng im, chưa có mục tiêu mà bị quái đánh thì tự nhắm quái đó và đánh lại; đang đi thì không; đã có mục tiêu thì giữ. PvP sẽ dùng lại quy tắc này (GĐ2) |
 | Movement budget | `shared/src/movement.ts`: server chỉ tin ô xuất phát client khai khi còn ngân sách (cap 3 ô, hồi 1 ô/giây), nên nối chuỗi claim chỉ tăng tối đa khoảng 25% tốc độ. Bấm quá dày thì server dùng vị trí của mình (client thấy bị kéo nhẹ; cần kiểm tra cảm giác với độ trễ thật trên preview) |
 | 1d+ Vùng quái | Bản đồ có cảnh giới, 3 cụm × 3 quái (bậc 1, 4, 7) mỗi bản đồ, quái thường/hiếm (2 hạng), tên có bậc và loại, EXP theo nhịp lên cấp, chặn EXP khi săn sai cảnh giới. Boss và rơi đồ chưa làm (xem `docs/PHASE1.md` 1d+). Bảng EXP người chơi đã nhân 10 |
 | Di chuyển | Dự đoán phía client, hòa trộn khi server sửa, ping tự trả lời (DO ngủ được), đích đến chính xác, đường đi làm thẳng, **va chạm lưới mịn 4x4 mỗi ô** (vật cản tròn, vát góc, hàng rào mỏng) |
+
+## Đang chạy ở đâu
+- **Preview:** tới hết 1d+ (vùng quái) và tự đánh trả.
+- **Production:** tới hết phẩm cấp linh căn (1c). **Chưa có** 1d, 1d+, tự đánh trả, movement budget. Khi lên production không có migration mới; bảng EXP người chơi nhân 10 nên EXP dở dang của tầng hiện tại co lại 10 lần ở các nhân vật hiện có.
 
 ## Còn lại của giai đoạn 1 (xem `docs/PHASE1.md`)
 - **1e** Kinh tế khung xương: `item_instances`, `currency_ledger` append-only có idempotency key, `mailbox`, trang admin cộng tiền, rơi Linh Thạch
 - **1f** Kiểm thử tải 50 client trên Cloudflare thật (kịch bản local đã có: `tools/load.mjs`), rà giới hạn gói Free; có thể cần Workers Paid
 
 Việc tồn đọng khác:
+- **Tạm dừng tick khi rảnh** (chưa làm, cần trước khi có người chơi thật): tick chiến đấu giữ Durable Object thức; một phòng rừng/hang có người cả ngày tốn khoảng 10.800 GB-s trên hạn mức Free 13.000/ngày dùng chung preview và production. Ý tưởng: dừng tick khi không quái nào đuổi, không ai có mục tiêu hoặc đang di chuyển, và phục hồi đúng sau khi DO ngủ.
+- **Độ trễ tick đo local** tối đa khoảng 125-524 ms giữa các lần chạy (ngưỡng 500 ms), nghi do A* khi nhiều người cùng đuổi quái; đo lại và tối ưu ở 1f.
+- **Boss** (chưa làm, sau 1e): quy tắc đã chốt nằm ở `docs/PHASE1.md` mục 1d+. Câu hỏi còn mở: một boss cho mỗi kênh hay cho cả bản đồ qua 8 kênh; quy tắc loại dưới 10% có áp dụng cho tiền không hay chỉ cho đồ.
+- **Giá trị tạm cần người dùng xác nhận:** tên hạng quái hiếm ("Tinh Anh" 8%, "Đại Yêu" 2%) và các hệ số chỉ số/EXP của chúng (`RANKS`), `LOW_MAP_EXP_MULT = 1` (không phạt thêm khi người mạnh săn bản đồ thấp), nhịp lên cấp `KILLS_BASE`/`KILLS_GROWTH` (Nguyên Anh 9 cần 2162 quái cùng bậc một tầng, nặng).
+- **Chưa ai qua được Luyện Khí 9** (chưa có đột phá, GĐ2) nên mọi lần giết ở hang đều bị chặn EXP ở mức cao nhất của rừng.
+- **Chưa có:** rơi đồ (1e), PvP, kỹ năng, area-of-interest (mọi sự kiện gửi cả phòng), độ bền trang bị.
 - Bản đồ vẽ bằng RenderTexture: chỉ mới thử với Canvas, chưa thử WebGL trên thiết bị thật (đặc biệt điện thoại). Có `?renderer=canvas` làm đường lùi.
 - Hình ảnh vật cản và nhân vật còn là placeholder (xem mục asset trong `docs/PLAN.md`).
 - Tài khoản thử `smoke-*` và `cpu-*@example.test` còn trong D1 preview; production có 2 tài khoản thử do người dùng tự tạo (thông tin đăng nhập do người dùng giữ, không ghi trong repo).
@@ -68,6 +79,10 @@ tools/   smoke.mjs
 - Cloud cần: `gh` đã đăng nhập, `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` để dùng wrangler (token do người dùng tạo và giữ trong secrets).
 
 ## Bẫy đã gặp
+- Kênh hợp lệ là 1 đến 8; `?ch=9` trả 400 và WebSocket báo 1006 (dễ nhầm với lỗi mạng).
+- Khi thử UI cục bộ, đừng sửa vị trí nhân vật trong D1 lúc trình duyệt còn mở WebSocket: socket cũ đóng lại sẽ ghi đè vị trí. Đóng trang trước (điều hướng sang `/api/health`), sửa D1, rồi mở lại.
+- Nhân vật để đứng ở rừng/hang bị quái giết rồi về thành; quên tab ở đó cũng tốn hạn mức (xem mục tick).
+- Lệnh nối `npm run db:migrate:* | tail && npm run deploy:*` vẫn chạy deploy khi migration lỗi (lỗi thoáng qua code 7403 từng xảy ra): chạy migration và deploy thành hai bước riêng, kiểm tra kết quả migration trước.
 - Heredoc shell (`<<'EOF'`) hay hỏng với nội dung có backtick, `${}` hoặc dấu nháy lẫn lộn; dùng công cụ ghi file hoặc script Python lưu thành file.
 - `tools/smoke.mjs` import `shared/src/map.ts` bằng type-stripping của Node: file đó không được dùng cú pháp TypeScript không xóa được (parameter properties, enum) và không được import file khác thiếu đuôi mở rộng.
 - Worker Free chỉ 10 ms CPU: không băm mật khẩu hay làm việc nặng trong Worker; để trong DO.
