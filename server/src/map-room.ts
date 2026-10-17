@@ -7,6 +7,7 @@ import {
   CHAT_MIN_GAP_MS,
   CHAT_WINDOW_MS,
   checkChatRate,
+  retryAfterMs,
   EMPTY_WALLET,
   INV_MIN_GAP_MS,
   POTION_COOLDOWN_MS,
@@ -917,7 +918,11 @@ export class MapRoom extends DurableObject<Env> {
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     if (msg.t === "inv_sort") {
       const times = checkChatRate(state.sortTimes ?? [], now, { burst: SORT_BURST, windowMs: SORT_WINDOW_MS, minGapMs: SORT_MIN_GAP_MS });
-      if (!times) return this.send(ws, { t: "inv_error", reason: "wait" });
+      if (!times) {
+        // Tell the client how long the button must stay locked, so it can count down instead of asking again.
+        const retryMs = retryAfterMs(state.sortTimes ?? [], now, { burst: SORT_BURST, windowMs: SORT_WINDOW_MS, minGapMs: SORT_MIN_GAP_MS });
+        return this.send(ws, { t: "inv_error", reason: "wait", retryMs });
+      }
       state.sortTimes = times;
     }
     state.lastInvAt = now;
