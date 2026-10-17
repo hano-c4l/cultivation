@@ -43,3 +43,6 @@ Thứ tự phụ thuộc: 1a → 1b → 1c → 1d → 1e → 1f.
 1. **PBKDF2 trên gói Free:** 100.000 vòng đo được ~24 ms (Node), vượt 10 ms CPU của Worker Free. Chọn băm trong Durable Object (đã chốt với người dùng), xác nhận lại trên preview; dự phòng là Workers Paid.
 2. **Admin:** vai trò `admin` được gán bằng cách nào (mặc định đề xuất: gán thủ công qua lệnh `wrangler d1 execute`, không có đăng ký admin qua giao diện).
 3. **Email:** không xác minh email ở GĐ1 (đã ghi nhận ở kế hoạch gốc).
+4. **Tầng 9 (1c):** tiến độ dừng ở tầng 9 của mỗi cảnh giới, EXP bị chặn ở mức đầy và phần dư bị bỏ, cho đến khi có cơ chế đột phá (giai đoạn 2). Người dùng đã chọn phương án này.
+5. **Điểm thử (1c):** nhân vật mới có 5 điểm tiềm năng ở Luyện Khí tầng 1 (migration 0003 điền cho nhân vật cũ); thêm `POST /api/dev/grant-exp` chỉ chạy khi `ENABLE_DEV_GRANT=1` trong `.dev.vars`.
+6. **Cho 1d:** `grantExp` không tự áp `expBonus` (chỉ số dẫn xuất Ngộ tính); nơi gọi trong chiến đấu phải nhân vào. Tốc độ di chuyển vẫn là `BASE_SPEED`; `moveSpeed` trong `deriveStats` chưa được nối vào (đổi tốc độ giữa đường đi sẽ lệch vị trí, nếu nối phải rebase đường đi).
