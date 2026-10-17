@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { applyBag, planAdd, planDeathWear, planEquip, planRemove, planRepair, planUnequip, type BagContents, type BagOp, type WearerCtx } from "@game/shared";
+import { applyBag, equipmentInfo, planAdd, planDeathWear, planEquip, planRemove, planRepair, planUnequip, type BagContents, type BagOp, type WearerCtx } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyCurrencyDelta } from "./economy";
 import { claimMailItem, commitBagOps, deleteExpiredMail, listMail, loadBag, opStatements, type BagState } from "./inventory";
@@ -217,5 +218,28 @@ describe("mail and discarding", () => {
     const after = await loadBag(db, A);
     expect(after.items).toEqual([{ id, type: RING, tab: 0, cell: 0, qty: 1, dur: 40, max: 100 }]);
     expect(applyBag(st(bag), claim.status === "claimed" ? claim.ops : []).items[0]).toMatchObject({ id, dur: 40 });
+  });
+});
+
+describe("migration 0010 (elements for old gear)", () => {
+  it("gives six-part ids an element, weapons a family too, and leaves everything else alone", () => {
+    const ins = (id: string, type: string) =>
+      raw.prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, created_at) VALUES (?, 'char-a', ?, 1, 0, ?, 0)").run(id, type, Number(id.slice(1)));
+    ins("a0", "eq.weapon.u.0.1.1");
+    ins("a1", "eq.robe.m.0.3.2");
+    ins("a2", "eq.ring.u.1.4.3.moc"); // already has one
+    ins("a3", "eqs.van_co_gioi");
+    ins("a4", "linh_thao");
+    raw.exec(readFileSync(new URL("../migrations/0010_gear_elements.sql", import.meta.url), "utf8"));
+    const type = (id: string) => (raw.prepare("SELECT item_type FROM item_instances WHERE id = ?").get(id) as { item_type: string }).item_type;
+    const w = equipmentInfo(type("a0"))!;
+    expect(w.element).not.toBeNull();
+    expect(w.weaponType).not.toBeNull();
+    expect(type("a0").startsWith("eq.weapon.u.0.1.1.")).toBe(true);
+    expect(equipmentInfo(type("a1"))).toMatchObject({ weaponType: null });
+    expect(equipmentInfo(type("a1"))!.element).not.toBeNull();
+    expect(type("a2")).toBe("eq.ring.u.1.4.3.moc");
+    expect(type("a3")).toBe("eqs.van_co_gioi");
+    expect(type("a4")).toBe("linh_thao");
   });
 });

@@ -14,7 +14,7 @@ import {
   type EquippedItem,
   type WearerCtx,
 } from "@game/shared";
-import { durabilityText, equipLines, itemTierTag, itemTierText, itemTypeText, statText } from "./equip-text";
+import { durabilityShort, durabilityText, elementDot, equipLines, itemTierTag, itemTierText, itemTypeText, statText } from "./equip-text";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -71,7 +71,10 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
     for (const item of options) {
       const row = el("div", `eq-opt rar-${getItemDef(item.type)?.rarity ?? "common"}`);
       const text = el("div", "eq-text");
-      text.append(tagOf(item.type), el("div", undefined, nameOf(item.type)), el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
+      const optDot = elementDot(item.type);
+      const optName = el("div", undefined, nameOf(item.type));
+      if (optDot) optName.prepend(optDot);
+      text.append(tagOf(item.type), optName, el("div", "muted", equipLines(item.type, item.dur, item.max).join(" · ")));
       const btn = el("button", undefined, vi.inventory.wear);
       btn.onclick = () => {
         send({ t: "eq_equip", tab: item.tab, cell: item.cell, slot });
@@ -93,7 +96,10 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   function renderInfo(piece: EquippedItem): HTMLElement {
     const box = el("div", `eq-info rar-${getItemDef(piece.type)?.rarity ?? "common"}`);
     const def = getItemDef(piece.type);
-    box.append(el("b", undefined, nameOf(piece.type)), el("div", "muted", `${itemTypeText(piece.type)} · ${itemTierText(piece.type) ?? ""}`));
+    const infoName = el("b", undefined, nameOf(piece.type));
+    const infoDot = elementDot(piece.type);
+    if (infoDot) infoName.prepend(infoDot);
+    box.append(infoName, el("div", "muted", `${itemTypeText(piece.type)} · ${itemTierText(piece.type) ?? ""}`));
     if (def) box.append(el("div", "muted", `${vi.inventory.rarityLabel}: ${vi.inventory.rarities[def.rarity]} · ${vi.inventory.gradeLabel}: ${vi.inventory.grades[def.grade] ?? def.grade}`));
     for (const line of equipLines(piece.type, piece.dur, piece.max)) box.append(el("div", undefined, line));
     return box;
@@ -125,19 +131,25 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       const piece = worn.find((e) => e.slot === slot);
       const row = el("div", piece ? `eq-row rar-${getItemDef(piece.type)?.rarity ?? "common"}` : "eq-row");
       row.append(el("span", "eq-slot", vi.equip.slots[slot]));
-      const middle = el("div", "eq-item");
+      // One line per slot: slot, element icon + name, realm/bậc tag, durability, buttons. An empty slot leaves the middle blank.
+      const middle = el("div", "eq-name");
+      const tier = el("span", "eq-tier");
+      const durability = el("span", "eq-dur");
       if (piece) {
         const broken = piece.dur !== undefined && piece.dur <= 0;
-        const nm = el("div", broken ? "eq-broken" : undefined, nameOf(piece.type));
-        middle.append(tagOf(piece.type), nm, el("div", "muted", durabilityText(piece.dur, piece.max)));
+        const dot = elementDot(piece.type);
+        if (dot) middle.append(dot);
+        middle.append(el("span", broken ? "eq-broken" : "eq-label", nameOf(piece.type)));
+        tier.textContent = itemTierTag(piece.type) ?? "";
+        durability.textContent = durabilityShort(piece.dur, piece.max);
+        if (broken) durability.classList.add("eq-broken");
         // Tapping the piece opens or closes its details just below the row.
         middle.classList.add("clickable");
+        middle.title = durabilityText(piece.dur, piece.max);
         middle.onclick = () => {
           inspecting = inspecting === slot ? null : slot;
           render();
         };
-      } else {
-        middle.append(el("div", "muted", vi.equip.empty));
       }
       const actions = el("div", "eq-actions");
       const change = el("button", "eq-small", piece ? vi.equip.change : vi.equip.pick);
@@ -152,12 +164,13 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
         actions.append(off);
         if (piece.dur !== undefined && piece.max !== undefined && piece.dur > 0 && piece.dur < piece.max) {
           const cost = repairCost(equipmentInfo(piece.type)?.grade ?? 1, piece.max - piece.dur);
-          const fix = el("button", "eq-small", vi.equip.repair(cost));
+          const fix = el("button", "eq-small", vi.equip.repairShort(cost));
+          fix.title = vi.equip.repair(cost);
           fix.onclick = () => send({ t: "eq_repair", slot });
           actions.append(fix);
         }
       }
-      row.append(middle, actions);
+      row.append(middle, tier, durability, actions);
       panel.append(row);
       if (piece && inspecting === slot) panel.append(renderInfo(piece));
       if (choosing === slot) panel.append(renderChooser(slot, w));

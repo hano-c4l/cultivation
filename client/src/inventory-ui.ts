@@ -1,5 +1,5 @@
 import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type WearerCtx } from "@game/shared";
-import { equipLines, itemTierTag, itemTierText, itemTypeText } from "./equip-text";
+import { elementDot, equipLines, itemTierTag, itemTierText, itemTypeText } from "./equip-text";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -175,6 +175,11 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
         slot.append(el("span", "bag-name", itemName(item.type)));
         const tag = itemTierTag(item.type);
         if (tag) slot.append(el("span", "bag-tag", tag));
+        const dot = elementDot(item.type);
+        if (dot) {
+          dot.classList.add("bag-elem");
+          slot.append(dot);
+        }
         if (item.qty > 1) slot.append(el("span", "bag-qty", String(item.qty)));
         // Gear this character cannot use: X for the wrong gender, + when more level or stats are needed.
         if (def?.equip && wearer) {

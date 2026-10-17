@@ -146,6 +146,7 @@ export const vi = {
     chooseHint: "Chạm tên món đang mặc để xem thông tin. Chọn hoặc Đổi để thay bằng đồ trong túi (chỉ hiện đồ mặc được).",
     noCandidates: "Trong túi không có đồ phù hợp.",
     cannot: (why: string) => why,
+    repairShort: (cost: number) => `Sửa ${cost.toLocaleString("vi-VN")}`,
     repair: (cost: number) => `Sửa (${cost.toLocaleString("vi-VN")} Linh Thạch)`,
     repairAll: (cost: number) => `Sửa tất cả (${cost.toLocaleString("vi-VN")} Linh Thạch)`,
     nothingToRepair: "Không cần sửa",
