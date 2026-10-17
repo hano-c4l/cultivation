@@ -98,12 +98,13 @@ export interface Cluster {
 }
 
 /** Cluster layout per map. More clusters (and bigger maps) are added here as the world grows. The safe town has none. */
+/** Forest clusters stay off the east lane (the only way to the cave) so low-level players can still walk through. */
 export const CLUSTERS: Readonly<Record<MapId, readonly Cluster[]>> = {
   town: [],
   forest: [
     { tier: 1, kind: "soi_rung", x: 20.5, y: 14.5, radius: 1.8, count: 3 },
-    { tier: 4, kind: "heo_rung", x: 12.5, y: 24.5, radius: 1.2, count: 3 },
-    { tier: 7, kind: "bao_dem", x: 36.5, y: 24.5, radius: 1.2, count: 3 },
+    { tier: 4, kind: "heo_rung", x: 8.5, y: 12.5, radius: 1.5, count: 3 },
+    { tier: 7, kind: "bao_dem", x: 34.5, y: 12.5, radius: 1.5, count: 3 },
   ],
   cave: [
     { tier: 1, kind: "doi_u_minh", x: 12.5, y: 20.5, radius: 1.3, count: 3 },

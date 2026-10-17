@@ -73,6 +73,8 @@ interface MonsterActor {
   body: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
   bar: Phaser.GameObjects.Graphics;
+  /** Last label colour applied; Text.setColor redraws the text texture, so it is only called on a change. */
+  color: string;
 }
 
 /** Time constant (ms) for blending away the offset left by a path correction. */
@@ -428,7 +430,7 @@ export class GameScene extends Phaser.Scene {
       const label = this.add
         .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1);
-      m = { id: snap.id, tier: snap.tier, rank: snap.rank, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
+      m = { color: "#ffffff", id: snap.id, tier: snap.tier, rank: snap.rank, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
       this.monsters.set(snap.id, m);
     }
     // A respawn can roll a different rank, so name and size follow the latest snapshot.
@@ -519,7 +521,12 @@ export class GameScene extends Phaser.Scene {
       const s = toScreen(pos.x, pos.y);
       const depth = 10 + pos.x + pos.y;
       m.body.setPosition(s.x, s.y - 13).setDepth(depth);
-      m.label.setPosition(s.x, s.y - 40).setDepth(depth + 0.1).setColor(this.monsterColor(m));
+      m.label.setPosition(s.x, s.y - 40).setDepth(depth + 0.1);
+      const color = this.monsterColor(m);
+      if (color !== m.color) {
+        m.color = color;
+        m.label.setColor(color);
+      }
       m.bar.clear().setDepth(depth + 0.1);
       const w = 34;
       m.bar.fillStyle(0x000000, 0.7).fillRect(s.x - w / 2, s.y - 36, w, 5);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SPIRITUAL_ROOTS } from "./character";
-import { computeDamage, expForKill, expLostOnDeath, isMonsterId } from "./combat";
+import { computeDamage, expForKill, expLostOnDeath, isMonsterId, topContributor } from "./combat";
 import { MOVE_BUDGET_CAP, MOVE_BUDGET_REFILL_PER_S, spendMoveBudget } from "./movement";
 import { parseClientMessage } from "./protocol";
 import {
@@ -293,5 +293,34 @@ describe("kill pace", () => {
         expect(Math.abs(total - expToNext(r, s)) / expToNext(r, s)).toBeLessThan(0.02);
       }
     }
+  });
+});
+
+describe("topContributor (rare monster reward)", () => {
+  const maxHp = 70;
+  const present = () => true;
+
+  it("a small contributor who lands the last hit can beat a bigger damage dealer (the agreed 20/70 + kill = 50% example)", () => {
+    const damage = new Map([["a", 30], ["b", 20]]); // a: 30/70 x 0.7 = 0.30, b: 20/70 x 0.7 + 0.3 = 0.50
+    expect(topContributor(damage, maxHp, "b", present)).toBe("b");
+  });
+
+  it("a big enough lead beats the last-hit bonus", () => {
+    const damage = new Map([["a", 50], ["b", 20]]); // a: 0.5 + 0 = 0.50 vs b: 0.2 + 0.3 = 0.50 -> tie goes to the killer
+    expect(topContributor(damage, maxHp, "b", present)).toBe("b");
+    const clearer = new Map([["a", 51], ["b", 19]]); // a just above b
+    expect(topContributor(clearer, maxHp, "b", present)).toBe("a");
+  });
+
+  it("an absent top contributor passes the reward to the next-highest present player", () => {
+    const damage = new Map([["a", 40], ["b", 20], ["c", 10]]);
+    expect(topContributor(damage, maxHp, "c", (id) => id !== "a")).toBe("c"); // c: 0.1 + 0.3 = 0.4 > b 0.2
+    expect(topContributor(damage, maxHp, "b", (id) => id !== "a" && id !== "b")).toBe("c");
+    expect(topContributor(damage, maxHp, "b", () => false)).toBeNull();
+  });
+
+  it("the killer counts even without recorded damage, and damage is capped at the monster's HP", () => {
+    expect(topContributor(new Map(), maxHp, "k", present)).toBe("k");
+    expect(topContributor(new Map([["a", 500]]), maxHp, "k", present)).toBe("a"); // 0.7 vs 0.3
   });
 });

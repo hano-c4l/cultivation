@@ -233,7 +233,7 @@ describe("CombatSim", () => {
     expect(RANKS.rare1.expMult).toBeLessThan(RANKS.rare2.expMult);
   });
 
-  it("a rare monster pays its top contributor, not only the last hitter", () => {
+  it("a rare monster pays exactly one player (the rule itself is tested on topContributor)", () => {
     const sim = new CombatSim(getMap("forest"), "forest", () => 0.05, 0); // every monster is rare1
     const m = sim.snapshots(0)[0]!;
     const big = { ...seed("big").base, linhLuc: 40 };
@@ -247,7 +247,6 @@ describe("CombatSim", () => {
     for (let t = 0; t <= 60_000 && !events.some((e) => e.t === "mon_gone"); t += 100) events.push(...sim.tick(t, positions));
     const progress = events.filter((e) => e.t === "progress");
     expect(progress).toHaveLength(1);
-    // Whoever dealt most damage wins even if the other landed the final blow (the 30% last-hit bonus cannot outweigh a large lead).
     expect(heavy.exp + light.exp).toBeGreaterThan(0);
     expect(heavy.exp).toBeGreaterThan(light.exp);
   });
