@@ -103,6 +103,7 @@ Con số cố định (có thể chỉnh trước khi bắt đầu, sau đó kh�
   - **Không cho đổi linh căn ở GĐ1.** Sau này chỉ đổi qua vật phẩm hiếm trong game (ghi sổ cái, không bán trực tiếp bằng tiền nạp), làm ở giai đoạn khác.
   - **Trục số hệ** (đơn/song/tam/tứ/ngũ linh căn, linh căn biến dị Lôi/Băng/Phong) làm ở **GĐ2**, cùng lúc ngũ hành đầy đủ vào chiến đấu; thiết kế bảng sát thương ngũ hành hiện tại phải mở rộng được cho hệ này.
 - **Đột phá cảnh giới** (đã chốt cho GĐ1): tiến độ **dừng ở tầng 9** của mỗi cảnh giới, EXP bị chặn ở mức đầy, phần dư bị bỏ. Cơ chế đột phá (tỉ lệ thất bại, đan dược) làm ở GĐ2.
+- **Vùng quái** (đã chốt, xem `docs/PHASE1.md` mục 1d+): bản đồ có cảnh giới; quái theo cụm cố định theo bậc (1, 4, 7 và nhiều hơn khi mở rộng), tên hiện bậc và loại (thường / hiếm hai hạng / boss); nhịp lên cấp là số quái cùng bậc cần giết tăng theo cấp (Luyện Khí 1 khoảng 30, Luyện Khí 5 khoảng 50, Trúc Cơ 2 khoảng 100); săn ở bản đồ cảnh giới cao hơn không cho nhiều EXP hơn mức tối đa ở bản đồ đúng cảnh giới. Boss: cực hiếm, một con mỗi bản đồ, thưởng chia theo đóng góp (70% sát thương + 30% kết liễu), tiền theo tỉ lệ, đồ ngẫu nhiên có trọng số, dưới 10% không được chia; làm sau 1e.
 - **Tự đánh trả** (đã làm cho quái ở GĐ1): đứng im, chưa có mục tiêu mà bị đánh thì tự đánh lại; đang đi thì không. Áp dụng cùng quy tắc cho PvP ở GĐ2.
 - Chết: mất 10% EXP của tầng hiện tại (không xuống tầng; đã làm ở GĐ1), giảm độ bền (chờ có trang bị, GĐ2); hồi sinh ở thành.
 - Đột phá cảnh giới có tỉ lệ thất bại, dùng đan dược tăng tỉ lệ.

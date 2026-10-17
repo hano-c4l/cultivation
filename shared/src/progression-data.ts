@@ -16,13 +16,26 @@ export interface RealmDef {
 }
 
 export const STAGES_PER_REALM = 9;
+
+/**
+ * How many same-bậc normal monsters a player must kill to finish a stage: KILLS_BASE at Luyện Khí tầng 1, growing by
+ * KILLS_GROWTH per level across realms (about 49 at tầng 5, about 100 at Trúc Cơ tầng 2). Monster EXP is derived from this
+ * (see monsterBaseExp), so tune the pace here. EXP numbers are x10 of the first version so per-kill values stay integers.
+ */
+export const KILLS_BASE = 30;
+export const KILLS_GROWTH = 1.13;
+/**
+ * EXP multiplier per realm a monster is below the player (a high-level player farming a low map). 1 = no extra
+ * penalty (the slower pace of low monsters is the only cost); lower it if farming low maps turns out too good.
+ */
+export const LOW_MAP_EXP_MULT = 1;
 export const STAGE_EXP_GROWTH = 1.35;
 
 export const REALMS: readonly RealmDef[] = [
-  { id: 0, key: "luyen_khi", nameVi: "Luyện Khí", expBase: 100, pointsPerStage: 5 },
-  { id: 1, key: "truc_co", nameVi: "Trúc Cơ", expBase: 2_000, pointsPerStage: 6 },
-  { id: 2, key: "kim_dan", nameVi: "Kim Đan", expBase: 40_000, pointsPerStage: 8 },
-  { id: 3, key: "nguyen_anh", nameVi: "Nguyên Anh", expBase: 800_000, pointsPerStage: 10 },
+  { id: 0, key: "luyen_khi", nameVi: "Luyện Khí", expBase: 1_000, pointsPerStage: 5 },
+  { id: 1, key: "truc_co", nameVi: "Trúc Cơ", expBase: 20_000, pointsPerStage: 6 },
+  { id: 2, key: "kim_dan", nameVi: "Kim Đan", expBase: 400_000, pointsPerStage: 8 },
+  { id: 3, key: "nguyen_anh", nameVi: "Nguyên Anh", expBase: 8_000_000, pointsPerStage: 10 },
 ];
 
 export interface RootGradeDef {
