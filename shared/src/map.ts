@@ -38,6 +38,8 @@ export interface MapData {
   spawn: [number, number];
   /** Safe maps disable PvP (phase 2) and monster spawns. */
   safe: boolean;
+  /** Cultivation realm the map is meant for (index into REALMS); null for the safe town. Monsters scale from it. */
+  realm: number | null;
   portals: Portal[];
 }
 
@@ -218,6 +220,7 @@ function buildTown(): MapData {
     collision: g.cells,
     spawn: [20, 20],
     safe: true,
+    realm: null,
     portals: [{ x: 20, y: 38, toMap: "forest", toX: 20, toY: 3 }],
   };
 }
@@ -237,6 +240,7 @@ function buildForest(): MapData {
     collision: g.cells,
     spawn: [20, 3],
     safe: false,
+    realm: 0,
     portals: [
       { x: 20, y: 1, toMap: "town", toX: 20, toY: 36 },
       { x: 46, y: 24, toMap: "cave", toX: 3, toY: 20 },
@@ -257,6 +261,7 @@ function buildCave(): MapData {
     collision: g.cells,
     spawn: [3, 20],
     safe: false,
+    realm: 1,
     portals: [{ x: 1, y: 20, toMap: "forest", toX: 44, toY: 24 }],
   };
 }

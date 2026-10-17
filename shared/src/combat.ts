@@ -1,4 +1,6 @@
-import { elementMultiplier, type Element } from "./progression";
+import { LOW_MAP_EXP_MULT } from "./progression-data";
+import { RANKS, homeExpCap, type MonsterRank } from "./monsters";
+import { elementMultiplier, monsterBaseExp, type Element } from "./progression";
 
 /** Server tick rate for combat (ms). */
 export const TICK_MS = 100;
@@ -42,6 +44,59 @@ export function computeDamage(attacker: Combatant, defender: Combatant, rand: ()
     (0.9 + 0.2 * rand()) *
     (crit ? 1.5 : 1);
   return { kind: crit ? "crit" : "hit", damage: Math.max(1, Math.round(raw)) };
+}
+
+/** What a kill is worth is decided by the monster's realm (its map), bậc and rank. */
+export interface KillSource {
+  realm: number;
+  tier: number;
+  rank: MonsterRank;
+}
+
+/**
+ * EXP for killing a monster: its base EXP (from the pace table) times its rank, then the player's EXP bonus.
+ * Hunting in a map of a higher realm never pays more than the same rank pays at home (homeExpCap); hunting below
+ * your realm is scaled by LOW_MAP_EXP_MULT per realm of difference.
+ */
+export function killExp(source: KillSource, playerRealm: number, expBonusPct: number): number {
+  let base = monsterBaseExp(source.realm, source.tier) * RANKS[source.rank].expMult;
+  if (source.realm > playerRealm) {
+    const cap = homeExpCap(playerRealm, source.rank);
+    if (cap !== undefined) base = Math.min(base, cap);
+  } else if (source.realm < playerRealm) {
+    base *= LOW_MAP_EXP_MULT ** (playerRealm - source.realm);
+  }
+  return expForKill(base, expBonusPct);
+}
+
+/** Weights of a rare monster's reward: share of its HP dealt as damage, plus the last hit. They add up to 1. */
+export const DAMAGE_WEIGHT = 0.7;
+export const LAST_HIT_WEIGHT = 0.3;
+
+/**
+ * Who takes the whole reward of a rare monster: the present player with the highest contribution
+ * (DAMAGE_WEIGHT x share of max HP dealt + LAST_HIT_WEIGHT for the killer). A tie goes to the killer, then to the
+ * lower id so the result is deterministic. Returns null when nobody is present.
+ */
+export function topContributor(
+  damage: ReadonlyMap<string, number>,
+  maxHp: number,
+  killerId: string,
+  isPresent: (id: string) => boolean,
+): string | null {
+  const ids = new Set(damage.keys());
+  ids.add(killerId);
+  let best: string | null = null;
+  let bestShare = -1;
+  for (const id of [...ids].sort()) {
+    if (!isPresent(id)) continue;
+    const share = DAMAGE_WEIGHT * Math.min(1, (damage.get(id) ?? 0) / maxHp) + (id === killerId ? LAST_HIT_WEIGHT : 0);
+    if (share > bestShare + 1e-9 || (Math.abs(share - bestShare) <= 1e-9 && id === killerId)) {
+      best = id;
+      bestShare = share;
+    }
+  }
+  return best;
 }
 
 /** EXP actually gained for a kill: the monster's base EXP scaled by the killer's percent bonus (never below 0). */

@@ -3,11 +3,16 @@ import {
   PLAYER_ATTACK_RANGE,
   REGEN_DELAY_MS,
   REGEN_PER_S,
-  SPAWNS,
+  CLUSTERS,
+  RANKS,
   applyExp,
   computeDamage,
   deriveStats,
-  expForKill,
+  clusterSlots,
+  killExp,
+  monsterStats,
+  rollRank,
+  topContributor,
   findSmoothPath,
   getMonsterDef,
   lineClear,
@@ -20,6 +25,7 @@ import {
   type MapData,
   type MapId,
   type MonsterDef,
+  type MonsterRank,
   type MonsterSnapshot,
   type Vec2,
 } from "@game/shared";
@@ -66,7 +72,12 @@ type MonsterState = "idle" | "chase" | "return" | "dead";
 interface Monster {
   id: string;
   def: MonsterDef;
+  tier: number;
+  rank: MonsterRank;
+  maxHp: number;
   combatant: Combatant;
+  /** Damage dealt by each player since the monster last healed; decides who takes a rare monster's reward. */
+  damage: Map<string, number>;
   home: Vec2;
   hp: number;
   state: MonsterState;
@@ -118,6 +129,8 @@ export class CombatSim {
   private monsters = new Map<string, Monster>();
   private players = new Map<string, PlayerProfile>();
   private nextMonsterId = 1;
+  /** Realm of the map; monster stats and EXP scale from it. */
+  private readonly realm: number;
 
   constructor(
     private readonly map: MapData,
@@ -125,27 +138,46 @@ export class CombatSim {
     private readonly rand: () => number,
     now: number,
   ) {
-    for (const spawn of SPAWNS[mapId]) {
-      const def = getMonsterDef(spawn.kind);
+    this.realm = map.realm ?? 0;
+    for (const cluster of CLUSTERS[mapId]) {
+      const def = getMonsterDef(cluster.kind);
       if (!def) continue;
-      const home = nearestStandablePoint(map, spawn.x, spawn.y, 2);
-      if (!home) continue;
-      const id = `m${this.nextMonsterId++}`;
-      this.monsters.set(id, {
-        id,
-        def,
-        combatant: { attack: def.attack, defense: def.defense, critRate: 5, dodgeRate: 0, element: def.element },
-        home,
-        hp: def.maxHp,
-        state: "idle",
-        path: [home],
-        startedAt: now,
-        targetId: null,
-        nextAttackAt: 0,
-        lastRepathAt: 0,
-        respawnAt: 0,
-      });
+      for (const [sx, sy] of clusterSlots(cluster)) {
+        const home = nearestStandablePoint(map, sx, sy, 2);
+        if (!home) continue;
+        const id = `m${this.nextMonsterId++}`;
+        const m: Monster = {
+          id,
+          def,
+          tier: cluster.tier,
+          rank: "normal",
+          maxHp: 0,
+          combatant: { attack: 0, defense: 0, critRate: 5, dodgeRate: 0, element: def.element },
+          damage: new Map(),
+          home,
+          hp: 0,
+          state: "idle",
+          path: [home],
+          startedAt: now,
+          targetId: null,
+          nextAttackAt: 0,
+          lastRepathAt: 0,
+          respawnAt: 0,
+        };
+        this.applyRank(m);
+        m.hp = m.maxHp;
+        this.monsters.set(id, m);
+      }
     }
+  }
+
+  /** (Re)rolls the monster's class and derives its stats from the map's realm, its bậc, species and class. */
+  private applyRank(m: Monster): void {
+    m.rank = rollRank(this.rand());
+    const stats = monsterStats(m.def, this.realm, m.tier, m.rank);
+    m.maxHp = stats.maxHp;
+    m.combatant.attack = stats.attack;
+    m.combatant.defense = stats.defense;
   }
 
   get monsterCount(): number {
@@ -220,7 +252,17 @@ export class CombatSim {
   }
 
   private snapshot(m: Monster, now: number): MonsterSnapshot {
-    return { id: m.id, kind: m.def.id, path: m.path, ageMs: now - m.startedAt, speed: m.def.speed, hp: m.hp, maxHp: m.def.maxHp };
+    return {
+      id: m.id,
+      kind: m.def.id,
+      tier: m.tier,
+      rank: m.rank,
+      path: m.path,
+      ageMs: now - m.startedAt,
+      speed: m.def.speed,
+      hp: m.hp,
+      maxHp: m.maxHp,
+    };
   }
 
   snapshots(now: number): MonsterSnapshot[] {
@@ -256,7 +298,9 @@ export class CombatSim {
     for (const m of this.monsters.values()) {
       if (m.state === "dead") {
         if (now >= m.respawnAt) {
-          m.hp = m.def.maxHp;
+          this.applyRank(m); // every respawn rolls its class again
+          m.hp = m.maxHp;
+          m.damage.clear();
           m.state = "idle";
           m.path = [m.home];
           m.startedAt = now;
@@ -308,7 +352,8 @@ export class CombatSim {
       if (m.state === "return") {
         if (dist(pos, m.home) < 0.3) {
           m.state = "idle";
-          m.hp = m.def.maxHp;
+          m.hp = m.maxHp;
+          m.damage.clear(); // healed to full: earlier damage no longer counts towards the reward
           m.path = [m.home];
           m.startedAt = now;
           events.push({ t: "mon", monster: this.snapshot(m, now) });
@@ -367,7 +412,9 @@ export class CombatSim {
   private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[]): void {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
     const hit = computeDamage(p.stats, m.combatant, this.rand);
-    m.hp = Math.max(0, m.hp - hit.damage);
+    const applied = Math.min(m.hp, hit.damage);
+    m.hp -= applied;
+    m.damage.set(p.id, (m.damage.get(p.id) ?? 0) + applied);
     events.push({ t: "hit", from: p.id, to: m.id, kind: hit.kind, damage: hit.damage, hp: m.hp });
     if (m.hp > 0) {
       // Being hit pulls an idle or retreating monster onto the attacker.
@@ -384,14 +431,21 @@ export class CombatSim {
     m.path = [mpos];
     events.push({ t: "mon_gone", id: m.id });
     for (const other of this.players.values()) if (other.targetId === m.id) other.targetId = null;
-    const stagesGained = this.reward(p, m.def);
-    events.push({ t: "progress", playerId: p.id, stagesGained });
-    if (stagesGained > 0) events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+    // A normal monster pays whoever lands the last hit. A rare one pays its top contributor (70% damage share +
+    // 30% last hit) among the players still here, which can be someone other than the killer.
+    const winner =
+      m.rank === "normal"
+        ? p
+        : this.players.get(topContributor(m.damage, m.maxHp, p.id, (id) => !!this.players.get(id) && !this.players.get(id)!.dead) ?? p.id) ?? p;
+    const stagesGained = this.reward(winner, m);
+    events.push({ t: "progress", playerId: winner.id, stagesGained });
+    if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
+    m.damage.clear();
   }
 
   /** Gives the killer EXP (with their bonus) and applies any stage-ups. A hook for 1e's Linh Thạch drops goes here. */
-  private reward(p: PlayerProfile, def: MonsterDef): number {
-    const gain = expForKill(def.exp, p.expBonus);
+  private reward(p: PlayerProfile, m: Monster): number {
+    const gain = killExp({ realm: this.realm, tier: m.tier, rank: m.rank }, p.realm, p.expBonus);
     const r = applyExp({ realm: p.realm, stage: p.stage, exp: p.exp, potentialPoints: 0 }, gain);
     p.exp = r.exp;
     p.expDirty = true;

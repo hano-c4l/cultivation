@@ -4,7 +4,12 @@ import {
   TILE_W,
   ATTACK_MIN_GAP_MS,
   MIN_MOVE_INTERVAL_MS,
+  RANKS,
+  REALMS,
   getMonsterDef,
+  levelIndex,
+  type CharacterSheet,
+  type MonsterRank,
   type MonsterSnapshot,
   CELLS_PER_TILE,
   findSmoothPath,
@@ -58,6 +63,8 @@ interface Actor {
 
 interface MonsterActor {
   id: string;
+  tier: number;
+  rank: MonsterRank;
   path: Vec2[];
   startedAt: number;
   speed: number;
@@ -101,6 +108,7 @@ export class GameScene extends Phaser.Scene {
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
   private targetId: string | null = null;
+  private selfSheet: CharacterSheet | null = null;
   private lastAttackSentAt = 0;
   private selfId = "";
   private net!: Net;
@@ -296,6 +304,7 @@ export class GameScene extends Phaser.Scene {
         this.upsertActor(msg.players);
         for (const m of msg.monsters) this.upsertMonster(m);
         this.charPanel.update(msg.character);
+        this.selfSheet = msg.character;
         this.vitals.set(msg.hp, msg.maxHp);
         this.refreshHud();
         break;
@@ -316,6 +325,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "stats":
         this.charPanel.update(msg.character);
+        this.selfSheet = msg.character;
         break;
       case "joined":
       case "path":
@@ -348,7 +358,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshHud(): void {
-    const where = vi.maps[this.map.id] ?? this.map.id;
+    const realm = this.map.realm === null ? "" : ` (${REALMS[this.map.realm]?.nameVi ?? ""})`;
+    const where = `${vi.maps[this.map.id] ?? this.map.id}${realm}`;
     this.hud.textContent = `${where} · ${vi.connected(this.actors.size, this.ping, this.colo)} · ${vi.hint}`;
   }
 
@@ -415,11 +426,16 @@ export class GameScene extends Phaser.Scene {
       const color = ELEMENT_COLOR[def?.element ?? ""] ?? 0xcccccc;
       const body = this.add.rectangle(0, 0, 26, 26, color).setStrokeStyle(2, 0x000000, 0.7);
       const label = this.add
-        .text(0, 0, def?.nameVi ?? snap.kind, { fontFamily: FONT, fontSize: "12px", color: "#ffd0d0", stroke: "#000000", strokeThickness: 3 })
+        .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1);
-      m = { id: snap.id, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
+      m = { id: snap.id, tier: snap.tier, rank: snap.rank, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
       this.monsters.set(snap.id, m);
     }
+    // A respawn can roll a different rank, so name and size follow the latest snapshot.
+    m.tier = snap.tier;
+    m.rank = snap.rank;
+    m.label.setText(this.monsterName(snap.kind, snap.tier, snap.rank));
+    m.body.setScale(snap.rank === "rare2" ? 1.4 : snap.rank === "rare1" ? 1.2 : 1);
     const now = performance.now();
     // Monsters are re-planned often; blending keeps them from snapping, but a plain swap is fine at their speed.
     const before = positionAlongPath(m.path, now - m.startedAt, m.speed);
@@ -428,6 +444,24 @@ export class GameScene extends Phaser.Scene {
     m.startedAt = now - snap.ageMs;
     m.hp = snap.hp;
     m.maxHp = snap.maxHp;
+  }
+
+  /** "Sói Rừng · Bậc 4" plus the class tag for rare monsters. */
+  private monsterName(kind: string, tier: number, rank: MonsterRank): string {
+    const tag = RANKS[rank].tagVi;
+    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${vi.combat.tier(tier)}${tag ? ` · ${tag}` : ""}`;
+  }
+
+  /** Rare monsters have their own colours; normal ones are coloured by how their bậc compares to the player's level. */
+  private monsterColor(m: MonsterActor): string {
+    if (m.rank === "rare2") return "#ffd54a";
+    if (m.rank === "rare1") return "#7fd6ff";
+    if (!this.selfSheet) return "#ffffff";
+    const diff = levelIndex(this.map.realm ?? 0, m.tier) - levelIndex(this.selfSheet.realm, this.selfSheet.stage);
+    if (diff <= -3) return "#9ad59a";
+    if (diff <= 2) return "#ffffff";
+    if (diff <= 5) return "#ffb74d";
+    return "#ff6b6b";
   }
 
   private removeMonster(id: string): void {
@@ -485,7 +519,7 @@ export class GameScene extends Phaser.Scene {
       const s = toScreen(pos.x, pos.y);
       const depth = 10 + pos.x + pos.y;
       m.body.setPosition(s.x, s.y - 13).setDepth(depth);
-      m.label.setPosition(s.x, s.y - 40).setDepth(depth + 0.1);
+      m.label.setPosition(s.x, s.y - 40).setDepth(depth + 0.1).setColor(this.monsterColor(m));
       m.bar.clear().setDepth(depth + 0.1);
       const w = 34;
       m.bar.fillStyle(0x000000, 0.7).fillRect(s.x - w / 2, s.y - 36, w, 5);

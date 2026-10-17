@@ -1,4 +1,4 @@
-import { SPAWNS, getMap, startingStats, type Vec2 } from "@game/shared";
+import { CLUSTERS, RANKS, expToNext, getMap, killExp, monsterBaseExp, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -29,13 +29,14 @@ function run(sim: CombatSim, from: number, to: number, positions: Map<string, Ve
 
 describe("CombatSim", () => {
   it("spawns every configured monster on the forest map and none in town", () => {
-    expect(forestSim().monsterCount).toBe(SPAWNS.forest.length);
+    expect(forestSim().monsterCount).toBe(CLUSTERS.forest.reduce((n, c) => n + c.count, 0));
+    expect(new CombatSim(getMap("cave"), "cave", noCrit, 0).monsterCount).toBe(CLUSTERS.cave.reduce((n, c) => n + c.count, 0));
     expect(new CombatSim(getMap("town"), "town", noCrit, 0).monsterCount).toBe(0);
   });
 
   it("snapshots carry a path, hp and the kind", () => {
     const [m] = forestSim().snapshots(0);
-    expect(m).toMatchObject({ id: "m1", kind: "soi_rung" });
+    expect(m).toMatchObject({ id: "m1", kind: "soi_rung", tier: 1, rank: "normal" });
     expect(m!.hp).toBe(m!.maxHp);
     expect(m!.path).toHaveLength(1);
   });
@@ -105,7 +106,8 @@ describe("CombatSim", () => {
   it("enough EXP in one kill advances the stage and grants points as a pending delta", () => {
     const sim = forestSim();
     const m = sim.snapshots(0)[0]!;
-    const p = sim.addPlayer(seed("p1", { exp: 99, base: { ...seed().base, linhLuc: 500 } }));
+    const p = sim.addPlayer(seed("p1", { exp: expToNext(0, 1) - 1, base: { ...seed().base, linhLuc: 500 } }));
+    const maxHpBefore = p.maxHp;
     const here: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
     sim.setTarget("p1", m.id);
     const events = run(sim, 0, 3000, new Map([["p1", here]]));
@@ -114,7 +116,7 @@ describe("CombatSim", () => {
     expect(p.stage).toBe(2);
     expect(p.pendingPoints).toBe(5);
     expect(p.potentialPoints).toBe(10);
-    expect(p.hp).toBe(p.maxHp);
+    expect(p.maxHp).toBeGreaterThan(maxHpBefore); // a stage-up raises max HP (neighbours may already be biting)
     const write = sim.beginFlush("p1")!;
     expect(write).toMatchObject({ stage: 2, addPoints: 5 });
     sim.endFlush("p1", write, true);
@@ -199,5 +201,65 @@ describe("CombatSim", () => {
     sim.updateBase("p1", { ...p.base, canCot: p.base.canCot + 10 });
     expect(p.maxHp).toBeGreaterThan(before);
     expect(p.hp / p.maxHp).toBeCloseTo(0.5, 1);
+  });
+
+  it("clusters are fixed in size and tiered 1, 4 and 7 on each combat map", () => {
+    for (const id of ["forest", "cave"] as const) {
+      expect(CLUSTERS[id].map((c) => c.tier)).toEqual([1, 4, 7]);
+      const sim = new CombatSim(getMap(id), id, noCrit, 0);
+      const tiers = sim.snapshots(0).map((m) => m.tier);
+      expect(tiers.filter((t) => t === 1)).toHaveLength(3);
+      expect(tiers.filter((t) => t === 7)).toHaveLength(3);
+    }
+  });
+
+  it("monster stats follow the map's realm and the cluster's bậc", () => {
+    const forest = new CombatSim(getMap("forest"), "forest", noCrit, 0).snapshots(0);
+    const cave = new CombatSim(getMap("cave"), "cave", noCrit, 0).snapshots(0);
+    const hp = (list: typeof forest, tier: number) => list.find((m) => m.tier === tier)!.maxHp;
+    expect(hp(forest, 7)).toBeGreaterThan(hp(forest, 1));
+    expect(hp(cave, 1)).toBeGreaterThan(hp(forest, 1));
+  });
+
+  it("rare ranks roll from the injected RNG and are stronger and worth more", () => {
+    const rare = new CombatSim(getMap("forest"), "forest", () => 0.001, 0).snapshots(0)[0]!;
+    const normal = forestSim().snapshots(0)[0]!;
+    expect(rare.rank).toBe("rare2");
+    expect(rare.maxHp).toBeGreaterThan(normal.maxHp * 2);
+    const elite = new CombatSim(getMap("forest"), "forest", () => 0.05, 0).snapshots(0)[0]!;
+    expect(elite.rank).toBe("rare1");
+    expect(elite.maxHp).toBeGreaterThan(normal.maxHp);
+    expect(elite.maxHp).toBeLessThan(rare.maxHp);
+    expect(RANKS.rare1.expMult).toBeLessThan(RANKS.rare2.expMult);
+  });
+
+  it("a rare monster pays its top contributor, not only the last hitter", () => {
+    const sim = new CombatSim(getMap("forest"), "forest", () => 0.05, 0); // every monster is rare1
+    const m = sim.snapshots(0)[0]!;
+    const big = { ...seed("big").base, linhLuc: 40 };
+    const heavy = sim.addPlayer(seed("big", { base: big }));
+    const light = sim.addPlayer(seed("light", { base: { ...seed().base, linhLuc: 5 } }));
+    const at: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+    const positions = new Map<string, Vec2>([["big", at], ["light", [at[0], at[1] + 0.2]]]);
+    sim.setTarget("big", m.id);
+    sim.setTarget("light", m.id);
+    const events: SimEvent[] = [];
+    for (let t = 0; t <= 60_000 && !events.some((e) => e.t === "mon_gone"); t += 100) events.push(...sim.tick(t, positions));
+    const progress = events.filter((e) => e.t === "progress");
+    expect(progress).toHaveLength(1);
+    // Whoever dealt most damage wins even if the other landed the final blow (the 30% last-hit bonus cannot outweigh a large lead).
+    expect(heavy.exp + light.exp).toBeGreaterThan(0);
+    expect(heavy.exp).toBeGreaterThan(light.exp);
+  });
+
+  it("EXP: pace table, rank multiplier, cap when hunting above your realm", () => {
+    expect(killExp({ realm: 0, tier: 1, rank: "normal" }, 0, 0)).toBe(monsterBaseExp(0, 1));
+    expect(killExp({ realm: 0, tier: 1, rank: "rare2" }, 0, 0)).toBe(Math.floor(monsterBaseExp(0, 1) * RANKS.rare2.expMult));
+    // A Luyện Khí player in the Trúc Cơ cave gets no more than the best Luyện Khí monster of the same rank.
+    const capped = killExp({ realm: 1, tier: 7, rank: "normal" }, 0, 0);
+    expect(capped).toBe(monsterBaseExp(0, 7));
+    expect(capped).toBeLessThan(monsterBaseExp(1, 7));
+    // Own realm is unaffected.
+    expect(killExp({ realm: 1, tier: 7, rank: "normal" }, 1, 0)).toBe(monsterBaseExp(1, 7));
   });
 });

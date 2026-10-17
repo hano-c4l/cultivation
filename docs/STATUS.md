@@ -12,6 +12,7 @@ Cập nhật: 2026-10-17. Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `
 | Phẩm cấp linh căn | 5 bậc Hạ/Trung/Thượng phẩm, Địa, Thiên (`ROOT_GRADES`), server tung một lần khi tạo nhân vật; cho điểm tiềm năng khởi đầu và thưởng/phạt tu vi. Nhân vật cũ đã được tung lại trong migration 0004 |
 | 1d Quái và chiến đấu | 4 loại quái ở rừng và hang, tick 10 Hz chỉ khi có người, click quái để tự đuổi và đánh, sát thương theo chỉ số và ngũ hành, EXP và lên tầng, chết mất 10% EXP rồi về thành, thanh sinh lực và số sát thương. Chưa có rơi đồ (1e) |
 | Movement budget | `shared/src/movement.ts`: server chỉ tin ô xuất phát client khai khi còn ngân sách (cap 3 ô, hồi 1 ô/giây), nên nối chuỗi claim chỉ tăng tối đa khoảng 25% tốc độ. Bấm quá dày thì server dùng vị trí của mình (client thấy bị kéo nhẹ; cần kiểm tra cảm giác với độ trễ thật trên preview) |
+| 1d+ Vùng quái | Bản đồ có cảnh giới, 3 cụm × 3 quái (bậc 1, 4, 7) mỗi bản đồ, quái thường/hiếm (2 hạng), tên có bậc và loại, EXP theo nhịp lên cấp, chặn EXP khi săn sai cảnh giới. Boss và rơi đồ chưa làm (xem `docs/PHASE1.md` 1d+). Bảng EXP người chơi đã nhân 10 |
 | Di chuyển | Dự đoán phía client, hòa trộn khi server sửa, ping tự trả lời (DO ngủ được), đích đến chính xác, đường đi làm thẳng, **va chạm lưới mịn 4x4 mỗi ô** (vật cản tròn, vát góc, hàng rào mỏng) |
 
 ## Còn lại của giai đoạn 1 (xem `docs/PHASE1.md`)

@@ -1,5 +1,6 @@
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
+import type { MonsterRank } from "./monsters";
 import { parseAllocation, type CharacterSheet } from "./progression";
 import type { BaseStats } from "./progression-data";
 
@@ -38,6 +39,9 @@ export type ClientMessage =
 export interface MonsterSnapshot {
   id: string;
   kind: string;
+  /** Bậc 1..9 within the map's realm, and the class (normal or one of the two rare tiers). */
+  tier: number;
+  rank: MonsterRank;
   path: Vec2[];
   ageMs: number;
   speed: number;
