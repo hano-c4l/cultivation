@@ -1,10 +1,13 @@
-import { CLUSTERS, RANKS, expToNext, getMap, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
+import { MASTERY_NEEDED, CLUSTERS, RANKS, expToNext, getMap, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
 
 const noCrit = () => 0.99; // never dodges, never crits, damage spread near the top
+/** What every test character was given: the two skills of a realm (an attack and a stronger one) and a heal and a buff. */
+const BASE_SKILLS = ["chuong_0", "tram_0", "hoi_0", "thuan_0"];
 const seed = (id = "p1", over: Partial<ProfileSeed> = {}): ProfileSeed => ({
   id,
+  granted: BASE_SKILLS,
   name: id,
   potentialPoints: 5,
   element: "kim",
@@ -480,11 +483,11 @@ describe("skills", () => {
     const m = near(sim);
     const p = sim.addPlayer(seed("p1"));
     const startMp = p.mp;
-    expect(sim.queueCast("p1", "kim_1", m.id, 0)).toEqual({ ok: true });
+    expect(sim.queueCast("p1", "chuong_0", m.id, 0)).toEqual({ ok: true });
     const events = sim.tick(0, at(m.stand));
-    const hit = events.find((e) => e.t === "hit" && e.skill === "kim_1");
+    const hit = events.find((e) => e.t === "hit" && e.skill === "chuong_0");
     expect(hit).toBeDefined();
-    expect(events).toContainEqual(expect.objectContaining({ t: "cast_ok", skill: "kim_1", cdMs: 3000 }));
+    expect(events).toContainEqual(expect.objectContaining({ t: "cast_ok", skill: "chuong_0", cdMs: 3000 }));
     expect(p.mp).toBe(startMp - 8);
     expect(events.find((e) => e.t === "mp")).toMatchObject({ mp: startMp - 8 });
     // The same player's basic hit on an identical monster does less than the power-1.6 skill.
@@ -494,18 +497,18 @@ describe("skills", () => {
     const basicHit = basic.tick(0, at([near(basic).at[0] + 1, near(basic).at[1]])).find((e) => e.t === "hit" && e.from === "p1");
     expect(hit && basicHit && hit.t === "hit" && basicHit.t === "hit" && hit.damage > basicHit.damage).toBe(true);
     // Cooldown: refused until it is over.
-    expect(sim.queueCast("p1", "kim_1", m.id, 1000)).toEqual({ ok: false, reason: "cooldown" });
-    expect(sim.queueCast("p1", "kim_1", m.id, 3000)).toEqual({ ok: true });
+    expect(sim.queueCast("p1", "chuong_0", m.id, 1000)).toEqual({ ok: false, reason: "cooldown" });
+    expect(sim.queueCast("p1", "chuong_0", m.id, 3000)).toEqual({ ok: true });
   });
 
   it("refuses a skill the character does not have, without MP, without a target or without the right weapon", () => {
     const sim = forestSim();
     const m = near(sim);
-    const p = sim.addPlayer(seed("p1", { learned: ["ngu_kiem_tram"] }));
-    expect(sim.queueCast("p1", "hoa_1", m.id, 0)).toEqual({ ok: false, reason: "unknown" }); // another root's skill
+    const p = sim.addPlayer(seed("p1", { granted: [...BASE_SKILLS, "ngu_kiem_tram"] }));
+    expect(sim.queueCast("p1", "cuong_luc_0", null, 0)).toEqual({ ok: false, reason: "unknown" }); // a root skill of the character that it was not given
     expect(sim.queueCast("p1", "cuong_than", null, 0)).toEqual({ ok: false, reason: "unknown" }); // a book not learned
-    expect(sim.queueCast("p1", "kim_1", null, 0)).toEqual({ ok: false, reason: "no_target" });
-    expect(sim.queueCast("p1", "kim_1", "m999", 0)).toEqual({ ok: false, reason: "no_target" });
+    expect(sim.queueCast("p1", "chuong_0", null, 0)).toEqual({ ok: false, reason: "no_target" });
+    expect(sim.queueCast("p1", "chuong_0", "m999", 0)).toEqual({ ok: false, reason: "no_target" });
     expect(sim.queueCast("p1", "ngu_kiem_tram", m.id, 0)).toEqual({ ok: false, reason: "weapon" }); // learned, but no sword
     p.weapon = "dao";
     expect(sim.queueCast("p1", "ngu_kiem_tram", m.id, 0)).toEqual({ ok: false, reason: "weapon" });
@@ -513,28 +516,28 @@ describe("skills", () => {
     expect(sim.queueCast("p1", "ngu_kiem_tram", m.id, 0)).toEqual({ ok: true });
     p.mp = 3;
     sim.cancelCast("p1");
-    expect(sim.queueCast("p1", "kim_1", m.id, 0)).toEqual({ ok: false, reason: "mp" });
+    expect(sim.queueCast("p1", "chuong_0", m.id, 0)).toEqual({ ok: false, reason: "mp" });
   });
 
   it("walks into range first, and a move or a new target cancels a waiting skill", () => {
     const sim = forestSim();
     const m = near(sim);
     sim.addPlayer(seed("p1", { stage: 5 }));
-    expect(sim.queueCast("p1", "kim_2", m.id, 0)).toEqual({ ok: true });
+    expect(sim.queueCast("p1", "tram_0", m.id, 0)).toEqual({ ok: true });
     const far: Vec2 = [m.at[0] + 12, m.at[1]];
     const first = sim.tick(0, at(far));
     expect(first.some((e) => e.t === "path_request")).toBe(true);
     expect(first.some((e) => e.t === "hit" || e.t === "cast_ok")).toBe(false);
     const arrived = sim.tick(100, at([m.at[0] + 3, m.at[1]]));
-    expect(arrived.some((e) => e.t === "cast_ok" && e.skill === "kim_2")).toBe(true);
+    expect(arrived.some((e) => e.t === "cast_ok" && e.skill === "tram_0")).toBe(true);
 
     const other = forestSim();
     const o = near(other);
     other.addPlayer(seed("p1", { stage: 5 }));
-    other.queueCast("p1", "kim_2", o.id, 0);
+    other.queueCast("p1", "tram_0", o.id, 0);
     other.clearTarget("p1"); // a click on the ground
     expect(other.tick(0, at(o.stand)).some((e) => e.t === "cast_ok")).toBe(false);
-    other.queueCast("p1", "kim_2", o.id, 0);
+    other.queueCast("p1", "tram_0", o.id, 0);
     other.setTarget("p1", o.id); // a new target
     expect(other.tick(0, at(o.stand)).some((e) => e.t === "cast_ok")).toBe(false);
   });
@@ -543,16 +546,17 @@ describe("skills", () => {
     const sim = townSim();
     const p = sim.addPlayer(seed("p1", { stage: 3 }));
     p.hp = 10;
-    expect(sim.queueCast("p1", "hoi_khi", null, 0)).toEqual({ ok: true });
+    expect(sim.queueCast("p1", "hoi_0", null, 0)).toEqual({ ok: true });
     const healed = sim.tick(0, at([1, 1]));
-    expect(p.hp).toBe(10 + Math.round(p.maxHp * 0.3));
+    // The test character has a Trung phẩm root (grade 1): its skills are worth 5% more.
+    expect(p.hp).toBe(10 + Math.round(p.maxHp * 0.3 * 1.05));
     expect(healed.some((e) => e.t === "hp")).toBe(true);
 
     const before = p.stats.defense;
-    expect(sim.queueCast("p1", "linh_thuan", null, 100)).toEqual({ ok: true });
+    expect(sim.queueCast("p1", "thuan_0", null, 100)).toEqual({ ok: true });
     const buffed = sim.tick(100, at([1, 1]));
-    expect(buffed).toContainEqual(expect.objectContaining({ t: "buff", skill: "linh_thuan", ms: 15_000 }));
-    expect(p.stats.defense).toBe(Math.floor(before + before * 0.3));
+    expect(buffed).toContainEqual(expect.objectContaining({ t: "buff", skill: "thuan_0", ms: 15_000 }));
+    expect(p.stats.defense).toBe(Math.floor(before + before * 0.3 * 1.05));
     sim.tick(10_000, at([1, 1]));
     expect(p.stats.defense).toBeGreaterThan(before); // still running
     sim.tick(15_200, at([1, 1]));
@@ -588,7 +592,7 @@ describe("skills", () => {
     const sim = townSim();
     const p = sim.addPlayer(seed("p1"));
     expect(sim.skillsOf(p)).not.toContain("cuong_than");
-    sim.addLearned("p1", "cuong_than");
+    sim.addGranted("p1", "cuong_than");
     expect(sim.skillsOf(p)).toContain("cuong_than");
   });
 });
@@ -600,10 +604,10 @@ describe("vitals kept across a reload", () => {
     const sim = townSim();
     const base = sim.addPlayer(seed("p0"));
     const now = Date.now();
-    const p = sim.addPlayer(seed("p1", { vitals: { hp: 40, mp: 5, at: now - 1000, cd: { kim_1: now + 20_000 }, buffs: [{ skill: "linh_thuan", until: now + 20_000 }] } }));
+    const p = sim.addPlayer(seed("p1", { vitals: { hp: 40, mp: 5, at: now - 1000, cd: { chuong_0: now + 20_000 }, buffs: [{ skill: "thuan_0", until: now + 20_000 }] } }));
     expect(p.hp).toBe(40);
     expect(p.mp).toBe(5);
-    expect(p.cooldowns.get("kim_1")).toBe(now + 20_000);
+    expect(p.cooldowns.get("chuong_0")).toBe(now + 20_000);
     expect(p.buffs).toHaveLength(1);
     expect(p.stats.defense).toBeGreaterThan(base.stats.defense); // the buff still counts
     // Away a long time: back to full.
@@ -627,11 +631,11 @@ describe("vitals kept across a reload", () => {
     p.mp = 10;
     p.mpAt = 1000;
     p.lastHurtAt = 1000;
-    p.cooldowns.set("kim_1", 9000);
+    p.cooldowns.set("chuong_0", 9000);
     p.cooldowns.set("old", 500);
-    p.buffs.push({ skill: "linh_thuan", stat: "defense", pct: 0.3, until: 9000 });
-    expect(sim.snapshotVitals("p1", 2000)).toEqual({ hp: 30, mp: 10, at: 2000, cd: { kim_1: 9000 }, buffs: [{ skill: "linh_thuan", until: 9000 }] });
-    expect(sim.cooldownsLeft(p, 2000)).toEqual({ kim_1: 7000 });
+    p.buffs.push({ skill: "thuan_0", stat: "defense", pct: 0.3, until: 9000 });
+    expect(sim.snapshotVitals("p1", 2000)).toEqual({ hp: 30, mp: 10, at: 2000, cd: { chuong_0: 9000 }, buffs: [{ skill: "thuan_0", until: 9000 }] });
+    expect(sim.cooldownsLeft(p, 2000)).toEqual({ chuong_0: 7000 });
     p.dead = true;
     expect(sim.snapshotVitals("p1", 2000)).toBeNull();
   });
@@ -639,7 +643,7 @@ describe("vitals kept across a reload", () => {
 
 describe("constitution skill damage", () => {
   const effect = (targetKind: "all" | "element" | "weapon" | "skill", targetTag: string, value: number) => ({ stat: "skill_damage", targetKind, targetTag, mode: "percent" as const, value });
-  const damageOf = (over: Partial<ProfileSeed>, skill = "kim_1"): number => {
+  const damageOf = (over: Partial<ProfileSeed>, skill = "chuong_0"): number => {
     const sim = forestSim();
     const m = sim.snapshots(0)[0]!;
     sim.addPlayer(seed("p1", over));
@@ -653,11 +657,11 @@ describe("constitution skill damage", () => {
     expect(none).toBeGreaterThan(0);
     expect(damageOf({ effects: [effect("all", "", 50)] })).toBeGreaterThan(none);
     expect(damageOf({ effects: [effect("element", "kim", 50)] })).toBeGreaterThan(none);
-    expect(damageOf({ effects: [effect("skill", "kim_1", 50)] })).toBeGreaterThan(none);
+    expect(damageOf({ effects: [effect("skill", "chuong_0", 50)] })).toBeGreaterThan(none);
     expect(damageOf({ effects: [effect("element", "thuy", 50)] })).toBe(none);
     expect(damageOf({ effects: [effect("weapon", "kiem", 50)] })).toBe(none); // no sword in hand
     expect(damageOf({ effects: [effect("weapon", "kiem", 50)], weapon: "kiem" })).toBeGreaterThan(none);
-    expect(damageOf({ effects: [effect("skill", "kim_2", 50)] })).toBe(none);
+    expect(damageOf({ effects: [effect("skill", "tram_0", 50)] })).toBe(none);
   });
 });
 
@@ -672,19 +676,32 @@ describe("several elements (đơn ... ngũ linh căn) and the grade of the root"
   };
   const all = ["kim", "moc", "thuy", "hoa", "tho"] as const;
 
-  it("a character can use the basic skills of every element it has", () => {
+  it("a character gets the same skills however many elements it has, and an attack takes the element it was asked for", () => {
     const sim = new CombatSim(getMap("town"), "town", noCrit, 0);
     const p = sim.addPlayer(seed("p1", { roots: ["kim", "thuy"] }));
-    expect(sim.skillsOf(p)).toEqual(["kim_1", "thuy_1", "hoi_khi"]);
-    const five = sim.addPlayer(seed("p2", { roots: [...all] }));
-    expect(sim.skillsOf(five).filter((s) => s.endsWith("_1"))).toHaveLength(5);
-    expect(sim.skillsOf(sim.addPlayer(seed("p3")))).toEqual(["kim_1", "hoi_khi"]); // no list: just the main element
+    expect(sim.skillsOf(p)).toEqual(sim.skillsOf(sim.addPlayer(seed("p2"))));
+    const five = sim.addPlayer(seed("p3", { roots: [...all] }));
+    expect(sim.skillsOf(five)).toHaveLength(BASE_SKILLS.length);
+  });
+
+  it("the element of a flexible attack is one of the character's own, the main one otherwise", () => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    const p = sim.addPlayer(seed("p1", { roots: ["kim", "thuy"] }));
+    sim.queueCast("p1", "chuong_0", m.id, 0, undefined, "thuy");
+    expect(p.pendingCast?.element).toBe("thuy");
+    sim.cancelCast("p1");
+    sim.queueCast("p1", "chuong_0", m.id, 0, undefined, "hoa"); // not one of the character's elements
+    expect(p.pendingCast?.element).toBe("kim");
+    sim.cancelCast("p1");
+    sim.queueCast("p1", "chuong_0", m.id, 0);
+    expect(p.pendingCast?.element).toBe("kim");
   });
 
   it("the number of elements does not change damage", () => {
-    const one = damageWith({ roots: ["kim"] }, "kim_1");
+    const one = damageWith({ roots: ["kim"] }, "chuong_0");
     expect(one).toBeGreaterThan(0);
-    for (const roots of [["kim", "moc"], ["kim", "moc", "thuy"], [...all]] as const) expect(damageWith({ roots }, "kim_1")).toBe(one);
+    for (const roots of [["kim", "moc"], ["kim", "moc", "thuy"], [...all]] as const) expect(damageWith({ roots }, "chuong_0")).toBe(one);
   });
 
   it("... and neither does the basic attack or a skill without an element: they use the main element, however many there are", () => {
@@ -699,12 +716,12 @@ describe("several elements (đơn ... ngũ linh căn) and the grade of the root"
     const one = basic(["kim"]);
     expect(one).toBeGreaterThan(0);
     for (const roots of [["kim", "moc"], ["kim", "moc", "thuy"], [...all]] as const) expect(basic(roots)).toBe(one);
-    const sword = (roots: ProfileSeed["roots"]) => damageWith({ roots, learned: ["ngu_kiem_tram"], weapon: "kiem" }, "ngu_kiem_tram");
+    const sword = (roots: ProfileSeed["roots"]) => damageWith({ roots, granted: [...BASE_SKILLS, "ngu_kiem_tram"], weapon: "kiem" }, "ngu_kiem_tram");
     expect(sword([...all])).toBe(sword(["kim"]));
   });
 
-  it("the grade of the root adds its damage share to attacks in the character's own elements", () => {
-    const [ha, trung, thuong, dia, thien] = [0, 1, 2, 3, 4].map((rootGrade) => damageWith({ rootGrade }, "kim_1"));
+  it("the grade of the root makes its skills hit harder", () => {
+    const [ha, trung, thuong, dia, thien] = [0, 1, 2, 3, 4].map((rootGrade) => damageWith({ rootGrade }, "chuong_0"));
     expect(ha!).toBeLessThan(trung!);
     expect(trung!).toBeLessThan(thuong!);
     expect(thuong!).toBeLessThan(dia!);
@@ -712,13 +729,11 @@ describe("several elements (đơn ... ngũ linh căn) and the grade of the root"
     expect(thien!).toBeGreaterThan(ha! * 1.2); // about +30% over +0%
   });
 
-  it("a skill of an element the character does not have gets no grade share", () => {
-    // hoa_3 is a book skill: learned, but the character is kim only.
-    const low = damageWith({ rootGrade: 0, learned: ["hoa_3"] }, "hoa_3");
-    const high = damageWith({ rootGrade: 4, learned: ["hoa_3"] }, "hoa_3");
+  it("a learned skill is used at its own grade, whatever the root grade is", () => {
+    const low = damageWith({ rootGrade: 0, granted: [...BASE_SKILLS, "hoa_3"] }, "hoa_3");
+    const high = damageWith({ rootGrade: 4, granted: [...BASE_SKILLS, "hoa_3"] }, "hoa_3");
+    expect(low).toBeGreaterThan(0);
     expect(high).toBe(low);
-    // The same character with hoa among its elements does get it.
-    expect(damageWith({ rootGrade: 4, learned: ["hoa_3"], roots: ["kim", "hoa"] }, "hoa_3")).toBeGreaterThan(low);
   });
 
   it("the number of elements changes EXP only (the pace of cultivation)", () => {
@@ -743,10 +758,10 @@ describe("effects on the buff bar and potions that work over time", () => {
     const sim = townSim();
     const p = sim.addPlayer(seed("p1", { stage: 3 }));
     expect(sim.effectsOf(p, 0)).toEqual([]);
-    sim.queueCast("p1", "linh_thuan", null, 0);
+    sim.queueCast("p1", "thuan_0", null, 0);
     const events = sim.tick(0, at([1, 1]));
-    expect(events).toContainEqual({ t: "effects", playerId: "p1", list: [{ id: "s:linh_thuan", ms: 15_000 }] });
-    expect(sim.effectsOf(p, 5000)).toEqual([{ id: "s:linh_thuan", ms: 10_000 }]);
+    expect(events).toContainEqual({ t: "effects", playerId: "p1", list: [{ id: "s:thuan_0", ms: 15_000 }] });
+    expect(sim.effectsOf(p, 5000)).toEqual([{ id: "s:thuan_0", ms: 10_000 }]);
     const ended = sim.tick(15_100, at([1, 1]));
     expect(ended).toContainEqual({ t: "effects", playerId: "p1", list: [] });
   });
@@ -807,7 +822,7 @@ describe("skills from worn pháp bảo and teleport", () => {
 
   it("a gear skill is usable only while the piece is worn", () => {
     const s = sim();
-    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_phong_than"] }));
+    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_phong_than", realm: 0, grade: 0 }] }));
     expect(s.skillsOf(p)).toContain("pt_phong_than");
     expect(s.queueCast("p1", "pt_phong_than", null, 0)).toEqual({ ok: true });
     s.updateGear("p1", p.gear ?? { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0 }, undefined, []);
@@ -817,7 +832,7 @@ describe("skills from worn pháp bảo and teleport", () => {
 
   it("the dodge buff raises the dodge chance and shows on the buff bar", () => {
     const s = sim();
-    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_phong_than"] }));
+    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_phong_than", realm: 0, grade: 0 }] }));
     const before = p.stats.dodgeRate;
     s.queueCast("p1", "pt_phong_than", null, 0);
     const events = s.tick(0, at(spawn()));
@@ -827,7 +842,7 @@ describe("skills from worn pháp bảo and teleport", () => {
 
   it("a teleport emits where to move, pays and starts the cooldown", () => {
     const s = sim();
-    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_thuan_di"] }));
+    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_thuan_di", realm: 0, grade: 0 }] }));
     const from = spawn();
     const near = nearestStandablePoint(getMap("forest"), from[0] + 4, from[1]) ?? from;
     p.targetId = "m1";
@@ -843,7 +858,7 @@ describe("skills from worn pháp bảo and teleport", () => {
 
   it("a teleport needs a point, and a point too far or not standable is refused without paying", () => {
     const s = sim();
-    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_thuan_di"] }));
+    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_thuan_di", realm: 0, grade: 0 }] }));
     const from = spawn();
     expect(s.queueCast("p1", "pt_thuan_di", null, 0)).toEqual({ ok: false, reason: "no_target" });
     s.queueCast("p1", "pt_thuan_di", null, 0, [from[0] + 30, from[1]]);
@@ -855,5 +870,101 @@ describe("skills from worn pháp bảo and teleport", () => {
     expect(wall.some((e) => e.t === "teleport")).toBe(false);
     expect(s.currentMp(p, 100)).toBe(p.maxMp); // nothing was paid
     expect(p.cooldowns.has("pt_thuan_di")).toBe(false);
+  });
+});
+
+describe("mastery, realm and passives in the simulation", () => {
+  const at = (v: Vec2) => new Map<string, Vec2>([["p1", v]]);
+  /** A forest sim with a character one tile from a monster, ready to cast. */
+  const setup = (over: Partial<ProfileSeed> = {}) => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    const p = sim.addPlayer(seed("p1", over));
+    return { sim, m, p, stand: [m.path[0]![0] + 2, m.path[0]![1]] as Vec2 };
+  };
+
+  it("a skill that lands gains one mastery point, and the event carries the new values", () => {
+    const { sim, m, p, stand } = setup();
+    sim.queueCast("p1", "chuong_0", m.id, 0);
+    const events = sim.tick(0, at(stand));
+    expect(events).toContainEqual({ t: "mastery", playerId: "p1", skill: "chuong_0", lv: 0, xp: 1, up: false });
+    expect(p.masteries.chuong_0).toEqual({ lv: 0, xp: 1 });
+  });
+
+  it("enough points raise the level, which makes the same skill hit harder and cool down faster later on", () => {
+    const damage = (state?: Record<string, { lv: number; xp: number }>) => {
+      const { sim, m, stand } = setup({ skillState: state, rootGrade: 4 });
+      sim.queueCast("p1", "chuong_0", m.id, 0);
+      const hit = sim.tick(0, at(stand)).find((e) => e.t === "hit" && e.skill === "chuong_0");
+      return hit && hit.t === "hit" ? hit.damage : 0;
+    };
+    expect(damage({ chuong_0: { lv: 2, xp: 0 } })).toBeGreaterThan(damage());
+    const { sim, m, p, stand } = setup({ skillState: { chuong_0: { lv: 0, xp: MASTERY_NEEDED[0]! - 1 } } });
+    sim.queueCast("p1", "chuong_0", m.id, 0);
+    const events = sim.tick(0, at(stand));
+    expect(events).toContainEqual({ t: "mastery", playerId: "p1", skill: "chuong_0", lv: 1, xp: 0, up: true });
+    expect(p.masteries.chuong_0).toEqual({ lv: 1, xp: 0 });
+  });
+
+  it("a miss teaches nothing, and neither does healing at full HP", () => {
+    const { sim, p } = setup();
+    expect(p.hp).toBe(p.maxHp);
+    sim.queueCast("p1", "hoi_0", null, 0);
+    const events = sim.tick(0, at([1, 1]));
+    expect(events.some((e) => e.t === "mastery")).toBe(false);
+    p.hp = 5;
+    sim.queueCast("p1", "hoi_0", null, 10_000);
+    expect(sim.tick(10_000, at([1, 1])).some((e) => e.t === "mastery")).toBe(true);
+  });
+
+  it("gear skills have no mastery", () => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    const p = sim.addPlayer(seed("p1", { gearSkills: [{ id: "pb_kim", realm: 0, grade: 0 }] }));
+    sim.queueCast("p1", "pb_kim", m.id, 0);
+    const events = sim.tick(0, at([m.path[0]![0] + 2, m.path[0]![1]]));
+    expect(events.some((e) => e.t === "hit" && e.skill === "pb_kim")).toBe(true);
+    expect(events.some((e) => e.t === "mastery")).toBe(false);
+    expect(p.masteries.pb_kim).toBeUndefined();
+  });
+
+  it("a piece of a higher realm gives a stronger gear skill than a piece of the first realm", () => {
+    const hit = (realm: number) => {
+      const sim = forestSim();
+      const m = sim.snapshots(0)[0]!;
+      sim.addPlayer(seed("p1", { gearSkills: [{ id: "pb_kim", realm, grade: 0 }] }));
+      sim.queueCast("p1", "pb_kim", m.id, 0);
+      const e = sim.tick(0, at([m.path[0]![0] + 2, m.path[0]![1]])).find((x) => x.t === "hit" && x.skill === "pb_kim");
+      return e && e.t === "hit" ? e.damage : 0;
+    };
+    expect(hit(1)).toBeGreaterThan(hit(0));
+  });
+
+  it("a passive skill is never cast, but it raises the stats all the time, more at a higher level", () => {
+    const plain = setup().p.stats.attack;
+    const { sim, p } = setup({ granted: [...BASE_SKILLS, "bd_cong_0"] });
+    expect(p.stats.attack).toBeGreaterThan(plain);
+    expect(sim.queueCast("p1", "bd_cong_0", null, 0)).toEqual({ ok: false, reason: "unknown" });
+    const trained = setup({ granted: [...BASE_SKILLS, "bd_cong_0"], skillState: { bd_cong_0: { lv: 3, xp: 0 } } }).p.stats.attack;
+    expect(trained).toBeGreaterThan(p.stats.attack);
+    const crit = setup({ granted: [...BASE_SKILLS, "bd_mang_0"] }).p;
+    expect(crit.stats.critRate).toBeGreaterThan(setup().p.stats.critRate);
+  });
+
+  it("a level gained from a pill (setMastery) re-derives the passives at once", () => {
+    const { sim, p } = setup({ granted: [...BASE_SKILLS, "bd_thu_0"] });
+    const before = p.stats.defense;
+    sim.setMastery("p1", "bd_thu_0", 2, 0);
+    expect(p.stats.defense).toBeGreaterThan(before);
+  });
+
+  it("a buff cast with a higher mastery level is stronger", () => {
+    const pct = (lv: number) => {
+      const { sim, p } = setup({ skillState: { thuan_0: { lv, xp: 0 } } });
+      sim.queueCast("p1", "thuan_0", null, 0);
+      sim.tick(0, at([1, 1]));
+      return p.buffs[0]!.pct;
+    };
+    expect(pct(3)).toBeGreaterThan(pct(0));
   });
 });

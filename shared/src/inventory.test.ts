@@ -155,10 +155,10 @@ describe("items and loot", () => {
   it("rollLoot is deterministic under an injected RNG and respects chance and quantity bounds", () => {
     expect(rollLoot("normal", () => 0.99)).toEqual([]); // every chance misses
     const all = rollLoot("rare2", () => 0); // every chance hits, lowest quantity
-    expect(all.map((d) => d.item).sort()).toEqual(["duong_huyet_dan", "hoi_huyet_dan", "linh_thao", "yeu_dan"]);
+    expect(all.map((d) => d.item).sort()).toEqual(["duong_huyet_dan", "hoi_huyet_dan", "linh_thao", "ngo_dao_dan", "yeu_dan"]);
     expect(all.find((d) => d.item === "linh_thao")!.qty).toBe(2);
     const high = rollLoot("rare2", () => 0.0001);
-    expect(high.length).toBe(4);
+    expect(high.length).toBe(5);
     // qty roll just under 1 reaches the maximum: use a sequence (chance 0, qty 0.999...) per entry.
     let k = 0;
     const seq = () => (k++ % 2 === 0 ? 0 : 0.9999);

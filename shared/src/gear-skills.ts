@@ -1,5 +1,5 @@
 import { equipmentInfo, slotKind, isEquipSlot } from "./equipment-data";
-import { SKILLS, type GearSkillSource } from "./skills";
+import { SKILLS } from "./skills";
 
 /** The slice of a worn piece this needs: where it is worn, what it is and its durability (absent: never wears out). */
 export interface WornPiece {
@@ -8,28 +8,48 @@ export interface WornPiece {
   dur?: number;
 }
 
+/** A skill a worn piece grants, with the realm and grade (root-grade scale 0..) of the piece that grants it. */
+export interface GearSkillInfo {
+  id: string;
+  realm: number;
+  grade: number;
+}
+
 const KNOWN = new Set(SKILLS.filter((s) => s.gear).map((s) => s.id));
 
-/** Skills granted by what the character wears right now. A broken piece (0 durability) grants nothing. Order follows SKILLS. */
-export function gearSkillIds(worn: readonly WornPiece[]): string[] {
-  const ids = new Set<string>();
+/**
+ * Skills granted by what the character wears right now, each with the realm and grade of the piece behind it. A broken piece
+ * (0 durability) grants nothing. When two pieces grant the same skill the better one (higher realm, then grade) counts.
+ * Order follows SKILLS.
+ */
+export function gearSkillInfo(worn: readonly WornPiece[]): GearSkillInfo[] {
+  const best = new Map<string, GearSkillInfo>();
+  const give = (id: string, realm: number, grade: number) => {
+    if (!KNOWN.has(id)) return;
+    const have = best.get(id);
+    if (!have || realm > have.realm || (realm === have.realm && grade > have.grade)) best.set(id, { id, realm, grade });
+  };
   for (const w of worn) {
     if (!isEquipSlot(w.slot) || (w.dur !== undefined && w.dur <= 0)) continue;
     const kind = slotKind(w.slot);
     const info = equipmentInfo(w.type);
     if (!info) continue;
-    const source: GearSkillSource | null = kind === "charm" ? "charm" : kind === "bonded" ? "bonded" : kind === "flight" ? "flight" : null;
-    if (!source) continue;
-    if (source === "flight") {
-      ids.add("pt_thuan_di");
-      ids.add("pt_phong_than");
-    } else if (source === "bonded") {
-      ids.add("bm_ho_the");
-      ids.add("bm_hoi_sinh");
-      if (info.element) ids.add(`bm_${info.element}`);
-    } else if (info.element) {
-      ids.add(`pb_${info.element}`);
+    const grade = Math.max(0, info.grade - 1);
+    if (kind === "flight") {
+      give("pt_thuan_di", info.realm, grade);
+      give("pt_phong_than", info.realm, grade);
+    } else if (kind === "bonded") {
+      give("bm_ho_the", info.realm, grade);
+      give("bm_hoi_sinh", info.realm, grade);
+      if (info.element) give(`bm_${info.element}`, info.realm, grade);
+    } else if (kind === "charm" && info.element) {
+      give(`pb_${info.element}`, info.realm, grade);
     }
   }
-  return SKILLS.filter((s) => ids.has(s.id) && KNOWN.has(s.id)).map((s) => s.id);
+  return SKILLS.filter((s) => best.has(s.id)).map((s) => best.get(s.id)!);
+}
+
+/** Just the ids of gearSkillInfo. */
+export function gearSkillIds(worn: readonly WornPiece[]): string[] {
+  return gearSkillInfo(worn).map((g) => g.id);
 }

@@ -1,3 +1,4 @@
+import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
 import type { ConstitutionCatalog } from "./constitutions";
@@ -69,17 +70,22 @@ export type ClientMessage =
   /** Repair one worn piece, or all of them, for Linh Thạch. */
   | { t: "eq_repair"; slot: EquipSlot | "all" }
   /** Use a skill. `target` is the monster to hit (attack skills; omitted: the current target). Heals and buffs need none. */
-  | { t: "cast"; skill: string; target?: string; x?: number; y?: number }
+  | { t: "cast"; skill: string; target?: string; x?: number; y?: number; el?: SpiritualRoot }
   /** Set one hotbar slot: "" (empty), "s:<skill id>" or "i:<item type>". One slot per message, one D1 write. */
   | { t: "hotbar_set"; slot: number; v: string }
   /** Use the first stack of an item type in the bag (hotbar potion slots); the server picks the stack, the client never names an item id. */
-  | { t: "use_type"; type: string };
+  | { t: "use_type"; type: string }
+  /** Spend one Ngộ Đạo Đan on a skill to raise its mastery. */
+  | { t: "skill_boost"; skill: string };
 
 /** One running effect on the character for the buff bar: id is "s:<skill>" (a buff skill) or "i:<item type>" (a potion that works over time); `ms` is the time left. */
 export interface EffectView {
   id: string;
   ms: number;
 }
+
+/** Mastery of the skills that have it (root, learned, sect): level index and points towards the next level. */
+export type SkillStateView = Record<string, { lv: number; xp: number }>;
 
 /** A mail as the client sees it. `expiresInMs` is relative to when it was sent (null: never expires), so clock skew does not matter. */
 export interface MailView {
@@ -122,7 +128,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[] }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
@@ -151,9 +157,11 @@ export type ServerMessage =
   | { t: "loot"; items: Array<{ type: string; qty: number; mailed: boolean }> }
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
-  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
+  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
+  /** Mastery of one skill changed (`up`: it reached a new level). */
+  | { t: "skill_state"; id: string; lv: number; xp: number; up?: boolean }
   | { t: "hotbar"; slots: string[] }
   /** MP right now. It then regenerates by `perSec` (fraction of max) per second after `regenInMs` (nothing before that). */
   | { t: "mp"; mp: number; maxMp: number; regenInMs: number; perSec: number }
@@ -248,15 +256,25 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999
         ? { t: "inv_split", tab: m.tab, cell: m.cell, qty: m.qty }
         : null;
-    case "cast":
+    case "cast": {
       if (typeof m.skill !== "string" || !/^[a-z0-9_]{1,32}$/.test(m.skill)) return null;
+      // An attack skill without a fixed element says which of the character's elements to use.
+      if (m.el !== undefined) {
+        if (typeof m.el !== "string" || !(SPIRITUAL_ROOTS as readonly string[]).includes(m.el)) return null;
+        const el = m.el as SpiritualRoot;
+        if (m.target === undefined) return { t: "cast", skill: m.skill, el };
+        return isMonsterId(m.target) ? { t: "cast", skill: m.skill, target: m.target, el } : null;
+      }
       if (m.x !== undefined || m.y !== undefined) return isCoord(m.x) && isCoord(m.y) ? { t: "cast", skill: m.skill, x: m.x, y: m.y } : null; // a teleport names a point
       if (m.target === undefined) return { t: "cast", skill: m.skill };
       return isMonsterId(m.target) ? { t: "cast", skill: m.skill, target: m.target } : null;
+    }
     case "hotbar_set":
       return isInt(m.slot) && m.slot >= 0 && m.slot < HOTBAR_SLOTS && typeof m.v === "string" && HOTBAR_SLOT_PATTERN.test(m.v) ? { t: "hotbar_set", slot: m.slot, v: m.v } : null;
     case "use_type":
       return typeof m.type === "string" && /^[a-z0-9_.]{1,60}$/.test(m.type) ? { t: "use_type", type: m.type } : null;
+    case "skill_boost":
+      return typeof m.skill === "string" && /^[a-z0-9_]{1,32}$/.test(m.skill) ? { t: "skill_boost", skill: m.skill } : null;
     case "eq_equip": {
       if (!isInt(m.tab) || !isInt(m.cell) || !cellOk(m.tab, m.cell)) return null;
       if (m.slot === undefined) return { t: "eq_equip", tab: m.tab, cell: m.cell };

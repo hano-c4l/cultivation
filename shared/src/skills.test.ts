@@ -1,39 +1,132 @@
 import { describe, expect, it } from "vitest";
 import { getItemDef, isItemId } from "./items";
 import { parseClientMessage } from "./protocol";
-import { BOOK_SKILLS, HOTBAR_SLOTS, SKILLS, availableSkills, bookItemId, canLearn, emptyHotbar, getSkill, isBasicUnlocked, parseHotbar, rollBookDrop } from "./skills";
+import {
+  ATTACK_TEMPLATES,
+  BOOK_SKILLS,
+  DIVINE_GRADE,
+  HOTBAR_SLOTS,
+  MASTERY_NEEDED,
+  SKILLS,
+  addMastery,
+  availableSkills,
+  bookItemId,
+  canLearn,
+  effectiveSkill,
+  emptyHotbar,
+  getSkill,
+  maxSkillLevel,
+  parseHotbar,
+  parseSkillSlot,
+  rollBookDrop,
+  rollRealmSkills,
+  skillGrade,
+} from "./skills";
 
-describe("skill unlocks", () => {
-  it("basic skills unlock by level; element skills only for the matching root", () => {
-    expect(availableSkills(["hoa"], 0, 1, [])).toEqual(["hoa_1", "hoi_khi"]);
-    expect(availableSkills(["kim"], 0, 1, [])).toEqual(["kim_1", "hoi_khi"]);
-    expect(availableSkills(["hoa"], 0, 3, [])).toContain("linh_thuan");
-    expect(availableSkills(["hoa"], 0, 5, [])).toEqual(["hoa_1", "hoa_2", "hoi_khi", "linh_thuan"]);
-    expect(availableSkills(["hoa"], 1, 1, [])).toContain("hoa_2"); // a higher realm keeps earlier unlocks
+/** A deterministic "random" source that walks through the given numbers. */
+const seq = (...nums: number[]) => {
+  let i = 0;
+  return () => nums[i++ % nums.length]!;
+};
+
+describe("skills a character was given", () => {
+  it("availableSkills lists only what was granted, plus the worn gear skills, in list order", () => {
+    expect(availableSkills([])).toEqual([]);
+    expect(availableSkills(["tram_0", "hoi_0"])).toEqual(["tram_0", "hoi_0"]);
+    expect(availableSkills(["not_a_skill"])).toEqual([]);
+    expect(availableSkills(["chuong_0"], ["pt_thuan_di"])).toEqual(["chuong_0", "pt_thuan_di"]);
+    // A gear skill is never granted by having its id on the list.
+    expect(availableSkills(["pt_thuan_di"])).toEqual([]);
   });
 
-  it("book skills are never unlocked by level, only by having learned them", () => {
-    for (const s of BOOK_SKILLS) expect(isBasicUnlocked(s, ["kim"], 3, 9)).toBe(false);
-    expect(availableSkills(["hoa"], 0, 1, ["hoa_3"])).toContain("hoa_3");
-    expect(availableSkills(["hoa"], 0, 1, ["not_a_skill"])).toEqual(["hoa_1", "hoi_khi"]);
+  it("a realm gives one attack and a different second skill, the same template never twice", () => {
+    for (let n = 0; n < 200; n++) {
+      let k = n;
+      const rand = () => ((k = (k * 16807 + 11) % 2147483647) / 2147483647);
+      const [first, second] = rollRealmSkills(1, rand);
+      expect(getSkill(first!)!.kind).toBe("attack");
+      expect(first!.endsWith("_1") && second!.endsWith("_1")).toBe(true);
+      expect(first!.split("_")[0]).not.toBe(second!.split("_")[0]);
+      expect(getSkill(second!)).toBeDefined();
+    }
+    expect(rollRealmSkills(0, seq(0, 0))).toEqual(["chuong_0", "tram_0"]);
+    expect(rollRealmSkills(2, seq(0.99, 0.99))).toEqual([`${ATTACK_TEMPLATES[ATTACK_TEMPLATES.length - 1]!.id}_2`, "bd_mang_2"]);
+  });
+
+  it("root skills are not tied to an element: attacks pick it on the hotbar, the others have none", () => {
+    for (const s of SKILLS.filter((x) => x.source === "root")) {
+      expect(s.element).toBeNull();
+      expect(!!s.flex).toBe(s.kind === "attack");
+    }
   });
 
   it("a book can be learned from its level on", () => {
     const s = getSkill("ngu_kiem_tram")!;
     expect(canLearn(s, 0, 6)).toBe(false);
     expect(canLearn(s, 0, 7)).toBe(true);
-    expect(canLearn(getSkill("hoi_khi")!, 3, 9)).toBe(false); // not a book skill
+    expect(canLearn(getSkill("chuong_0")!, 3, 9)).toBe(false); // not a book skill
   });
 
   it("every skill has sane numbers", () => {
     for (const s of SKILLS) {
-      expect(s.mpCost, s.id).toBeGreaterThan(0);
-      expect(s.cooldownMs, s.id).toBeGreaterThanOrEqual(1000);
+      if (s.kind !== "passive") expect(s.mpCost, s.id).toBeGreaterThan(0);
+      if (s.kind === "passive") expect(s.passive, s.id).toBeDefined();
       if (s.kind !== "teleport") expect(s.power, s.id).toBeGreaterThan(0);
       if (s.kind === "teleport") expect(s.range, s.id).toBeGreaterThan(0);
       if (s.kind === "attack") expect(s.range, s.id).toBeGreaterThan(0);
       if (s.kind === "buff") expect(s.buff, s.id).toBeDefined();
+      if (s.kind !== "passive") expect(s.cooldownMs, s.id).toBeGreaterThanOrEqual(1000);
     }
+  });
+});
+
+describe("realm, grade and mastery make a skill stronger", () => {
+  const attack = getSkill("tram_0")!;
+  it("a higher realm, a higher grade and a higher level each raise the power, and never lower it", () => {
+    const base = effectiveSkill(attack, { realm: 0, grade: 0, level: 0 });
+    expect(base.power).toBeCloseTo(attack.power);
+    expect(effectiveSkill(attack, { realm: 1, grade: 0, level: 0 }).power).toBeGreaterThan(base.power);
+    expect(effectiveSkill(attack, { realm: 0, grade: 3, level: 0 }).power).toBeGreaterThan(effectiveSkill(attack, { realm: 0, grade: 1, level: 0 }).power);
+    expect(effectiveSkill(attack, { realm: 0, grade: 0, level: 2 }).power).toBeGreaterThan(effectiveSkill(attack, { realm: 0, grade: 0, level: 1 }).power);
+    expect(effectiveSkill(attack, { realm: 1, grade: 0, level: 0 }).mpCost).toBeGreaterThan(base.mpCost);
+  });
+
+  it("heals and buffs are capped, and the late levels shorten the cooldown", () => {
+    const heal = getSkill("hoi_0")!;
+    expect(effectiveSkill(heal, { realm: 3, grade: 4, level: 4 }).power).toBeLessThanOrEqual(0.9);
+    const dodge = getSkill("phong_bo_0")!;
+    expect(effectiveSkill(dodge, { realm: 3, grade: 4, level: 4 }).power).toBeLessThanOrEqual(0.5);
+    const early = effectiveSkill(attack, { realm: 0, grade: 4, level: 0 }).cooldownMs;
+    expect(effectiveSkill(attack, { realm: 0, grade: 4, level: 3 }).cooldownMs).toBeLessThan(early);
+    expect(effectiveSkill(attack, { realm: 0, grade: 4, level: 4 }).cooldownMs).toBeLessThan(effectiveSkill(attack, { realm: 0, grade: 4, level: 3 }).cooldownMs);
+  });
+
+  it("a level above the grade's top is treated as the top one", () => {
+    const top = maxSkillLevel(0);
+    expect(effectiveSkill(attack, { realm: 0, grade: 0, level: 9 })).toEqual(effectiveSkill(attack, { realm: 0, grade: 0, level: top }));
+  });
+
+  it("which grade a skill is used at: the character's for root skills, its own for learned ones, the piece's for gear", () => {
+    expect(skillGrade(getSkill("chuong_0")!, 4)).toBe(4);
+    expect(skillGrade(getSkill("ngu_kiem_tram")!, 4)).toBe(2);
+    expect(skillGrade(getSkill("pt_thuan_di")!, 4, 1)).toBe(1);
+  });
+});
+
+describe("mastery", () => {
+  it("one level takes the points MASTERY_NEEDED says, and extra points carry over", () => {
+    expect(addMastery(0, 0, 1, 0)).toEqual({ level: 0, mastery: 1, up: false });
+    expect(addMastery(0, MASTERY_NEEDED[0]! - 1, 1, 0)).toEqual({ level: 1, mastery: 0, up: true });
+    expect(addMastery(0, 0, MASTERY_NEEDED[0]! + 7, 0)).toEqual({ level: 1, mastery: 7, up: true });
+    expect(addMastery(0, 0, MASTERY_NEEDED[0]! + MASTERY_NEEDED[1]! + 3, 0)).toEqual({ level: 2, mastery: 3, up: true });
+  });
+
+  it("thần thông is only open to the high grades; below it viên mãn is the top and points stop", () => {
+    expect(maxSkillLevel(DIVINE_GRADE - 1)).toBe(3);
+    expect(maxSkillLevel(DIVINE_GRADE)).toBe(4);
+    expect(addMastery(3, MASTERY_NEEDED[3]! - 1, 5, DIVINE_GRADE - 1)).toEqual({ level: 3, mastery: 0, up: false });
+    expect(addMastery(3, MASTERY_NEEDED[3]! - 1, 1, DIVINE_GRADE)).toEqual({ level: 4, mastery: 0, up: true });
+    expect(addMastery(4, 0, 50, DIVINE_GRADE)).toEqual({ level: 4, mastery: 0, up: false });
   });
 });
 
@@ -63,24 +156,38 @@ describe("bí tịch items", () => {
 describe("hotbar", () => {
   it("parses a stored bar and falls back to an empty one for anything else", () => {
     const bar = emptyHotbar();
-    bar[0] = "s:hoa_1";
+    bar[0] = "s:chuong_0:kim";
     bar[7] = "i:hoi_huyet_dan";
     expect(parseHotbar(JSON.stringify(bar))).toEqual(bar);
     expect(parseHotbar("[]")).toEqual(emptyHotbar());
     expect(parseHotbar("garbage")).toEqual(emptyHotbar());
     expect(parseHotbar(JSON.stringify([...bar.slice(1), "x:bad"]))).toEqual(emptyHotbar());
     expect(parseHotbar(null)).toEqual(emptyHotbar());
+    // A slot holding a skill that no longer exists (the old kim_1 and friends) is cleared, the rest stays.
+    const old = emptyHotbar();
+    old[0] = "s:kim_1";
+    old[1] = "s:tram_0:hoa";
+    expect(parseHotbar(JSON.stringify(old))).toEqual(["", "s:tram_0:hoa", "", "", "", "", "", ""]);
+    expect(parseSkillSlot("s:tram_0:hoa")).toEqual({ id: "tram_0", element: "hoa" });
+    expect(parseSkillSlot("s:tram_0")).toEqual({ id: "tram_0", element: null });
+    expect(parseSkillSlot("s:tram_0:xyz")).toEqual({ id: "tram_0", element: null });
+    expect(parseSkillSlot("i:hoi_huyet_dan")).toBeNull();
     expect(emptyHotbar()).toHaveLength(HOTBAR_SLOTS);
   });
 });
 
 describe("protocol messages", () => {
   it("cast, hotbar_set and use_type are validated", () => {
-    expect(parseClientMessage('{"t":"cast","skill":"hoa_1"}')).toEqual({ t: "cast", skill: "hoa_1" });
-    expect(parseClientMessage('{"t":"cast","skill":"hoa_1","target":"m3"}')).toEqual({ t: "cast", skill: "hoa_1", target: "m3" });
+    expect(parseClientMessage('{"t":"cast","skill":"chuong_0"}')).toEqual({ t: "cast", skill: "chuong_0" });
+    expect(parseClientMessage('{"t":"cast","skill":"chuong_0","target":"m3"}')).toEqual({ t: "cast", skill: "chuong_0", target: "m3" });
     expect(parseClientMessage('{"t":"cast","skill":"Hoa 1"}')).toBeNull();
-    expect(parseClientMessage('{"t":"cast","skill":"hoa_1","target":"../x"}')).toBeNull();
-    expect(parseClientMessage('{"t":"hotbar_set","slot":2,"v":"s:hoa_1"}')).toEqual({ t: "hotbar_set", slot: 2, v: "s:hoa_1" });
+    expect(parseClientMessage('{"t":"cast","skill":"chuong_0","el":"kim"}')).toEqual({ t: "cast", skill: "chuong_0", el: "kim" });
+    expect(parseClientMessage('{"t":"cast","skill":"chuong_0","target":"m3","el":"hoa"}')).toEqual({ t: "cast", skill: "chuong_0", target: "m3", el: "hoa" });
+    expect(parseClientMessage('{"t":"cast","skill":"chuong_0","el":"lei"}')).toBeNull();
+    expect(parseClientMessage('{"t":"skill_boost","skill":"chuong_0"}')).toEqual({ t: "skill_boost", skill: "chuong_0" });
+    expect(parseClientMessage('{"t":"skill_boost","skill":"A B"}')).toBeNull();
+    expect(parseClientMessage('{"t":"cast","skill":"chuong_0","target":"../x"}')).toBeNull();
+    expect(parseClientMessage('{"t":"hotbar_set","slot":2,"v":"s:chuong_0"}')).toEqual({ t: "hotbar_set", slot: 2, v: "s:chuong_0" });
     expect(parseClientMessage('{"t":"hotbar_set","slot":2,"v":""}')).toEqual({ t: "hotbar_set", slot: 2, v: "" });
     expect(parseClientMessage('{"t":"hotbar_set","slot":8,"v":""}')).toBeNull();
     expect(parseClientMessage('{"t":"hotbar_set","slot":0,"v":"x:y"}')).toBeNull();
