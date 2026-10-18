@@ -518,11 +518,17 @@ export class CombatSim {
     this.recompute(p, true);
   }
 
-  /** A breakthrough failed: `lost` EXP comes off the working copy (and is written absolutely with the next save). */
-  applyBreakthroughLoss(id: string, lost: number): void {
+  /** A breakthrough started: the EXP overflow is used up (already written to D1 by the start batch). */
+  applyBreakthroughStart(id: string, capExp: number): void {
+    const p = this.players.get(id);
+    if (p) p.exp = Math.min(p.exp, capExp);
+  }
+
+  /** A breakthrough failed: the working copy is cut to `capExp`, then `lost` EXP comes off (written absolutely with the next save). */
+  applyBreakthroughLoss(id: string, lost: number, capExp: number): void {
     const p = this.players.get(id);
     if (!p) return;
-    p.exp = Math.max(0, p.exp - lost);
+    p.exp = Math.max(0, Math.min(p.exp, capExp) - lost);
     p.expDirty = true;
   }
 

@@ -5,7 +5,7 @@ import {
   checkBreakthroughReady,
   getBreakthrough,
   getItemDef,
-  hasOverflowBonus,
+  overflowBonus,
   overflowExp,
   STAT_DEFS,
   clampConstitutionTier,
@@ -119,7 +119,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     fill.style.width = `${Math.min(100, (s.exp / need) * 100)}%`;
     bar.append(fill);
     const over = overflowExp(s.realm, s.stage, s.exp);
-    const overText = over > 0 ? ` · ${vi.breakthrough.overflow(Math.round((over / need) * 100))}${hasOverflowBonus(s.realm, s.stage, s.exp) ? ` (${vi.breakthrough.overflowBonus})` : ""}` : "";
+    const overText = over > 0 ? ` · ${vi.breakthrough.overflow(Math.round((over / need) * 100))}${overflowBonus(s.realm, s.stage, s.exp) > 0 ? ` (${vi.breakthrough.overflowBonus(overflowBonus(s.realm, s.stage, s.exp))})` : ""}` : "";
     const expLine = el("div", "cp-exp", (atCap && s.realm < REALMS.length - 1 ? vi.character.atStageCap(Math.min(s.exp, need), need) : `${vi.character.exp}: ${s.exp} / ${need}`) + overText);
 
     const points = el("div", "cp-points", `${vi.character.points}: ${left}`);
@@ -212,7 +212,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     const pillName = getItemDef(def.pill)?.nameVi ?? def.pill;
     const have = deps.countOf(def.pill);
     chosenPills = Math.min(Math.max(chosenPills, 1), def.maxPills);
-    const overflow = ready.ok ? ready.overflow : false;
+    const bonus = ready.ok ? ready.overflowBonus : 0;
     if (!ready.ok) box.append(el("div", "cp-bt-line", vi.breakthrough.needFull));
     box.append(el("div", "cp-bt-line", vi.breakthrough.pills(pillName, have)));
     const row = el("div", "cp-row");
@@ -231,9 +231,10 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     row.append(el("span", "cp-name", vi.breakthrough.use), minus, el("span", "cp-val", String(chosenPills)), plus);
     box.append(
       row,
-      el("div", "cp-bt-line", vi.breakthrough.rate(breakthroughRate(def, chosenPills, overflow))),
+      el("div", "cp-bt-line", vi.breakthrough.rate(breakthroughRate(def, chosenPills, bonus))),
       el("div", "cp-bt-line", vi.breakthrough.cost(def.cost)),
       el("div", "cp-bt-line", vi.breakthrough.time(Math.round(def.durationMs / 1000))),
+      el("div", "cp-bt-line", vi.breakthrough.overflowHint),
       el("div", "cp-bt-warn", vi.breakthrough.warn),
     );
     const start = el("button", "cp-confirm", vi.breakthrough.start);

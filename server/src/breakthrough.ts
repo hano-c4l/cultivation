@@ -33,12 +33,15 @@ export function planTakePills(items: readonly BagItem[], type: string, count: nu
   return ops;
 }
 
-/** Statements that start a breakthrough: the pills leave the bag and the start time is stored, only if the row is still at stage 9 of `realm` with none running. */
-export function startStatements(db: D1Database, characterId: string, realm: number, ops: readonly BagOp[], startedAt: number): D1PreparedStatement[] {
+/**
+ * Statements that start a breakthrough: the pills leave the bag, the EXP overflow is used up (EXP is cut to `capExp`) and the start
+ * time is stored, only if the row is still at stage 9 of `realm` with none running.
+ */
+export function startStatements(db: D1Database, characterId: string, realm: number, ops: readonly BagOp[], startedAt: number, capExp: number): D1PreparedStatement[] {
   return [
     guard(db, "id = ? AND realm = ? AND stage = ? AND bt_started_at IS NULL", characterId, realm, STAGES_PER_REALM),
     ...ops.flatMap((op) => opStatements(db, characterId, op, startedAt)),
-    db.prepare("UPDATE characters SET bt_started_at = ?, updated_at = ? WHERE id = ?").bind(startedAt, startedAt, characterId),
+    db.prepare("UPDATE characters SET bt_started_at = ?, exp = MIN(exp, ?), updated_at = ? WHERE id = ?").bind(startedAt, capExp, startedAt, characterId),
   ];
 }
 
@@ -58,12 +61,12 @@ export async function commitBreakthroughSuccess(db: D1Database, characterId: str
   }
 }
 
-/** Failure: `expLost` comes off the EXP (never below 0) and the marker is cleared. */
-export async function commitBreakthroughFailure(db: D1Database, characterId: string, startedAt: number, expLost: number): Promise<"ok" | "stale"> {
+/** Failure: the EXP is cut to `capExp` (any overflow gone), then `expLost` comes off (never below 0) and the marker is cleared. */
+export async function commitBreakthroughFailure(db: D1Database, characterId: string, startedAt: number, expLost: number, capExp: number): Promise<"ok" | "stale"> {
   try {
     await db.batch([
       guard(db, "id = ? AND bt_started_at = ?", characterId, startedAt),
-      db.prepare("UPDATE characters SET exp = MAX(0, exp - ?), bt_started_at = NULL, updated_at = ? WHERE id = ? AND bt_started_at = ?").bind(expLost, Date.now(), characterId, startedAt),
+      db.prepare("UPDATE characters SET exp = MAX(0, MIN(exp, ?) - ?), bt_started_at = NULL, updated_at = ? WHERE id = ? AND bt_started_at = ?").bind(capExp, expLost, Date.now(), characterId, startedAt),
     ]);
     return "ok";
   } catch (err) {
