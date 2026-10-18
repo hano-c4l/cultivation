@@ -1,6 +1,7 @@
 import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type WearerCtx } from "@game/shared";
 import { describeItem, elementDot, itemTierTag } from "./equip-text";
 import { vi } from "./locales/vi";
+import { wearerOfSheet } from "./wearer";
 import { registerWindow } from "./window-manager";
 
 export interface InventoryUi {
@@ -209,7 +210,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
     }
     const def = getItemDef(item.type);
     const sel = selected;
-    box.append(describeItem(item.type, { dur: item.dur, max: item.max, qty: item.qty, lv: item.lv, xp: item.xp }));
+    box.append(describeItem(item.type, { dur: item.dur, max: item.max, qty: item.qty, lv: item.lv, xp: item.xp, wearer: wearer ?? undefined }));
     if (moveMode) box.append(el("div", "muted", vi.inventory.swapHint));
     if (splitQty !== null && item.qty > 1) {
       box.append(renderSplit(item, sel));
@@ -268,7 +269,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
     if (def?.equip) {
       for (const w of worn.filter((e) => equipmentInfo(e.type)?.kind === def.equip!.kind)) {
         const cmp = el("div", "bag-compare");
-        cmp.append(el("div", "muted", `${vi.inventory.wornNow}:`), describeItem(w.type, { dur: w.dur, max: w.max, lv: w.lv, xp: w.xp }));
+        cmp.append(el("div", "muted", `${vi.inventory.wornNow}:`), describeItem(w.type, { dur: w.dur, max: w.max, lv: w.lv, xp: w.xp, wearer: wearer ?? undefined }));
         box.append(cmp);
       }
     }
@@ -494,7 +495,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
       return started;
     },
     setSheet(sheet) {
-      wearer = { gender: sheet.gender, realm: sheet.realm, stage: sheet.stage, base: sheet.base };
+      wearer = wearerOfSheet(sheet);
       render();
     },
     setEquipped(items) {

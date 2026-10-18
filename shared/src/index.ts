@@ -12,6 +12,7 @@ export * from "./gender";
 export * from "./equipment-data";
 export * from "./equipment";
 export * from "./skills";
+export * from "./vitals";
 export * from "./progression-data";
 export * from "./progression";
 export * from "./constitutions";

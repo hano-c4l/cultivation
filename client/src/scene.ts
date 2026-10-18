@@ -1,6 +1,8 @@
 import Phaser from "phaser";
 import {
   equipmentInfo,
+  MP_REGEN_PER_S,
+  REGEN_PER_S,
   getItemDef,
   getSkill,
   refineLevelOf,
@@ -355,7 +357,7 @@ export class GameScene extends Phaser.Scene {
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
-        this.vitals.set(msg.hp, msg.maxHp);
+        this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
         this.vitals.setWallet(msg.wallet);
         this.inventory.setBag(msg.bag);
         this.equipment.setEquipped(msg.equipped);
@@ -368,7 +370,8 @@ export class GameScene extends Phaser.Scene {
         this.skillsUi.setSkills(msg.skills);
         this.hotbar.setSkills(msg.skills);
         this.hotbar.setSlots(msg.hotbar);
-        this.vitals.setMp(msg.mp, msg.maxMp, 0, 0.02);
+        this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, MP_REGEN_PER_S);
+        for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
         this.refreshHud();
         break;
       case "mon":

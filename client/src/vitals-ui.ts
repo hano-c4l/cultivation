@@ -2,7 +2,8 @@ import { CURRENCIES, EMPTY_WALLET, type Currency, type Wallet } from "@game/shar
 import { vi } from "./locales/vi";
 
 export interface VitalsUi {
-  set(hp: number, maxHp: number): void;
+  /** HP now. With `regen`, it keeps regenerating by itself (the server sends no HP updates while the character is in town). */
+  set(hp: number, maxHp: number, regen?: { inMs: number; perSec: number }): void;
   /** MP now; it then regenerates by `perSec` (a fraction of max) per second once `regenInMs` has passed. */
   setMp(mp: number, maxMp: number, regenInMs: number, perSec: number): void;
   /** MP at this moment (the stored value plus the regeneration since). */
@@ -39,6 +40,16 @@ export function initVitals(): VitalsUi {
     mpFill.style.width = `${mpState.max > 0 ? Math.max(0, Math.min(100, (v / mpState.max) * 100)) : 0}%`;
   };
   setInterval(drawMp, 500);
+  let hpState: { hp: number; max: number; regenAt: number; perSec: number } | null = null;
+  const drawHp = () => {
+    if (!hpState) return;
+    const { hp, max, regenAt, perSec } = hpState;
+    const elapsed = Date.now() - regenAt;
+    const v = hp >= max || elapsed <= 0 ? hp : Math.min(max, hp + Math.floor((elapsed / 1000) * Math.max(1, max * perSec)));
+    text.textContent = `${vi.combat.hp}: ${v} / ${max}`;
+    fill.style.width = `${max > 0 ? Math.max(0, Math.min(100, (v / max) * 100)) : 0}%`;
+  };
+  setInterval(drawHp, 500);
   const balances: Wallet = { ...EMPTY_WALLET };
   const render = () => {
     walletBox.hidden = false;
@@ -55,8 +66,10 @@ export function initVitals(): VitalsUi {
     );
   };
   return {
-    set(hp, maxHp) {
+    set(hp, maxHp, regen) {
       root.hidden = false;
+      // A later plain update (the server drives HP in a fight) turns the local regeneration off.
+      hpState = regen ? { hp, max: maxHp, regenAt: Date.now() + regen.inMs, perSec: regen.perSec } : null;
       text.textContent = `${vi.combat.hp}: ${hp} / ${maxHp}`;
       fill.style.width = `${maxHp > 0 ? Math.max(0, Math.min(100, (hp / maxHp) * 100)) : 0}%`;
     },

@@ -14,6 +14,13 @@ import {
   MP_REGEN_PER_S,
   POTION_COOLDOWN_MS,
   HOTBAR_SLOTS,
+  constitutionEffects,
+  gearAffinity,
+  parseVitals,
+  restoreVitals,
+  MP_REGEN_DELAY_MS,
+  REGEN_DELAY_MS,
+  type ConstitutionCatalog,
   availableSkills,
   canLearn,
   getSkill,
@@ -156,6 +163,11 @@ function round2(v: number): number {
 const CAST_MIN_GAP_MS = 150;
 const HOTBAR_MIN_GAP_MS = 300;
 
+/** A comparable form of stored vitals without their timestamp: equal keys mean nothing changed worth a write. */
+function vitalsKey(v: { hp: number; mp: number; cd?: Record<string, number>; buffs?: unknown[] } | null): string {
+  return v === null ? "null" : `${v.hp}|${v.mp}|${JSON.stringify(v.cd ?? {})}|${JSON.stringify(v.buffs ?? [])}`;
+}
+
 /** Moves are saved at most this often per room, so D1 writes stay low and the room can still hibernate. */
 const SAVE_DEBOUNCE_MS = 10_000;
 
@@ -164,8 +176,9 @@ function baseOf(row: CharacterRow): BaseStats {
 }
 
 /** Who is wearing the gear: requirements are judged against the character without it. */
-function wearerOfRow(row: CharacterRow): WearerCtx {
-  return { gender: row.gender, realm: row.realm, stage: row.stage, base: baseOf(row) };
+function wearerOfRow(row: CharacterRow, catalog?: ConstitutionCatalog): WearerCtx {
+  const affinity = catalog ? gearAffinity(row.spiritual_root, constitutionEffects(catalog, row.constitution, row.constitution_tier)) : undefined;
+  return { gender: row.gender, realm: row.realm, stage: row.stage, base: baseOf(row), affinity };
 }
 
 /** Weapon family of the worn weapon, or null (no weapon, a broken one, or one without a family). */
@@ -174,9 +187,13 @@ function weaponFamily(equipped: readonly { slot: string; type: string; dur?: num
   return w && (w.dur === undefined || w.dur > 0) ? (equipmentInfo(w.type)?.weaponType ?? null) : null;
 }
 
-function seedOf(row: CharacterRow, bag?: BagState, learned?: readonly string[]): ProfileSeed {
+function seedOf(row: CharacterRow, bag: BagState | undefined, learned: readonly string[] | undefined, catalog: ConstitutionCatalog): ProfileSeed {
+  const effects = constitutionEffects(catalog, row.constitution, row.constitution_tier);
   return {
-    gear: bag ? equipmentBonus(bag.equipped, wearerOfRow(row)) : undefined,
+    effects,
+    affinity: gearAffinity(row.spiritual_root, effects),
+    vitals: parseVitals(row.vitals),
+    gear: bag ? equipmentBonus(bag.equipped, wearerOfRow(row, catalog)) : undefined,
     weapon: bag ? weaponFamily(bag.equipped) : null,
     learned,
     gender: row.gender,
@@ -236,6 +253,8 @@ export class MapRoom extends DurableObject<Env> {
   /** Skills learned from bí tịch and the hotbar of each character in this room, read on join (and after a sleep). */
   private learnedSkills = new Map<string, string[]>();
   private hotbars = new Map<string, string[]>();
+  /** Per character: the vitals as last written to D1 (without the timestamp), so an unchanged state is not written again. */
+  private vitalKeys = new Map<string, string>();
   private pauses = 0;
   private wakes = 0;
   private tickStat = { count: 0, totalMs: 0, maxMs: 0, maxDriftMs: 0, skipped: 0 };
@@ -371,9 +390,14 @@ export class MapRoom extends DurableObject<Env> {
       // Includes the joining player so the client gets its own authoritative snapshot.
       const players = this.players().map((p) => this.snapshot(p));
       const sim = this.sim;
-      const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow, learned))) : undefined;
+      const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow, learned, constitutions))) : undefined;
       if (sim) this.startTick();
-      const maxHp = profile?.maxHp ?? deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row))).maxHp;
+      const derived = deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row, constitutions)));
+      const maxHp = profile?.maxHp ?? derived.maxHp;
+      // In town there is no profile: what the character left the fight with still counts (and keeps regenerating from now on).
+      const storedVitals = parseVitals(row.vitals);
+      const away = restoreVitals(storedVitals, Date.now(), derived.maxHp, derived.maxMp);
+      this.vitalKeys.set(row.id, vitalsKey(storedVitals));
       this.send(server, {
         t: "welcome",
         self: state.id,
@@ -382,7 +406,7 @@ export class MapRoom extends DurableObject<Env> {
         colo,
         character: toCharacterSheet(row),
         monsters: sim?.snapshots(Date.now()) ?? [],
-        hp: profile?.hp ?? maxHp,
+        hp: profile?.hp ?? away.hp,
         maxHp,
         wallet,
         bag: { tabs: bagNow.tabs, items: bagNow.items },
@@ -391,8 +415,10 @@ export class MapRoom extends DurableObject<Env> {
         equipped: bagNow.equipped,
         skills: profile && sim ? sim.skillsOf(profile) : availableSkills(row.spiritual_root, row.realm, row.stage, learned),
         hotbar,
-        mp: profile && sim ? sim.currentMp(profile, Date.now()) : deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row))).maxMp,
-        maxMp: profile?.maxMp ?? deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row))).maxMp,
+        cd: profile && sim ? sim.cooldownsLeft(profile, Date.now()) : Object.fromEntries(Object.entries(away.cooldowns).map(([k, t]) => [k, t - Date.now()])),
+        mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
+        maxMp: profile?.maxMp ?? derived.maxMp,
+        regenInMs: profile ? Math.max(0, profile.lastHurtAt + Math.max(REGEN_DELAY_MS, MP_REGEN_DELAY_MS) - Date.now()) : 0,
       });
       if (removedAtJoin.length > 0) this.send(server, { t: "eq_removed", items: removedAtJoin.map((r) => ({ type: r.item.type, reason: r.reason, mailed: r.mailed })) });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
@@ -518,7 +544,7 @@ export class MapRoom extends DurableObject<Env> {
     ws.serializeAttachment(state);
     const progress = this.sim?.beginFlush(state.id) ?? undefined;
     try {
-      await saveCharacterPosition(this.env.DB, state.id, toMap, x, y, progress);
+      await saveCharacterPosition(this.env.DB, state.id, toMap, x, y, progress, this.vitalsJson(state.id));
     } catch (err) {
       console.error("handoff save failed", state.id, err);
       if (progress) this.sim?.endFlush(state.id, progress, false);
@@ -623,13 +649,26 @@ export class MapRoom extends DurableObject<Env> {
     await this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(state.id)).release(state.claimId);
   }
 
+  /** HP/MP/cooldowns/buffs of a character as the JSON stored with the position (null: fresh, undefined: nothing to store). */
+  private vitalsJson(id: string): string | null | undefined {
+    const v = this.sim?.snapshotVitals(id, Date.now());
+    if (v !== undefined) this.vitalKeys.set(id, vitalsKey(v)); // the caller writes it with the position
+    return v === undefined || v === null ? v : JSON.stringify(v);
+  }
+
+  /** Whether the vitals of a character differ from what is in D1 (so a pause is worth a write). */
+  private vitalsChanged(id: string): boolean {
+    const v = this.sim?.snapshotVitals(id, Date.now());
+    return v !== undefined && vitalsKey(v) !== this.vitalKeys.get(id);
+  }
+
   /** Persists the current tile and any unwritten progression. Failures are logged; the next save or disconnect retries. */
   private async save(state: PlayerState): Promise<void> {
     if (state.transferring) return; // the handoff owns the row until it completes
     const pos = positionAlongPath(state.path, Date.now() - state.startedAt, state.speed);
     const progress = this.sim?.beginFlush(state.id) ?? undefined;
     try {
-      await saveCharacterPosition(this.env.DB, state.id, state.mapId, round2(pos.x), round2(pos.y), progress);
+      await saveCharacterPosition(this.env.DB, state.id, state.mapId, round2(pos.x), round2(pos.y), progress, this.vitalsJson(state.id));
       if (progress) this.sim?.endFlush(state.id, progress, true);
     } catch (err) {
       console.error("save failed", state.id, err);
@@ -678,7 +717,8 @@ export class MapRoom extends DurableObject<Env> {
         // The worn gear counts too, so the bag is read for every player the sim lost.
         const bag = await this.getBag(row.id).catch(() => undefined);
         const learned = await this.getLearned(row.id).catch(() => []);
-        sim.addPlayer(seedOf(row, bag, learned));
+        const catalog = await getConstitutionCatalog(this.env.DB).catch(() => DEFAULT_CATALOG);
+        sim.addPlayer(seedOf(row, bag, learned, catalog));
       }
     } catch (err) {
       this.sim = null; // the next move or attack retries the whole rebuild
@@ -697,8 +737,19 @@ export class MapRoom extends DurableObject<Env> {
     this.pauses++;
     const ranks = sim.ranks();
     const json = JSON.stringify(ranks);
+    // HP/MP/cooldowns live in memory; once the tick stops the object may sleep, so everybody's are written first.
+    // alarm() writes the players with unsaved position or progress (their vitals go with it); of the others only those
+    // whose vitals changed since the last write need one.
+    const saves = this.players()
+      .filter((p) => {
+        const profile = sim.getPlayer(p.id);
+        const alarmSaves = p.dirty || profile?.expDirty || !!profile?.pendingPoints;
+        return !p.transferring && !alarmSaves && this.vitalsChanged(p.id);
+      })
+      .map((p) => this.save(p));
     await Promise.all([
       this.alarm(),
+      ...saves,
       json === this.ranksJson ? Promise.resolve() : this.ctx.storage.put("ranks", ranks).then(() => void (this.ranksJson = json)),
     ]);
     console.log("tick paused", "players", sim.playerCount);
@@ -779,6 +830,7 @@ export class MapRoom extends DurableObject<Env> {
     this.bagQueues.clear();
     this.hotbars.clear();
     this.learnedSkills.clear();
+    this.vitalKeys.clear();
     return true;
   }
 
@@ -958,6 +1010,7 @@ export class MapRoom extends DurableObject<Env> {
     this.bags.delete(id);
     this.learnedSkills.delete(id);
     this.hotbars.delete(id);
+    this.vitalKeys.delete(id);
   }
 
   /**
@@ -1058,7 +1111,7 @@ export class MapRoom extends DurableObject<Env> {
   private applyGear(id: string, bag: BagState, direct?: WebSocket): void {
     const p = this.sim?.getPlayer(id);
     if (!p || !this.sim) return;
-    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base }), weaponFamily(bag.equipped));
+    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity }), weaponFamily(bag.equipped));
     this.sendToCharacter(id, { t: "hp", hp: p.hp, maxHp: p.maxHp }, direct);
   }
 

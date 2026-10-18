@@ -75,7 +75,7 @@ const SKILL_TARGETS: readonly TargetKind[] = ["all", "element", "weapon", "skill
 
 export const CONSTITUTION_STATS: Readonly<Record<string, StatMeta>> = {
   /** Damage of skills; with an element/weapon/skill target it only affects matching skills. Needs skills (phase 2c). */
-  skill_damage: { nameVi: "Sát thương kỹ năng", targets: SKILL_TARGETS, modes: ["percent"], applied: false },
+  skill_damage: { nameVi: "Sát thương kỹ năng", targets: SKILL_TARGETS, modes: ["percent"], applied: true },
   /** How fast matching skills are mastered (thuần thục). */
   skill_mastery: { nameVi: "Độ thuần thục kỹ năng", targets: SKILL_TARGETS, modes: ["percent"], applied: false },
   /** All outgoing damage, including the auto-attack. */
@@ -217,7 +217,7 @@ export function rollConstitution(catalog: ConstitutionCatalog, roll: number, tie
   return { id: picked.id, tier: picked.tiers.length || 1 };
 }
 
-/** The effects of a character's constitution at their tier. Not applied by the game yet (see CONSTITUTION_STATS). */
+/** The effects of a character's constitution at their tier. Only the stats flagged `applied` in CONSTITUTION_STATS act on the game so far. */
 export function constitutionEffects(catalog: ConstitutionCatalog, id: string, tier: number): ConstitutionEffect[] {
   const def = getConstitution(catalog, id);
   return def.tiers[clampConstitutionTier(catalog, id, tier) - 1]?.effects ?? [];

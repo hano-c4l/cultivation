@@ -2,6 +2,8 @@
 // hotbar (set, saved, restored), reading a bí tịch (level check, consumed once, already-known refused) and a potion slot.
 // Usage: node tools/skills-smoke.mjs [ws://localhost:8787]
 // Registers a throwaway account and uses dev-only endpoints: local only, needs DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1.
+import { execFileSync } from "node:child_process";
+
 const base = process.argv[2] ?? "ws://localhost:8787";
 const httpBase = base.replace(/^ws/, "http");
 const host = new URL(httpBase).host;
@@ -10,6 +12,10 @@ if (!(host.startsWith("localhost") || host.startsWith("127.0.0.1"))) {
   process.exit(1);
 }
 
+const sql = (q) => {
+  const out = execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--json", "--command", `"${q}"`], { shell: true, encoding: "utf8" });
+  return JSON.parse(out.slice(out.indexOf("[")))[0].results;
+};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const run = Date.now().toString(36);
 let failures = 0;
@@ -143,6 +149,41 @@ check("the buff goes off", r.some((m) => m.t === "buff" && m.skill === "linh_thu
 await sleep(300);
 r = await after(c, { t: "cast", skill: "ngu_kiem_tram", target: prey.id }, 500);
 check("a skill the character has not learned is refused", r.some((m) => m.t === "cast_error" && m.reason === "unknown"));
+// Reloading the page keeps MP and the cooldowns (and HP, which the heal had restored or not).
+const spentBefore = [...c.log].reverse().find((m) => m.t === "mp");
+c.ws.close();
+await sleep(500);
+c = await connect(reg.cookie, 2);
+check("after a reload MP is not refilled", c.welcome.mp < c.welcome.maxMp - 20 && c.welcome.mp >= (spentBefore?.mp ?? 0) - 1, `mp ${c.welcome.mp}/${c.welcome.maxMp}, was ${spentBefore?.mp}`);
+check("... the cooldowns carry over", (c.welcome.cd.linh_thuan ?? 0) > 20_000 && (c.welcome.cd.hoi_khi ?? 0) > 0, JSON.stringify(c.welcome.cd));
+check("... and HP is what it was, not full by default", c.welcome.hp > 0 && c.welcome.hp <= c.welcome.maxHp);
+
+// Back in town (no simulation there) the stored HP, MP and cooldowns still show, and keep regenerating.
+c.send({ t: "move", x: 20.5, y: 1.5, fx: c.welcome.players.find((p) => p.id === charId).path[0][0], fy: c.welcome.players.find((p) => p.id === charId).path[0][1], seq: 5 });
+await c.wait((m) => m.t === "ack" && m.seq === 5);
+await sleep(4500);
+c.send({ t: "portal" });
+await c.wait((m) => m.t === "transfer", 8000, "the north gate");
+c.ws.close();
+await sleep(700);
+const now = Date.now();
+sql(`UPDATE characters SET vitals = json_object('hp', 25, 'mp', 7, 'at', ${now}, 'cd', json_object('linh_thuan', ${now + 25000}), 'buffs', json('[]')) WHERE id = '${charId}'`);
+c = await connect(reg.cookie, 2);
+check("in town the welcome carries the stored HP, MP and cooldown", c.welcome.map === "town" && c.welcome.hp >= 25 && c.welcome.hp < c.welcome.maxHp / 2 && c.welcome.mp >= 7 && c.welcome.mp < 40 && (c.welcome.cd.linh_thuan ?? 0) > 15_000, `hp ${c.welcome.hp}/${c.welcome.maxHp}, mp ${c.welcome.mp}/${c.welcome.maxMp}, cd ${JSON.stringify(c.welcome.cd)}`);
+check("... and regeneration starts after the usual delay", c.welcome.regenInMs === 0 || c.welcome.regenInMs <= 5000);
+c.ws.close();
+await sleep(500);
+// Walk back to the forest for the eviction step below.
+c = await connect(reg.cookie, 2);
+c.send({ t: "move", x: 20.5, y: 38.5, fx: c.welcome.players.find((p) => p.id === charId).path[0][0], fy: c.welcome.players.find((p) => p.id === charId).path[0][1], seq: 6 });
+await c.wait((m) => m.t === "ack" && m.seq === 6);
+await sleep(5500);
+c.send({ t: "portal" });
+await c.wait((m) => m.t === "transfer", 8000, "the south gate");
+await sleep(500);
+c = await connect(reg.cookie, 2);
+check("back in the forest with the stored HP restored there too", c.welcome.map === "forest" && c.welcome.hp > 0, `hp ${c.welcome.hp}`);
+
 // A real eviction loses every in-memory copy: the hotbar and the learned skills must come back from D1, not from an empty default.
 await sleep(300);
 await after(c, { t: "hotbar_set", slot: 3, v: "s:hoi_khi" }, 600);

@@ -1,3 +1,4 @@
+import type { ConstitutionEffect } from "./constitutions";
 import { gearStyleOf, type Gender } from "./gender";
 import type { MonsterRank } from "./monsters";
 import { expToNext, levelIndex } from "./progression";
@@ -320,11 +321,11 @@ export function baseStatsAt(info: EquipInfo, lv: number | undefined): EquipStats
   return info.kind === "bonded" && lv !== undefined ? statsFor(info.kind, lv, info.grade) : { ...info.stats };
 }
 
-export function scaledStats(info: EquipInfo, dur: number | undefined, max: number | undefined, lv?: number): EquipStats {
+export function scaledStats(info: EquipInfo, dur: number | undefined, max: number | undefined, lv?: number, mult = 1): EquipStats {
   const base = baseStatsAt(info, lv);
-  if (dur === undefined || max === undefined || max <= 0) return base;
+  if ((dur === undefined || max === undefined || max <= 0) && mult === 1) return base;
   const out = emptyEquipStats();
-  const f = Math.min(1, Math.max(0, dur / max));
+  const f = dur === undefined || max === undefined || max <= 0 ? mult : Math.min(1, Math.max(0, dur / max)) * mult;
   for (const key of EQUIP_STAT_KEYS) {
     const v = base[key] * f;
     out[key] = EQUIP_RATE_KEYS.includes(key) ? Math.floor(v * 10) / 10 : Math.floor(v);
@@ -336,8 +337,39 @@ export function isBroken(dur: number | undefined): boolean {
   return dur !== undefined && dur <= 0;
 }
 
+/**
+ * Extra strength of gear that suits its wearer: a piece whose element is the wearer's spiritual root (or an element their
+ * constitution favours), or a weapon of a family their constitution favours, gives this much more (0.15 = +15% on all its
+ * stats). One number so it is easy to tune; a piece gets it once however many ways it matches.
+ */
+export const AFFINITY_BONUS = 0.15;
+
+/** The elements and weapon families a character resonates with: their root plus whatever their constitution targets. */
+export interface GearAffinity {
+  elements: readonly string[];
+  weapons: readonly string[];
+}
+
+export function gearAffinity(root: string, constitutionEffects: readonly ConstitutionEffect[]): GearAffinity {
+  const elements = new Set<string>([root]);
+  const weapons = new Set<string>();
+  for (const e of constitutionEffects) {
+    if (e.targetKind === "element") elements.add(e.targetTag);
+    else if (e.targetKind === "weapon") weapons.add(e.targetTag);
+  }
+  return { elements: [...elements], weapons: [...weapons] };
+}
+
+/** Whether a piece suits the wearer (see AFFINITY_BONUS). */
+export function resonates(info: Pick<EquipInfo, "element" | "weaponType">, affinity: GearAffinity | undefined): boolean {
+  if (!affinity) return false;
+  return (info.element !== null && affinity.elements.includes(info.element)) || (info.weaponType !== null && affinity.weapons.includes(info.weaponType));
+}
+
 /** What a wearer must satisfy. Requirements are judged against the character without gear. */
 export interface WearerCtx {
+  /** What the wearer resonates with; leave out when only the requirements are being checked. */
+  affinity?: GearAffinity;
   gender: Gender;
   realm: number;
   stage: number;
@@ -362,7 +394,7 @@ export function equipmentBonus(items: readonly EquippedItem[], w: WearerCtx): Eq
   for (const it of items) {
     const info = equipmentInfo(it.type);
     if (!info || equipBlock(info, it.slot, it.dur, w)) continue;
-    const s = scaledStats(info, it.dur, it.max, it.lv);
+    const s = scaledStats(info, it.dur, it.max, it.lv, resonates(info, w.affinity) ? 1 + AFFINITY_BONUS : 1);
     for (const key of EQUIP_STAT_KEYS) total[key] += s[key];
   }
   for (const key of EQUIP_STAT_KEYS) total[key] = Math.round(total[key] * 10) / 10;
