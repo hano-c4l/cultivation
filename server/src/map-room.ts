@@ -548,6 +548,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleCast(ws, state, msg);
       case "hotbar_set":
         return this.handleHotbar(ws, state, msg.slot, msg.v);
+      case "hotbar_swap":
+        return this.handleHotbarSwap(ws, state, msg.a, msg.b);
       case "use_type":
         return this.handleUseType(ws, state, msg.type);
       case "skill_boost":
@@ -775,7 +777,7 @@ export class MapRoom extends DurableObject<Env> {
 
   // --- combat -------------------------------------------------------------------------------------------------
 
-  private ensureSim(mapId: MapId, ranks?: Record<string, MonsterRank>): CombatSim | null {
+  private ensureSim(mapId: MapId, ranks?: Record<string, string>): CombatSim | null {
     const map = getMap(mapId);
     if (map.safe) return null;
     if (!this.sim) this.sim = new CombatSim(map, mapId, Math.random, Date.now(), ranks);
@@ -801,7 +803,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private async rebuild(mapId: MapId): Promise<void> {
-    const stored = await this.ctx.storage.get<Record<string, MonsterRank>>("ranks");
+    const stored = await this.ctx.storage.get<Record<string, string>>("ranks");
     if (this.sim) return; // another path created it while storage was read
     const sim = this.ensureSim(mapId, stored)!;
     this.ranksJson = stored ? JSON.stringify(stored) : null;
@@ -1589,6 +1591,29 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** Sets one hotbar slot. A skill must be one the character can use; a potion slot holds an item type (never an item id). */
+  /** Swaps two slots of the hotbar (what is in them was validated when it was put there). One write. */
+  private async handleHotbarSwap(ws: WebSocket, state: PlayerState, a: number, b: number): Promise<void> {
+    const now = Date.now();
+    const id = state.id;
+    // The client shows a swap at once, so a swap that is dropped (too frequent) must be answered with the real bar.
+    if (now - (state.lastHotbarAt ?? 0) < HOTBAR_MIN_GAP_MS) return void this.send(ws, { t: "hotbar", slots: await this.getHotbar(id) });
+    state.lastHotbarAt = now;
+    ws.serializeAttachment(state);
+    const current = await this.getHotbar(id);
+    if (a === b || a < 0 || b < 0 || a >= HOTBAR_SLOTS || b >= HOTBAR_SLOTS) return void this.send(ws, { t: "hotbar", slots: current });
+    const next = [...current];
+    next[a] = current[b] ?? "";
+    next[b] = current[a] ?? "";
+    try {
+      await saveHotbar(this.env.DB, id, next);
+      this.hotbars.set(id, next);
+      this.send(ws, { t: "hotbar", slots: next });
+    } catch (err) {
+      console.error("hotbar swap failed", id, err);
+      this.send(ws, { t: "hotbar", slots: current });
+    }
+  }
+
   private async handleHotbar(ws: WebSocket, state: PlayerState, slot: number, v: string): Promise<void> {
     const now = Date.now();
     if (now - (state.lastHotbarAt ?? 0) < HOTBAR_MIN_GAP_MS) return;

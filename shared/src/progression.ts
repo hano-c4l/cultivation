@@ -249,6 +249,25 @@ const OVERCOMES: Record<Element, Element> = { kim: "moc", moc: "tho", tho: "thuy
 /** Generating cycle (tương sinh): kim > thủy > mộc > hỏa > thổ > kim. */
 const GENERATES: Record<Element, Element> = { kim: "thuy", thuy: "moc", moc: "hoa", hoa: "tho", tho: "kim" };
 
+/**
+ * Damage multiplier for a holder of several elements (`roots`) against one `opponent` element, either as the one hitting
+ * (`attack`) or the one being hit (`defend`). Being countered means the opponent's element overcomes one of the roots; it only
+ * counts when no root can answer it: a root of the opponent's own element or one that overcomes it makes the whole set count as
+ * not countered (a plain x1). With nothing countered the best root for the holder decides (the highest multiplier when hitting,
+ * the lowest when being hit). One root gives exactly elementMultiplier.
+ */
+export function rootsMultiplier(roots: readonly Element[], opponent: Element, role: "attack" | "defend"): number {
+  if (roots.length === 0) return 1;
+  const countered = roots.some((r) => OVERCOMES[opponent] === r);
+  if (countered) {
+    const rescued = roots.some((r) => r === opponent || OVERCOMES[r] === opponent);
+    if (rescued) return 1;
+    return role === "attack" ? ELEMENT_OVERCOME_BY_MULT : ELEMENT_OVERCOME_MULT;
+  }
+  const values = roots.map((r) => (role === "attack" ? elementMultiplier(r, opponent) : elementMultiplier(opponent, r)));
+  return role === "attack" ? Math.max(...values) : Math.min(...values);
+}
+
 /** Damage multiplier of an attack by `attacker` element against a `defender` element. */
 export function elementMultiplier(attacker: Element, defender: Element): number {
   if (OVERCOMES[attacker] === defender) return ELEMENT_OVERCOME_MULT;

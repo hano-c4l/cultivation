@@ -30,6 +30,8 @@ import {
   type LootDrop,
   monsterStats,
   rollRank,
+  rollMonsterElement,
+  SPIRITUAL_ROOTS,
   topContributor,
   findSmoothPath,
   isStandable,
@@ -245,7 +247,7 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
   dodge += passive.dodgePoints;
   crit += passive.critPoints;
   return {
-    stats: { attack, defense, critRate: Math.min(RATE_CAP, crit), dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element },
+    stats: { attack, defense, critRate: Math.min(RATE_CAP, crit), dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element, roots: seed.roots ?? [seed.element] },
     maxHp: d.maxHp,
     maxMp: d.maxMp,
     expBonus: d.expBonus,
@@ -269,7 +271,7 @@ export class CombatSim {
     private readonly rand: () => number,
     now: number,
     /** Classes to restore after the room slept, by monster id; without them every monster rolls its class. */
-    ranks?: Readonly<Record<string, MonsterRank>>,
+    ranks?: Readonly<Record<string, string>>,
   ) {
     this.realm = map.realm ?? 0;
     for (const cluster of CLUSTERS[mapId]) {
@@ -304,19 +306,31 @@ export class CombatSim {
     }
   }
 
-  /** (Re)rolls the monster's class and derives its stats from the map's realm, its bậc, species and class. */
-  private applyRank(m: Monster, rank?: MonsterRank): void {
-    m.rank = rank && rank in RANKS ? rank : rollRank(this.rand());
+  /**
+   * (Re)rolls the monster's class and element and derives its stats from the map's realm, its bậc, species and class. `saved` is
+   * what the room kept across a sleep ("rare1|moc"; an older value is only the class, and then the species' own element stays).
+   */
+  private applyRank(m: Monster, saved?: string): void {
+    const [savedRank, savedElement] = (saved ?? "").split("|");
+    const known = savedRank !== undefined && savedRank in RANKS;
+    m.rank = known ? (savedRank as MonsterRank) : rollRank(this.rand());
+    m.combatant.element = (SPIRITUAL_ROOTS as readonly string[]).includes(savedElement ?? "") ? (savedElement as SpiritualRoot) : known ? m.def.element : rollMonsterElement(this.rand());
     const stats = monsterStats(m.def, this.realm, m.tier, m.rank);
     m.maxHp = stats.maxHp;
     m.combatant.attack = stats.attack;
     m.combatant.defense = stats.defense;
   }
 
+  /** Sets a monster's element (the room never does; tests use it to pin the table's outcome). */
+  setMonsterElement(id: string, element: SpiritualRoot): void {
+    const m = this.monsters.get(id);
+    if (m) m.combatant.element = element;
+  }
+
   /** Current class of every monster, kept by the room across a sleep so a rebuilt sim cannot reroll rare monsters. */
-  ranks(): Record<string, MonsterRank> {
-    const out: Record<string, MonsterRank> = {};
-    for (const m of this.monsters.values()) out[m.id] = m.rank;
+  ranks(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const m of this.monsters.values()) out[m.id] = `${m.rank}|${m.combatant.element}`;
     return out;
   }
 
@@ -621,6 +635,7 @@ export class CombatSim {
       kind: m.def.id,
       tier: m.tier,
       rank: m.rank,
+      element: m.combatant.element,
       path: m.path,
       ageMs: now - m.startedAt,
       speed: m.def.speed,
@@ -885,7 +900,7 @@ export class CombatSim {
     const gradePct = !skill && roots.includes(element) ? getRootGrade(p.rootGrade).elementDamagePct : 0;
     const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent : 0;
     const power = skill ? skillPower : 1;
-    const attacker = { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100))), element };
+    const attacker = { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100))), element, roots: skill ? undefined : roots };
     const hit = computeDamage(attacker, m.combatant, this.rand);
     const applied = Math.min(m.hp, hit.damage);
     m.hp -= applied;
