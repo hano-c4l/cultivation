@@ -660,3 +660,78 @@ describe("constitution skill damage", () => {
     expect(damageOf({ effects: [effect("skill", "kim_2", 50)] })).toBe(none);
   });
 });
+
+describe("several elements (đơn ... ngũ linh căn) and the grade of the root", () => {
+  const damageWith = (over: Partial<ProfileSeed>, skill: string): number => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    sim.addPlayer(seed("p1", over));
+    sim.queueCast("p1", skill, m.id, 0);
+    const hit = sim.tick(0, new Map([["p1", [m.path[0]![0] + 3, m.path[0]![1]] as Vec2]])).find((e) => e.t === "hit" && e.skill === skill);
+    return hit && hit.t === "hit" ? hit.damage : 0;
+  };
+  const all = ["kim", "moc", "thuy", "hoa", "tho"] as const;
+
+  it("a character can use the basic skills of every element it has", () => {
+    const sim = new CombatSim(getMap("town"), "town", noCrit, 0);
+    const p = sim.addPlayer(seed("p1", { roots: ["kim", "thuy"] }));
+    expect(sim.skillsOf(p)).toEqual(["kim_1", "thuy_1", "hoi_khi"]);
+    const five = sim.addPlayer(seed("p2", { roots: [...all] }));
+    expect(sim.skillsOf(five).filter((s) => s.endsWith("_1"))).toHaveLength(5);
+    expect(sim.skillsOf(sim.addPlayer(seed("p3")))).toEqual(["kim_1", "hoi_khi"]); // no list: just the main element
+  });
+
+  it("the number of elements does not change damage", () => {
+    const one = damageWith({ roots: ["kim"] }, "kim_1");
+    expect(one).toBeGreaterThan(0);
+    for (const roots of [["kim", "moc"], ["kim", "moc", "thuy"], [...all]] as const) expect(damageWith({ roots }, "kim_1")).toBe(one);
+  });
+
+  it("... and neither does the basic attack or a skill without an element: they use the main element, however many there are", () => {
+    const basic = (roots: ProfileSeed["roots"]) => {
+      const sim = forestSim();
+      const m = sim.snapshots(0)[0]!;
+      sim.addPlayer(seed("p1", { roots }));
+      sim.setTarget("p1", m.id);
+      const hit = sim.tick(0, new Map([["p1", [m.path[0]![0] + 1, m.path[0]![1]] as Vec2]])).find((e) => e.t === "hit" && e.from === "p1");
+      return hit && hit.t === "hit" ? hit.damage : 0;
+    };
+    const one = basic(["kim"]);
+    expect(one).toBeGreaterThan(0);
+    for (const roots of [["kim", "moc"], ["kim", "moc", "thuy"], [...all]] as const) expect(basic(roots)).toBe(one);
+    const sword = (roots: ProfileSeed["roots"]) => damageWith({ roots, learned: ["ngu_kiem_tram"], weapon: "kiem" }, "ngu_kiem_tram");
+    expect(sword([...all])).toBe(sword(["kim"]));
+  });
+
+  it("the grade of the root adds its damage share to attacks in the character's own elements", () => {
+    const [ha, trung, thuong, dia, thien] = [0, 1, 2, 3, 4].map((rootGrade) => damageWith({ rootGrade }, "kim_1"));
+    expect(ha!).toBeLessThan(trung!);
+    expect(trung!).toBeLessThan(thuong!);
+    expect(thuong!).toBeLessThan(dia!);
+    expect(dia!).toBeLessThan(thien!);
+    expect(thien!).toBeGreaterThan(ha! * 1.2); // about +30% over +0%
+  });
+
+  it("a skill of an element the character does not have gets no grade share", () => {
+    // hoa_3 is a book skill: learned, but the character is kim only.
+    const low = damageWith({ rootGrade: 0, learned: ["hoa_3"] }, "hoa_3");
+    const high = damageWith({ rootGrade: 4, learned: ["hoa_3"] }, "hoa_3");
+    expect(high).toBe(low);
+    // The same character with hoa among its elements does get it.
+    expect(damageWith({ rootGrade: 4, learned: ["hoa_3"], roots: ["kim", "hoa"] }, "hoa_3")).toBeGreaterThan(low);
+  });
+
+  it("the number of elements changes EXP only (the pace of cultivation)", () => {
+    const expAfterKill = (roots: ProfileSeed["roots"]) => {
+      const sim = forestSim();
+      const m = sim.snapshots(0)[0]!;
+      const p = sim.addPlayer(seed("p1", { roots, stage: 1 }));
+      sim.setTarget("p1", m.id);
+      run(sim, 0, 20_000, new Map([["p1", [m.path[0]![0] + 1, m.path[0]![1]] as Vec2]]));
+      return p.expBonus;
+    };
+    expect(expAfterKill(["kim"])).toBeGreaterThan(expAfterKill(["kim", "moc"]));
+    expect(expAfterKill(["kim", "moc"])).toBeGreaterThan(expAfterKill(["kim", "moc", "thuy"]));
+    expect(expAfterKill(["kim", "moc"]) - expAfterKill([...all])).toBe(40);
+  });
+});

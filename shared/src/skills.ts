@@ -8,7 +8,7 @@ import type { MonsterRank } from "./monsters";
  * cooldowns and powers are all meant to be tuned. A skill is one of: a single-target attack, a heal, or a short buff.
  *
  * How a character gets one: BASIC skills unlock by realm and stage (the five element skills only for the matching spiritual
- * root, the common ones for everyone) and are never stored; BOOK skills are learned from a bí tịch item and stored in
+ * roots (all the character's elements), the common ones for everyone) and are never stored; BOOK skills are learned from a bí tịch item and stored in
  * `character_skills`. Learning from NPCs and sects comes later.
  */
 export type SkillKind = "attack" | "heal" | "buff";
@@ -76,17 +76,17 @@ export function bookItemId(skillId: string): string {
 }
 
 /** Whether a basic skill is unlocked for a character of this root and level. Book skills never are. */
-export function isBasicUnlocked(skill: SkillDef, root: SpiritualRoot, realm: number, stage: number): boolean {
+export function isBasicUnlocked(skill: SkillDef, roots: readonly SpiritualRoot[], realm: number, stage: number): boolean {
   const u = skill.unlock;
   if (!u) return false;
-  if (u.root !== undefined && u.root !== root) return false;
+  if (u.root !== undefined && !roots.includes(u.root)) return false;
   return levelIndex(realm, stage) >= levelIndex(u.realm, u.stage);
 }
 
 /** Every skill the character can use: the unlocked basic ones plus the learned (book) ones, in list order. */
-export function availableSkills(root: SpiritualRoot, realm: number, stage: number, learned: Iterable<string>): string[] {
+export function availableSkills(roots: readonly SpiritualRoot[], realm: number, stage: number, learned: Iterable<string>): string[] {
   const books = new Set(learned);
-  return SKILLS.filter((s) => (s.unlock ? isBasicUnlocked(s, root, realm, stage) : books.has(s.id))).map((s) => s.id);
+  return SKILLS.filter((s) => (s.unlock ? isBasicUnlocked(s, roots, realm, stage) : books.has(s.id))).map((s) => s.id);
 }
 
 /** Whether a character may learn this skill from its book (level only; the server also checks it is not known yet). */

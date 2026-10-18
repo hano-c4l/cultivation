@@ -7,6 +7,8 @@ import {
   CONSTITUTION_TIER_ROLL_RANGE,
   rollConstitution,
   rootGradeFromRoll,
+  rootCountFromRoll,
+  rollRoots,
   STAT_DEFS,
   getMap,
   startingStats,
@@ -173,7 +175,10 @@ async function createCharacter(request: Request, env: Env): Promise<Response> {
   const gender: Gender = isGender(body?.gender) ? body.gender : crypto.getRandomValues(new Uint8Array(1))[0]! % 2 === 0 ? "male" : "female";
 
   // The server rolls the spiritual root; the client cannot choose it.
-  const root = SPIRITUAL_ROOTS[crypto.getRandomValues(new Uint32Array(1))[0]! % SPIRITUAL_ROOTS.length]!;
+  // How many elements (đơn ... ngũ linh căn) and which ones; the first is the main element.
+  const rootRolls = crypto.getRandomValues(new Uint32Array(6));
+  const roots = rollRoots(rootCountFromRoll(rootRolls[0]! % 100), [...rootRolls.slice(1)]);
+  const root = roots[0]!;
   const [sx, sy] = getMap("town").spawn;
   const rootGrade = rootGradeFromRoll(crypto.getRandomValues(new Uint32Array(1))[0]! % 100);
   const start = startingStats(root, rootGrade);
@@ -191,10 +196,10 @@ async function createCharacter(request: Request, env: Env): Promise<Response> {
   const id = crypto.randomUUID();
   try {
     await env.DB.prepare(
-      `INSERT INTO characters (id, account_id, name, spiritual_root, map_id, x, y, potential_points, root_grade, constitution, constitution_tier, gender, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
-        `VALUES (?, ?, ?, ?, 'town', ?, ?, ?, ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
+      `INSERT INTO characters (id, account_id, name, spiritual_root, roots, map_id, x, y, potential_points, root_grade, constitution, constitution_tier, gender, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
+        `VALUES (?, ?, ?, ?, ?, 'town', ?, ?, ?, ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
     )
-      .bind(id, session.accountId, name, root, sx, sy, start.potentialPoints, rootGrade, constitution.id, constitution.tier, gender, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
+      .bind(id, session.accountId, name, root, roots.join(","), sx, sy, start.potentialPoints, rootGrade, constitution.id, constitution.tier, gender, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
       .run();
   } catch (err) {
     if (String(err).includes("characters.name")) return errorResponse("name_taken", 409);

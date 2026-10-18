@@ -350,8 +350,8 @@ export interface GearAffinity {
   weapons: readonly string[];
 }
 
-export function gearAffinity(root: string, constitutionEffects: readonly ConstitutionEffect[]): GearAffinity {
-  const elements = new Set<string>([root]);
+export function gearAffinity(roots: readonly string[], constitutionEffects: readonly ConstitutionEffect[]): GearAffinity {
+  const elements = new Set<string>(roots);
   const weapons = new Set<string>();
   for (const e of constitutionEffects) {
     if (e.targetKind === "element") elements.add(e.targetTag);

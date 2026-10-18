@@ -5,17 +5,17 @@ import { BOOK_SKILLS, HOTBAR_SLOTS, SKILLS, availableSkills, bookItemId, canLear
 
 describe("skill unlocks", () => {
   it("basic skills unlock by level; element skills only for the matching root", () => {
-    expect(availableSkills("hoa", 0, 1, [])).toEqual(["hoa_1", "hoi_khi"]);
-    expect(availableSkills("kim", 0, 1, [])).toEqual(["kim_1", "hoi_khi"]);
-    expect(availableSkills("hoa", 0, 3, [])).toContain("linh_thuan");
-    expect(availableSkills("hoa", 0, 5, [])).toEqual(["hoa_1", "hoa_2", "hoi_khi", "linh_thuan"]);
-    expect(availableSkills("hoa", 1, 1, [])).toContain("hoa_2"); // a higher realm keeps earlier unlocks
+    expect(availableSkills(["hoa"], 0, 1, [])).toEqual(["hoa_1", "hoi_khi"]);
+    expect(availableSkills(["kim"], 0, 1, [])).toEqual(["kim_1", "hoi_khi"]);
+    expect(availableSkills(["hoa"], 0, 3, [])).toContain("linh_thuan");
+    expect(availableSkills(["hoa"], 0, 5, [])).toEqual(["hoa_1", "hoa_2", "hoi_khi", "linh_thuan"]);
+    expect(availableSkills(["hoa"], 1, 1, [])).toContain("hoa_2"); // a higher realm keeps earlier unlocks
   });
 
   it("book skills are never unlocked by level, only by having learned them", () => {
-    for (const s of BOOK_SKILLS) expect(isBasicUnlocked(s, "kim", 3, 9)).toBe(false);
-    expect(availableSkills("hoa", 0, 1, ["hoa_3"])).toContain("hoa_3");
-    expect(availableSkills("hoa", 0, 1, ["not_a_skill"])).toEqual(["hoa_1", "hoi_khi"]);
+    for (const s of BOOK_SKILLS) expect(isBasicUnlocked(s, ["kim"], 3, 9)).toBe(false);
+    expect(availableSkills(["hoa"], 0, 1, ["hoa_3"])).toContain("hoa_3");
+    expect(availableSkills(["hoa"], 0, 1, ["not_a_skill"])).toEqual(["hoa_1", "hoi_khi"]);
   });
 
   it("a book can be learned from its level on", () => {

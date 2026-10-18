@@ -1,4 +1,4 @@
-import { DEFAULT_CONSTITUTION, GENDERS, constitutionTierName, getRootGrade, type Gender } from "@game/shared";
+import { DEFAULT_CONSTITUTION, GENDERS, constitutionTierName, getRootCount, getRootGrade, type Gender } from "@game/shared";
 import { api, type ApiResult } from "./api";
 import { fetchCatalog, getCatalog } from "./constitution-store";
 import { vi } from "./locales/vi";
@@ -109,7 +109,7 @@ export function showCharacterCreate(): Promise<void> {
             "div",
             { className: "card" },
             el("h1", { textContent: vi.rootRevealTitle }),
-            el("p", { className: "note", textContent: vi.rootReveal(vi.roots[c.spiritualRoot] ?? c.spiritualRoot, getRootGrade(c.rootGrade).nameVi) }),
+            el("p", { className: "note", textContent: vi.rootReveal(c.roots.map((r) => vi.roots[r] ?? r).join(", "), getRootCount(c.roots.length).nameVi, getRootGrade(c.rootGrade).nameVi) }),
             ...(c.constitution === DEFAULT_CONSTITUTION
               ? []
               : [el("p", { className: "note", textContent: vi.constitutionReveal(constitutionTierName(getCatalog(), c.constitution, c.constitutionTier)) })]),

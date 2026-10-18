@@ -423,7 +423,7 @@ describe("affinity: gear that suits its wearer gives more", () => {
   });
 
   it("a piece of the wearer's root element resonates; another element does not", () => {
-    const aff = gearAffinity("hoa", []);
+    const aff = gearAffinity(["hoa"], []);
     expect(resonates(equipmentInfo(sword)!, aff)).toBe(true);
     expect(resonates(equipmentInfo("eq.weapon.u.0.5.2.thuy.kiem")!, aff)).toBe(false);
     expect(resonates(equipmentInfo("eq.weapon.u.0.5.2")!, aff)).toBe(false); // an older piece without an element
@@ -431,7 +431,7 @@ describe("affinity: gear that suits its wearer gives more", () => {
   });
 
   it("the constitution adds its elements and weapon families", () => {
-    const aff = gearAffinity("kim", [
+    const aff = gearAffinity(["kim"], [
       { stat: "skill_damage", targetKind: "weapon", targetTag: "kiem", mode: "percent", value: 30 },
       { stat: "skill_damage", targetKind: "element", targetTag: "thuy", mode: "percent", value: 30 },
       { stat: "attack", targetKind: "all", targetTag: "", mode: "percent", value: 5 },
@@ -445,15 +445,15 @@ describe("affinity: gear that suits its wearer gives more", () => {
 
   it("matching gear adds 15% to its stats once, however many ways it matches", () => {
     const plain = equipmentBonus([worn(sword, "weapon")], { ...maleWearer, affinity: undefined });
-    const root = equipmentBonus([worn(sword, "weapon")], { ...maleWearer, affinity: gearAffinity("hoa", []) });
+    const root = equipmentBonus([worn(sword, "weapon")], { ...maleWearer, affinity: gearAffinity(["hoa"], []) });
     const both = equipmentBonus([worn(sword, "weapon")], {
       ...maleWearer,
-      affinity: gearAffinity("hoa", [{ stat: "skill_damage", targetKind: "weapon", targetTag: "kiem", mode: "percent", value: 30 }]),
+      affinity: gearAffinity(["hoa"], [{ stat: "skill_damage", targetKind: "weapon", targetTag: "kiem", mode: "percent", value: 30 }]),
     });
     expect(root.attack).toBe(Math.floor(plain.attack * 1.15));
     expect(root.attack).toBeGreaterThan(plain.attack);
     expect(both.attack).toBe(root.attack);
-    const off = equipmentBonus([worn(sword, "weapon")], { ...maleWearer, affinity: gearAffinity("thuy", []) });
+    const off = equipmentBonus([worn(sword, "weapon")], { ...maleWearer, affinity: gearAffinity(["thuy"], []) });
     expect(off.attack).toBe(plain.attack);
   });
 });

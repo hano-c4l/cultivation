@@ -37,13 +37,7 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Trang bị và 
 - Bảng sát thương ngũ hành đầy đủ (tương khắc ×1.3, bị khắc ×0.75, tương sinh bonus nhỏ) mở rộng được cho **trục số hệ linh căn** (đơn/song/tam/tứ/ngũ, biến dị Lôi/Băng/Phong) đã hẹn ở GĐ2.
 - Nghiệm thu: công thức sát thương ngũ hành đúng test (bảng đầy đủ); hồi chiêu và MP được server kiểm.
 - **Phần C đã làm (2026-10-18):** HP/MP/hồi chiêu/buff giữ khi tải lại; trang bị hợp linh căn/thể chất +15% (`AFFINITY_BONUS`); thể chất `skill_damage` bật. Chi tiết: `docs/STATUS.md`.
-- **Đề xuất số hệ linh căn (CHƯA LÀM, chờ người dùng duyệt; tung số hệ cho nhân vật có sẵn là thay đổi dữ liệu):**
-  - *Tung lúc tạo nhân vật:* đơn linh căn 5%, song 15%, tam 30%, tứ 30%, ngũ 20% (theo truyền thống tu tiên: càng ít hệ càng thuần và hiếm, càng nhiều hệ càng tạp). Nhân vật có sẵn giữ hệ hiện có (coi là đơn linh căn) hoặc được tung lại một lần, người dùng chọn.
-  - *Tu vi:* thưởng tu vi theo số hệ cộng với phẩm cấp linh căn hiện có: đơn +30%, song +15%, tam 0%, tứ -10%, ngũ -20%.
-  - *Kỹ năng:* dùng được kỹ năng cơ bản của **mọi hệ mình có** (nhiều hệ thì nhiều kỹ năng, linh hoạt hơn) nhưng sát thương kỹ năng nhân hệ số "thuần độ": đơn ×1.20, song ×1.10, tam ×1.00, tứ ×0.95, ngũ ×0.90.
-  - *Ngũ hành khi đánh:* kỹ năng dùng hệ của nó; đánh thường dùng hệ **có lợi nhất** so với quái; khi bị đánh lấy hệ **chính (hệ đầu)** để tính khắc, để nhiều hệ không thành hết điểm yếu.
-  - *Trang bị hợp:* hợp với **bất kỳ** hệ nào của mình (+15% như hiện tại), nên nhiều hệ dễ hợp hơn: tự cân bằng với hệ số thuần độ ở trên.
-  - *Biến dị Lôi/Băng/Phong:* hiếm (khoảng 1% mỗi nhân vật), thay một hệ, không khắc cũng không bị khắc bởi ngũ hành (×1); bản đầu cho coi như đơn linh căn.
+- **Số hệ linh căn: ĐÃ LÀM (2026-10-18)** theo số liệu người dùng chốt (đơn 20%, song 48%, tam 25%, tứ 5%, ngũ 2%; tu vi +10/0/-15/-30/-40%; không ảnh hưởng sát thương) cùng phẩm cấp ảnh hưởng tu vi và sát thương theo hệ. Nhân vật có sẵn giữ là đơn linh căn. Chi tiết: `docs/STATUS.md` mục "Linh căn nhiều hệ". Biến dị Lôi/Băng/Phong chưa làm.
 
 ## 2d. Chủ tu/phụ tu và đột phá (`features_cultivation-paths`)
 - Chọn chủ tu (Kiếm tu, Thuật tu, Đan tu) và phụ tu; hệ số EXP `1 / (1 + k·n)` (PLAN mục 9), `k` chỉnh được trong cấu hình.

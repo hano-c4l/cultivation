@@ -16,6 +16,7 @@ import {
   HOTBAR_SLOTS,
   constitutionEffects,
   gearAffinity,
+  parseRoots,
   parseVitals,
   restoreVitals,
   MP_REGEN_DELAY_MS,
@@ -177,7 +178,7 @@ function baseOf(row: CharacterRow): BaseStats {
 
 /** Who is wearing the gear: requirements are judged against the character without it. */
 function wearerOfRow(row: CharacterRow, catalog?: ConstitutionCatalog): WearerCtx {
-  const affinity = catalog ? gearAffinity(row.spiritual_root, constitutionEffects(catalog, row.constitution, row.constitution_tier)) : undefined;
+  const affinity = catalog ? gearAffinity(parseRoots(row.roots, row.spiritual_root), constitutionEffects(catalog, row.constitution, row.constitution_tier)) : undefined;
   return { gender: row.gender, realm: row.realm, stage: row.stage, base: baseOf(row), affinity };
 }
 
@@ -191,7 +192,8 @@ function seedOf(row: CharacterRow, bag: BagState | undefined, learned: readonly 
   const effects = constitutionEffects(catalog, row.constitution, row.constitution_tier);
   return {
     effects,
-    affinity: gearAffinity(row.spiritual_root, effects),
+    affinity: gearAffinity(parseRoots(row.roots, row.spiritual_root), effects),
+    roots: parseRoots(row.roots, row.spiritual_root),
     vitals: parseVitals(row.vitals),
     gear: bag ? equipmentBonus(bag.equipped, wearerOfRow(row, catalog)) : undefined,
     weapon: bag ? weaponFamily(bag.equipped) : null,
@@ -216,6 +218,7 @@ function sheetOf(p: PlayerProfile): CharacterSheet {
     id: p.id,
     name: p.name,
     spiritualRoot: p.element,
+    roots: [...(p.roots ?? [p.element])],
     rootGrade: p.rootGrade,
     constitution: p.constitution,
     constitutionTier: p.constitutionTier,
@@ -392,7 +395,7 @@ export class MapRoom extends DurableObject<Env> {
       const sim = this.sim;
       const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow, learned, constitutions))) : undefined;
       if (sim) this.startTick();
-      const derived = deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row, constitutions)));
+      const derived = deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row, constitutions)), parseRoots(row.roots, row.spiritual_root).length);
       const maxHp = profile?.maxHp ?? derived.maxHp;
       // In town there is no profile: what the character left the fight with still counts (and keeps regenerating from now on).
       const storedVitals = parseVitals(row.vitals);
@@ -413,7 +416,7 @@ export class MapRoom extends DurableObject<Env> {
         mail: mailViews(mailNow),
         constitutions,
         equipped: bagNow.equipped,
-        skills: profile && sim ? sim.skillsOf(profile) : availableSkills(row.spiritual_root, row.realm, row.stage, learned),
+        skills: profile && sim ? sim.skillsOf(profile) : availableSkills(parseRoots(row.roots, row.spiritual_root), row.realm, row.stage, learned),
         hotbar,
         cd: profile && sim ? sim.cooldownsLeft(profile, Date.now()) : Object.fromEntries(Object.entries(away.cooldowns).map(([k, t]) => [k, t - Date.now()])),
         mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
@@ -1355,11 +1358,11 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** Who is casting: the live profile in a combat map, otherwise the saved row. */
-  private async casterOf(id: string): Promise<{ root: CharacterRow["spiritual_root"]; realm: number; stage: number } | null> {
+  private async casterOf(id: string): Promise<{ roots: CharacterRow["spiritual_root"][]; realm: number; stage: number } | null> {
     const p = this.sim?.getPlayer(id);
-    if (p) return { root: p.element, realm: p.realm, stage: p.stage };
+    if (p) return { roots: [...(p.roots ?? [p.element])], realm: p.realm, stage: p.stage };
     const row = await getCharacterById(this.env.DB, id);
-    return row ? { root: row.spiritual_root, realm: row.realm, stage: row.stage } : null;
+    return row ? { roots: parseRoots(row.roots, row.spiritual_root), realm: row.realm, stage: row.stage } : null;
   }
 
   /** Uses a skill. Memory only: a cast costs no D1 write. Casting needs the fight simulation, so it only works in combat maps. */
@@ -1394,7 +1397,7 @@ export class MapRoom extends DurableObject<Env> {
     if (slot < 0 || slot >= HOTBAR_SLOTS) return resend();
     if (v.startsWith("s:")) {
       const who = await this.casterOf(id);
-      const known = who ? availableSkills(who.root, who.realm, who.stage, await this.getLearned(id)) : [];
+      const known = who ? availableSkills(who.roots, who.realm, who.stage, await this.getLearned(id)) : [];
       if (!isSkillId(v.slice(2)) || !known.includes(v.slice(2))) return resend();
     } else if (v.startsWith("i:")) {
       if (getItemDef(v.slice(2))?.healFraction === undefined) return resend();
@@ -1435,7 +1438,7 @@ export class MapRoom extends DurableObject<Env> {
     const who = await this.casterOf(id);
     if (!skill || !who) return this.resync(ws, id, "invalid");
     const learned = await this.getLearned(id);
-    if (availableSkills(who.root, who.realm, who.stage, learned).includes(skillId)) return this.send(ws, { t: "inv_error", reason: "known" });
+    if (availableSkills(who.roots, who.realm, who.stage, learned).includes(skillId)) return this.send(ws, { t: "inv_error", reason: "known" });
     if (!canLearn(skill, who.realm, who.stage)) return this.send(ws, { t: "inv_error", reason: "level_low" });
     const res = await this.mutateBag(id, (bag) => {
       const ops = planRemove(bag.items, bag.tabs, { tab, cell }, 1);
@@ -1449,7 +1452,7 @@ export class MapRoom extends DurableObject<Env> {
     this.learnedSkills.set(id, [...learned, skillId]);
     this.sim?.addLearned(id, skillId);
     this.sendBagDelta(id, res.before, res.after);
-    this.sendToCharacter(id, { t: "skills", ids: availableSkills(who.root, who.realm, who.stage, [...learned, skillId]) });
+    this.sendToCharacter(id, { t: "skills", ids: availableSkills(who.roots, who.realm, who.stage, [...learned, skillId]) });
   }
 
   /** Consumes one potion and heals. The potion is committed first; HP only changes after the write succeeded. */

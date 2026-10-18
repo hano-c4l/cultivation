@@ -67,11 +67,14 @@ const reg = await post("/api/register", { email: `sk-${run}@example.test`, passw
 const created = await post("/api/character", { name: `Pháp ${run.slice(-4)}`, gender: "male" }, reg.cookie);
 const charId = created.data.character.id;
 const root = created.data.character.spiritualRoot;
+const roots = created.data.character.roots;
+const order = ["kim", "moc", "thuy", "hoa", "tho"];
 const give2 = (item) => fetch(`${httpBase}/api/dev/loot?room=forest:2&char=${charId}&item=${item}&qty=1`).then((r) => r.json());
 const give = (item) => fetch(`${httpBase}/api/dev/loot?room=town:2&char=${charId}&item=${item}&qty=1`).then((r) => r.json());
 
+check("the character has 1 to 5 distinct elements, the main one first", roots.length >= 1 && roots.length <= 5 && new Set(roots).size === roots.length && roots[0] === root, roots.join("+"));
 let c = await connect(reg.cookie, 2);
-check("a new character starts with its own element skill and the heal", c.welcome.skills.join() === `${root}_1,hoi_khi`, c.welcome.skills.join());
+check("a new character starts with the first skill of each of its elements and the heal", c.welcome.skills.join() === [...order.filter((r) => roots.includes(r)).map((r) => `${r}_1`), "hoi_khi"].join(), `${roots.join("+")}: ${c.welcome.skills.join()}`);
 check("the welcome carries MP and an empty hotbar", c.welcome.maxMp > 0 && c.welcome.mp === c.welcome.maxMp && c.welcome.hotbar.length === 8 && c.welcome.hotbar.every((s) => s === ""));
 
 // Town: no casting.
