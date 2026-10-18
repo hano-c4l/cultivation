@@ -32,6 +32,8 @@ export interface CharacterRow {
   vitals: string | null;
   /** All the elements of the spiritual root, main one first, comma separated; empty: only `spiritual_root`. */
   roots: string;
+  /** When a paid breakthrough started (ms), or null (migration 0017). */
+  bt_started_at: number | null;
   stat_can_cot: number;
   stat_than_phap: number;
   stat_ngo_tinh: number;
@@ -41,7 +43,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, roots, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, roots, bt_started_at, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 export function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
@@ -105,6 +107,11 @@ export async function saveHotbar(db: D1Database, characterId: string, slots: rea
 
 /** Progression the room holds in memory; written together with the position when present. */
 export interface ProgressWrite {
+  /**
+   * The realm the room believes the character is in. Stage and EXP are only written while the row is still in that realm, so a
+   * save that started before a breakthrough committed cannot put the old stage 9 back over the new realm.
+   */
+  realm: number;
   stage: number;
   exp: number;
   /** Points gained since the last write, added relative to the stored value so `allocate` is never overwritten. */
@@ -132,17 +139,21 @@ export async function saveCharacterPosition(
   }
   await db
     .prepare(
-      `UPDATE characters SET map_id = ?, x = ?, y = ?, stage = ?, exp = ?, potential_points = potential_points + ?${vitalsSql}, updated_at = ? WHERE id = ?`,
+      `UPDATE characters SET map_id = ?, x = ?, y = ?, stage = CASE WHEN realm = ? THEN ? ELSE stage END, exp = CASE WHEN realm = ? THEN ? ELSE exp END, ` +
+        `potential_points = potential_points + ?${vitalsSql}, updated_at = ? WHERE id = ?`,
     )
-    .bind(mapId, x, y, progress.stage, progress.exp, progress.addPoints, ...vitalsArg, Date.now(), id)
+    .bind(mapId, x, y, progress.realm, progress.stage, progress.realm, progress.exp, progress.addPoints, ...vitalsArg, Date.now(), id)
     .run();
 }
 
 /** Writes only EXP, stage and points (no position), for flushes while the character stays in the room. */
 export async function saveCharacterProgress(db: D1Database, id: string, progress: ProgressWrite): Promise<void> {
   await db
-    .prepare("UPDATE characters SET stage = ?, exp = ?, potential_points = potential_points + ?, updated_at = ? WHERE id = ?")
-    .bind(progress.stage, progress.exp, progress.addPoints, Date.now(), id)
+    .prepare(
+      "UPDATE characters SET stage = CASE WHEN realm = ? THEN ? ELSE stage END, exp = CASE WHEN realm = ? THEN ? ELSE exp END, " +
+        "potential_points = potential_points + ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(progress.realm, progress.stage, progress.realm, progress.exp, progress.addPoints, Date.now(), id)
     .run();
 }
 

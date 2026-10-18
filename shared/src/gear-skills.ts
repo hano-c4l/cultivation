@@ -1,11 +1,14 @@
-import { equipmentInfo, slotKind, isEquipSlot } from "./equipment-data";
+import { equipmentInfo, refineLevelOf, slotKind, isEquipSlot } from "./equipment-data";
+import { levelIndex } from "./progression";
+import { STAGES_PER_REALM } from "./progression-data";
 import { SKILLS } from "./skills";
 
-/** The slice of a worn piece this needs: where it is worn, what it is and its durability (absent: never wears out). */
+/** The slice of a worn piece this needs: where it is worn, what it is, its durability (absent: never wears out) and, for the bonded artifact, its trained level. */
 export interface WornPiece {
   slot: string;
   type: string;
   dur?: number;
+  lv?: number;
 }
 
 /** A skill a worn piece grants, with the realm and grade (root-grade scale 0..) of the piece that grants it. */
@@ -42,9 +45,13 @@ export function gearSkillInfo(worn: readonly WornPiece[]): GearSkillInfo[] {
       give("pt_thuan_di", info.realm, info.tier, grade);
       give("pt_phong_than", info.realm, info.tier, grade);
     } else if (kind === "bonded") {
-      give("bm_ho_the", info.realm, info.tier, grade);
-      give("bm_hoi_sinh", info.realm, info.tier, grade);
-      if (info.element) give(`bm_${info.element}`, info.realm, info.tier, grade);
+      // The bonded artifact grows with its owner: its skills follow the trained level, not the level it was made at.
+      const lv = Math.max(refineLevelOf(info, w.lv), levelIndex(info.realm, info.tier));
+      const realm = Math.floor(lv / STAGES_PER_REALM);
+      const tier = (lv % STAGES_PER_REALM) + 1;
+      give("bm_ho_the", realm, tier, grade);
+      give("bm_hoi_sinh", realm, tier, grade);
+      if (info.element) give(`bm_${info.element}`, realm, tier, grade);
     } else if (kind === "charm" && info.element) {
       // Each of the four slots has its own skill, so two pieces of one element give two skills.
       give(`pb_${info.element}_${w.slot.slice(5)}`, info.realm, info.tier, grade);

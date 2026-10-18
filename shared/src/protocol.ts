@@ -1,6 +1,7 @@
 import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
+import type { BreakthroughEnd, BreakthroughError } from "./breakthrough";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
@@ -76,7 +77,11 @@ export type ClientMessage =
   /** Use the first stack of an item type in the bag (hotbar potion slots); the server picks the stack, the client never names an item id. */
   | { t: "use_type"; type: string }
   /** Spend one Ngộ Đạo Đan on a skill to raise its mastery. */
-  | { t: "skill_boost"; skill: string };
+  | { t: "skill_boost"; skill: string }
+  /** Start a breakthrough with this many pills (the pills and the Linh Thạch are paid now). Moving, fighting or being hit before it ends makes it fail. */
+  | { t: "bt_start"; pills: number }
+  /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
+  | { t: "bt_cancel" };
 
 /** One running effect on the character for the buff bar: id is "s:<skill>" (a buff skill) or "i:<item type>" (a potion that works over time); `ms` is the time left. */
 export interface EffectView {
@@ -182,6 +187,11 @@ export type ServerMessage =
   | { t: "repaired"; cost: number }
   /** The receiving character died; a transfer to town follows. */
   | { t: "died"; expLost: number }
+  /** A breakthrough started: it ends in `ms` unless interrupted, with `ratePct` percent chance. */
+  | { t: "bt"; ms: number; ratePct: number; pills: number; overflow: boolean }
+  /** A breakthrough ended. `ok` false: `reason` says why (`timeout` means the roll failed). `expLost` on failure; `points` and `realm` on success. */
+  | { t: "bt_end"; ok: boolean; reason: BreakthroughEnd; expLost?: number; points?: number; realm?: number }
+  | { t: "bt_error"; reason: BreakthroughError }
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
@@ -273,6 +283,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isInt(m.slot) && m.slot >= 0 && m.slot < HOTBAR_SLOTS && typeof m.v === "string" && HOTBAR_SLOT_PATTERN.test(m.v) ? { t: "hotbar_set", slot: m.slot, v: m.v } : null;
     case "use_type":
       return typeof m.type === "string" && /^[a-z0-9_.]{1,60}$/.test(m.type) ? { t: "use_type", type: m.type } : null;
+    case "bt_start":
+      return isInt(m.pills) && m.pills >= 1 && m.pills <= 9 ? { t: "bt_start", pills: m.pills } : null;
+    case "bt_cancel":
+      return { t: "bt_cancel" };
     case "skill_boost":
       return typeof m.skill === "string" && /^[a-z0-9_]{1,32}$/.test(m.skill) ? { t: "skill_boost", skill: m.skill } : null;
     case "eq_equip": {

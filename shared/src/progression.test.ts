@@ -11,6 +11,7 @@ import {
   applyExp,
   deriveStats,
   elementMultiplier,
+  expCap,
   expToNext,
   getRootGrade,
   killsToNext,
@@ -67,11 +68,12 @@ describe("applyExp", () => {
     expect(r).toMatchObject({ stage: 4, exp: 0, stagesGained: 3, potentialPoints: 3 * REALMS[0]!.pointsPerStage });
   });
 
-  it("stops at stage 9 and caps EXP instead of entering the next realm", () => {
+  it("stops at stage 9 and caps EXP (need plus the overflow) instead of entering the next realm", () => {
     const r = applyExp(fresh, 1e12);
     expect(r.realm).toBe(0);
     expect(r.stage).toBe(STAGES_PER_REALM);
-    expect(r.exp).toBe(expToNext(0, STAGES_PER_REALM));
+    expect(r.exp).toBe(expCap(0, STAGES_PER_REALM));
+    expect(r.exp).toBeGreaterThan(expToNext(0, STAGES_PER_REALM));
     expect(r.stagesGained).toBe(STAGES_PER_REALM - 1);
     expect(r.potentialPoints).toBe((STAGES_PER_REALM - 1) * REALMS[0]!.pointsPerStage);
     expect(applyExp(r, 1000).stagesGained).toBe(0);

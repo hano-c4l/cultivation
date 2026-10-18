@@ -10,6 +10,7 @@ import {
   ELEMENT_OVERCOME_BY_MULT,
   ELEMENT_OVERCOME_MULT,
   MAX_ALLOCATE_PER_STAT,
+  OVERFLOW_EXP_MAX,
   REALMS,
   ROOT_FAVOURED_STAT,
   ROOT_STAT_BONUS,
@@ -72,7 +73,7 @@ export function monsterBaseExp(realm: number, tier: number): number {
   return Math.max(1, Math.round(expToNext(realm, tier) / killsToNext(realm, tier)));
 }
 
-/** EXP needed to finish the given stage. At stage 9 this is also the EXP cap until breakthrough exists. */
+/** EXP needed to finish the given stage. At stage 9 a full bar is what a breakthrough asks for (see breakthrough.ts). */
 export function expToNext(realm: number, stage: number): number {
   const s = Math.min(Math.max(Math.trunc(stage), 1), STAGES_PER_REALM);
   return Math.round(getRealm(realm).expBase * STAGE_EXP_GROWTH ** (s - 1));
@@ -84,8 +85,8 @@ export interface ExpResult extends CharacterProgress {
 
 /**
  * Adds EXP, advancing through as many stages as it pays for. Each new stage grants the realm's potential points.
- * Progress stops at stage 9 of a realm (EXP is capped, the overflow is dropped); moving to the next realm is a
- * separate breakthrough step that does not exist yet. Pure: the caller persists the result.
+ * Progress stops at stage 9 of a realm: the bar can fill past its need by up to OVERFLOW_EXP_MAX of it (see overflowExp),
+ * the rest is dropped; moving to the next realm is a separate breakthrough step. Pure: the caller persists the result.
  */
 export function applyExp(progress: CharacterProgress, gain: number): ExpResult {
   let { realm, stage, exp, potentialPoints } = progress;
@@ -99,8 +100,19 @@ export function applyExp(progress: CharacterProgress, gain: number): ExpResult {
     stagesGained += 1;
     potentialPoints += getRealm(realm).pointsPerStage;
   }
-  if (stage >= STAGES_PER_REALM) exp = Math.min(exp, expToNext(realm, stage));
+  if (stage >= STAGES_PER_REALM) exp = Math.min(exp, expCap(realm, stage));
   return { realm, stage, exp, potentialPoints, stagesGained };
+}
+
+/** Most EXP a character can hold at this stage: the stage's need, and at stage 9 also the overflow. */
+export function expCap(realm: number, stage: number): number {
+  const need = expToNext(realm, stage);
+  return stage >= STAGES_PER_REALM ? need + Math.round(need * OVERFLOW_EXP_MAX) : need;
+}
+
+/** EXP held beyond a full stage-9 bar (0 below stage 9 or while the bar is not full). */
+export function overflowExp(realm: number, stage: number, exp: number): number {
+  return stage >= STAGES_PER_REALM ? Math.max(0, exp - expToNext(realm, stage)) : 0;
 }
 
 export function getRootGrade(grade: number): RootGradeDef {

@@ -1,6 +1,6 @@
 # Trạng thái dự án
 
-Cập nhật: 2026-10-18. File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
+Cập nhật: 2026-10-18 (2d-A làm xong ở local). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
 
 ## Đã xong
 - **Giai đoạn 0** (xương sống kỹ thuật) và **giai đoạn 1** (MVP: tài khoản, thế giới, chat, chỉ số/cảnh giới, quái và chiến đấu, kinh tế khung xương). Riêng 1f (đo tải thật 50 client trên Cloudflare) **hoãn theo quyết định của người dùng**.
@@ -11,10 +11,11 @@ Cập nhật: 2026-10-18. File này **chỉ** nói giai đoạn nào đã xong, 
 - **Preview** (`preview`): có thêm túi 8×8, mua tab, thanh buff, kỹ năng pháp bảo, kỹ năng cảnh giới/phẩm cấp/thuần thục, cửa sổ trang bị 2 tab; migration đến `0016`. **Chưa lên production**; khi lên cần chạy migration `0015`, bước dọn ô túi (xem PHASE2.md, mục 2a), rồi `0016`, mỗi lần một bước riêng trước khi deploy worker.
 
 ## Đang làm dở
-- Không có việc dở. Các thay đổi mới nhất đang chờ người dùng thử trên preview trước khi đưa lên production.
+- **2d** (nhánh `features_cultivation-paths`): **2d-A đột phá cảnh giới đã làm xong ở local** (chưa commit, chưa lên preview/production); **2d-B chủ tu/phụ tu chờ người dùng quyết định** (câu hỏi ở `docs/PHASE2.md` mục 2d).
+- Các thay đổi trước đó vẫn chờ người dùng thử trên preview trước khi lên production.
 
 ## Làm tiếp
-1. **2d** chủ tu/phụ tu và đột phá cảnh giới (cần nối `ensureRootSkills` và kỹ năng pháp bảo bản mệnh theo cấp luyện; hiện chưa ai qua Luyện Khí 9).
+1. **2d-A**: mở PR vào preview, thử, rồi lên production (migration `0017` trước). **2d-B** chủ tu/phụ tu sau khi người dùng chốt thiết kế.
 2. **2e** NPC thương nhân và nhiệm vụ → **2f** PvP, sát khí, vệ binh (và area-of-interest) → **2i** màn admin thể chất → **2h** bảng xếp hạng và boss.
 3. Việc nhỏ tồn đọng (chi tiết ở `docs/PHASE2.md`, mục "Việc nhỏ đang chờ quyết định hoặc chưa làm"): tốc độ pháp bảo phi hành vào di chuyển, biến dị Lôi/Băng/Phong, kỹ năng tông môn và học từ NPC, tiền tệ trong thư, nhận thể chất qua vật phẩm, tung lại số hệ cho nhân vật có sẵn.
 

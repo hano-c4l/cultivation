@@ -32,6 +32,12 @@ export const KILLS_GROWTH = 1.13;
  */
 export const LOW_MAP_EXP_MULT = 1;
 export const STAGE_EXP_GROWTH = 1.35;
+/**
+ * At stage 9 a full EXP bar does not stop the EXP: it keeps filling past the stage's need, by up to this fraction of the
+ * need (the overflow). Reaching BREAKTHROUGH_OVERFLOW_AT of it adds BREAKTHROUGH_OVERFLOW_BONUS points to the chance of a breakthrough.
+ */
+export const OVERFLOW_EXP_MAX = 0.5;
+export const BREAKTHROUGH_OVERFLOW_AT = 0.25;
 
 export const REALMS: readonly RealmDef[] = [
   { id: 0, key: "luyen_khi", nameVi: "Luyện Khí", shortVi: "LK", expBase: 1_000, pointsPerStage: 5 },

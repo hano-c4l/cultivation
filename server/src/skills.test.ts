@@ -76,7 +76,7 @@ describe("vitals stored with the position", () => {
     expect(JSON.parse((await vitalsOf())!)).toMatchObject({ hp: 50, mp: 5 });
     await saveCharacterPosition(db, A, "forest", 5.5, 4.5); // undefined: untouched
     expect(JSON.parse((await vitalsOf())!)).toMatchObject({ hp: 50 });
-    await saveCharacterPosition(db, A, "forest", 5.5, 4.5, { stage: 2, exp: 7, addPoints: 0 }, JSON.stringify({ hp: 20, mp: 1, at: 2 }));
+    await saveCharacterPosition(db, A, "forest", 5.5, 4.5, { realm: 0, stage: 2, exp: 7, addPoints: 0 }, JSON.stringify({ hp: 20, mp: 1, at: 2 }));
     const row = (await getCharacterById(db, A))!;
     expect(JSON.parse(row.vitals!)).toMatchObject({ hp: 20 });
     expect(row.stage).toBe(2);

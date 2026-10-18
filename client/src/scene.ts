@@ -178,7 +178,11 @@ export class GameScene extends Phaser.Scene {
     }, this.registry.get("isAdmin") === true);
     this.vitals = initVitals();
     this.hotbar = initHotbar({
-      send: (msg) => this.net.send(msg),
+      // A skill is an action: during a breakthrough it would end it (hotbar potions are fine).
+      send: (msg) => {
+        if (msg.t === "cast" && this.guardBreakthrough()) return;
+        this.net.send(msg);
+      },
       aim: (skill) => this.beginAim(skill),
       mpCostOf: (skill) => effectiveSkill(skill, this.skillContext(skill)).mpCost,
       getTarget: () => this.targetId,
@@ -193,7 +197,12 @@ export class GameScene extends Phaser.Scene {
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
-    this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
+    this.charPanel = initCharacterPanel({
+      sendAllocate: (points) => this.net.send({ t: "allocate", points }),
+      startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
+      cancelBreakthrough: () => this.net.send({ t: "bt_cancel" }),
+      countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
+    });
 
     const camera = this.cameras.main;
     const center = toScreen(this.map.spawn[0] + 0.5, this.map.spawn[1] + 0.5);
@@ -337,8 +346,16 @@ export class GameScene extends Phaser.Scene {
     this.hotbar.setAimNote(null);
   }
 
+  /** While a breakthrough runs, actions that would break it are not sent; tells the player why. */
+  private guardBreakthrough(): boolean {
+    if (!this.charPanel.isBreaking()) return false;
+    this.chat.system(vi.breakthrough.blocked, "error");
+    return true;
+  }
+
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.transferring) return;
+    if (this.guardBreakthrough()) return;
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
@@ -406,6 +423,8 @@ export class GameScene extends Phaser.Scene {
         this.upsertActor(msg.players);
         for (const m of msg.monsters) this.upsertMonster(m);
         setCatalog(msg.constitutions);
+        // A breakthrough never survives a (re)connect: the server settled it as a failure when the old connection ended.
+        this.charPanel.breakthroughEnded();
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
         this.inventory.setSheet(msg.character);
@@ -414,6 +433,7 @@ export class GameScene extends Phaser.Scene {
         this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
         this.vitals.setWallet(msg.wallet);
         this.inventory.setBag(msg.bag);
+        this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
         const wornBonded = msg.equipped.find((e) => e.slot === "bonded");
         this.bondedLv = wornBonded ? bondedLevel(wornBonded) : undefined;
@@ -495,6 +515,7 @@ export class GameScene extends Phaser.Scene {
       case "inv":
         if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items, tabPrice: msg.tabPrice });
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
+        this.charPanel.refresh();
         this.equipment.refresh();
         this.hotbar.refresh();
         this.skillsUi.refresh(); // the pill count
@@ -585,6 +606,19 @@ export class GameScene extends Phaser.Scene {
         // Rate-limit refusals are silent: they only happen when commands are sent faster than a person taps.
         this.inventory.rejected(msg.reason);
         if (msg.reason !== "rate") this.chat.system(vi.inventory.errors[msg.reason] ?? vi.inventory.errors.invalid!, "error");
+        break;
+      case "bt":
+        this.charPanel.breakthroughStarted(msg.ms, msg.ratePct);
+        this.chat.system(vi.breakthrough.started(msg.ratePct), "important");
+        break;
+      case "bt_end": {
+        this.charPanel.breakthroughEnded();
+        if (msg.ok) this.chat.system(vi.breakthrough.success(REALMS[msg.realm ?? 0]?.nameVi ?? "", msg.points ?? 0), "important");
+        else this.chat.system((vi.breakthrough.failed[msg.reason] ?? vi.breakthrough.failed.timeout!) + (msg.expLost ? vi.breakthrough.lost(msg.expLost) : ""), "important");
+        break;
+      }
+      case "bt_error":
+        this.chat.system(vi.breakthrough.errors[msg.reason] ?? vi.breakthrough.errors.invalid!, "error");
         break;
       case "chat":
       case "chat_error":
@@ -789,7 +823,7 @@ export class GameScene extends Phaser.Scene {
     // Standing still on a portal tile asks the server to transfer us (the server re-checks the position).
     const self = this.actors.get(this.selfId);
     // Retry after 1.5 s in case the server's (slightly lagging) position was not yet in range.
-    if (self && !this.transferring && now - this.portalSentAt > 1500) {
+    if (self && !this.transferring && !this.charPanel.isBreaking() && now - this.portalSentAt > 1500) {
       const pos = currentPos(self, now);
       if (!pos.moving && portalNear(this.map, pos.x, pos.y)) {
         this.portalSentAt = now;
