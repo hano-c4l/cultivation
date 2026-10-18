@@ -36,8 +36,6 @@ export const BREAKTHROUGHS: readonly BreakthroughDef[] = [
   { from: 2, to: 3, pill: breakthroughPillId(3), maxPills: 3, baseRatePct: 50, maxRatePct: 70, durationMs: 600_000, cost: 500_000, basePoints: 24 },
 ];
 
-/** The most any breakthrough can reach, overflow bonus included. */
-export const BREAKTHROUGH_MAX_RATE_PCT = 95;
 /** A failed breakthrough costs this fraction of the stage-9 EXP need (on top of the cost and the pills). */
 export const BREAKTHROUGH_FAIL_EXP_LOSS = 0.3;
 /** Extra potential points per root-grade bonus point and per constitution tier (non-default constitutions only). */
@@ -83,12 +81,33 @@ export function expAtStart(realm: number, stage: number, exp: number): number {
   return Math.min(exp, expToNext(realm, stage));
 }
 
-/** Chance (percent) of a breakthrough with this many pills (clamped to 1..maxPills) and this overflow bonus (see overflowBonus). */
-export function breakthroughRate(def: BreakthroughDef, pills: number, bonus: number): number {
+/** What a breakthrough chance (percent) is made of: the base, what the extra pills add and what the EXP overflow adds. */
+export interface RateParts {
+  base: number;
+  pills: number;
+  overflow: number;
+  total: number;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * The chance with this many pills (clamped to 1..maxPills) and this overflow bonus (see overflowBonus), by parts. There is no
+ * ceiling: at Luyện Khí two pills and a full overflow give more than 100, which is simply a sure thing. From Trúc Cơ the base
+ * is low enough that it never gets there.
+ */
+export function breakthroughRateParts(def: BreakthroughDef, pills: number, bonus: number): RateParts {
   const n = Math.min(Math.max(Math.trunc(pills), 1), def.maxPills);
   const step = def.maxPills > 1 ? (def.maxRatePct - def.baseRatePct) / (def.maxPills - 1) : 0;
-  const rate = def.baseRatePct + step * (n - 1) + Math.max(0, bonus);
-  return Math.min(BREAKTHROUGH_MAX_RATE_PCT, Math.round(rate * 100) / 100);
+  const base = def.baseRatePct;
+  const fromPills = round2(step * (n - 1));
+  const overflow = round2(Math.max(0, bonus));
+  return { base, pills: fromPills, overflow, total: round2(base + fromPills + overflow) };
+}
+
+/** Chance (percent) of a breakthrough, uncapped (see breakthroughRateParts). */
+export function breakthroughRate(def: BreakthroughDef, pills: number, bonus: number): number {
+  return breakthroughRateParts(def, pills, bonus).total;
 }
 
 /** Rolls the outcome with the injected random source (uniform [0, 1)). */

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   BREAKTHROUGHS,
-  BREAKTHROUGH_MAX_RATE_PCT,
   breakthroughPillId,
   breakthroughPoints,
   breakthroughRate,
+  breakthroughRateParts,
   checkBreakthroughReady,
   expAfterFailure,
   getBreakthrough,
@@ -40,11 +40,21 @@ describe("breakthrough chance", () => {
     }
   });
 
-  it("the overflow bonus adds to the chance and the total is capped", () => {
+  it("the overflow bonus adds to the chance, with no ceiling (Luyện Khí can pass 100)", () => {
     expect(breakthroughRate(LK, 1, 15)).toBe(85);
     expect(breakthroughRate(LK, 1, 5)).toBe(75);
-    expect(breakthroughRate(LK, 2, 15)).toBe(BREAKTHROUGH_MAX_RATE_PCT);
+    expect(breakthroughRate(LK, 2, 15)).toBe(105);
+    expect(breakthroughRate(LK, 2, 8.07)).toBe(98.07);
     expect(breakthroughRate(LK, 1, -3)).toBe(70);
+    // From Trúc Cơ on, even the best case stays under 100.
+    expect(breakthroughRate(TC, TC.maxPills, 15)).toBeLessThan(100);
+  });
+
+  it("splits the chance into base, pills and overflow", () => {
+    expect(breakthroughRateParts(LK, 1, 0)).toEqual({ base: 70, pills: 0, overflow: 0, total: 70 });
+    expect(breakthroughRateParts(LK, 2, 0)).toEqual({ base: 70, pills: 20, overflow: 0, total: 90 });
+    expect(breakthroughRateParts(LK, 2, 8.07)).toEqual({ base: 70, pills: 20, overflow: 8.07, total: 98.07 });
+    expect(breakthroughRateParts(TC, 2, 15)).toEqual({ base: 60, pills: 10, overflow: 15, total: 85 });
   });
 
   it("rolls with the injected random source", () => {

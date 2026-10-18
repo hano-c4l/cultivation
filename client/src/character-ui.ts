@@ -1,6 +1,6 @@
 import {
   STAGES_PER_REALM,
-  breakthroughRate,
+  breakthroughRateParts,
   checkBreakthroughReady,
   getBreakthrough,
   getItemDef,
@@ -235,11 +235,9 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     row.append(el("span", "cp-name", vi.breakthrough.use), minus, el("span", "cp-val", String(chosenPills)), plus);
     box.append(
       row,
-      el("div", "cp-bt-line", vi.breakthrough.rate(breakthroughRate(def, chosenPills, bonus))),
+      rateLine(breakthroughRateParts(def, chosenPills, bonus)),
       el("div", "cp-bt-line", vi.breakthrough.cost(def.cost)),
       el("div", "cp-bt-line", vi.breakthrough.time(Math.round(def.durationMs / 1000))),
-      ...(bonus > 0 ? [el("div", "cp-bt-line", vi.breakthrough.overflowBonus(bonus))] : []),
-      el("div", "cp-bt-line", vi.breakthrough.overflowHint),
       el("div", "cp-bt-warn", vi.breakthrough.warn),
     );
     const start = el("button", "cp-confirm", vi.breakthrough.start);
@@ -250,6 +248,17 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     };
     box.append(start);
     return box;
+  }
+
+  /** "Tỉ lệ thành công: 70% + 20% + 15%": the base as is, what the pills add in gold, what the overflow adds in red; a part that adds nothing is left out. */
+  function rateLine(p: { base: number; pills: number; overflow: number }): HTMLElement {
+    const line = el("div", "cp-bt-line", `${vi.breakthrough.rateLabel}${p.base}%`);
+    const part = (n: number, cls: string) => {
+      line.append(" + ", el("span", cls, `${n}%`));
+    };
+    if (p.pills > 0) part(p.pills, "cp-rate-pills");
+    if (p.overflow > 0) part(p.overflow, "cp-rate-over");
+    return line;
   }
 
   function stopTick(): void {
