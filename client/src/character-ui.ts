@@ -1,5 +1,17 @@
 import {
   STAGES_PER_REALM,
+  PATHS,
+  PATH_IDS,
+  PATH_SUB_FACTOR,
+  PATH_MIN_REALM,
+  SUB_PATH_COST,
+  nextPathSlot,
+  pathCost,
+  pathDropCost,
+  pathLevelName,
+  pathSwapCost,
+  withPaths,
+  type PathId,
   breakthroughRateParts,
   checkBreakthroughReady,
   getBreakthrough,
@@ -49,6 +61,14 @@ export interface CharacterPanelDeps {
   sendAllocate: (points: Partial<BaseStats>) => void;
   startBreakthrough: (pills: number) => void;
   cancelBreakthrough: () => void;
+  /** Take up a hướng tu: spends its item (and, for a phụ tu, Linh Thạch). */
+  choosePath: (path: PathId) => void;
+  /** Make a phụ tu the chủ tu. */
+  swapPath: (path: PathId) => void;
+  /** Drop a path. */
+  dropPath: (path: PathId) => void;
+  /** Take the item of a hướng tu (a placeholder for the NPC quest). */
+  claimPath: (path: PathId) => void;
   /** How many of an item type the bag holds. */
   countOf: (type: string) => number;
 }
@@ -83,6 +103,14 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
   /** The running breakthrough (client clock), and how many pills the player has chosen to use. */
   let running: { endsAt: number; startedAt: number; ratePct: number } | null = null;
   let chosenPills = 1;
+  /** The hướng tu chooser: whether it is open and which path is picked in its list. */
+  let pathOpen = false;
+  /** The box shows the chooser (take up a path) or the manager (swap the chủ tu, drop a path). */
+  let pathMode: "choose" | "manage" = "choose";
+  /** A swap or drop that was clicked once and waits for the second click. */
+  let pathSure: string | null = null;
+  let pathSureTimer: number | undefined;
+  let pathPick: PathId | null = null;
   let tick: number | null = null;
 
   const pendingTotal = () => Object.values(pending).reduce((a, b) => a + (b ?? 0), 0);
@@ -95,9 +123,10 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     const realm = getRealm(s.realm);
 
     const head = el("div", "cp-head");
-    head.append(el("b", undefined, s.name), el("span", undefined, `${vi.character.root}: ${getRootCount(s.roots.length).nameVi} (${s.roots.map((r) => vi.roots[r] ?? r).join(", ")}) · ${getRootGrade(s.rootGrade).nameVi}`));
-    head.title = vi.character.rootTitle(getRootCount(s.roots.length).expBonusPct + getRootGrade(s.rootGrade).expBonusPct, getRootGrade(s.rootGrade).elementDamagePct);
-    const genderLine = el("div", "cp-constitution", `${vi.character.gender}: ${vi.gender[s.gender] ?? s.gender}`);
+    head.append(el("b", undefined, s.name));
+    // The spiritual root in short, on a line of its own: "Hạ phẩm linh căn · Mộc", "Thượng phẩm linh căn · Thủy Hỏa".
+    const rootLine = el("div", "cp-constitution cp-root", `${getRootGrade(s.rootGrade).nameVi} · ${s.roots.map((r) => vi.roots[r] ?? r).join(" ")}`);
+    rootLine.title = vi.character.rootTitle(getRootCount(s.roots.length).expBonusPct + getRootGrade(s.rootGrade).expBonusPct, getRootGrade(s.rootGrade).elementDamagePct);
     const close = el("button", "cp-close", "×");
     close.onclick = () => (panel.hidden = true);
     head.append(close);
@@ -107,7 +136,8 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     const constitution = getConstitution(catalog, s.constitution);
     const tier = clampConstitutionTier(catalog, s.constitution, s.constitutionTier);
     const tierText = constitution.tiers.length > 1 ? ` · ${vi.character.constitutionTier(tier, constitution.tiers.length)}` : "";
-    const constitutionLine = el("div", "cp-constitution", `${vi.character.constitution}: ${constitutionTierName(catalog, s.constitution, tier)}${tierText}`);
+    // Gender and constitution share one line: "Nam · Phàm Thể", "Nữ · Thủy Linh Thể".
+    const constitutionLine = el("div", "cp-constitution", `${vi.gender[s.gender] ?? s.gender} · ${constitutionTierName(catalog, s.constitution, tier)}${tierText}`);
     constitutionLine.title = constitution.descVi;
 
     const need = expToNext(s.realm, s.stage);
@@ -172,7 +202,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     for (const def of STAT_DEFS) preview[def.key] += pending[def.key] ?? 0;
     // Gear counts as the server counts it: requirements are judged against the saved stats, not the unconfirmed clicks.
     const gear = equipmentBonus(worn, wearerOfSheet(s));
-    const d = withPassives(deriveStats(preview, s.realm, s.stage, s.rootGrade, gear, s.roots.length), passiveTotals(skillIds, skillStates, s.rootGrade));
+    const d = withPaths(withPassives(deriveStats(preview, s.realm, s.stage, s.rootGrade, gear, s.roots.length), passiveTotals(skillIds, skillStates, s.rootGrade)), s.paths);
     const derived = el("div", "cp-derived");
     const lines: [string, string][] = [
       [vi.character.derived.maxHp, String(d.maxHp)],
@@ -190,7 +220,127 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       derived.append(row);
     }
 
-    panel.append(head, genderLine, constitutionLine, realmLine, bar, breakthroughBox(s), points, stats, confirm, derived);
+    panel.append(head, constitutionLine, rootLine, pathLine(s), pathBox(s), realmLine, bar, breakthroughBox(s), points, stats, confirm, derived);
+  }
+
+  /** "Chủ tu: Kiếm tu · Phụ tu: Đan tu, Thuật tu", or the button that opens the chooser while nothing is chosen. */
+  function pathLine(s: CharacterSheet): HTMLElement {
+    const row = el("div", "cp-path");
+    const can = s.realm >= PATH_MIN_REALM;
+    // Before Trúc Cơ there is no path line at all.
+    if (!can) {
+      row.hidden = true;
+      return row;
+    }
+    if (!s.paths.main) {
+      const b = el("button", "cp-path-btn", vi.paths.chooseButton);
+      b.onclick = () => {
+        pathOpen = !pathOpen;
+        render();
+      };
+      row.append(b);
+      return row;
+    }
+    const named = (p: PathId) => `${PATHS[p].nameVi} (${pathLevelName(s.paths, p)})`;
+    const subs = s.paths.subs.length > 0 ? s.paths.subs.map(named).join(", ") : vi.paths.none;
+    row.append(el("span", undefined, `${vi.paths.mainWord}: ${named(s.paths.main)} · ${vi.paths.subWord}: ${subs}`));
+    if (nextPathSlot(s.paths, PATH_IDS.find((p) => p !== s.paths.main && !s.paths.subs.includes(p)) ?? "kiem") !== null) {
+      const add = el("button", "cp-path-btn cp-path-add", vi.paths.addSub);
+      add.onclick = () => {
+        const wasChoose = pathOpen && pathMode === "choose";
+        pathMode = "choose";
+        pathOpen = !wasChoose;
+        render();
+      };
+      row.append(add);
+    }
+    const manage = el("button", "cp-path-btn cp-path-add", vi.paths.manage);
+    manage.onclick = () => {
+      const wasManage = pathOpen && pathMode === "manage";
+      pathMode = "manage";
+      pathOpen = !wasManage;
+      pathSure = null;
+      render();
+    };
+    row.append(manage);
+    return row;
+  }
+
+  /** The chooser: a list of the paths not taken yet, what the picked one needs, and the buttons to get the item and confirm. */
+  function pathBox(s: CharacterSheet): HTMLElement {
+    const box = el("div", "cp-bt cp-pathbox");
+    const free = PATH_IDS.filter((p) => p !== s.paths.main && !s.paths.subs.includes(p));
+    if (!pathOpen || (free.length === 0 && pathMode === "choose") || s.realm < PATH_MIN_REALM) {
+      box.hidden = true;
+      return box;
+    }
+    if (pathMode === "manage" && s.paths.main) {
+      box.append(el("b", undefined, vi.paths.manageTitle));
+      const owned: PathId[] = [s.paths.main, ...s.paths.subs];
+      for (const id of owned) {
+        const isMainPath = id === s.paths.main;
+        const row = el("div", "cp-row");
+        row.append(el("span", "cp-name", `${isMainPath ? vi.paths.mainWord : vi.paths.subWord} · ${PATHS[id].nameVi} (${pathLevelName(s.paths, id)})`));
+        const confirmable = (key: string, label: string, run: () => void) => {
+          const b = el("button", undefined, pathSure === key ? vi.paths.sureAgain : label);
+          b.onclick = () => {
+            if (pathSure !== key) {
+              pathSure = key;
+              window.clearTimeout(pathSureTimer);
+              pathSureTimer = window.setTimeout(() => {
+                pathSure = null;
+                render();
+              }, 4000);
+              render();
+              return;
+            }
+            pathSure = null;
+            run();
+          };
+          return b;
+        };
+        if (!isMainPath) row.append(confirmable(`swap:${id}`, vi.paths.makeMain(pathSwapCost(s.paths, id)), () => deps.swapPath(id)));
+        row.append(confirmable(`drop:${id}`, vi.paths.drop(pathDropCost(s.paths, id)), () => deps.dropPath(id)));
+        box.append(row);
+      }
+      box.append(el("div", "cp-bt-warn", vi.paths.manageNote));
+      return box;
+    }
+    const isMain = !s.paths.main;
+    box.append(el("b", undefined, isMain ? vi.paths.titleMain : vi.paths.titleSub));
+    if (!pathPick || !free.includes(pathPick)) pathPick = free[0] ?? null;
+    const select = el("select", "cp-select");
+    for (const id of free) {
+      const o = el("option", undefined, PATHS[id].nameVi);
+      o.value = id;
+      if (id === pathPick) o.selected = true;
+      select.append(o);
+    }
+    select.onchange = () => {
+      pathPick = select.value as PathId;
+      render();
+    };
+    const row = el("div", "cp-row");
+    row.append(el("span", "cp-name", vi.paths.pick), select);
+    box.append(row);
+    const pick = pathPick;
+    if (pick) {
+      const def = PATHS[pick];
+      const have = deps.countOf(def.item);
+      box.append(el("div", "cp-bt-line", def.descVi));
+      const gives = (Object.keys(def.bonus) as Array<keyof typeof def.bonus>).filter((k) => def.bonus[k] > 0).map((k) => vi.paths.bonusLines[k]?.(def.bonus[k] * (isMain ? 1 : PATH_SUB_FACTOR)) ?? "");
+      box.append(el("div", "cp-bt-line", `${vi.paths.bonus} ${gives.join("; ")}`));
+      box.append(el("div", "cp-bt-line", vi.paths.need(def.itemNameVi, have)));
+      const cost = pathCost(s.paths);
+      if (cost > 0) box.append(el("div", "cp-bt-line", vi.paths.cost(cost)));
+      box.append(el("div", "cp-bt-warn", `${isMain ? vi.paths.mainNote : vi.paths.subNote} ${vi.paths.final}`));
+      const claim = el("button", "cp-confirm", vi.paths.claim);
+      claim.onclick = () => deps.claimPath(pick);
+      const confirm = el("button", "cp-confirm", vi.paths.confirm);
+      confirm.onclick = () => deps.choosePath(pick);
+      box.append(claim, confirm);
+    }
+    return box;
   }
 
   /** The breakthrough section: shown from stage 9 (or while one runs); a countdown while it goes. */
@@ -321,6 +471,11 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       // A kill also sends a sheet; keep the player's unconfirmed clicks unless the stats changed (an allocate
       // answer) or they no longer fit the available points.
       const statsChanged = !sheet || STAT_DEFS.some((d) => sheet!.base[d.key] !== next.base[d.key]);
+      // A path was taken: the chooser closes (it opens again from the line for the next phụ tu).
+      if (sheet && JSON.stringify(sheet.paths) !== JSON.stringify(next.paths)) {
+        pathOpen = false;
+        pathSure = null;
+      }
       sheet = next;
       if (statsChanged || pendingTotal() > next.potentialPoints) pending = {};
       toggle.hidden = false;

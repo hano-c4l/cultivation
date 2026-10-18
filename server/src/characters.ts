@@ -4,6 +4,7 @@ import {
   getSkill,
   rollRealmSkills,
   parseRoots,
+  parsePaths,
   type Gender,
   applyExp,
   type BaseStats,
@@ -34,6 +35,8 @@ export interface CharacterRow {
   roots: string;
   /** When a paid breakthrough started (ms), or null (migration 0017). */
   bt_started_at: number | null;
+  /** The hướng tu as "main:sub1:sub2" (migration 0018); empty: none. */
+  paths: string;
   stat_can_cot: number;
   stat_than_phap: number;
   stat_ngo_tinh: number;
@@ -43,7 +46,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, roots, bt_started_at, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, roots, bt_started_at, paths, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 export function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
@@ -57,7 +60,7 @@ export function getCharacterById(db: D1Database, id: string): Promise<CharacterR
 /** One skill a character was given (see migration 0016): root skills of each realm and skills learned from a bí tịch. */
 export interface SkillRow {
   skill_id: string;
-  source: "root" | "learned" | "sect";
+  source: "root" | "learned" | "sect" | "path";
   realm: number;
   level: number;
   mastery: number;
@@ -170,6 +173,7 @@ export function toCharacterSheet(c: CharacterRow): CharacterSheet {
     constitution: c.constitution,
     constitutionTier: c.constitution_tier,
     gender: c.gender,
+    paths: parsePaths(c.paths),
     realm: c.realm,
     stage: c.stage,
     exp: c.exp,

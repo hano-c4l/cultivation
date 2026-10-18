@@ -57,8 +57,8 @@ export interface RankDef {
 
 export const RANKS: Readonly<Record<MonsterRank, RankDef>> = {
   normal: { chance: 0, hpMult: 1, attackMult: 1, defenseMult: 1, expMult: 1, tagVi: null },
-  rare1: { chance: 0.08, hpMult: 1.8, attackMult: 1.2, defenseMult: 1.2, expMult: 2.5, tagVi: "Hiếm · Tinh Anh" },
-  rare2: { chance: 0.02, hpMult: 3, attackMult: 1.5, defenseMult: 1.5, expMult: 5, tagVi: "Hiếm · Đại Yêu" },
+  rare1: { chance: 0.08, hpMult: 1.8, attackMult: 1.2, defenseMult: 1.2, expMult: 2.5, tagVi: "Tinh Anh" },
+  rare2: { chance: 0.02, hpMult: 3, attackMult: 1.5, defenseMult: 1.5, expMult: 5, tagVi: "Đại Yêu" },
 };
 
 /** Rolls a rank from a uniform [0, 1) number: rarest first so each configured chance holds. */

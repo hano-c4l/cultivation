@@ -14,11 +14,15 @@ import { RATE_CAP, getRootGrade, levelIndex, type Element } from "./progression"
  *    rolled once and stored (character_skills), so adding templates later never reshuffles anybody.
  *  - "learned": from a bí tịch (or, later, an NPC). "sect": taught by a sect (none yet). Both have a realm and grade of their own.
  *  - "gear": granted while a pháp bảo is worn (shared/src/gear-skills.ts); realm and grade come from the piece.
+ *  - "path": two per hướng tu the character has taken up (shared/src/paths.ts); they follow the character's realm and are
+ *    stronger when the path is the chủ tu than when it is a phụ tu.
  *
  * Root, learned and sect skills have a mastery level (nhập môn .. viên mãn, and thần thông for high grades) that grows with use.
  */
 export type SkillKind = "attack" | "heal" | "buff" | "teleport" | "passive";
-export type SkillSource = "root" | "gear" | "sect" | "learned";
+export type SkillSource = "root" | "gear" | "sect" | "learned" | "path";
+/** What a path skill is worth as a phụ tu compared with as the chủ tu (also used for the stats of a path, see paths.ts). */
+export const PATH_SUB_FACTOR = 0.5;
 /** Worn pieces that grant skills while they are on (and not broken): ordinary pháp bảo, the bonded one, the flight one. */
 export type GearSkillSource = "charm" | "bonded" | "flight";
 /** What a buff raises. attack/defense: fraction of the stat; dodge: `power` is a fraction of 100, added as percentage points of dodge chance. */
@@ -57,6 +61,9 @@ export interface SkillDef {
   learn?: { realm: number; stage: number };
   /** Granted by a worn pháp bảo of this kind. */
   gear?: GearSkillSource;
+  /** Path skills: the hướng tu that gives it (a PathId), and the level of the path it belongs to (0 is the first). */
+  path?: string;
+  pathLevel?: number;
 }
 
 const ELEMENT_NAMES: Record<SpiritualRoot, string> = { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ" };
@@ -145,9 +152,57 @@ function gearSkills(): SkillDef[] {
   return out;
 }
 
+/**
+ * The two skills of each hướng tu (docs/PHASE2.md, 2d-B). Their realm is the character's own (see skillContextFor); the realm here
+ * is only the first one that can take a path. They are attacks of a free element (chosen on the hotbar), a heal or a buff.
+ */
+function pathSkills(): SkillDef[] {
+  const path = (id: string, nameVi: string, descVi: string, p: string, over: Partial<SkillDef>): SkillDef => ({
+    id,
+    nameVi,
+    descVi,
+    kind: "attack",
+    source: "path",
+    element: null,
+    realm: 1,
+    grade: 1,
+    mpCost: 20,
+    cooldownMs: 6000,
+    range: 6,
+    power: 2.8,
+    path: p,
+    pathLevel: 0,
+    ...over,
+  });
+  return [
+    // Level 0 (the first level of each path)
+    path("kt_kiem_khi", "Kiếm Khí Trảm", "Kiếm tu: chém ra một đạo kiếm khí vào mục tiêu.", "kiem", { flex: true, mpCost: 20, cooldownMs: 6000, range: 6, power: 2.8 }),
+    path("kt_lien_hoan", "Phi Kiếm Liên Hoàn", "Kiếm tu: ngự kiếm chém liên hoàn, mạnh hơn nhưng tốn nhiều linh lực.", "kiem", { flex: true, mpCost: 36, cooldownMs: 14_000, range: 7, power: 4.2 }),
+    path("tt_phap_an", "Pháp Ấn", "Thuật tu: kết ấn đánh một đạo pháp lực vào mục tiêu.", "thuat", { flex: true, mpCost: 18, cooldownMs: 5000, range: 6, power: 2.6 }),
+    path("tt_linh_an", "Linh Ấn Tụ Lực", "Thuật tu: tụ linh lực, tăng công kích trong 15 giây.", "thuat", { kind: "buff", mpCost: 28, cooldownMs: 30_000, range: 0, power: 0.35, buff: { stat: "attack", durationMs: 15_000 } }),
+    path("dt_hoi_xuan", "Hồi Xuân Thuật", "Đan tu: vận đan khí chữa thương, hồi sinh lực.", "dan", { kind: "heal", mpCost: 30, cooldownMs: 20_000, range: 0, power: 0.35 }),
+    path("dt_duong_nguyen", "Dưỡng Nguyên Chú", "Đan tu: tăng phòng thủ trong 15 giây.", "dan", { kind: "buff", mpCost: 26, cooldownMs: 30_000, range: 0, power: 0.3, buff: { stat: "defense", durationMs: 15_000 } }),
+    // Level 1: given when both skills of level 0 have reached the top mastery level
+    path("kt_kiem_y", "Kiếm Ý Xuyên Tâm", "Kiếm tu (Kiếm Ý): kiếm ý xuyên thẳng vào mục tiêu.", "kiem", { flex: true, pathLevel: 1, mpCost: 30, cooldownMs: 8000, range: 7, power: 3.8 }),
+    path("kt_kiem_vu", "Kiếm Vũ", "Kiếm tu (Kiếm Ý): múa kiếm thành mưa, sát thương rất lớn.", "kiem", { flex: true, pathLevel: 1, mpCost: 46, cooldownMs: 15_000, range: 7, power: 5.2 }),
+    path("tt_phap_tran", "Pháp Trận Chấn", "Thuật tu (Pháp Sư): bày pháp trận chấn mục tiêu.", "thuat", { flex: true, pathLevel: 1, mpCost: 28, cooldownMs: 7000, range: 7, power: 3.6 }),
+    path("tt_linh_hai", "Linh Hải Tụ Lực", "Thuật tu (Pháp Sư): linh hải cuộn trào, tăng mạnh công kích trong 20 giây.", "thuat", { kind: "buff", pathLevel: 1, mpCost: 40, cooldownMs: 40_000, range: 0, power: 0.5, buff: { stat: "attack", durationMs: 20_000 } }),
+    path("dt_dan_khi", "Đan Khí Hộ Thể", "Đan tu (Đan Sư): đan khí bao quanh, tăng mạnh phòng thủ trong 20 giây.", "dan", { kind: "buff", pathLevel: 1, mpCost: 36, cooldownMs: 40_000, range: 0, power: 0.45, buff: { stat: "defense", durationMs: 20_000 } }),
+    path("dt_hoi_duong", "Hồi Dương Đan Chú", "Đan tu (Đan Sư): hồi sinh lực lớn.", "dan", { kind: "heal", pathLevel: 1, mpCost: 44, cooldownMs: 30_000, range: 0, power: 0.5 }),
+    // Level 2
+    path("kt_hop_nhat", "Nhân Kiếm Hợp Nhất", "Kiếm tu (Nhân Kiếm Hợp Nhất): người và kiếm làm một, tăng vọt công kích trong 20 giây.", "kiem", { kind: "buff", pathLevel: 2, mpCost: 50, cooldownMs: 40_000, range: 0, power: 0.6, buff: { stat: "attack", durationMs: 20_000 } }),
+    path("kt_than_kiem", "Thần Kiếm Trảm", "Kiếm tu (Nhân Kiếm Hợp Nhất): một kiếm trảm thiên.", "kiem", { flex: true, pathLevel: 2, mpCost: 70, cooldownMs: 20_000, range: 8, power: 7.5 }),
+    path("tt_dai_phap", "Đại Pháp Diệt", "Thuật tu (Đại Pháp Sư): đại pháp giáng xuống mục tiêu.", "thuat", { flex: true, pathLevel: 2, mpCost: 64, cooldownMs: 18_000, range: 8, power: 6.8 }),
+    path("tt_hoi_linh", "Hồi Linh Quyết", "Thuật tu (Đại Pháp Sư): thu linh khí chữa thương.", "thuat", { kind: "heal", pathLevel: 2, mpCost: 50, cooldownMs: 45_000, range: 0, power: 0.5 }),
+    path("dt_dai_hoi", "Đại Hồi Xuân", "Đan tu (Đan Tông): hồi sinh lực rất lớn.", "dan", { kind: "heal", pathLevel: 2, mpCost: 70, cooldownMs: 50_000, range: 0, power: 0.7 }),
+    path("dt_kim_than", "Kim Thân Đan Quyết", "Đan tu (Đan Tông): kim thân bất hoại, tăng vọt phòng thủ trong 25 giây.", "dan", { kind: "buff", pathLevel: 2, mpCost: 60, cooldownMs: 60_000, range: 0, power: 0.7, buff: { stat: "defense", durationMs: 25_000 } }),
+  ];
+}
+
 export const SKILLS: readonly SkillDef[] = [
   ...REALMS.flatMap((r) => rootSkillsOfRealm(r.id)),
   ...gearSkills(),
+  ...pathSkills(),
   { id: "cuong_than", nameVi: "Cuồng Thần Thuật", descVi: "Tăng công kích trong 15 giây, học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 0, grade: 1, mpCost: 20, cooldownMs: 30_000, range: 0, power: 0.25, buff: { stat: "attack", durationMs: 15_000 }, learn: { realm: 0, stage: 5 } },
   { id: "ngu_kiem_tram", nameVi: "Ngự Kiếm Trảm", descVi: "Ngự kiếm chém xa; phải cầm kiếm. Học từ bí tịch.", kind: "attack", source: "learned", element: null, realm: 0, grade: 2, mpCost: 30, cooldownMs: 8000, range: 7, power: 3.2, weapon: "kiem", learn: { realm: 0, stage: 7 } },
   ...SPIRITUAL_ROOTS.map(elementBookSkill),
@@ -219,6 +274,8 @@ export interface SkillContext {
   /** Grade on the root-grade scale 0..4. */
   grade: number;
   level: number;
+  /** Path skills: whether the path is the chủ tu or a phụ tu (a phụ tu's skills are weaker). */
+  role?: "main" | "sub";
 }
 
 export interface EffectiveSkill {
@@ -237,12 +294,14 @@ export function effectiveSkill(def: SkillDef, ctx: SkillContext): EffectiveSkill
   const lv = SKILL_LEVEL_POWER[level] ?? 1;
   // A realm and the bậc inside it make one scale: realm 0 bậc 4 sits between realm 0 bậc 1 and realm 1 bậc 1.
   const realm = ctx.realm + Math.max(0, (ctx.tier ?? 1) - 1) / 10;
-  let power = def.power;
-  if (def.kind === "attack") power = def.power * (1 + 0.5 * realm) * grade * lv;
-  else if (def.kind === "heal") power = Math.min(0.9, def.power * (1 + 0.1 * realm) * grade * lv);
+  // A skill of a phụ tu is worth PATH_SUB_FACTOR of the same skill as the chủ tu.
+  const base = def.source === "path" && ctx.role === "sub" ? def.power * PATH_SUB_FACTOR : def.power;
+  let power = base;
+  if (def.kind === "attack") power = base * (1 + 0.5 * realm) * grade * lv;
+  else if (def.kind === "heal") power = Math.min(0.9, base * (1 + 0.1 * realm) * grade * lv);
   else if (def.kind === "buff" || def.kind === "passive") {
     const rate = def.buff?.stat === "dodge" || def.passive?.stat === "dodge" || def.passive?.stat === "crit";
-    power = Math.min(rate ? 0.5 : 1.5, def.power * (1 + 0.2 * realm) * grade * lv);
+    power = Math.min(rate ? 0.5 : 1.5, base * (1 + 0.2 * realm) * grade * lv);
   }
   return { power, mpCost: Math.round(def.mpCost * (1 + 0.5 * realm)), cooldownMs: Math.round(def.cooldownMs * (SKILL_LEVEL_COOLDOWN[level] ?? 1)) };
 }

@@ -1,4 +1,5 @@
 import { BREAKTHROUGHS } from "./breakthrough";
+import { PATH_IDS, PATHS } from "./paths";
 import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
@@ -38,6 +39,8 @@ export interface ItemDef {
   teaches?: string;
   /** Breakthrough pills: the realm the pill leads to. Used from the breakthrough panel, not from the bag. */
   breakthroughTo?: number;
+  /** Path items: the hướng tu it takes up. Spent from the path section of the character window, not from the bag. */
+  pathItem?: string;
 }
 
 /** One bí tịch per book skill, made from the skill list so a new book skill needs no item entry. */
@@ -68,9 +71,21 @@ const BREAKTHROUGH_PILLS: Record<string, ItemDef> = Object.fromEntries(
   }),
 );
 
+/** One item per hướng tu (a placeholder for what an NPC quest will give). */
+const PATH_ITEMS: Record<string, ItemDef> = Object.fromEntries(
+  PATH_IDS.map((id) => {
+    const p = PATHS[id];
+    return [
+      p.item,
+      { id: p.item, nameVi: p.itemNameVi, descVi: `Vật phẩm để bước vào hướng tu ${p.nameVi}. Dùng từ bảng Nhân vật, mục hướng tu.`, category: "material", maxStack: 99, rarity: "epic", grade: 3, pathItem: id } satisfies ItemDef,
+    ];
+  }),
+);
+
 export const ITEMS: Readonly<Record<string, ItemDef>> = {
   ...BOOKS,
   ...BREAKTHROUGH_PILLS,
+  ...PATH_ITEMS,
   hoi_huyet_dan: {
     id: "hoi_huyet_dan",
     nameVi: "Hồi Huyết Đan",

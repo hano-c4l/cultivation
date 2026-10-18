@@ -11,7 +11,7 @@ Trạng thái: **ĐANG THỰC HIỆN** — xem `docs/STATUS.md` (giai đoạn n�
 | PvP | Thành thị an toàn; bản đồ thường PvP được; chết mất ít EXP + độ bền; sát khí cao thì rơi đồ và bị NPC vệ binh đánh |
 | Tài khoản | Email + mật khẩu; hỗ trợ mobile (cảm ứng) |
 | Cảnh giới | Luyện Khí → Trúc Cơ → Kim Đan → Nguyên Anh (mỗi cảnh giới 9 tầng), mở rộng bằng dữ liệu |
-| Hướng tu | 1 chủ tu + nhiều phụ tu (phụ tu làm chậm lên cấp). Ban đầu: Kiếm tu, Thuật tu, Đan tu; Thể tu và Trận/Phù tu để sau |
+| Hướng tu | 1 chủ tu + tối đa 2 phụ tu (mỗi phụ tu làm chậm tu vi nhận được, xem mục 9b). Ban đầu: Kiếm tu, Thuật tu, Đan tu; Thể tu và Trận/Phù tu để sau |
 | Tiền tệ | Linh Thạch (giao dịch tự do), Cống Hiến (khóa, từ nhiệm vụ, dùng cho tông môn), Tiên Ngọc (tiền nạp) |
 | Nạp tiền | Có sẵn sổ cái, đơn nạp, trang admin cộng tiền thủ công. **Chưa** nối cổng thanh toán |
 | Giao dịch | Giao dịch trực tiếp 2 người + chợ đăng bán + đấu giá |
@@ -36,7 +36,7 @@ Trạng thái: **ĐANG THỰC HIỆN** — xem `docs/STATUS.md` (giai đoạn n�
 - **Sát khí**: tăng khi giết người chơi tên trắng/xám; **giết người tên đỏ không tăng sát khí**. Chỉ giảm khi **online** (theo thời gian) hoặc khi bị giết.
 - **Bảo hộ tân thủ**: dưới cấp (mặc định Luyện Khí tầng 5) không bị PK ở bản đồ thường.
 - **Phân cấp tên**: trắng → vàng → cam → đỏ; xác suất rơi đồ tăng theo cấp; vệ binh NPC tấn công người tên đỏ trong bán kính aggro nhất định.
-- **Phụ tu**: hệ số EXP = `1 / (1 + k·n)` với `n` là số nhánh phụ, `k` chỉnh được trong cấu hình; tốn thời gian + tài nguyên cho mỗi nhánh.
+- **Phụ tu**: hệ số EXP = `1 / (1 + k·n)` với `n` là số nhánh phụ, `k` chỉnh được trong cấu hình (hiện 0,25); mỗi phụ tu tốn vật phẩm hướng tu và Linh Thạch (chủ tu chỉ tốn vật phẩm); tối đa 2 phụ tu.
 - **Điểm tiềm năng**: nhận mỗi tầng; các chỉ số gốc (Căn cốt, Thân pháp, Ngộ tính, Linh lực, Thần thức, Phúc duyên) quy ra chỉ số chiến đấu bằng công thức trong `shared/`.
 - **Ngũ hành**: Kim/Mộc/Thủy/Hỏa/Thổ, bảng nhân sát thương (tương khắc ×1.2, bị khắc ×0.8, không còn bonus tương sinh; đổi từ ×1.3/×0.75/×1.05 theo người dùng 2026-10-18); linh căn nhân vật quyết định tư chất.
 - **Phẩm cấp linh căn** (đã chốt, đã làm ở GĐ1): trục chất lượng, server tung một lần khi tạo nhân vật: Hạ phẩm 50%, Trung phẩm 30%, Thượng phẩm 13%, Địa 5%, Thiên 2%; thưởng tu vi -10/0/+10/+25/+50%, điểm tiềm năng khởi đầu +0/1/2/4/6. Số liệu ở `shared/src/progression-data.ts` (`ROOT_GRADES`).
@@ -69,6 +69,7 @@ Chi tiết kỹ thuật và giá trị nằm ở `docs/PHASE2.md`; đây chỉ l
 - **Pháp bảo có kỹ năng:** pháp bảo thường (mỗi ô một kỹ năng tấn công theo hệ), bản mệnh (kỹ năng đặc biệt mạnh hơn), phi hành (dịch chuyển tức thời, buff né tránh). Sức mạnh theo cảnh giới và bậc của món. Tốc độ di chuyển của pháp bảo phi hành vẫn chưa nối vào gameplay.
 - **Đột phá cảnh giới (2d-A):** phải có **Đan Đột Phá** đúng bước (thêm đan thì dễ hơn), tốn Linh Thạch, và phải **đứng yên** một khoảng thời gian (1 phút ở Luyện Khí, lâu hơn ở cảnh giới cao); bị đánh, di chuyển, tấn công hay mất kết nối giữa chừng thì **thất bại** (mất đan, tiền, phần tu vi tràn và 30% tu vi tầng 9). Tu vi đầy ở tầng 9 vẫn tràn thêm tối đa 100%: tràn 50% được +5% tỉ lệ, tăng đều tới +15% khi tràn 100%; phần tràn mất khi bắt đầu đột phá, thất bại thì thanh tu vi còn 70%. Thành công: tầng 1 của cảnh giới mới, điểm tiềm năng theo linh căn và thể chất, 2 kỹ năng linh căn mới. Đan rơi từ quái (càng cao cấp càng hiếm); đan cao cấp sẽ có thêm từ boss, cửa hàng/chợ và nhiệm vụ đột phá làm một lần (2e, 2h). Chi tiết và giá trị tạm: `docs/PHASE2.md` mục 2d.
 - **Hệ của quái và đa linh căn (2026-10-18):** mỗi lần quái sinh ra hoặc hồi sinh **tung một hệ ngẫu nhiên** (mỗi lần độc lập, không xoay vòng), hiện ở tên và màu thân quái. Ngũ hành tính **một chiều từ phía người đánh**: so từng hệ của người đánh với từng hệ của người bị đánh, mỗi cặp +1 nếu khắc, −1 nếu bị khắc, 0 nếu còn lại, rồi cộng: tổng dương ×1.2, âm ×0.8, bằng 0 ×1. Kỹ năng có một hệ, đòn thường dùng mọi hệ của người đánh. Chi tiết và ví dụ: `docs/PHASE2.md` mục "Hệ của quái".
+- **Hướng tu (2d-B, 2026-10-18):** từ Trúc Cơ nhận vật phẩm hướng tu (sau này qua nhiệm vụ NPC) rồi chọn hướng; hướng đầu là **chủ tu**, sau đó tối đa 2 **phụ tu** (tốn thêm Linh Thạch). Chủ tu mạnh hơn phụ tu (phụ tu cho một nửa); mỗi phụ tu làm tu vi nhận được nhân `1 / (1 + 0,25·số phụ tu)`. Mỗi hướng có các cấp (ví dụ Kiếm Tâm, Kiếm Ý, Nhân Kiếm Hợp Nhất; Học Đồ, Đan Sư): khi các kỹ năng của cấp hiện tại đạt thuần thục tối đa thì lên cấp và nhận kỹ năng mới. Có thể đổi chủ tu hoặc bỏ một hướng nhưng tốn Linh Thạch theo cấp hướng tu (bỏ chủ tu tốn gấp đôi). Kiếm tu: công kích và sát thương kỹ năng khi cầm kiếm; Thuật tu: linh lực tối đa và sát thương kỹ năng theo hệ; Đan tu: phòng thủ, hồi máu từ đan và thuần thục từ Ngộ Đạo Đan. Chi tiết và giá trị tạm: `docs/PHASE2.md` mục 2d-B.
 - **Giao diện:** thanh buff dưới thanh HP/MP (kỹ năng buff và đan hồi dần, kèm thời gian còn lại); cửa sổ trang bị 2 tab (trang bị / pháp bảo).
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu

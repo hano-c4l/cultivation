@@ -16,15 +16,15 @@ export const MAIL_ITEM_EXPIRY_MS = 30 * 60_000;
 export const INV_MIN_GAP_MS = 150;
 
 /** How the sort button orders the bag. Each click uses the next mode. */
-export const SORT_MODES = ["name", "rarity", "grade"] as const;
+export const SORT_MODES = ["name", "rarity", "grade", "realm"] as const;
 export type SortMode = (typeof SORT_MODES)[number];
 /**
  * A sort rewrites many rows (about 4 D1 rows per moved item, so a full bag costs hundreds), so it is limited: three
  * sorts per minute, at least a second apart. That is enough to click through the three modes, then the button waits.
  */
-export const SORT_BURST = 3;
-export const SORT_WINDOW_MS = 60_000;
-export const SORT_MIN_GAP_MS = 1_000;
+export const SORT_BURST = 1;
+export const SORT_WINDOW_MS = 15_000;
+export const SORT_MIN_GAP_MS = 15_000;
 
 export interface BagItem {
   id: string;
@@ -263,7 +263,15 @@ export function planSplit(bag: readonly BagItem[], bagTabs: number, pos: BagPos,
   ];
 }
 
-/** Sort key per mode: rarity and grade sort best first; every mode falls back to the name so the order is stable. */
+/** Where an item stands by realm: equipment by its realm and bậc, breakthrough pills by the realm they lead to; -1 for items with none. */
+function realmKey(type: string): number {
+  const def = getItemDef(type);
+  if (def?.equip) return def.equip.realm * 10 + def.equip.tier;
+  if (def?.breakthroughTo !== undefined) return def.breakthroughTo * 10;
+  return -1;
+}
+
+/** Sort key per mode: rarity, grade and realm sort best first; every mode falls back to the name so the order is stable. */
 function compareTypes(a: string, b: string, mode: SortMode): number {
   const da = getItemDef(a);
   const db = getItemDef(b);
@@ -272,6 +280,7 @@ function compareTypes(a: string, b: string, mode: SortMode): number {
   const grade = (db?.grade ?? 0) - (da?.grade ?? 0);
   if (mode === "name") return byName || a.localeCompare(b);
   if (mode === "rarity") return rarity || grade || byName || a.localeCompare(b);
+  if (mode === "realm") return realmKey(b) - realmKey(a) || grade || rarity || byName || a.localeCompare(b);
   return grade || rarity || byName || a.localeCompare(b);
 }
 

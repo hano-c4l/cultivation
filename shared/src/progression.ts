@@ -1,4 +1,5 @@
 import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
+import type { PathState } from "./paths";
 import type { EquipStats } from "./equipment-data";
 import type { Gender } from "./gender";
 import { BASE_SPEED } from "./pathfinding";
@@ -47,6 +48,8 @@ export interface CharacterSheet extends CharacterProgress {
   constitution: string;
   constitutionTier: number;
   gender: Gender;
+  /** The hướng tu the character has taken up (the chủ tu and up to two phụ tu). */
+  paths: PathState;
   base: BaseStats;
 }
 

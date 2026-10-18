@@ -2,6 +2,7 @@ import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
 import type { BreakthroughEnd, BreakthroughError } from "./breakthrough";
+import { isPathId, type PathError, type PathId } from "./paths";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
@@ -83,7 +84,15 @@ export type ClientMessage =
   /** Start a breakthrough with this many pills (the pills and the Linh Thạch are paid now). Moving, fighting or being hit before it ends makes it fail. */
   | { t: "bt_start"; pills: number }
   /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
-  | { t: "bt_cancel" };
+  | { t: "bt_cancel" }
+  /** Take a path item (a placeholder for the NPC quest): one per path per character. */
+  | { t: "path_claim"; path: PathId }
+  /** Take up a hướng tu: the item (and for a phụ tu the Linh Thạch) is spent; the first is the chủ tu. */
+  | { t: "path_choose"; path: PathId }
+  /** Make a phụ tu the chủ tu (the old chủ tu takes its place); costs Linh Thạch by the levels. */
+  | { t: "path_swap"; path: PathId }
+  /** Drop a path (its skills go with it); costs Linh Thạch by its level, double for the chủ tu. */
+  | { t: "path_drop"; path: PathId };
 
 /** One running effect on the character for the buff bar: id is "s:<skill>" (a buff skill) or "i:<item type>" (a potion that works over time); `ms` is the time left. */
 export interface EffectView {
@@ -196,6 +205,9 @@ export type ServerMessage =
   /** A breakthrough ended. `ok` false: `reason` says why (`timeout` means the roll failed). `expLost` on failure; `points` and `realm` on success. */
   | { t: "bt_end"; ok: boolean; reason: BreakthroughEnd; expLost?: number; points?: number; realm?: number }
   | { t: "bt_error"; reason: BreakthroughError }
+  | { t: "path_error"; reason: PathError }
+  /** A path item was handed out. */
+  | { t: "path_claimed"; path: PathId }
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
@@ -293,6 +305,14 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isInt(m.pills) && m.pills >= 1 && m.pills <= 9 ? { t: "bt_start", pills: m.pills } : null;
     case "bt_cancel":
       return { t: "bt_cancel" };
+    case "path_claim":
+      return isPathId(m.path) ? { t: "path_claim", path: m.path } : null;
+    case "path_choose":
+      return isPathId(m.path) ? { t: "path_choose", path: m.path } : null;
+    case "path_swap":
+      return isPathId(m.path) ? { t: "path_swap", path: m.path } : null;
+    case "path_drop":
+      return isPathId(m.path) ? { t: "path_drop", path: m.path } : null;
     case "skill_boost":
       return typeof m.skill === "string" && /^[a-z0-9_]{1,32}$/.test(m.skill) ? { t: "skill_boost", skill: m.skill } : null;
     case "eq_equip": {

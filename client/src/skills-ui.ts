@@ -11,6 +11,8 @@ import {
   type CharacterSheet,
   type EquippedItem,
   type SkillContext,
+  skillContextFor,
+  PATHS,
   type SkillDef,
   type SkillSource,
   type SkillStateView,
@@ -39,13 +41,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   if (text !== undefined) node.textContent = text;
   return node;
 }
-
-const TABS: ReadonlyArray<{ id: SkillSource; label: string }> = [
-  { id: "root", label: vi.skills.tabs.root },
-  { id: "gear", label: vi.skills.tabs.gear },
-  { id: "sect", label: vi.skills.tabs.sect },
-  { id: "learned", label: vi.skills.tabs.learned },
-];
 
 /** The small coloured dot of an element (the same one gear and the hotbar use). */
 export function elementDot(element: string): HTMLElement {
@@ -84,12 +79,26 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
   let states: SkillStateView = {};
   let sheet: CharacterSheet | null = null;
   let worn: EquippedItem[] = [];
-  let tab: SkillSource = "root";
+  /** A skill source ("root", "gear", ...) or, for a hướng tu, "path:0" (chủ tu), "path:1", "path:2" (phụ tu). */
+  let tab = "root";
 
   /** The realm, grade and level a skill works at for this character. */
   function contextOf(s: SkillDef): SkillContext {
     const gear = s.source === "gear" ? gearSkillInfo(worn).find((g) => g.id === s.id) : undefined;
-    return { realm: gear ? gear.realm : s.realm, ...(gear ? { tier: gear.tier } : {}), grade: skillGrade(s, sheet?.rootGrade ?? 0, gear?.grade), level: s.source === "gear" ? 0 : (states[s.id]?.lv ?? 0) };
+    return skillContextFor(s, { rootGrade: sheet?.rootGrade ?? 0, realm: sheet?.realm ?? 0, level: states[s.id]?.lv ?? 0, ...(sheet ? { paths: sheet.paths } : {}), ...(gear ? { gear } : {}) });
+  }
+
+  /** The tabs: root and pháp bảo, then one tab per hướng tu taken (chủ tu, phụ tu 1, 2), then sect and learned. */
+  function tabList(): Array<{ id: string; label: string; match: (s: SkillDef) => boolean }> {
+    const out: Array<{ id: string; label: string; match: (s: SkillDef) => boolean }> = [
+      { id: "root", label: vi.skills.tabs.root, match: (s) => s.source === "root" },
+      { id: "gear", label: vi.skills.tabs.gear, match: (s) => s.source === "gear" },
+    ];
+    const p = sheet?.paths;
+    if (p?.main) out.push({ id: "path:0", label: `${vi.paths.skillsChủ} · ${PATHS[p.main].nameVi}`, match: (s) => s.source === "path" && s.path === p.main });
+    p?.subs.forEach((id, i) => out.push({ id: `path:${i + 1}`, label: `${vi.paths.skillsSub(i + 1)} · ${PATHS[id].nameVi}`, match: (s) => s.source === "path" && s.path === id }));
+    out.push({ id: "sect", label: vi.skills.tabs.sect, match: (s) => s.source === "sect" }, { id: "learned", label: vi.skills.tabs.learned, match: (s) => s.source === "learned" });
+    return out;
   }
 
   function elementsOf(): SpiritualRoot[] {
@@ -107,6 +116,8 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
     // A gear skill carries the piece's realm and bậc ("LK4"), so pieces of one kind can be told apart.
     title.append(s.nameVi, el("span", `sk-tag ${realmClass(ctx.realm)}`, `${REALMS[ctx.realm]?.shortVi ?? ""}${s.source === "gear" ? (ctx.tier ?? 1) : ""}`));
     const meta: string[] = [vi.skills.grades[ctx.grade] ?? ""];
+    // A path skill also says which level of its path it belongs to ("Kiếm Ý").
+    if (s.source === "path" && s.path && (s.path in PATHS)) meta.push(PATHS[s.path as keyof typeof PATHS].levels[s.pathLevel ?? 0]?.nameVi ?? "");
     if (s.source !== "gear") meta.push(vi.skills.levels[ctx.level] ?? "");
     const weapon = s.weapon ? ` · ${vi.skills.weapon(vi.equip.weaponTypes[s.weapon] ?? s.weapon)}` : "";
     info.append(title, el("div", "sk-meta", meta.join(" · ")));
@@ -170,8 +181,13 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
     panel.append(head);
 
     const bar = el("div", "sk-tabs");
-    for (const t of TABS) {
-      const count = ids.filter((id) => getSkill(id)?.source === t.id).length;
+    const tabs = tabList();
+    if (!tabs.some((t) => t.id === tab)) tab = "root";
+    for (const t of tabs) {
+      const count = ids.filter((id) => {
+        const d = getSkill(id);
+        return !!d && t.match(d);
+      }).length;
       const b = el("button", t.id === tab ? "active" : undefined, count > 0 ? `${t.label} (${count})` : t.label);
       b.onclick = () => {
         tab = t.id;
@@ -181,7 +197,8 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
     }
     panel.append(bar);
 
-    const shown = ids.map((id) => getSkill(id)).filter((s): s is SkillDef => !!s && s.source === tab);
+    const current = tabs.find((t) => t.id === tab);
+    const shown = ids.map((id) => getSkill(id)).filter((s): s is SkillDef => !!s && !!current && current.match(s));
     if (shown.length === 0) panel.append(el("div", "muted", vi.skills.emptyTab[tab] ?? vi.skills.empty));
     for (const s of shown) panel.append(card(s));
     panel.append(el("div", "muted", vi.skills.hint));

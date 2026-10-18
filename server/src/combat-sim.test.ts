@@ -1,6 +1,6 @@
-import { MASTERY_NEEDED, CLUSTERS, RANKS, expToNext, getMap, getMonsterDef, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
+import { MASTERY_NEEDED, CLUSTERS, RANKS, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
-import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
+import { CombatSim, skillContextOf, type ProfileSeed, type SimEvent } from "./combat-sim";
 
 const noCrit = () => 0.99; // never dodges, never crits, damage spread near the top
 /** What every test character was given: the two skills of a realm (an attack and a stronger one) and a heal and a buff. */
@@ -1014,5 +1014,66 @@ describe("mastery, realm and passives in the simulation", () => {
       return p.buffs[0]!.pct;
     };
     expect(pct(3)).toBeGreaterThan(pct(0));
+  });
+});
+
+describe("hướng tu in the simulation", () => {
+  const withPaths = (paths: ProfileSeed["paths"], over: Partial<ProfileSeed> = {}) => {
+    const sim = forestSim();
+    return { sim, p: sim.addPlayer(seed("p1", { paths, ...over })) };
+  };
+
+  it("the chủ tu adds its stats; a phụ tu adds half", () => {
+    // A strong character, so the percentages are not lost in rounding.
+    const big = { base: { ...seed().base, linhLuc: 300, canCot: 100 } };
+    const none = withPaths(undefined, big).p;
+    const kiemMain = withPaths({ main: "kiem", subs: [] }, big).p;
+    const kiemSub = withPaths({ main: "dan", subs: ["kiem"] }, big).p;
+    expect(kiemMain.stats.attack).toBeGreaterThan(none.stats.attack);
+    expect(kiemSub.stats.attack).toBeGreaterThan(none.stats.attack);
+    expect(kiemMain.stats.attack - none.stats.attack).toBeGreaterThan(kiemSub.stats.attack - none.stats.attack);
+    expect(withPaths({ main: "thuat", subs: [] }, big).p.maxMp).toBeGreaterThan(none.maxMp);
+    expect(withPaths({ main: "dan", subs: [] }, big).p.stats.defense).toBeGreaterThan(none.stats.defense);
+  });
+
+  it("each phụ tu slows the EXP gained: x 1 / (1 + k n), the chủ tu alone does not", () => {
+    const base = withPaths(undefined).p.expBonus;
+    expect(withPaths({ main: "kiem", subs: [] }).p.expBonus).toBe(base);
+    const one = withPaths({ main: "kiem", subs: ["dan"] }).p.expBonus;
+    const two = withPaths({ main: "kiem", subs: ["dan", "thuat"] }).p.expBonus;
+    expect(one).toBeLessThan(base);
+    expect(two).toBeLessThan(one);
+    expect((1 + one / 100) / (1 + base / 100)).toBeCloseTo(1 / 1.25, 6);
+    expect((1 + two / 100) / (1 + base / 100)).toBeCloseTo(1 / 1.5, 6);
+  });
+
+  it("setPaths applies at once", () => {
+    const { sim, p } = withPaths(undefined);
+    const before = p.stats.attack;
+    sim.setPaths("p1", { main: "kiem", subs: [] });
+    expect(p.stats.attack).toBeGreaterThan(before);
+  });
+
+  it("a Thuật tu hits harder with an element skill, a Kiếm tu with a kiếm in hand", () => {
+    const dmg = (paths: ProfileSeed["paths"], over: Partial<ProfileSeed> = {}) => {
+      const sim = forestSim();
+      const m = sim.snapshots(0)[0]!;
+      sim.addPlayer(seed("p1", { paths, granted: [...BASE_SKILLS], ...over }));
+      const r = sim.queueCast("p1", "chuong_0", m.id, 0);
+      expect(r.ok).toBe(true);
+      const events = sim.tick(0, new Map([["p1", [m.path[0]![0] + 1, m.path[0]![1]] as Vec2]]));
+      const hit = events.find((e) => e.t === "hit" && e.from === "p1");
+      return hit && hit.t === "hit" ? hit.damage : 0;
+    };
+    const none = dmg(undefined);
+    expect(dmg({ main: "thuat", subs: [] })).toBeGreaterThan(none);
+    expect(dmg({ main: "kiem", subs: [] }, { weapon: "kiem" })).toBeGreaterThan(none);
+  });
+
+  it("a path skill is weaker as a phụ tu", () => {
+    const def = getSkill("kt_kiem_khi")!;
+    const main = effectiveSkill(def, skillContextOf({ rootGrade: 1, realm: 1, paths: { main: "kiem", subs: [] } }, def));
+    const sub = effectiveSkill(def, skillContextOf({ rootGrade: 1, realm: 1, paths: { main: "dan", subs: ["kiem"] } }, def));
+    expect(sub.power).toBeCloseTo(main.power * 0.5, 6);
   });
 });

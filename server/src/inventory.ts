@@ -400,9 +400,12 @@ export async function claimMailItem(db: D1Database, characterId: string, mailId:
   return { status: "claimed", ops, type: mail.item_type, qty: mail.qty };
 }
 
-/** Deletes loot keys older than a day; they only matter while a retry could still arrive. */
+/**
+ * Deletes loot keys older than a day; they only matter while a retry could still arrive. Keys that stand for a one-time grant
+ * (`path_item:...`, the hướng tu items) are kept for good, or the grant could be claimed again every day.
+ */
 export function pruneGrants(db: D1Database, now: number): Promise<unknown> {
-  return db.prepare("DELETE FROM item_grants WHERE created_at < ?").bind(now - 86_400_000).run();
+  return db.prepare("DELETE FROM item_grants WHERE created_at < ? AND key NOT LIKE 'path_item:%'").bind(now - 86_400_000).run();
 }
 
 /** Adds bag tabs (admin/unlock mechanism). Returns the new tab count, or null at the cap or for an unknown character. */
