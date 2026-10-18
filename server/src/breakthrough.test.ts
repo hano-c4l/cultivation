@@ -42,7 +42,7 @@ async function start(pills: number, startedAt = 1000) {
   return applyCurrencyDelta(
     db,
     { characterId: A, currency: "linh_thach", delta: -LK.cost, reason: "breakthrough", actor: "system", idempotencyKey: `bt-${++n}` },
-    startStatements(db, A, 0, ops, startedAt),
+    startStatements(db, A, 0, ops, startedAt, NEED),
   );
 }
 
@@ -101,11 +101,19 @@ describe("start", () => {
     const ops = planTakePills(bag.items, LK.pill, 2)!;
     raw.exec(`UPDATE item_instances SET qty = 1 WHERE item_type = '${LK.pill}'`); // another path used one
     await expect(
-      applyCurrencyDelta(db, { characterId: A, currency: "linh_thach", delta: -LK.cost, reason: "breakthrough", actor: "system", idempotencyKey: "stale-1" }, startStatements(db, A, 0, ops, 1000)),
+      applyCurrencyDelta(db, { characterId: A, currency: "linh_thach", delta: -LK.cost, reason: "breakthrough", actor: "system", idempotencyKey: "stale-1" }, startStatements(db, A, 0, ops, 1000, NEED)),
     ).rejects.toThrow();
     expect(pillCount()).toBe(1);
     expect(balance()).toBe(LK.cost);
     expect(char().bt_started_at).toBeNull();
+  });
+
+  it("uses the EXP overflow up with the pills and the cost", async () => {
+    raw.exec(`UPDATE characters SET exp = ${NEED * 2} WHERE id = 'char-a'`);
+    await givePills(1);
+    await credit(LK.cost);
+    await start(1);
+    expect(char().exp).toBe(NEED);
   });
 
   it("is refused below stage 9", async () => {
@@ -130,19 +138,25 @@ describe("outcome", () => {
     expect(char()).toMatchObject({ realm: 1, stage: 1, exp: 0, potential_points: 17, bt_started_at: null });
     // The same outcome again (a late alarm, say) changes nothing.
     expect(await commitBreakthroughSuccess(db, A, 0, 1000, 17)).toBe("stale");
-    expect(await commitBreakthroughFailure(db, A, 1000, 100)).toBe("stale");
+    expect(await commitBreakthroughFailure(db, A, 1000, 100, NEED)).toBe("stale");
     expect(char()).toMatchObject({ realm: 1, stage: 1, exp: 0, potential_points: 17 });
   });
 
   it("failure takes the EXP (never below zero) and clears the marker, once", async () => {
-    expect(await commitBreakthroughFailure(db, A, 1000, 300)).toBe("ok");
+    expect(await commitBreakthroughFailure(db, A, 1000, 300, NEED)).toBe("ok");
     expect(char()).toMatchObject({ realm: 0, stage: 9, exp: NEED - 300, bt_started_at: null });
-    expect(await commitBreakthroughFailure(db, A, 1000, 300)).toBe("stale");
+    expect(await commitBreakthroughFailure(db, A, 1000, 300, NEED)).toBe("stale");
     expect(await commitBreakthroughSuccess(db, A, 0, 1000, 5)).toBe("stale");
     expect(char().exp).toBe(NEED - 300);
     raw.exec("UPDATE characters SET bt_started_at = 5000 WHERE id = 'char-a'");
-    expect(await commitBreakthroughFailure(db, A, 5000, 10 * NEED)).toBe("ok");
+    expect(await commitBreakthroughFailure(db, A, 5000, 10 * NEED, NEED)).toBe("ok");
     expect(char().exp).toBe(0);
+  });
+
+  it("a failure after an overflow leaves 70% of the bar, not more", async () => {
+    raw.exec(`UPDATE characters SET exp = ${NEED * 2} WHERE id = 'char-a'`); // grew again after the start
+    expect(await commitBreakthroughFailure(db, A, 1000, Math.round(NEED * 0.3), NEED)).toBe("ok");
+    expect(char().exp).toBe(NEED - Math.round(NEED * 0.3));
   });
 
   it("an outcome for another start time is stale", async () => {

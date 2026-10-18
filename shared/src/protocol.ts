@@ -188,7 +188,7 @@ export type ServerMessage =
   /** The receiving character died; a transfer to town follows. */
   | { t: "died"; expLost: number }
   /** A breakthrough started: it ends in `ms` unless interrupted, with `ratePct` percent chance. */
-  | { t: "bt"; ms: number; ratePct: number; pills: number; overflow: boolean }
+  | { t: "bt"; ms: number; ratePct: number; pills: number; bonus: number }
   /** A breakthrough ended. `ok` false: `reason` says why (`timeout` means the roll failed). `expLost` on failure; `points` and `realm` on success. */
   | { t: "bt_end"; ok: boolean; reason: BreakthroughEnd; expLost?: number; points?: number; realm?: number }
   | { t: "bt_error"; reason: BreakthroughError }

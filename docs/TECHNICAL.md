@@ -140,7 +140,7 @@ Cần `wrangler dev` chạy ở cổng 8787 và `.dev.vars` có `DISABLE_RATE_LI
 | `node tools/equipment-smoke.mjs` | Giới tính, mặc/tháo/nhẫn, lưu, sửa đồ và giá, món hỏng tự tháo lúc vào phòng, chết ở hang mất 5% độ bền |
 | `node tools/skills-smoke.mjs` | Kỹ năng cơ bản trong welcome, thanh phím tắt (đặt/lưu/từ chối), học bí tịch (cấp, tiêu hao một lần, đã biết), dùng kỹ năng, hồi máu, buff ở rừng |
 | `node tools/refine-smoke.mjs` | Mặc pháp bảo bản mệnh và phi hành, giết quái ở rừng: bản mệnh nhận EXP riêng bằng đúng số EXP của nhân vật, lưu lại, EXP nhân vật không đổi |
-| `node tools/breakthrough-smoke.mjs` | Đột phá ở thành: chưa đủ điều kiện, tu vi tràn, thiếu đan/tiền, đi lại và rớt kết nối là thất bại, một lần đủ 62 giây (thành hoặc bại đều kiểm D1) |
+| `node tools/breakthrough-smoke.mjs` | Đột phá ở thành: chưa đủ điều kiện, tu vi tràn (bị dùng hết khi bắt đầu), thiếu đan/tiền, đi lại và rớt kết nối là thất bại, một lần đủ 62 giây (thành hoặc bại đều kiểm D1) |
 | `node tools/breakthrough-forest-smoke.mjs` | Đột phá ở rừng: quái đánh là thất bại; một lần đủ 60 giây, kiểm bản làm việc của phòng khớp D1 sau khi rời |
 | `node tools/inventory-smoke.mjs` | Túi đồ, hòm thư, hết hạn, sắp xếp, chia, đan trong rừng, đăng nhập hai nơi |
 | `node tools/load.mjs ws://localhost:8787 50 30` | 50 client săn quái 30 giây, đo tick |

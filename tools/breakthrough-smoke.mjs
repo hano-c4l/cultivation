@@ -110,8 +110,8 @@ check("more pills than the realm allows: refused", r.some((m) => m.t === "bt_err
 fund(COST * 3);
 r = await after(c, { t: "bt_start", pills: 1 });
 const started = r.find((m) => m.t === "bt");
-check("start: the countdown begins with the stated chance", !!started && started.ms === 60000 && started.ratePct >= 70, started ? `${started.ratePct}% for ${started.ms} ms` : "no bt");
-check("start: pill and Linh Thạch gone, marker set", pills() === 2 && balance() === COST * 2 && row().bt_started_at !== null);
+check("start: the countdown begins with the stated chance", !!started && started.ms === 60000 && started.ratePct >= 70 && started.bonus > 0, started ? `${started.ratePct}% for ${started.ms} ms` : "no bt");
+check("start: pill and Linh Thạch gone, marker set, overflow used up", pills() === 2 && balance() === COST * 2 && row().bt_started_at !== null && row().exp < overflowExp, `exp ${overflowExp} -> ${row().exp}`);
 r = await after(c, { t: "bt_start", pills: 1 });
 check("a second start while one runs is refused", r.some((m) => m.t === "bt_error" && m.reason === "busy") && pills() === 2);
 const expBefore = row().exp;
@@ -120,7 +120,8 @@ r = await after(c, { t: "move", x: 25.5, y: 25.5, fx: self.path[self.path.length
 const ended = r.find((m) => m.t === "bt_end");
 check("moving fails it: EXP lost, marker cleared", ended?.ok === false && ended.reason === "moved" && ended.expLost > 0 && row().bt_started_at === null && row().exp === expBefore - ended.expLost, JSON.stringify(ended));
 
-// --- dropping the connection fails ---
+// --- dropping the connection fails (the failure above left the bar at 70%, so fill it again first) ---
+await fetch(`${httpBase}/api/dev/grant-exp`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: reg.cookie }, body: JSON.stringify({ exp: 1_000_000_000 }) });
 r = await after(c, { t: "bt_start", pills: 1 }, 900);
 check("second attempt starts", r.some((m) => m.t === "bt"));
 const expMid = row().exp;

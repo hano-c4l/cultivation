@@ -6,6 +6,7 @@ import {
   breakthroughPoints,
   breakthroughRate,
   checkBreakthroughReady,
+  expAtStart,
   expToNext,
   rollBreakthrough,
   type BreakthroughEnd,
@@ -1869,7 +1870,7 @@ export class MapRoom extends DurableObject<Env> {
       const r = await applyCurrencyDelta(
         this.env.DB,
         { characterId: id, currency: "linh_thach", delta: -def.cost, reason: "breakthrough", actor: "system", idempotencyKey: `bt:${crypto.randomUUID()}` },
-        startStatements(this.env.DB, id, realm, ops, startedAt),
+        startStatements(this.env.DB, id, realm, ops, startedAt, expAtStart(realm, stage, exp)),
       );
       if (r.status === "insufficient") return this.btError(ws, "funds");
       if (r.status !== "applied") return this.btError(ws, "busy");
@@ -1884,13 +1885,17 @@ export class MapRoom extends DurableObject<Env> {
       this.bags.delete(id);
       return this.btError(ws, "busy");
     }
-    const ratePct = breakthroughRate(def, pills, ready.overflow);
+    const ratePct = breakthroughRate(def, pills, ready.overflowBonus);
     const active: ActiveBreakthrough = { startedAt, endsAt: startedAt + def.durationMs, from: realm, ratePct };
     this.patchState(ws, (s) => {
       s.bt = active;
     });
     this.sim?.clearTarget(id);
-    this.send(ws, { t: "bt", ms: def.durationMs, ratePct, pills, overflow: ready.overflow });
+    this.sim?.applyBreakthroughStart(id, expAtStart(realm, stage, exp));
+    const started = this.sim?.getPlayer(id);
+    if (started) this.send(ws, { t: "stats", character: sheetOf(started) });
+    else this.send(ws, { t: "stats", character: toCharacterSheet({ ...row, exp: expAtStart(realm, stage, exp) }) });
+    this.send(ws, { t: "bt", ms: def.durationMs, ratePct, pills, bonus: ready.overflowBonus });
     await this.scheduleAlarmAt(active.endsAt);
   }
 
@@ -1935,8 +1940,9 @@ export class MapRoom extends DurableObject<Env> {
         await this.afterBreakthroughSuccess(ws, id, def.to, points);
         return;
       }
-      if ((await commitBreakthroughFailure(this.env.DB, id, bt.startedAt, loss)) !== "ok") return;
-      this.sim?.applyBreakthroughLoss(id, loss);
+      const cap = expToNext(bt.from, 9);
+      if ((await commitBreakthroughFailure(this.env.DB, id, bt.startedAt, loss, cap)) !== "ok") return;
+      this.sim?.applyBreakthroughLoss(id, loss, cap);
       const row = await getCharacterById(this.env.DB, id);
       const profile = this.sim?.getPlayer(id);
       if (row) this.send(ws, { t: "stats", character: profile ? sheetOf(profile) : toCharacterSheet(row) });
@@ -1976,7 +1982,7 @@ export class MapRoom extends DurableObject<Env> {
   private async settleStaleBreakthrough(row: CharacterRow): Promise<number> {
     const loss = Math.round(expToNext(row.realm, 9) * BREAKTHROUGH_FAIL_EXP_LOSS);
     try {
-      await commitBreakthroughFailure(this.env.DB, row.id, row.bt_started_at as number, loss);
+      await commitBreakthroughFailure(this.env.DB, row.id, row.bt_started_at as number, loss, expToNext(row.realm, 9));
     } catch (err) {
       console.error("stale breakthrough settle failed", row.id, err);
     }

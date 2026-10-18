@@ -8,7 +8,8 @@ import {
   checkBreakthroughReady,
   expAfterFailure,
   getBreakthrough,
-  hasOverflowBonus,
+  expAtStart,
+  overflowBonus,
   pillTargetRealm,
   rollBreakthrough,
   rollPillDrop,
@@ -22,16 +23,16 @@ const TC = getBreakthrough(1)!;
 
 describe("breakthrough chance", () => {
   it("follows the user's table: Luyện Khí 70/90, Trúc Cơ 60/70/80", () => {
-    expect(breakthroughRate(LK, 1, false)).toBe(70);
-    expect(breakthroughRate(LK, 2, false)).toBe(90);
-    expect(breakthroughRate(TC, 1, false)).toBe(60);
-    expect(breakthroughRate(TC, 2, false)).toBe(70);
-    expect(breakthroughRate(TC, 3, false)).toBe(80);
+    expect(breakthroughRate(LK, 1, 0)).toBe(70);
+    expect(breakthroughRate(LK, 2, 0)).toBe(90);
+    expect(breakthroughRate(TC, 1, 0)).toBe(60);
+    expect(breakthroughRate(TC, 2, 0)).toBe(70);
+    expect(breakthroughRate(TC, 3, 0)).toBe(80);
   });
 
   it("clamps the pill count and falls with the realm", () => {
-    expect(breakthroughRate(LK, 0, false)).toBe(70);
-    expect(breakthroughRate(LK, 9, false)).toBe(90);
+    expect(breakthroughRate(LK, 0, 0)).toBe(70);
+    expect(breakthroughRate(LK, 9, 0)).toBe(90);
     for (let i = 1; i < BREAKTHROUGHS.length; i++) {
       expect(BREAKTHROUGHS[i]!.baseRatePct).toBeLessThan(BREAKTHROUGHS[i - 1]!.baseRatePct);
       expect(BREAKTHROUGHS[i]!.maxRatePct).toBeLessThan(BREAKTHROUGHS[i - 1]!.maxRatePct);
@@ -39,9 +40,11 @@ describe("breakthrough chance", () => {
     }
   });
 
-  it("the overflow bonus adds 15 points and the total is capped", () => {
-    expect(breakthroughRate(LK, 1, true)).toBe(85);
-    expect(breakthroughRate(LK, 2, true)).toBe(BREAKTHROUGH_MAX_RATE_PCT);
+  it("the overflow bonus adds to the chance and the total is capped", () => {
+    expect(breakthroughRate(LK, 1, 15)).toBe(85);
+    expect(breakthroughRate(LK, 1, 5)).toBe(75);
+    expect(breakthroughRate(LK, 2, 15)).toBe(BREAKTHROUGH_MAX_RATE_PCT);
+    expect(breakthroughRate(LK, 1, -3)).toBe(70);
   });
 
   it("rolls with the injected random source", () => {
@@ -62,7 +65,7 @@ describe("readiness and overflow EXP", () => {
     expect(checkBreakthroughReady(0, 8, need)).toEqual({ ok: false, error: "not_ready" });
     expect(checkBreakthroughReady(0, 9, need - 1)).toEqual({ ok: false, error: "not_ready" });
     const r = checkBreakthroughReady(0, 9, need);
-    expect(r).toMatchObject({ ok: true, overflow: false });
+    expect(r).toMatchObject({ ok: true, overflowBonus: 0 });
   });
 
   it("the last realm has nowhere to go", () => {
@@ -70,10 +73,11 @@ describe("readiness and overflow EXP", () => {
     expect(checkBreakthroughReady(last, 9, expToNext(last, 9))).toEqual({ ok: false, error: "max_realm" });
   });
 
-  it("EXP keeps filling past the bar at stage 9, up to the overflow cap", () => {
+  it("EXP keeps filling past the bar at stage 9, up to a whole extra bar", () => {
     const r = applyExp({ realm: 0, stage: 9, exp: need, potentialPoints: 0 }, 10_000_000);
     expect(r.exp).toBe(expCap(0, 9));
-    expect(overflowExp(0, 9, r.exp)).toBe(Math.round(need * 0.5));
+    expect(r.exp).toBe(need * 2);
+    expect(overflowExp(0, 9, r.exp)).toBe(need);
     expect(applyExp({ realm: 0, stage: 9, exp: need, potentialPoints: 0 }, 5).exp).toBe(need + 5);
   });
 
@@ -82,17 +86,28 @@ describe("readiness and overflow EXP", () => {
     expect(overflowExp(0, 8, 99999)).toBe(0);
   });
 
-  it("the milestone bonus starts at a quarter of the need", () => {
-    expect(hasOverflowBonus(0, 9, need + Math.round(need * 0.25) - 1)).toBe(false);
-    expect(hasOverflowBonus(0, 9, need + Math.round(need * 0.25))).toBe(true);
-    expect(checkBreakthroughReady(0, 9, need + Math.round(need * 0.25))).toMatchObject({ ok: true, overflow: true });
+  it("the overflow bonus is 0 below half, +5 at half and grows evenly to +15 at a full extra bar", () => {
+    expect(overflowBonus(0, 9, need)).toBe(0);
+    expect(overflowBonus(0, 9, need + Math.round(need * 0.49))).toBe(0);
+    expect(overflowBonus(0, 9, need + Math.round(need * 0.5))).toBe(5);
+    expect(overflowBonus(0, 9, need + Math.round(need * 0.75))).toBeCloseTo(10, 1);
+    expect(overflowBonus(0, 9, need * 2)).toBe(15);
+    expect(overflowBonus(0, 8, 99999)).toBe(0);
+    expect(checkBreakthroughReady(0, 9, need * 2)).toMatchObject({ ok: true, overflowBonus: 15 });
+    expect(checkBreakthroughReady(0, 9, need)).toMatchObject({ ok: true, overflowBonus: 0 });
+  });
+
+  it("starting uses the overflow up", () => {
+    expect(expAtStart(0, 9, need * 2)).toBe(need);
+    expect(expAtStart(0, 9, need)).toBe(need);
   });
 });
 
 describe("failure and reward", () => {
-  it("failure takes 30% of the stage-9 need, never below zero", () => {
+  it("failure leaves 70% of the bar whatever the overflow was, never below zero", () => {
     const need = expToNext(0, 9);
     expect(expAfterFailure(0, 9, need)).toBe(need - Math.round(need * 0.3));
+    expect(expAfterFailure(0, 9, need * 2)).toBe(need - Math.round(need * 0.3));
     expect(expAfterFailure(0, 9, 10)).toBe(0);
   });
 

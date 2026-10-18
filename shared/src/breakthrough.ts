@@ -1,11 +1,11 @@
 import type { MonsterRank } from "./monsters";
 import { expToNext, getRootGrade, overflowExp } from "./progression";
-import { BREAKTHROUGH_OVERFLOW_AT, REALMS, STAGES_PER_REALM } from "./progression-data";
+import { BREAKTHROUGH_OVERFLOW_FROM, BREAKTHROUGH_OVERFLOW_FROM_BONUS, BREAKTHROUGH_OVERFLOW_MAX_BONUS, OVERFLOW_EXP_MAX, REALMS, STAGES_PER_REALM } from "./progression-data";
 
 /**
  * Breakthrough (đột phá): moving from stage 9 of a realm to stage 1 of the next. Every number here is a placeholder
- * (docs/PHASE2.md, 2d). The pill is mandatory; extra pills raise the chance up to `maxRatePct`; a full EXP overflow adds
- * BREAKTHROUGH_OVERFLOW_BONUS points; the higher the realm the lower, the longer and the dearer it is.
+ * (docs/PHASE2.md, 2d). The pill is mandatory; extra pills raise the chance up to `maxRatePct`; the EXP overflow adds up to
+ * BREAKTHROUGH_OVERFLOW_MAX_BONUS points (see overflowBonus); the higher the realm the lower, the longer and the dearer it is.
  */
 export interface BreakthroughDef {
   /** Realm index the character leaves, and the one it reaches. */
@@ -36,8 +36,7 @@ export const BREAKTHROUGHS: readonly BreakthroughDef[] = [
   { from: 2, to: 3, pill: breakthroughPillId(3), maxPills: 3, baseRatePct: 50, maxRatePct: 70, durationMs: 600_000, cost: 500_000, basePoints: 24 },
 ];
 
-/** Percent points a full EXP overflow adds, and the most any breakthrough can reach. */
-export const BREAKTHROUGH_OVERFLOW_BONUS = 15;
+/** The most any breakthrough can reach, overflow bonus included. */
 export const BREAKTHROUGH_MAX_RATE_PCT = 95;
 /** A failed breakthrough costs this fraction of the stage-9 EXP need (on top of the cost and the pills). */
 export const BREAKTHROUGH_FAIL_EXP_LOSS = 0.3;
@@ -56,8 +55,8 @@ export type BreakthroughEnd = "timeout" | "hit" | "moved" | "cancel" | "left" | 
 export interface BreakthroughReady {
   ok: true;
   def: BreakthroughDef;
-  /** The overflow milestone is reached (the chance gets the bonus). */
-  overflow: boolean;
+  /** Percent points the EXP overflow adds to the chance (0 below the first mark). */
+  overflowBonus: number;
 }
 
 /** Whether a character at (realm, stage, exp) may start a breakthrough: stage 9 with a full bar, and a next realm to go to. */
@@ -65,20 +64,30 @@ export function checkBreakthroughReady(realm: number, stage: number, exp: number
   if (stage < STAGES_PER_REALM || exp < expToNext(realm, stage)) return { ok: false, error: "not_ready" };
   const def = getBreakthrough(realm);
   if (!def || def.to >= REALMS.length) return { ok: false, error: "max_realm" };
-  return { ok: true, def, overflow: hasOverflowBonus(realm, stage, exp) };
+  return { ok: true, def, overflowBonus: overflowBonus(realm, stage, exp) };
 }
 
-/** The overflow reached the milestone that adds to the chance. */
-export function hasOverflowBonus(realm: number, stage: number, exp: number): boolean {
-  const need = expToNext(realm, stage);
-  return overflowExp(realm, stage, exp) >= Math.round(need * BREAKTHROUGH_OVERFLOW_AT);
+/**
+ * Percent points the EXP overflow adds to the chance: 0 below half the need, BREAKTHROUGH_OVERFLOW_FROM_BONUS at half, growing
+ * evenly to BREAKTHROUGH_OVERFLOW_MAX_BONUS at a full overflow (OVERFLOW_EXP_MAX of the need).
+ */
+export function overflowBonus(realm: number, stage: number, exp: number): number {
+  const frac = overflowExp(realm, stage, exp) / expToNext(realm, stage);
+  if (frac < BREAKTHROUGH_OVERFLOW_FROM) return 0;
+  const t = Math.min(1, (frac - BREAKTHROUGH_OVERFLOW_FROM) / (OVERFLOW_EXP_MAX - BREAKTHROUGH_OVERFLOW_FROM));
+  return Math.round((BREAKTHROUGH_OVERFLOW_FROM_BONUS + (BREAKTHROUGH_OVERFLOW_MAX_BONUS - BREAKTHROUGH_OVERFLOW_FROM_BONUS) * t) * 100) / 100;
 }
 
-/** Chance (percent) of a breakthrough with this many pills (clamped to 1..maxPills) and the overflow bonus or not. */
-export function breakthroughRate(def: BreakthroughDef, pills: number, overflow: boolean): number {
+/** EXP left when a breakthrough starts: the overflow is used up (like the pills), the bar stays full. */
+export function expAtStart(realm: number, stage: number, exp: number): number {
+  return Math.min(exp, expToNext(realm, stage));
+}
+
+/** Chance (percent) of a breakthrough with this many pills (clamped to 1..maxPills) and this overflow bonus (see overflowBonus). */
+export function breakthroughRate(def: BreakthroughDef, pills: number, bonus: number): number {
   const n = Math.min(Math.max(Math.trunc(pills), 1), def.maxPills);
   const step = def.maxPills > 1 ? (def.maxRatePct - def.baseRatePct) / (def.maxPills - 1) : 0;
-  const rate = def.baseRatePct + step * (n - 1) + (overflow ? BREAKTHROUGH_OVERFLOW_BONUS : 0);
+  const rate = def.baseRatePct + step * (n - 1) + Math.max(0, bonus);
   return Math.min(BREAKTHROUGH_MAX_RATE_PCT, Math.round(rate * 100) / 100);
 }
 
@@ -87,9 +96,9 @@ export function rollBreakthrough(ratePct: number, rand: () => number): boolean {
   return rand() * 100 < ratePct;
 }
 
-/** EXP left after a failed breakthrough: 30% of the stage-9 need is lost (never below 0). */
+/** EXP left after a failed breakthrough: the bar (overflow already used up) loses 30% of the stage-9 need, so it is left at 70% (never below 0). */
 export function expAfterFailure(realm: number, stage: number, exp: number): number {
-  return Math.max(0, exp - Math.round(expToNext(realm, stage) * BREAKTHROUGH_FAIL_EXP_LOSS));
+  return Math.max(0, expAtStart(realm, stage, exp) - Math.round(expToNext(realm, stage) * BREAKTHROUGH_FAIL_EXP_LOSS));
 }
 
 /**
