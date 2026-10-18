@@ -370,12 +370,13 @@ export class CombatSim {
     const cd: Record<string, number> = {};
     for (const [skill, readyAt] of p.cooldowns) if (readyAt > now) cd[skill] = readyAt;
     const buffs = p.buffs.filter((b) => b.until > now).map((b) => ({ skill: b.skill, until: b.until }));
-    // A potion still working would be lost on leaving: pay out what is left.
-    for (const h of p.hots) for (const a of h.amounts) p.hp = Math.min(p.maxHp, p.hp + a);
-    p.hots = [];
+    // The periodic save also calls this while the player stays, so it must not change the profile: a potion still working
+    // is counted in the stored HP (leaving would otherwise lose the rest) but keeps running here.
+    let hp = p.hp;
+    for (const h of p.hots) for (const a of h.amounts) hp = Math.min(p.maxHp, hp + a);
     const mp = this.currentMp(p, now);
-    if (p.hp >= p.maxHp && mp >= p.maxMp && Object.keys(cd).length === 0 && buffs.length === 0) return null;
-    return { hp: p.hp, mp, at: now, cd, buffs };
+    if (hp >= p.maxHp && mp >= p.maxMp && Object.keys(cd).length === 0 && buffs.length === 0) return null;
+    return { hp, mp, at: now, cd, buffs };
   }
 
   /** Effects running now, for the buff bar: buff skills ("s:<id>") and potions working over time ("i:<item>"), each with its time left. */

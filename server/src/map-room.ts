@@ -1253,7 +1253,7 @@ export class MapRoom extends DurableObject<Env> {
     const id = state.id;
     void this.bagTask(id, async () => {
       if (msg.t === "mail_claim") return this.claimMail(ws, id, msg.id);
-      if (msg.t === "inv_expand") return this.buyBagTab(ws, id);
+      if (msg.t === "inv_expand") return this.buyBagTab(ws, id, msg.price);
       if (msg.t === "inv_move") {
         const res = await this.mutateBag(id, (bag) => {
           const ops = planMove(bag.items, bag.tabs, msg.from, msg.to);
@@ -1299,12 +1299,22 @@ export class MapRoom extends DurableObject<Env> {
    * Buys the next bag tab. The price is read from the game settings; the payment and the new tab commit in one batch
    * (applyCurrencyDelta with the tab statements as `extra`), so Linh Thạch is never taken without the tab or the reverse.
    */
-  private async buyBagTab(ws: WebSocket, id: string): Promise<void> {
+  private async buyBagTab(ws: WebSocket, id: string, shownPrice: number): Promise<void> {
     const bag = await this.getBag(id);
     if (bag.tabs >= MAX_BAG_TABS) return this.resync(ws, id, "max_tabs");
     const price = await getSetting(this.env.DB, "bag_tab_price");
+    // The player confirmed the price on their screen; if an admin changed it since, charge nothing and show the new one.
+    if (price !== shownPrice) return this.resync(ws, id, "price_changed");
     try {
       const extra = addBagTabStatements(this.env.DB, id, bag.tabs);
+      if (price === 0) {
+        // A free tab: the ledger refuses a zero entry, so only the guarded tab statements run.
+        await this.env.DB.batch(extra);
+        const free: BagState = { ...bag, tabs: bag.tabs + 1 };
+        this.bags.set(id, free);
+        this.sendToCharacter(id, { t: "inv", full: true, tabs: free.tabs, items: free.items, removed: [], tabPrice: price });
+        return;
+      }
       const r = await applyCurrencyDelta(
         this.env.DB,
         { characterId: id, currency: "linh_thach", delta: -price, reason: "bag_tab", actor: "system", idempotencyKey: `bagtab:${crypto.randomUUID()}` },
@@ -1314,7 +1324,7 @@ export class MapRoom extends DurableObject<Env> {
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       const after: BagState = { ...bag, tabs: bag.tabs + 1 };
       this.bags.set(id, after);
-      this.sendToCharacter(id, { t: "inv", full: true, tabs: after.tabs, items: after.items, removed: [] });
+      this.sendToCharacter(id, { t: "inv", full: true, tabs: after.tabs, items: after.items, removed: [], tabPrice: price });
       this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
     } catch (err) {
       // A failed guard means the cached tab count was stale (nothing was charged): reload and let the player look again.
@@ -1328,7 +1338,7 @@ export class MapRoom extends DurableObject<Env> {
   private async resync(ws: WebSocket, id: string, reason: Extract<ServerMessage, { t: "inv_error" }>["reason"]): Promise<void> {
     this.send(ws, { t: "inv_error", reason });
     const bag = await this.getBag(id);
-    this.send(ws, { t: "inv", full: true, tabs: bag.tabs, items: bag.items, removed: [] });
+    this.send(ws, { t: "inv", full: true, tabs: bag.tabs, items: bag.items, removed: [], tabPrice: await getSetting(this.env.DB, "bag_tab_price") });
     this.send(ws, { t: "eq", items: bag.equipped });
   }
 

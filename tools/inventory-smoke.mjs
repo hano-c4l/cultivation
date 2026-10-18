@@ -102,6 +102,13 @@ msgs = await after(a, () => {
 }, 400);
 check("commands sent faster than the minimum gap are refused (rate)", msgs.some((m) => m.t === "inv_error" && m.reason === "rate"));
 await sleep(250);
+// Buying a tab: the price the player confirmed must match the current one, and without money nothing is bought.
+msgs = await after(a, () => a.send({ t: "inv_expand", price: 1 }));
+check("a tab price that differs from the current one is refused and the real price comes back", msgs.some((m) => m.t === "inv_error" && m.reason === "price_changed") && msgs.some((m) => m.t === "inv" && m.full && m.tabPrice === 1000));
+await sleep(250);
+msgs = await after(a, () => a.send({ t: "inv_expand", price: 1000 }));
+check("buying a tab without enough Linh Thach is refused", msgs.some((m) => m.t === "inv_error" && m.reason === "funds") && !msgs.some((m) => m.t === "inv" && m.tabs > 1));
+await sleep(250);
 msgs = await after(a, () => a.send({ t: "inv_move", from: { tab: 0, cell: 40 }, to: { tab: 0, cell: 1 } }));
 check("moving from an empty cell is refused and the bag is resent", msgs.some((m) => m.t === "inv_error" && m.reason === "invalid") && msgs.some((m) => m.t === "inv" && m.full));
 

@@ -468,7 +468,7 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(vi.chat.transferTo(vi.maps[msg.map] ?? msg.map), "important");
         break;
       case "inv":
-        if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items });
+        if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items, tabPrice: msg.tabPrice });
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
         this.equipment.refresh();
         this.hotbar.refresh();

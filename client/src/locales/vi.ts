@@ -111,6 +111,7 @@ export const vi = {
       nothing: "Không có trang bị nào cần sửa.",
       funds: "Không đủ Linh Thạch.",
       max_tabs: "Đã đạt số tab túi đồ tối đa.",
+      price_changed: "Giá mở tab vừa thay đổi, hãy xem giá mới rồi bấm lại.",
       known: "Bạn đã biết kỹ năng này rồi.",
       level_low: "Cảnh giới của bạn chưa đủ để học bí tịch này.",
     } as Record<string, string>,

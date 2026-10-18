@@ -29,6 +29,8 @@ export function initBuffs(): BuffsUi {
   const root = document.getElementById("buffs")!;
   let effects: Array<{ id: string; until: number }> = [];
   let timer: ReturnType<typeof setInterval> | undefined;
+  /** The tile the player tapped: its name and time are written out under the row. */
+  let shown: string | null = null;
 
   function render(): void {
     const now = Date.now();
@@ -48,9 +50,23 @@ export function initBuffs(): BuffsUi {
         left.className = "buff-left";
         left.textContent = formatLeft(e.until - now);
         tile.append(label, left);
+        // Hover shows the name through `title`; a touch screen has no hover, so a tap names it in the line under the tiles.
+        tile.onclick = () => {
+          shown = shown === e.id ? null : e.id;
+          render();
+        };
         return tile;
       }),
     );
+    const picked = effects.find((e) => e.id === shown);
+    if (picked) {
+      const isItem = picked.id.startsWith("i:");
+      const key = picked.id.slice(2);
+      const line = document.createElement("div");
+      line.className = "buff-name";
+      line.textContent = `${isItem ? (getItemDef(key)?.nameVi ?? key) : (getSkill(key)?.nameVi ?? key)} · ${formatLeft(picked.until - now)}`;
+      root.append(line);
+    } else shown = null;
     root.hidden = effects.length === 0;
     if (effects.length > 0 && !timer) timer = setInterval(render, 250);
     if (effects.length === 0 && timer) {

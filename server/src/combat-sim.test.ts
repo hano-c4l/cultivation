@@ -768,7 +768,7 @@ describe("effects on the buff bar and potions that work over time", () => {
     expect(p.hots).toHaveLength(0);
   });
 
-  it("drinking again while one still works keeps what was left, and leaving pays the rest out", () => {
+  it("drinking again while one still works keeps what was left, and the stored copy counts the rest", () => {
     const sim = townSim();
     const p = sim.addPlayer(seed("p1"));
     p.hp = 1;
@@ -780,9 +780,11 @@ describe("effects on the buff bar and potions that work over time", () => {
     expect(p.hots).toHaveLength(1);
     expect(p.hots[0]!.amounts.reduce((a, b) => a + b, 0)).toBe(total * 2 - 2 * Math.floor(total / 5));
     const hpBefore = p.hp;
-    sim.snapshotVitals("p1", 2100);
-    expect(p.hp).toBeGreaterThan(hpBefore);
-    expect(p.hots).toHaveLength(0);
+    const stored = sim.snapshotVitals("p1", 2100);
+    expect(stored && stored.hp).toBe(Math.min(p.maxHp, hpBefore + p.hots[0]!.amounts.reduce((a, b) => a + b, 0)));
+    // The snapshot is also taken by the periodic save while the player stays: it must leave the live profile alone.
+    expect(p.hp).toBe(hpBefore);
+    expect(p.hots).toHaveLength(1);
   });
 
   it("a dodge buff adds percentage points of dodge chance, capped like the base rate", () => {

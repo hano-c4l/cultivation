@@ -166,7 +166,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
       buy.onclick = () => {
         if (confirmBuy) {
           resetConfirm();
-          send({ t: "inv_expand" });
+          send({ t: "inv_expand", price: tabPrice });
           render();
           return;
         }

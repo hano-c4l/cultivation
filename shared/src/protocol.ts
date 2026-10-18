@@ -60,7 +60,7 @@ export type ClientMessage =
   /** Split `qty` off a stack into the first free cell. */
   | { t: "inv_split"; tab: number; cell: number; qty: number }
   /** Buy the next bag tab with Linh Thạch (the price is a game setting). */
-  | { t: "inv_expand" }
+  | { t: "inv_expand"; price: number }
   /** Claim the item attached to a mail into the bag. */
   | { t: "mail_claim"; id: string }
   /** Wear the bag item at (tab, cell). Without `slot` the server picks the first empty slot of its kind (or replaces the first). */
@@ -146,12 +146,12 @@ export type ServerMessage =
   /** One of the receiving character's balances changed; `gained` is the amount just added, when it is a gain. */
   | { t: "wallet"; currency: Currency; balance: number; gained?: number }
   /** Bag contents. `full` replaces everything; otherwise `items` are added or changed (by id) and `removed` are deleted. */
-  | { t: "inv"; full: boolean; tabs: number; items: BagItem[]; removed: string[] }
+  | { t: "inv"; full: boolean; tabs: number; items: BagItem[]; removed: string[]; tabPrice?: number }
   /** Items from a kill: `mailed` ones did not fit in the bag and were sent by mail (claim them in time). */
   | { t: "loot"; items: Array<{ type: string; qty: number; mailed: boolean }> }
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
-  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
+  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   | { t: "hotbar"; slots: string[] }
@@ -241,7 +241,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return from && to ? { t: "inv_move", from, to } : null;
     }
     case "inv_expand":
-      return { t: "inv_expand" };
+      return isInt(m.price) && m.price >= 0 && m.price <= 1_000_000 ? { t: "inv_expand", price: m.price } : null;
     case "inv_sort":
       return typeof m.mode === "string" && (SORT_MODES as readonly string[]).includes(m.mode) ? { t: "inv_sort", mode: m.mode as SortMode } : null;
     case "inv_split":
