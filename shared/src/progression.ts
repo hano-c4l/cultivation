@@ -188,7 +188,7 @@ export interface DerivedStats {
   moveSpeed: number;
 }
 
-const RATE_CAP = 60;
+export const RATE_CAP = 60;
 
 /**
  * Combat stats from base stats and cultivation level, plus the stats of worn gear (`gear`, see equipmentBonus).

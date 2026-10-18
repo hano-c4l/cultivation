@@ -12,6 +12,8 @@ import type { MonsterRank } from "./monsters";
  * `character_skills`. Learning from NPCs and sects comes later.
  */
 export type SkillKind = "attack" | "heal" | "buff";
+/** What a buff raises. attack/defense: fraction of the stat; dodge: `power` is a fraction of 100, added as percentage points of dodge chance. */
+export type BuffStat = "attack" | "defense" | "dodge";
 
 export interface SkillDef {
   id: string;
@@ -29,7 +31,7 @@ export interface SkillDef {
    * buff: fraction added to the buffed stat (0.3 = +30%).
    */
   power: number;
-  buff?: { stat: "attack" | "defense"; durationMs: number };
+  buff?: { stat: BuffStat; durationMs: number };
   /** Weapon family the caster must wield (WEAPON_TYPES); omitted: any weapon or none. */
   weapon?: string;
   /** Basic skills: the level that unlocks it (with `root` for element skills). null: only from a book. */

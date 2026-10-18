@@ -47,6 +47,9 @@ import {
   type MonsterRank,
   type MonsterSnapshot,
   type Vec2,
+  RATE_CAP,
+  type BuffStat,
+  type EffectView,
 } from "@game/shared";
 
 /** Everything the simulation needs to know about a character when it joins. */
@@ -115,12 +118,24 @@ export interface PlayerProfile extends ProfileSeed {
   /** A skill to use as soon as it can (walking into range first); cleared by moving, targeting or a failure. */
   pendingCast: { skill: string; target: string | null } | null;
   buffs: ActiveBuff[];
+  /** Potions that heal over time (memory only; what is left is paid out when the player leaves). */
+  hots: ActiveHot[];
 }
 
-/** A running buff: it adds `pct` (a fraction) to attack or defense until `until`. */
+/** A potion healing a little every `tickMs` until `left` ticks have run. */
+interface ActiveHot {
+  item: string;
+  /** Amounts still to heal, one per tick (the last one carries the rounding). */
+  amounts: number[];
+  tickMs: number;
+  nextAt: number;
+  until: number;
+}
+
+/** A running buff: it adds `pct` to attack, defense or dodge until `until`. */
 interface ActiveBuff {
   skill: string;
-  stat: "attack" | "defense";
+  stat: BuffStat;
   pct: number;
   until: number;
 }
@@ -161,6 +176,8 @@ export type SimEvent =
   | { t: "cast_ok"; playerId: string; skill: string; cdMs: number }
   | { t: "cast_fail"; playerId: string; skill: string; reason: "mp" | "cooldown" | "no_target" | "weapon" | "unknown" }
   | { t: "buff"; playerId: string; skill: string; ms: number }
+  /** The running effects changed (a buff or a timed potion started or ended): the full list for the buff bar. */
+  | { t: "effects"; playerId: string; list: EffectView[] }
   /** A kill dropped items for this player; the room puts them in the bag (or mails them when it is full). */
   | { t: "loot"; playerId: string; drops: LootDrop[] }
   /** A kill dropped Linh Thạch for this player; the room writes it to the ledger. */
@@ -186,12 +203,14 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[] },
   // Buffs only touch attack and defense (never max HP), so their expiry cannot move the HP ratio.
   let attack = d.attack;
   let defense = d.defense;
+  let dodge = d.dodgeRate;
   for (const b of seed.buffs ?? []) {
     if (b.stat === "attack") attack = Math.floor(attack + d.attack * b.pct);
-    else defense = Math.floor(defense + d.defense * b.pct);
+    else if (b.stat === "defense") defense = Math.floor(defense + d.defense * b.pct);
+    else dodge += b.pct * 100;
   }
   return {
-    stats: { attack, defense, critRate: d.critRate, dodgeRate: d.dodgeRate, element: seed.element },
+    stats: { attack, defense, critRate: d.critRate, dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element },
     maxHp: d.maxHp,
     maxMp: d.maxMp,
     expBonus: d.expBonus,
@@ -284,7 +303,7 @@ export class CombatSim {
       }
     }
     for (const p of this.players.values()) {
-      if (p.dead || p.targetId !== null || p.hp < p.maxHp || moving.has(p.id)) return false;
+      if (p.dead || p.targetId !== null || p.hp < p.maxHp || p.hots.length > 0 || moving.has(p.id)) return false;
     }
     return true;
   }
@@ -315,6 +334,7 @@ export class CombatSim {
       cooldowns: new Map(),
       pendingCast: null,
       buffs: [],
+      hots: [],
     };
     if (seed.vitals) {
       // Back from a reload or another map: pick up where they left, with the regeneration of the time away.
@@ -345,9 +365,37 @@ export class CombatSim {
     const cd: Record<string, number> = {};
     for (const [skill, readyAt] of p.cooldowns) if (readyAt > now) cd[skill] = readyAt;
     const buffs = p.buffs.filter((b) => b.until > now).map((b) => ({ skill: b.skill, until: b.until }));
+    // A potion still working would be lost on leaving: pay out what is left.
+    for (const h of p.hots) for (const a of h.amounts) p.hp = Math.min(p.maxHp, p.hp + a);
+    p.hots = [];
     const mp = this.currentMp(p, now);
     if (p.hp >= p.maxHp && mp >= p.maxMp && Object.keys(cd).length === 0 && buffs.length === 0) return null;
     return { hp: p.hp, mp, at: now, cd, buffs };
+  }
+
+  /** Effects running now, for the buff bar: buff skills ("s:<id>") and potions working over time ("i:<item>"), each with its time left. */
+  effectsOf(p: PlayerProfile, now: number): EffectView[] {
+    const out: EffectView[] = [];
+    for (const b of p.buffs) if (b.until > now) out.push({ id: `s:${b.skill}`, ms: b.until - now });
+    for (const h of p.hots) if (h.until > now) out.push({ id: `i:${h.item}`, ms: h.until - now });
+    return out;
+  }
+
+  /**
+   * A potion that heals over time. `fraction` of max HP arrives in equal steps of `tickMs` over `durationMs`. Drinking one
+   * while another of the same kind still works restarts it with what was left plus the new dose, so nothing is lost.
+   */
+  startHot(id: string, item: string, fraction: number, durationMs: number, now: number, tickMs = 1000): SimEvent[] | null {
+    const p = this.players.get(id);
+    if (!p || p.dead) return null;
+    const steps = Math.max(1, Math.round(durationMs / tickMs));
+    const total = Math.max(1, Math.round(p.maxHp * fraction));
+    const amounts = Array.from({ length: steps }, () => Math.floor(total / steps));
+    amounts[steps - 1]! += total - amounts.reduce((a, b) => a + b, 0);
+    const old = p.hots.find((h) => h.item === item);
+    if (old) for (const a of old.amounts) amounts[amounts.length - 1]! += a;
+    p.hots = [...p.hots.filter((h) => h.item !== item), { item, amounts, tickMs, nextAt: now + tickMs, until: now + steps * tickMs }];
+    return [{ t: "effects", playerId: id, list: this.effectsOf(p, now) }];
   }
 
   /** Remaining cooldown of each skill still cooling down, in ms (for the client). */
@@ -637,10 +685,26 @@ export class CombatSim {
         events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
       }
 
+      let effectsChanged = false;
       if (p.buffs.length > 0 && p.buffs.some((b) => b.until <= now)) {
         p.buffs = p.buffs.filter((b) => b.until > now);
         this.recompute(p, false);
+        effectsChanged = true;
       }
+      if (p.hots.length > 0) {
+        for (const h of p.hots) {
+          while (h.amounts.length > 0 && now >= h.nextAt) {
+            p.hp = Math.min(p.maxHp, p.hp + h.amounts.shift()!);
+            h.nextAt += h.tickMs;
+            events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+          }
+        }
+        if (p.hots.some((h) => h.amounts.length === 0)) {
+          p.hots = p.hots.filter((h) => h.amounts.length > 0);
+          effectsChanged = true;
+        }
+      }
+      if (effectsChanged) events.push({ t: "effects", playerId: p.id, list: this.effectsOf(p, now) });
       if (p.pendingCast && this.runCast(p, pos, now, events)) continue;
 
       if (!p.targetId) continue;
@@ -701,7 +765,7 @@ export class CombatSim {
     } else if (skill.kind === "buff" && skill.buff) {
       p.buffs = [...p.buffs.filter((b) => b.skill !== skill.id), { skill: skill.id, stat: skill.buff.stat, pct: skill.power, until: now + skill.buff.durationMs }];
       this.recompute(p, false);
-      events.push({ t: "buff", playerId: p.id, skill: skill.id, ms: skill.buff.durationMs });
+      events.push({ t: "buff", playerId: p.id, skill: skill.id, ms: skill.buff.durationMs }, { t: "effects", playerId: p.id, list: this.effectsOf(p, now) });
     } else if (m && mpos) {
       this.playerAttack(p, m, mpos, now, events, skill);
     }

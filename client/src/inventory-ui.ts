@@ -6,7 +6,7 @@ import { registerWindow } from "./window-manager";
 
 export interface InventoryUi {
   /** Replaces the whole bag (welcome, or after the server refused a command). */
-  setBag(bag: BagView): void;
+  setBag(bag: Omit<BagView, "tabPrice"> & { tabPrice?: number }): void;
   /** Applies a delta from the server. */
   applyDelta(tabs: number, items: BagItem[], removed: string[]): void;
   setMail(mail: MailView[]): void;
@@ -485,7 +485,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
     setBag(bag) {
       items = new Map(bag.items.map((i) => [i.id, i]));
       tabs = bag.tabs;
-      tabPrice = bag.tabPrice;
+      tabPrice = bag.tabPrice ?? tabPrice;
       if (activeTab >= tabs) activeTab = 0;
       toggle.hidden = false;
       selected = null;

@@ -75,6 +75,12 @@ export type ClientMessage =
   /** Use the first stack of an item type in the bag (hotbar potion slots); the server picks the stack, the client never names an item id. */
   | { t: "use_type"; type: string };
 
+/** One running effect on the character for the buff bar: id is "s:<skill>" (a buff skill) or "i:<item type>" (a potion that works over time); `ms` is the time left. */
+export interface EffectView {
+  id: string;
+  ms: number;
+}
+
 /** A mail as the client sees it. `expiresInMs` is relative to when it was sent (null: never expires), so clock skew does not matter. */
 export interface MailView {
   id: string;
@@ -116,7 +122,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[] }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
@@ -154,6 +160,8 @@ export type ServerMessage =
   /** A skill went off; its cooldown runs for `cdMs`. */
   | { t: "cast_ok"; skill: string; cdMs: number }
   | { t: "cast_error"; skill: string; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" | "town" | "dead" }
+  /** Every effect running on the character right now (full list; sent whenever one starts or ends). */
+  | { t: "effects"; list: EffectView[] }
   /** A buff started on the character and lasts `ms`. */
   | { t: "buff"; skill: string; ms: number }
   /** The worn pieces (full list; sent whenever anything about them changed). */

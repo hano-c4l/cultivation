@@ -425,6 +425,7 @@ export class MapRoom extends DurableObject<Env> {
         mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
         maxMp: profile?.maxMp ?? derived.maxMp,
         regenInMs: profile ? Math.max(0, profile.lastHurtAt + Math.max(REGEN_DELAY_MS, MP_REGEN_DELAY_MS) - Date.now()) : 0,
+        effects: profile && sim ? sim.effectsOf(profile, Date.now()) : away.buffs.filter((b) => b.until > Date.now()).map((b) => ({ id: `s:${b.skill}`, ms: b.until - Date.now() })),
       });
       if (removedAtJoin.length > 0) this.send(server, { t: "eq_removed", items: removedAtJoin.map((r) => ({ type: r.item.type, reason: r.reason, mailed: r.mailed })) });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
@@ -940,6 +941,11 @@ export class MapRoom extends DurableObject<Env> {
       case "buff": {
         const entry = sockets.get(ev.playerId);
         if (entry) this.send(entry.ws, { t: "buff", skill: ev.skill, ms: ev.ms });
+        return;
+      }
+      case "effects": {
+        const entry = sockets.get(ev.playerId);
+        if (entry) this.send(entry.ws, { t: "effects", list: ev.list });
         return;
       }
       case "loot":
@@ -1507,6 +1513,14 @@ export class MapRoom extends DurableObject<Env> {
     });
     if (!res.ok) return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
     this.sendBagDelta(id, res.before, res.after);
+    const over = getItemDef(item.type)?.healOverMs;
+    if (over !== undefined) {
+      // Heals a little every second; the effect shows on the buff bar until it has all landed.
+      const events = this.sim?.startHot(id, item.type, heal, over, Date.now());
+      if (events) for (const ev of events) if (ev.t === "effects") this.sendToCharacter(id, { t: "effects", list: ev.list });
+      this.startTick();
+      return;
+    }
     const hp = this.sim?.heal(id, heal);
     const p = this.sim?.getPlayer(id);
     if (hp !== null && hp !== undefined && p) this.sendToCharacter(id, { t: "hp", hp, maxHp: p.maxHp });

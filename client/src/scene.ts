@@ -34,6 +34,7 @@ import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
 import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
+import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
@@ -131,6 +132,7 @@ export class GameScene extends Phaser.Scene {
   private inventory!: InventoryUi;
   private equipment!: EquipmentUi;
   private hotbar!: HotbarUi;
+  private buffs!: BuffsUi;
   private skillsUi!: SkillsUi;
   /** The skills last announced, to report a new one. */
   private knownSkills: string[] | null = null;
@@ -169,6 +171,7 @@ export class GameScene extends Phaser.Scene {
       getMp: () => this.vitals.getMp(),
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
+    this.buffs = initBuffs();
     this.skillsUi = initSkills((value, label) => this.hotbar.beginAssign(value, label));
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
@@ -371,6 +374,7 @@ export class GameScene extends Phaser.Scene {
         this.hotbar.setSkills(msg.skills);
         this.hotbar.setSlots(msg.hotbar);
         this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, MP_REGEN_PER_S);
+        this.buffs.set(msg.effects);
         for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
         this.refreshHud();
         break;
@@ -472,6 +476,9 @@ export class GameScene extends Phaser.Scene {
         break;
       case "cast_error":
         this.chat.system(vi.skills.errors[msg.reason] ?? vi.skills.errors.unknown!, "error");
+        break;
+      case "effects":
+        this.buffs.set(msg.list);
         break;
       case "buff":
         this.chat.system(vi.skills.buffOn(getSkill(msg.skill)?.nameVi ?? msg.skill, Math.round(msg.ms / 1000)));
