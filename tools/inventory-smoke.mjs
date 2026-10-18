@@ -102,7 +102,14 @@ msgs = await after(a, () => {
 }, 400);
 check("commands sent faster than the minimum gap are refused (rate)", msgs.some((m) => m.t === "inv_error" && m.reason === "rate"));
 await sleep(250);
-msgs = await after(a, () => a.send({ t: "inv_move", from: { tab: 0, cell: 99 }, to: { tab: 0, cell: 1 } }));
+// Buying a tab: the price the player confirmed must match the current one, and without money nothing is bought.
+msgs = await after(a, () => a.send({ t: "inv_expand", price: 1 }));
+check("a tab price that differs from the current one is refused and the real price comes back", msgs.some((m) => m.t === "inv_error" && m.reason === "price_changed") && msgs.some((m) => m.t === "inv" && m.full && m.tabPrice === 1000));
+await sleep(250);
+msgs = await after(a, () => a.send({ t: "inv_expand", price: 1000 }));
+check("buying a tab without enough Linh Thach is refused", msgs.some((m) => m.t === "inv_error" && m.reason === "funds") && !msgs.some((m) => m.t === "inv" && m.tabs > 1));
+await sleep(250);
+msgs = await after(a, () => a.send({ t: "inv_move", from: { tab: 0, cell: 40 }, to: { tab: 0, cell: 1 } }));
 check("moving from an empty cell is refused and the bag is resent", msgs.some((m) => m.t === "inv_error" && m.reason === "invalid") && msgs.some((m) => m.t === "inv" && m.full));
 
 // Discard and the potion in town.
@@ -119,9 +126,9 @@ check("a potion is refused when there is nothing to heal (town) and is not consu
 
 // A bag that is full sends loot to the mailbox.
 const used = bagOf(a).length;
-await give("thu_cot", (128 - used) * 99); // exactly fills the free cells (a few thu_cot already sit in one)
+await give("thu_cot", (64 - used) * 99); // exactly fills the free cells (a few thu_cot already sit in one)
 await sleep(600);
-check("the bag can be filled to the last cell", bagOf(a).length === 128, `${bagOf(a).length} cells`);
+check("the bag can be filled to the last cell", bagOf(a).length === 64, `${bagOf(a).length} cells`);
 msgs = await after(a, () => give("yeu_dan", 1), 700);
 check("loot that does not fit is flagged as mailed and a mail arrives", msgs.some((m) => m.t === "loot" && m.items[0].mailed) && msgs.some((m) => m.t === "mail" && m.mail.length === 1 && m.mail[0].item.type === "yeu_dan"));
 const mailRows = sql(`SELECT m.id, m.expires_at, m.created_at, i.qty, i.cell FROM mailbox m JOIN item_instances i ON i.id=m.item_id WHERE m.character_id='${charId}'`);

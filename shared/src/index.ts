@@ -17,3 +17,5 @@ export * from "./progression-data";
 export * from "./progression";
 export * from "./constitutions";
 export * from "./economy";
+export * from "./settings";
+export * from "./gear-skills";

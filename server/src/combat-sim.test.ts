@@ -735,3 +735,125 @@ describe("several elements (đơn ... ngũ linh căn) and the grade of the root"
     expect(expAfterKill(["kim", "moc"]) - expAfterKill([...all])).toBe(40);
   });
 });
+
+describe("effects on the buff bar and potions that work over time", () => {
+  const townSim = () => new CombatSim(getMap("town"), "town", noCrit, 0);
+  const at = (v: Vec2) => new Map<string, Vec2>([["p1", v]]);
+  it("a buff skill lists itself with its time left, and the list shrinks when it ends", () => {
+    const sim = townSim();
+    const p = sim.addPlayer(seed("p1", { stage: 3 }));
+    expect(sim.effectsOf(p, 0)).toEqual([]);
+    sim.queueCast("p1", "linh_thuan", null, 0);
+    const events = sim.tick(0, at([1, 1]));
+    expect(events).toContainEqual({ t: "effects", playerId: "p1", list: [{ id: "s:linh_thuan", ms: 15_000 }] });
+    expect(sim.effectsOf(p, 5000)).toEqual([{ id: "s:linh_thuan", ms: 10_000 }]);
+    const ended = sim.tick(15_100, at([1, 1]));
+    expect(ended).toContainEqual({ t: "effects", playerId: "p1", list: [] });
+  });
+
+  it("a timed potion heals in equal steps over its duration and then leaves the list", () => {
+    const sim = townSim();
+    const p = sim.addPlayer(seed("p1"));
+    p.hp = 1;
+    p.lastHurtAt = 1e9; // no natural regeneration muddies the count
+    const total = Math.round(p.maxHp * 0.4);
+    const started = sim.startHot("p1", "duong_huyet_dan", 0.4, 5000, 0)!;
+    expect(started).toEqual([{ t: "effects", playerId: "p1", list: [{ id: "i:duong_huyet_dan", ms: 5000 }] }]);
+    expect(sim.isIdle(at([1, 1]))).toBe(false); // a working potion keeps the room ticking
+    sim.tick(1000, at([1, 1]));
+    expect(p.hp).toBe(1 + Math.floor(total / 5));
+    const events = sim.tick(5000, at([1, 1]));
+    expect(p.hp).toBe(Math.min(p.maxHp, 1 + total));
+    expect(events).toContainEqual({ t: "effects", playerId: "p1", list: [] });
+    expect(p.hots).toHaveLength(0);
+  });
+
+  it("drinking again while one still works keeps what was left, and the stored copy counts the rest", () => {
+    const sim = townSim();
+    const p = sim.addPlayer(seed("p1"));
+    p.hp = 1;
+    p.lastHurtAt = 1e9; // no natural regeneration muddies the count
+    const total = Math.round(p.maxHp * 0.4);
+    sim.startHot("p1", "duong_huyet_dan", 0.4, 5000, 0);
+    sim.tick(2000, at([1, 1])); // two of five steps have landed
+    sim.startHot("p1", "duong_huyet_dan", 0.4, 5000, 2000);
+    expect(p.hots).toHaveLength(1);
+    expect(p.hots[0]!.amounts.reduce((a, b) => a + b, 0)).toBe(total * 2 - 2 * Math.floor(total / 5));
+    const hpBefore = p.hp;
+    const stored = sim.snapshotVitals("p1", 2100);
+    expect(stored && stored.hp).toBe(Math.min(p.maxHp, hpBefore + p.hots[0]!.amounts.reduce((a, b) => a + b, 0)));
+    // The snapshot is also taken by the periodic save while the player stays: it must leave the live profile alone.
+    expect(p.hp).toBe(hpBefore);
+    expect(p.hots).toHaveLength(1);
+  });
+
+  it("a dodge buff adds percentage points of dodge chance, capped like the base rate", () => {
+    const sim = townSim();
+    const p = sim.addPlayer(seed("p1"));
+    const before = p.stats.dodgeRate;
+    p.buffs.push({ skill: "pt_phong_than", stat: "dodge", pct: 0.2, until: 9000 });
+    sim.updateBase("p1", p.base); // recompute
+    expect(p.stats.dodgeRate).toBeCloseTo(before + 20);
+    p.buffs[0]!.pct = 5;
+    sim.updateBase("p1", p.base);
+    expect(p.stats.dodgeRate).toBe(60);
+  });
+});
+
+describe("skills from worn pháp bảo and teleport", () => {
+  const sim = () => new CombatSim(getMap("forest"), "forest", noCrit, 0);
+  const at = (v: Vec2) => new Map<string, Vec2>([["p1", v]]);
+  const spawn = (): Vec2 => [getMap("forest").spawn[0] + 0.5, getMap("forest").spawn[1] + 0.5];
+
+  it("a gear skill is usable only while the piece is worn", () => {
+    const s = sim();
+    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_phong_than"] }));
+    expect(s.skillsOf(p)).toContain("pt_phong_than");
+    expect(s.queueCast("p1", "pt_phong_than", null, 0)).toEqual({ ok: true });
+    s.updateGear("p1", p.gear ?? { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0 }, undefined, []);
+    expect(s.skillsOf(p)).not.toContain("pt_phong_than");
+    expect(s.queueCast("p1", "pt_phong_than", null, 100)).toEqual({ ok: false, reason: "unknown" });
+  });
+
+  it("the dodge buff raises the dodge chance and shows on the buff bar", () => {
+    const s = sim();
+    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_phong_than"] }));
+    const before = p.stats.dodgeRate;
+    s.queueCast("p1", "pt_phong_than", null, 0);
+    const events = s.tick(0, at(spawn()));
+    expect(p.stats.dodgeRate).toBeCloseTo(before + 25);
+    expect(events).toContainEqual({ t: "effects", playerId: "p1", list: [{ id: "s:pt_phong_than", ms: 12_000 }] });
+  });
+
+  it("a teleport emits where to move, pays and starts the cooldown", () => {
+    const s = sim();
+    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_thuan_di"] }));
+    const from = spawn();
+    const near = nearestStandablePoint(getMap("forest"), from[0] + 4, from[1]) ?? from;
+    p.targetId = "m1";
+    const mpBefore = s.currentMp(p, 0);
+    expect(s.queueCast("p1", "pt_thuan_di", null, 0, near)).toEqual({ ok: true });
+    const events = s.tick(0, at(from));
+    expect(events).toContainEqual({ t: "teleport", playerId: "p1", to: near });
+    expect(events.some((e) => e.t === "cast_ok")).toBe(true);
+    expect(s.currentMp(p, 0)).toBe(mpBefore - 30);
+    expect(p.targetId).toBeNull();
+    expect(s.queueCast("p1", "pt_thuan_di", null, 1000, near)).toEqual({ ok: false, reason: "cooldown" });
+  });
+
+  it("a teleport needs a point, and a point too far or not standable is refused without paying", () => {
+    const s = sim();
+    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_thuan_di"] }));
+    const from = spawn();
+    expect(s.queueCast("p1", "pt_thuan_di", null, 0)).toEqual({ ok: false, reason: "no_target" });
+    s.queueCast("p1", "pt_thuan_di", null, 0, [from[0] + 30, from[1]]);
+    const far = s.tick(0, at(from));
+    expect(far).toContainEqual({ t: "cast_fail", playerId: "p1", skill: "pt_thuan_di", reason: "range" });
+    s.queueCast("p1", "pt_thuan_di", null, 100, [-5, -5]);
+    const wall = s.tick(100, at(from));
+    expect(wall.some((e) => e.t === "cast_fail" && (e.reason === "range" || e.reason === "blocked"))).toBe(true);
+    expect(wall.some((e) => e.t === "teleport")).toBe(false);
+    expect(s.currentMp(p, 100)).toBe(p.maxMp); // nothing was paid
+    expect(p.cooldowns.has("pt_thuan_di")).toBe(false);
+  });
+});

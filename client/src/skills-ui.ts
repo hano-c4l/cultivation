@@ -17,6 +17,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 /** What a skill does, in one line. */
 function effectText(s: SkillDef): string {
   if (s.kind === "attack") return `${vi.skills.kinds.attack} · ${vi.skills.power.attack(s.power)} · ${vi.skills.range(s.range)}`;
+  if (s.kind === "teleport") return `${vi.skills.kinds.teleport} · ${vi.skills.power.teleport(s.range)}`;
   if (s.kind === "heal") return `${vi.skills.kinds.heal} · ${vi.skills.power.heal(Math.round(s.power * 100))}`;
   return `${vi.skills.kinds.buff} · ${vi.skills.power.buff(s.buff?.stat ?? "attack", Math.round(s.power * 100), Math.round((s.buff?.durationMs ?? 0) / 1000))}`;
 }
@@ -57,7 +58,7 @@ export function initSkills(beginAssign: (value: string, label: string) => void):
       const title = el("b");
       title.append(el("span", `elem-dot elem-${s.element ?? sheet?.spiritualRoot ?? "kim"}`), s.nameVi);
       const weapon = s.weapon ? ` · ${vi.skills.weapon(vi.equip.weaponTypes[s.weapon] ?? s.weapon)}` : "";
-      const book = s.unlock ? "" : ` · ${vi.skills.fromBook}`;
+      const book = s.unlock ? "" : s.gear ? ` · ${vi.skills.fromGear}` : ` · ${vi.skills.fromBook}`;
       const info = el("div", "sk-info");
       info.append(title, el("div", "muted", effectText(s)), el("div", "muted", `${vi.skills.mp(s.mpCost)} · ${vi.skills.cooldown(Math.round(s.cooldownMs / 1000))}${weapon}${book}`), el("div", "muted", s.descVi));
       const assign = el("button", "sk-small", vi.skills.assign);

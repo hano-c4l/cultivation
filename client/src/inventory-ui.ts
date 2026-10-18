@@ -1,4 +1,4 @@
-import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type WearerCtx } from "@game/shared";
+import { BAG_CELLS_PER_TAB, BAG_COLS, MAX_BAG_TABS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type WearerCtx } from "@game/shared";
 import { describeItem, elementDot, itemTierTag } from "./equip-text";
 import { vi } from "./locales/vi";
 import { wearerOfSheet } from "./wearer";
@@ -6,7 +6,7 @@ import { registerWindow } from "./window-manager";
 
 export interface InventoryUi {
   /** Replaces the whole bag (welcome, or after the server refused a command). */
-  setBag(bag: BagView): void;
+  setBag(bag: Omit<BagView, "tabPrice"> & { tabPrice?: number }): void;
   /** Applies a delta from the server. */
   applyDelta(tabs: number, items: BagItem[], removed: string[]): void;
   setMail(mail: MailView[]): void;
@@ -57,6 +57,10 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
 
   let items = new Map<string, BagItem>();
   let tabs = 1;
+  /** What the next tab costs (from the welcome). */
+  let tabPrice = 0;
+  /** The buy button was tapped once; a second tap within three seconds buys. */
+  let confirmBuy = false;
   let mail: Array<MailView & { deadline: number | null }> = [];
   let activeTab = 0;
   let selected: { tab: number; cell: number } | null = null;
@@ -112,6 +116,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
 
   const resetConfirm = () => {
     confirmDrop = null;
+    confirmBuy = false;
     if (confirmTimer) clearTimeout(confirmTimer);
   };
 
@@ -142,21 +147,40 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
     head.append(used, sort, close);
     panel.append(head);
 
-    if (tabs > 1) {
-      const bar = el("div", "bag-tabs");
-      for (let t = 0; t < tabs; t++) {
-        const b = el("button", t === activeTab ? "active" : undefined, vi.inventory.tab(t + 1));
-        b.onclick = () => {
-          activeTab = t;
-          // Moving to another tab is the point of "Đổi chỗ", so the selection survives the tab change in that mode.
-          if (!moveMode) selected = null;
-          resetConfirm();
-          render();
-        };
-        bar.append(b);
-      }
-      panel.append(bar);
+    // The tab row is always shown: it carries the button that unlocks the next tab.
+    const bar = el("div", "bag-tabs");
+    for (let t = 0; t < tabs; t++) {
+      const b = el("button", t === activeTab ? "active" : undefined, vi.inventory.tab(t + 1));
+      b.onclick = () => {
+        activeTab = t;
+        // Moving to another tab is the point of "Đổi chỗ", so the selection survives the tab change in that mode.
+        if (!moveMode) selected = null;
+        resetConfirm();
+        render();
+      };
+      bar.append(b);
     }
+    if (tabs < MAX_BAG_TABS) {
+      const buy = el("button", "bag-buy", confirmBuy ? vi.inventory.buyTabSure(tabPrice) : vi.inventory.buyTab(tabPrice));
+      buy.title = vi.inventory.buyTabTip;
+      buy.onclick = () => {
+        if (confirmBuy) {
+          resetConfirm();
+          send({ t: "inv_expand", price: tabPrice });
+          render();
+          return;
+        }
+        resetConfirm();
+        confirmBuy = true;
+        confirmTimer = setTimeout(() => {
+          confirmBuy = false;
+          render();
+        }, 3000);
+        render();
+      };
+      bar.append(buy);
+    }
+    panel.append(bar);
 
     // Item info and actions come first (fixed height), so they are visible without scrolling on a short screen.
     panel.append(renderDetail());
@@ -461,6 +485,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
     setBag(bag) {
       items = new Map(bag.items.map((i) => [i.id, i]));
       tabs = bag.tabs;
+      tabPrice = bag.tabPrice ?? tabPrice;
       if (activeTab >= tabs) activeTab = 0;
       toggle.hidden = false;
       selected = null;

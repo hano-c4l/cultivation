@@ -1,9 +1,10 @@
-import { MAX_BAG_TABS, MAX_LEDGER_AMOUNT, isCurrency } from "@game/shared";
+import { MAX_BAG_TABS, MAX_LEDGER_AMOUNT, isCurrency, validSettingValue } from "@game/shared";
 import { getSession } from "./auth";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
 import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
+import { allSettings, setSetting } from "./settings";
 
 /** Returns the admin's account id, or the error response to send (401 anonymous, 403 not an admin). */
 async function requireAdmin(request: Request, env: Env): Promise<string | Response> {
@@ -130,4 +131,17 @@ export async function adminSupply(request: Request, env: Env): Promise<Response>
     "SELECT currency, SUM(balance) AS total, COUNT(*) AS holders FROM currency_balances GROUP BY currency",
   ).all<{ currency: string; total: number; holders: number }>();
   return json({ supply: results });
+}
+
+/** The adjustable game settings with their effective values (GET), or a change of one of them (POST {key, value}). */
+export async function adminSettings(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  if (request.method === "GET") return json({ settings: await allSettings(env.DB) });
+  const body = await readJson(request);
+  const key = typeof body?.key === "string" ? body.key : "";
+  if (!validSettingValue(key, body?.value)) return errorResponse("invalid_setting", 400);
+  await setSetting(env.DB, key, body.value as number, admin);
+  console.log("setting changed", admin, key, body.value);
+  return json({ ok: true, settings: await allSettings(env.DB) });
 }
