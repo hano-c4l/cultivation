@@ -1,11 +1,11 @@
 # Giai đoạn 2: Chiều sâu nhân vật — đề xuất chia nhánh (bản nháp)
 
-Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g xong (`features_chat-channels`), 2a xong (`features_inventory`), hệ thống thể chất (dữ liệu và hiển thị) xong (`features_constitution`); **2b (trang bị, độ bền, giới tính, ngũ hành/loại vũ khí, pháp bảo bản mệnh và phi hành) xong**. Tất cả đã ở production (2g, 2a, thể chất 2026-10-17; 2b 2026-10-18). **Kế tiếp là 2c** (phạm vi đang chốt với người dùng). Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
+Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g xong (`features_chat-channels`), 2a xong (`features_inventory`), hệ thống thể chất (dữ liệu và hiển thị) xong (`features_constitution`); **2b (trang bị, độ bền, giới tính, ngũ hành/loại vũ khí, pháp bảo bản mệnh và phi hành) xong**. Tất cả đã ở production (2g, 2a, thể chất 2026-10-17; 2b 2026-10-18). **2c (kỹ năng, MP, thanh phím tắt, bí tịch, số hệ linh căn) cũng đã xong và ở production (2026-10-18); kế tiếp là 2d.** Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
 
 Nghiệm thu chung của GĐ2 (từ PLAN): một nhân vật đi trọn chuỗi nhiệm vụ tân thủ; công thức sát thương ngũ hành đúng test; sát khí/rơi đồ/vệ binh theo đúng luật mặc định.
 
 ## Thứ tự phụ thuộc
-2g (xong) → 2a (xong) → 2b (xong) → 2c → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
+2g (xong) → 2a (xong) → 2b (xong) → 2c (xong) → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
 
 ## 2a. Vật phẩm và túi đồ (`features_inventory`) — ĐÃ LÀM
 Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và hòm thư (2a)". Quyết định thêm (2026-10-17): túi đầy thì đồ rơi được **gửi vào hòm thư, phải nhận trong 30 phút nếu không sẽ mất**.
@@ -26,10 +26,18 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Trang bị và 
 - Pháp bảo ở 2b chỉ cộng chỉ số; kỹ năng đặc biệt của pháp bảo và vũ khí theo bí tịch làm ở 2c.
 - Nghiệm thu: mặc/tháo đổi đúng chỉ số; chết giảm độ bền; sửa đồ trừ đúng tiền, không âm (đã có test và `tools/equipment-smoke.mjs`).
 
-## 2c. Kỹ năng, MP và ngũ hành đầy đủ (`features_skills`)
-- MP, thanh phím tắt kỹ năng, hồi chiêu, tầm đánh; kỹ năng theo hướng tu và ngũ hành. **Hiệu ứng buff của thể chất** (xem `docs/PLAN.md` mục 9, `shared/src/constitutions.ts`) cũng được áp dụng ở đây: sát thương và độ thuần thục của kỹ năng theo nguyên tố/vũ khí. **Thanh phím tắt này cũng chứa các ô dùng nhanh vật phẩm tiêu hao** (ví dụ Hồi Huyết Đan, kéo từ túi đồ vào ô; yêu cầu của người dùng, 2026-10-17), nên các ô dùng nhanh được làm ở đây chứ không ở 2a.
+## 2c. Kỹ năng, MP và ngũ hành đầy đủ (`features_skills`) — ĐÃ LÀM (đã ở production)
+**Đã chốt với người dùng (2026-10-18):**
+- **Học kỹ năng:** kỹ năng cơ bản mở theo cảnh giới/tầng (theo ngũ hành linh căn của nhân vật + kỹ năng dùng chung); kỹ năng cao hơn học từ **bí tịch** (vật phẩm). Học từ NPC và gia nhập tông môn (cần Cống Hiến) để sau, phần phức tạp.
+- **Loại kỹ năng đợt này:** chỉ đánh **một mục tiêu**, hồi máu và buff đơn giản (tăng công/thủ trong thời gian ngắn). Chưa có diện rộng, chưa có hiệu ứng trạng thái (bỏng, chậm, choáng).
+- **Thanh phím tắt:** 8 ô, phím 1-8, chạm trên điện thoại; dùng chung cho kỹ năng và đan dược tiêu hao (kéo/gán từ túi đồ).
+- **MP:** hồi theo thời gian, ngừng hồi một lúc sau khi bị đánh (như hồi máu); kỹ năng tốn MP và có hồi chiêu.
+**Chia PR:** A = dữ liệu kỹ năng, MP, tung kỹ năng (hồi chiêu, tầm đánh, hồi máu, buff), mở khóa cơ bản, thanh phím tắt (kỹ năng + đan), giao diện; B = bí tịch (vật phẩm, học, rơi) và ràng buộc họ vũ khí; C (hỏi người dùng trước) = buff theo ngũ hành/họ vũ khí của trang bị, `skill_damage` của thể chất, trục số hệ linh căn (chỉ mở rộng `elementMultiplier`, không đổi dữ liệu nhân vật).
+- Hiệu ứng buff của thể chất (xem `docs/PLAN.md` mục 9, `shared/src/constitutions.ts`): sát thương và độ thuần thục kỹ năng theo nguyên tố/vũ khí (phần C). Các ô dùng nhanh vật phẩm tiêu hao nằm trên cùng thanh phím tắt này.
 - Bảng sát thương ngũ hành đầy đủ (tương khắc ×1.3, bị khắc ×0.75, tương sinh bonus nhỏ) mở rộng được cho **trục số hệ linh căn** (đơn/song/tam/tứ/ngũ, biến dị Lôi/Băng/Phong) đã hẹn ở GĐ2.
 - Nghiệm thu: công thức sát thương ngũ hành đúng test (bảng đầy đủ); hồi chiêu và MP được server kiểm.
+- **Phần C đã làm (2026-10-18):** HP/MP/hồi chiêu/buff giữ khi tải lại; trang bị hợp linh căn/thể chất +15% (`AFFINITY_BONUS`); thể chất `skill_damage` bật. Chi tiết: `docs/STATUS.md`.
+- **Số hệ linh căn: ĐÃ LÀM (2026-10-18)** theo số liệu người dùng chốt (đơn 20%, song 48%, tam 25%, tứ 5%, ngũ 2%; tu vi +10/0/-15/-30/-40%; không ảnh hưởng sát thương) cùng phẩm cấp ảnh hưởng tu vi và sát thương theo hệ. Nhân vật có sẵn giữ là đơn linh căn. Chi tiết: `docs/STATUS.md` mục "Linh căn nhiều hệ". Biến dị Lôi/Băng/Phong chưa làm.
 
 ## 2d. Chủ tu/phụ tu và đột phá (`features_cultivation-paths`)
 - Chọn chủ tu (Kiếm tu, Thuật tu, Đan tu) và phụ tu; hệ số EXP `1 / (1 + k·n)` (PLAN mục 9), `k` chỉnh được trong cấu hình.

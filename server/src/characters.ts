@@ -1,5 +1,6 @@
 import {
   STAT_DEFS,
+  parseRoots,
   type Gender,
   applyExp,
   type BaseStats,
@@ -24,6 +25,10 @@ export interface CharacterRow {
   constitution: string;
   constitution_tier: number;
   gender: Gender;
+  hotbar: string;
+  vitals: string | null;
+  /** All the elements of the spiritual root, main one first, comma separated; empty: only `spiritual_root`. */
+  roots: string;
   stat_can_cot: number;
   stat_than_phap: number;
   stat_ngo_tinh: number;
@@ -33,7 +38,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, roots, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 export function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
@@ -42,6 +47,17 @@ export function getCharacterByAccount(db: D1Database, accountId: string): Promis
 
 export function getCharacterById(db: D1Database, id: string): Promise<CharacterRow | null> {
   return db.prepare(`SELECT ${COLUMNS} FROM characters WHERE id = ?`).bind(id).first<CharacterRow>();
+}
+
+/** Skills learned from bí tịch (the basic ones are not stored). */
+export async function loadLearnedSkills(db: D1Database, characterId: string): Promise<string[]> {
+  const { results } = await db.prepare("SELECT skill_id FROM character_skills WHERE character_id = ?").bind(characterId).all<{ skill_id: string }>();
+  return results.map((r) => r.skill_id);
+}
+
+/** Writes the whole hotbar (one D1 row write); the room has already validated every slot. */
+export async function saveHotbar(db: D1Database, characterId: string, slots: readonly string[]): Promise<void> {
+  await db.prepare("UPDATE characters SET hotbar = ? WHERE id = ?").bind(JSON.stringify(slots), characterId).run();
 }
 
 /** Progression the room holds in memory; written together with the position when present. */
@@ -59,19 +75,23 @@ export async function saveCharacterPosition(
   x: number,
   y: number,
   progress?: ProgressWrite,
+  /** HP/MP/cooldowns/buffs JSON (same row, no extra write); null clears it (fresh: full HP and MP); undefined leaves it as it is. */
+  vitals?: string | null,
 ): Promise<void> {
+  const vitalsSql = vitals === undefined ? "" : ", vitals = ?";
+  const vitalsArg = vitals === undefined ? [] : [vitals];
   if (!progress) {
     await db
-      .prepare("UPDATE characters SET map_id = ?, x = ?, y = ?, updated_at = ? WHERE id = ?")
-      .bind(mapId, x, y, Date.now(), id)
+      .prepare(`UPDATE characters SET map_id = ?, x = ?, y = ?${vitalsSql}, updated_at = ? WHERE id = ?`)
+      .bind(mapId, x, y, ...vitalsArg, Date.now(), id)
       .run();
     return;
   }
   await db
     .prepare(
-      "UPDATE characters SET map_id = ?, x = ?, y = ?, stage = ?, exp = ?, potential_points = potential_points + ?, updated_at = ? WHERE id = ?",
+      `UPDATE characters SET map_id = ?, x = ?, y = ?, stage = ?, exp = ?, potential_points = potential_points + ?${vitalsSql}, updated_at = ? WHERE id = ?`,
     )
-    .bind(mapId, x, y, progress.stage, progress.exp, progress.addPoints, Date.now(), id)
+    .bind(mapId, x, y, progress.stage, progress.exp, progress.addPoints, ...vitalsArg, Date.now(), id)
     .run();
 }
 
@@ -91,6 +111,7 @@ export function toCharacterSheet(c: CharacterRow): CharacterSheet {
     id: c.id,
     name: c.name,
     spiritualRoot: c.spiritual_root,
+    roots: parseRoots(c.roots, c.spiritual_root),
     rootGrade: c.root_grade,
     constitution: c.constitution,
     constitutionTier: c.constitution_tier,

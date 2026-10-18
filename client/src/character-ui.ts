@@ -9,6 +9,7 @@ import {
   expToNext,
   getConstitution,
   getRealm,
+  getRootCount,
   getRootGrade,
   type BaseStats,
   type CharacterSheet,
@@ -17,6 +18,7 @@ import {
 } from "@game/shared";
 import { getCatalog } from "./constitution-store";
 import { vi } from "./locales/vi";
+import { wearerOfSheet } from "./wearer";
 import { registerWindow } from "./window-manager";
 
 export interface CharacterPanel {
@@ -60,7 +62,8 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
     const realm = getRealm(s.realm);
 
     const head = el("div", "cp-head");
-    head.append(el("b", undefined, s.name), el("span", undefined, `${vi.character.root}: ${vi.roots[s.spiritualRoot] ?? s.spiritualRoot} · ${getRootGrade(s.rootGrade).nameVi}`));
+    head.append(el("b", undefined, s.name), el("span", undefined, `${vi.character.root}: ${getRootCount(s.roots.length).nameVi} (${s.roots.map((r) => vi.roots[r] ?? r).join(", ")}) · ${getRootGrade(s.rootGrade).nameVi}`));
+    head.title = vi.character.rootTitle(getRootCount(s.roots.length).expBonusPct + getRootGrade(s.rootGrade).expBonusPct, getRootGrade(s.rootGrade).elementDamagePct);
     const genderLine = el("div", "cp-constitution", `${vi.character.gender}: ${vi.gender[s.gender] ?? s.gender}`);
     const close = el("button", "cp-close", "×");
     close.onclick = () => (panel.hidden = true);
@@ -128,8 +131,8 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
     const preview: BaseStats = { ...s.base };
     for (const def of STAT_DEFS) preview[def.key] += pending[def.key] ?? 0;
     // Gear counts as the server counts it: requirements are judged against the saved stats, not the unconfirmed clicks.
-    const gear = equipmentBonus(worn, { gender: s.gender, realm: s.realm, stage: s.stage, base: s.base });
-    const d = deriveStats(preview, s.realm, s.stage, s.rootGrade, gear);
+    const gear = equipmentBonus(worn, wearerOfSheet(s));
+    const d = deriveStats(preview, s.realm, s.stage, s.rootGrade, gear, s.roots.length);
     const derived = el("div", "cp-derived");
     const lines: [string, string][] = [
       [vi.character.derived.maxHp, String(d.maxHp)],

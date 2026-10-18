@@ -1,6 +1,7 @@
 import { BAG_CELLS_PER_TAB, BAG_COLS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type WearerCtx } from "@game/shared";
 import { describeItem, elementDot, itemTierTag } from "./equip-text";
 import { vi } from "./locales/vi";
+import { wearerOfSheet } from "./wearer";
 import { registerWindow } from "./window-manager";
 
 export interface InventoryUi {
@@ -44,7 +45,7 @@ function fmtTime(ms: number): string {
  * move it there (an empty cell moves, the same item merges, a different item swaps). The server owns the bag, so a
  * command only names cells; the screen changes when the server's delta comes back.
  */
-export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
+export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (value: string, label: string) => void = () => undefined): InventoryUi {
   const toggle = el("button", undefined, vi.inventory.button);
   toggle.id = "bag-btn";
   toggle.hidden = true;
@@ -52,7 +53,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
   panel.id = "bag-panel";
   panel.hidden = true;
   document.body.append(toggle, panel);
-  registerWindow("bag", panel, 2);
+  registerWindow("bag", panel, 3);
 
   let items = new Map<string, BagItem>();
   let tabs = 1;
@@ -209,7 +210,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     }
     const def = getItemDef(item.type);
     const sel = selected;
-    box.append(describeItem(item.type, { dur: item.dur, max: item.max, qty: item.qty, lv: item.lv, xp: item.xp }));
+    box.append(describeItem(item.type, { dur: item.dur, max: item.max, qty: item.qty, lv: item.lv, xp: item.xp, wearer: wearer ?? undefined }));
     if (moveMode) box.append(el("div", "muted", vi.inventory.swapHint));
     if (splitQty !== null && item.qty > 1) {
       box.append(renderSplit(item, sel));
@@ -227,10 +228,15 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       wear.onclick = () => send({ t: "eq_equip", tab: sel.tab, cell: sel.cell });
       actions.append(wear);
     }
-    if (def?.healFraction !== undefined) {
-      const use = el("button", undefined, vi.inventory.use);
+    if (def?.healFraction !== undefined || def?.teaches) {
+      const use = el("button", undefined, def.teaches ? vi.inventory.learn : vi.inventory.use);
       use.onclick = () => send({ t: "inv_use", tab: sel.tab, cell: sel.cell });
       actions.append(use);
+    }
+    if (def?.healFraction !== undefined) {
+      const quick = el("button", undefined, vi.inventory.toHotbar);
+      quick.onclick = () => toHotbar(`i:${item.type}`, itemName(item.type));
+      actions.append(quick);
     }
     if (item.qty > 1 && (def?.maxStack ?? 1) > 1) {
       const split = el("button", undefined, vi.inventory.split);
@@ -263,7 +269,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
     if (def?.equip) {
       for (const w of worn.filter((e) => equipmentInfo(e.type)?.kind === def.equip!.kind)) {
         const cmp = el("div", "bag-compare");
-        cmp.append(el("div", "muted", `${vi.inventory.wornNow}:`), describeItem(w.type, { dur: w.dur, max: w.max, lv: w.lv, xp: w.xp }));
+        cmp.append(el("div", "muted", `${vi.inventory.wornNow}:`), describeItem(w.type, { dur: w.dur, max: w.max, lv: w.lv, xp: w.xp, wearer: wearer ?? undefined }));
         box.append(cmp);
       }
     }
@@ -489,7 +495,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       return started;
     },
     setSheet(sheet) {
-      wearer = { gender: sheet.gender, realm: sheet.realm, stage: sheet.stage, base: sheet.base };
+      wearer = wearerOfSheet(sheet);
       render();
     },
     setEquipped(items) {

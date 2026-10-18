@@ -5,6 +5,7 @@ import type { Currency, Wallet } from "./economy";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
+import { HOTBAR_SLOTS, HOTBAR_SLOT_PATTERN } from "./skills";
 import { parseAllocation, type CharacterSheet } from "./progression";
 import type { BaseStats } from "./progression-data";
 
@@ -64,7 +65,13 @@ export type ClientMessage =
   | { t: "eq_equip"; tab: number; cell: number; slot?: EquipSlot }
   | { t: "eq_unequip"; slot: EquipSlot }
   /** Repair one worn piece, or all of them, for Linh Thạch. */
-  | { t: "eq_repair"; slot: EquipSlot | "all" };
+  | { t: "eq_repair"; slot: EquipSlot | "all" }
+  /** Use a skill. `target` is the monster to hit (attack skills; omitted: the current target). Heals and buffs need none. */
+  | { t: "cast"; skill: string; target?: string }
+  /** Set one hotbar slot: "" (empty), "s:<skill id>" or "i:<item type>". One slot per message, one D1 write. */
+  | { t: "hotbar_set"; slot: number; v: string }
+  /** Use the first stack of an item type in the bag (hotbar potion slots); the server picks the stack, the client never names an item id. */
+  | { t: "use_type"; type: string };
 
 /** A mail as the client sees it. `expiresInMs` is relative to when it was sent (null: never expires), so clock skew does not matter. */
 export interface MailView {
@@ -105,7 +112,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[] }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
@@ -123,7 +130,7 @@ export type ServerMessage =
   | { t: "mon"; monster: MonsterSnapshot }
   | { t: "mon_gone"; id: string }
   /** One attack landed (or missed). `hp` is the target's HP afterwards; `to` is a monster id or a character id. */
-  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number }
+  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string }
   /** The receiving character's own HP changed (regeneration or damage). */
   | { t: "hp"; hp: number; maxHp: number }
   /** One of the receiving character's balances changed; `gained` is the amount just added, when it is a gain. */
@@ -134,7 +141,17 @@ export type ServerMessage =
   | { t: "loot"; items: Array<{ type: string; qty: number; mailed: boolean }> }
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
-  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | EquipBlock | "nothing" | "funds"; retryMs?: number }
+  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
+  /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
+  | { t: "skills"; ids: string[] }
+  | { t: "hotbar"; slots: string[] }
+  /** MP right now. It then regenerates by `perSec` (fraction of max) per second after `regenInMs` (nothing before that). */
+  | { t: "mp"; mp: number; maxMp: number; regenInMs: number; perSec: number }
+  /** A skill went off; its cooldown runs for `cdMs`. */
+  | { t: "cast_ok"; skill: string; cdMs: number }
+  | { t: "cast_error"; skill: string; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" | "town" | "dead" }
+  /** A buff started on the character and lasts `ms`. */
+  | { t: "buff"; skill: string; ms: number }
   /** The worn pieces (full list; sent whenever anything about them changed). */
   | { t: "eq"; items: EquippedItem[] }
   /** Pieces that came off on their own (broken by a death, or the wearer no longer qualifies). `mailed`: the bag was full, claim them from mail. */
@@ -217,6 +234,14 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999
         ? { t: "inv_split", tab: m.tab, cell: m.cell, qty: m.qty }
         : null;
+    case "cast":
+      if (typeof m.skill !== "string" || !/^[a-z0-9_]{1,32}$/.test(m.skill)) return null;
+      if (m.target === undefined) return { t: "cast", skill: m.skill };
+      return isMonsterId(m.target) ? { t: "cast", skill: m.skill, target: m.target } : null;
+    case "hotbar_set":
+      return isInt(m.slot) && m.slot >= 0 && m.slot < HOTBAR_SLOTS && typeof m.v === "string" && HOTBAR_SLOT_PATTERN.test(m.v) ? { t: "hotbar_set", slot: m.slot, v: m.v } : null;
+    case "use_type":
+      return typeof m.type === "string" && /^[a-z0-9_.]{1,60}$/.test(m.type) ? { t: "use_type", type: m.type } : null;
     case "eq_equip": {
       if (!isInt(m.tab) || !isInt(m.cell) || !cellOk(m.tab, m.cell)) return null;
       if (m.slot === undefined) return { t: "eq_equip", tab: m.tab, cell: m.cell };

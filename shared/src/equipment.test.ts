@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  AFFINITY_BONUS,
   DEFAULT_MAX_DURABILITY,
+  gearAffinity,
+  resonates,
   applyRefineExp,
   baseStatsAt,
   refineExpNeeded,
@@ -408,5 +411,49 @@ describe("pháp bảo bản mệnh and pháp bảo phi hành", () => {
     expect(after.items[0]).toMatchObject({ id: "b", lv: 4, xp: 77, dur: 90 });
     const on = planEquip(after, 1, { tab: 0, cell: 0 }, undefined, maleWearer);
     expect(applyBag(after, on.ok ? on.ops : []).equipped[0]).toMatchObject({ lv: 4, xp: 77 });
+  });
+});
+
+describe("affinity: gear that suits its wearer gives more", () => {
+  const sword = "eq.weapon.u.0.5.2.hoa.kiem";
+  const worn = (type: string, slot: EquippedItem["slot"]): EquippedItem => ({ id: type + slot, type, slot, dur: 100, max: 100 });
+
+  it("is +15% by one tunable constant", () => {
+    expect(AFFINITY_BONUS).toBe(0.15);
+  });
+
+  it("a piece of the wearer's root element resonates; another element does not", () => {
+    const aff = gearAffinity(["hoa"], []);
+    expect(resonates(equipmentInfo(sword)!, aff)).toBe(true);
+    expect(resonates(equipmentInfo("eq.weapon.u.0.5.2.thuy.kiem")!, aff)).toBe(false);
+    expect(resonates(equipmentInfo("eq.weapon.u.0.5.2")!, aff)).toBe(false); // an older piece without an element
+    expect(resonates(equipmentInfo(sword)!, undefined)).toBe(false);
+  });
+
+  it("the constitution adds its elements and weapon families", () => {
+    const aff = gearAffinity(["kim"], [
+      { stat: "skill_damage", targetKind: "weapon", targetTag: "kiem", mode: "percent", value: 30 },
+      { stat: "skill_damage", targetKind: "element", targetTag: "thuy", mode: "percent", value: 30 },
+      { stat: "attack", targetKind: "all", targetTag: "", mode: "percent", value: 5 },
+    ]);
+    expect(aff.elements.slice().sort()).toEqual(["kim", "thuy"]);
+    expect(aff.weapons).toEqual(["kiem"]);
+    expect(resonates(equipmentInfo("eq.weapon.u.0.5.2.hoa.kiem")!, aff)).toBe(true); // wrong element, right weapon family
+    expect(resonates(equipmentInfo("eq.robe.m.0.5.2.thuy")!, aff)).toBe(true); // element of the constitution
+    expect(resonates(equipmentInfo("eq.robe.m.0.5.2.moc")!, aff)).toBe(false);
+  });
+
+  it("matching gear adds 15% to its stats once, however many ways it matches", () => {
+    const plain = equipmentBonus([worn(sword, "weapon")], { ...maleWearer, affinity: undefined });
+    const root = equipmentBonus([worn(sword, "weapon")], { ...maleWearer, affinity: gearAffinity(["hoa"], []) });
+    const both = equipmentBonus([worn(sword, "weapon")], {
+      ...maleWearer,
+      affinity: gearAffinity(["hoa"], [{ stat: "skill_damage", targetKind: "weapon", targetTag: "kiem", mode: "percent", value: 30 }]),
+    });
+    expect(root.attack).toBe(Math.floor(plain.attack * 1.15));
+    expect(root.attack).toBeGreaterThan(plain.attack);
+    expect(both.attack).toBe(root.attack);
+    const off = equipmentBonus([worn(sword, "weapon")], { ...maleWearer, affinity: gearAffinity(["thuy"], []) });
+    expect(off.attack).toBe(plain.attack);
   });
 });
