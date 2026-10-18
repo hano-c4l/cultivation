@@ -1010,7 +1010,7 @@ export class MapRoom extends DurableObject<Env> {
   /**
    * Records a Linh Thạch drop in the ledger. The key is made once per kill and reused on every retry, so a retry
    * after a timeout cannot pay twice. The write is synchronous with the kill's own queue slot (never held in memory
-   * only, PLAN section 3), but off the tick's critical path. A drop still failing after the retries is lost, never doubled.
+   * only, TECHNICAL section 3), but off the tick's critical path. A drop still failing after the retries is lost, never doubled.
    */
   private enqueueDrop(characterId: string, amount: number): void {
     const key = `drop:${crypto.randomUUID()}`;

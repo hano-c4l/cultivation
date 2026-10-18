@@ -3,7 +3,7 @@ import type { MonsterRank } from "./monsters";
 import { BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId } from "./skills";
 
 /**
- * Item catalogue. Placeholder game-design values (listed under "giá trị tạm" in docs/STATUS.md). Display strings are
+ * Item catalogue. Placeholder game-design values (listed under "giá trị tạm" in docs/PHASE2.md). Display strings are
  * Vietnamese data fields, like monster names. Equipment (never stacked, PLAN section 4) arrives with phase 2b.
  */
 export type ItemCategory = "consumable" | "material" | "equipment" | "skill_book";

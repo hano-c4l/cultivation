@@ -275,7 +275,7 @@ export async function commitBagOps(
   if (statements.length === 0) return "ok";
   try {
     const results = await db.batch(statements);
-    // Logged so `wrangler tail` shows the real D1 write cost of a bag change (docs/STATUS.md, bag notes).
+    // Logged so `wrangler tail` shows the real D1 write cost of a bag change (docs/PHASE2.md, 2a notes).
     console.log("bag rows_written", opts.grantKey ? "loot" : "command", results.reduce((n, r) => n + (r.meta?.rows_written ?? 0), 0));
     return "ok";
   } catch (err) {

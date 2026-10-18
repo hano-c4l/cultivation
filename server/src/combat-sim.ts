@@ -98,7 +98,7 @@ export interface ProfileSeed {
 
 /**
  * Working copy of a character's combat state. It lives in the room's memory only: HP is not persisted, and EXP
- * (the room's working copy, see docs/PLAN.md section 3) is flushed to D1 on stage-up, leave, portal, death and by the
+ * (the room's working copy, see docs/TECHNICAL.md section 3) is flushed to D1 on stage-up, leave, portal, death and by the
  * debounced save. Points gained from stage-ups are written as a relative delta (`pendingPoints`).
  */
 export interface PlayerProfile extends ProfileSeed {

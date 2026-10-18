@@ -6,7 +6,7 @@
  * The catalogue (constitutions, tier names, roll weights, effects) is DATA: it lives in D1 (migration 0008, seeded from
  * DEFAULT_CATALOG) so an admin screen can manage it later. This file holds the types, the vocabulary an effect may use,
  * the validation every write must pass, and the pure functions that roll and read a catalogue. All names and numbers in
- * DEFAULT_CATALOG are placeholder game-design values (docs/STATUS.md).
+ * DEFAULT_CATALOG are placeholder game-design values (docs/PHASE2.md).
  *
  * Lifecycle rules (enforced by validateCatalog and by the future write path):
  *  - a constitution id never changes and a constitution is never deleted (characters reference the id);
@@ -80,7 +80,7 @@ export const CONSTITUTION_STATS: Readonly<Record<string, StatMeta>> = {
   skill_mastery: { nameVi: "Độ thuần thục kỹ năng", targets: SKILL_TARGETS, modes: ["percent"], applied: false },
   /** All outgoing damage, including the auto-attack. */
   damage_dealt: { nameVi: "Sát thương gây ra", targets: ["all"], modes: ["percent"], applied: false },
-  /** Movement is server-authoritative: speed can only change when a new path starts (see docs/STATUS.md). */
+  /** Movement is server-authoritative: speed can only change when a new path starts (see docs/TECHNICAL.md, architecture). */
   move_speed: { nameVi: "Tốc độ di chuyển", targets: ["all"], modes: ["percent"], applied: false },
   exp_gain: { nameVi: "Kinh nghiệm nhận được", targets: ["all"], modes: ["percent"], applied: false },
   drop_rate: { nameVi: "Tỉ lệ rơi đồ", targets: ["all"], modes: ["percent"], applied: false },
