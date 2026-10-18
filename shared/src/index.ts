@@ -19,4 +19,5 @@ export * from "./breakthrough";
 export * from "./constitutions";
 export * from "./economy";
 export * from "./settings";
+export * from "./theme";
 export * from "./gear-skills";

@@ -70,9 +70,9 @@
       #hotbar .hb-key { position: absolute; top: 1px; right: 3px; font-size: 9px; color: #ffd54a; font-weight: 700; }
       #hotbar .hb-tag, .hb-ghost .hb-tag { position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; line-height: 1; text-shadow: 0 0 2px #000; }
       /* The background of a skill slot follows the grade of the skill: Hạ, Trung, Thượng, Địa, Thiên. */
-      #hotbar .hb-slot.hb-grade-0 { background: rgba(158, 158, 158, 0.28); } #hotbar .hb-slot.hb-grade-1 { background: rgba(76, 175, 80, 0.3); }
-      #hotbar .hb-slot.hb-grade-2 { background: rgba(66, 165, 245, 0.32); } #hotbar .hb-slot.hb-grade-3 { background: rgba(171, 71, 188, 0.34); }
-      #hotbar .hb-slot.hb-grade-4 { background: rgba(255, 179, 0, 0.36); }
+      #hotbar .hb-slot.hb-grade-0 { background: var(--grade-0, rgba(158, 158, 158, 0.28)); } #hotbar .hb-slot.hb-grade-1 { background: var(--grade-1, rgba(76, 175, 80, 0.3)); }
+      #hotbar .hb-slot.hb-grade-2 { background: var(--grade-2, rgba(66, 165, 245, 0.32)); } #hotbar .hb-slot.hb-grade-3 { background: var(--grade-3, rgba(171, 71, 188, 0.34)); }
+      #hotbar .hb-slot.hb-grade-4 { background: var(--grade-4, rgba(255, 179, 0, 0.36)); }
       .hb-ghost { position: fixed; z-index: 20; box-sizing: border-box; padding: 2px; border: 1px solid; border-radius: 6px; overflow: hidden; opacity: 0.9; pointer-events: none;
         color: #e8e4d8; font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
       .hb-ghost .hb-name { display: block; margin-top: 8px; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
@@ -141,7 +141,7 @@
       #bag-panel .bag-mark.x { color: #ff5252; } #bag-panel .bag-mark.plus { color: #ffd54a; }
       #bag-panel .bag-actions button.active { background: #6fcf97; }
       /* Realm tags (LK, TC1...) are coloured by realm everywhere: Luyện Khí green, Trúc Cơ blue, Kim Đan orange, Nguyên Anh purple. */
-      .realm-0 { --realm: #8bc34a; } .realm-1 { --realm: #4fc3f7; } .realm-2 { --realm: #ffb300; } .realm-3 { --realm: #e040fb; }
+      .realm-0 { --realm: var(--realm-0, #8bc34a); } .realm-1 { --realm: var(--realm-1, #4fc3f7); } .realm-2 { --realm: var(--realm-2, #ffb300); } .realm-3 { --realm: var(--realm-3, #e040fb); }
       .bag-tag[class*="realm-"], .eq-tag[class*="realm-"], .eq-tier[class*="realm-"], .hb-tag[class*="realm-"], .cp-realm[class*="realm-"] { color: var(--realm) !important; }
       .sk-tag[class*="realm-"] { background: var(--realm) !important; }
       /* The dragged copy of a cell lives outside the panel, so it carries its own styling. */

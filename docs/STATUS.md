@@ -11,11 +11,12 @@ Cập nhật: 2026-10-18 (2d-A làm xong ở local). File này **chỉ** nói gi
 - **Preview** (`preview`): có thêm túi 8×8, mua tab, thanh buff, kỹ năng pháp bảo, kỹ năng cảnh giới/phẩm cấp/thuần thục, cửa sổ trang bị 2 tab; migration đến `0016`. **Chưa lên production**; khi lên cần chạy migration `0015`, bước dọn ô túi (xem PHASE2.md, mục 2a), rồi `0016`, mỗi lần một bước riêng trước khi deploy worker.
 
 ## Đang làm dở
-- **2d** (nhánh `features_cultivation-paths`): **2d-A đột phá cảnh giới đã làm xong ở local** (chưa commit, chưa lên preview/production); **2d-B chủ tu/phụ tu chờ người dùng quyết định** (câu hỏi ở `docs/PHASE2.md` mục 2d).
-- Các thay đổi trước đó vẫn chờ người dùng thử trên preview trước khi lên production.
+- **2d** chủ tu/phụ tu và đột phá: **2d-A (đột phá cảnh giới) đã ở preview** cùng migration `0017` (chưa lên production, cần chạy `0017` trước khi deploy worker); **2d-B (chủ tu/phụ tu) chờ người dùng quyết định** (câu hỏi ở `docs/PHASE2.md` mục 2d).
+- Cũng đã ở preview, chưa lên production: bố cục HUD mới (buff, nút bên phải, tiền tệ), hệ của quái và luật tính ngũ hành mới (×1.2/×0.8, cộng điểm từng cặp hệ), phím tắt kéo thả và nhãn cảnh giới/nền phẩm cấp, màu cảnh giới là dữ liệu (`shared/src/theme.ts`).
+- Việc chờ: người dùng thử các thay đổi trên preview; điều tra việc preview thỉnh thoảng bị "reload" lúc để im (chờ người dùng trả lời 3 câu hỏi để biết nguyên nhân).
 
 ## Làm tiếp
-1. **2d-A**: mở PR vào preview, thử, rồi lên production (migration `0017` trước). **2d-B** chủ tu/phụ tu sau khi người dùng chốt thiết kế.
+1. **2d-A**: sau khi người dùng thử ổn trên preview thì lên production (migration `0017` trước). **2d-B** sau khi người dùng chốt thiết kế. Admin chỉnh màu giao diện (chỗ lưu `UiTheme`) và kéo thả phím tắt trên màn cảm ứng: chưa làm (người dùng chưa yêu cầu cái sau).
 2. **2e** NPC thương nhân và nhiệm vụ → **2f** PvP, sát khí, vệ binh (và area-of-interest) → **2i** màn admin thể chất → **2h** bảng xếp hạng và boss.
 3. Việc nhỏ tồn đọng (chi tiết ở `docs/PHASE2.md`, mục "Việc nhỏ đang chờ quyết định hoặc chưa làm"): tốc độ pháp bảo phi hành vào di chuyển, biến dị Lôi/Băng/Phong, kỹ năng tông môn và học từ NPC, tiền tệ trong thư, nhận thể chất qua vật phẩm, tung lại số hệ cho nhân vật có sẵn.
 
