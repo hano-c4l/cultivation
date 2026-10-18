@@ -12,6 +12,7 @@ const seed = (id = "p1", over: Partial<ProfileSeed> = {}): ProfileSeed => ({
   rootGrade: 1,
   constitution: "pham_the",
   constitutionTier: 1,
+  gender: "male",
   realm: 0,
   stage: 1,
   exp: 0,

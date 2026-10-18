@@ -33,7 +33,7 @@ async function give(owner: string, type: string, qty: number, key?: string) {
 
 describe("loading and adding", () => {
   it("a new character has one empty tab", async () => {
-    expect(await loadBag(db, A)).toEqual({ tabs: 1, items: [] });
+    expect(await loadBag(db, A)).toEqual({ tabs: 1, items: [], equipped: [] });
   });
 
   it("an add is written and loaded back identical to the planned cache", async () => {

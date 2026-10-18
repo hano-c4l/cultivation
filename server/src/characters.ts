@@ -1,5 +1,6 @@
 import {
   STAT_DEFS,
+  type Gender,
   applyExp,
   type BaseStats,
   type CharacterSheet,
@@ -22,6 +23,7 @@ export interface CharacterRow {
   root_grade: number;
   constitution: string;
   constitution_tier: number;
+  gender: Gender;
   stat_can_cot: number;
   stat_than_phap: number;
   stat_ngo_tinh: number;
@@ -31,7 +33,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 export function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
@@ -92,6 +94,7 @@ export function toCharacterSheet(c: CharacterRow): CharacterSheet {
     rootGrade: c.root_grade,
     constitution: c.constitution,
     constitutionTier: c.constitution_tier,
+    gender: c.gender,
     realm: c.realm,
     stage: c.stage,
     exp: c.exp,

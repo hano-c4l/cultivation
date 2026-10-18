@@ -1,4 +1,4 @@
-import type { CharacterSheet } from "@game/shared";
+import type { CharacterSheet, Gender } from "@game/shared";
 
 /** The server sends the shared character sheet shape, so client and server cannot drift. */
 export type PublicCharacter = CharacterSheet;
@@ -38,5 +38,5 @@ export const api = {
   register: (email: string, password: string) => call<{ ok: true }>("POST", "/api/register", { email, password }),
   login: (email: string, password: string) => call<{ ok: true }>("POST", "/api/login", { email, password }),
   logout: () => call<{ ok: true }>("POST", "/api/logout"),
-  createCharacter: (name: string) => call<{ character: PublicCharacter }>("POST", "/api/character", { name }),
+  createCharacter: (name: string, gender: Gender) => call<{ character: PublicCharacter }>("POST", "/api/character", { name, gender }),
 };

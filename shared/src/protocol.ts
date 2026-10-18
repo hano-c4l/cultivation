@@ -2,6 +2,7 @@ import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
+import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
 import { parseAllocation, type CharacterSheet } from "./progression";
@@ -58,13 +59,18 @@ export type ClientMessage =
   /** Split `qty` off a stack into the first free cell. */
   | { t: "inv_split"; tab: number; cell: number; qty: number }
   /** Claim the item attached to a mail into the bag. */
-  | { t: "mail_claim"; id: string };
+  | { t: "mail_claim"; id: string }
+  /** Wear the bag item at (tab, cell). Without `slot` the server picks the first empty slot of its kind (or replaces the first). */
+  | { t: "eq_equip"; tab: number; cell: number; slot?: EquipSlot }
+  | { t: "eq_unequip"; slot: EquipSlot }
+  /** Repair one worn piece, or all of them, for Linh Thạch. */
+  | { t: "eq_repair"; slot: EquipSlot | "all" };
 
 /** A mail as the client sees it. `expiresInMs` is relative to when it was sent (null: never expires), so clock skew does not matter. */
 export interface MailView {
   id: string;
   subject: string;
-  item: { type: string; qty: number } | null;
+  item: { type: string; qty: number; dur?: number; max?: number; lv?: number; xp?: number } | null;
   expiresInMs: number | null;
 }
 
@@ -99,7 +105,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[] }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
@@ -128,7 +134,15 @@ export type ServerMessage =
   | { t: "loot"; items: Array<{ type: string; qty: number; mailed: boolean }> }
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
-  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room"; retryMs?: number }
+  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | EquipBlock | "nothing" | "funds"; retryMs?: number }
+  /** The worn pieces (full list; sent whenever anything about them changed). */
+  | { t: "eq"; items: EquippedItem[] }
+  /** Pieces that came off on their own (broken by a death, or the wearer no longer qualifies). `mailed`: the bag was full, claim them from mail. */
+  | { t: "eq_removed"; items: Array<{ type: string; reason: EquipBlock; mailed: boolean }> }
+  /** The character died with gear on: every worn piece lost durability (the `eq` list that precedes this has the new values). */
+  | { t: "eq_worn" }
+  /** A repair was paid for. */
+  | { t: "repaired"; cost: number }
   /** The receiving character died; a transfer to town follows. */
   | { t: "died"; expLost: number }
 
@@ -203,6 +217,15 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999
         ? { t: "inv_split", tab: m.tab, cell: m.cell, qty: m.qty }
         : null;
+    case "eq_equip": {
+      if (!isInt(m.tab) || !isInt(m.cell) || !cellOk(m.tab, m.cell)) return null;
+      if (m.slot === undefined) return { t: "eq_equip", tab: m.tab, cell: m.cell };
+      return isEquipSlot(m.slot) ? { t: "eq_equip", tab: m.tab, cell: m.cell, slot: m.slot } : null;
+    }
+    case "eq_unequip":
+      return isEquipSlot(m.slot) ? { t: "eq_unequip", slot: m.slot } : null;
+    case "eq_repair":
+      return m.slot === "all" || isEquipSlot(m.slot) ? { t: "eq_repair", slot: m.slot as EquipSlot | "all" } : null;
     case "mail_claim":
       return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:

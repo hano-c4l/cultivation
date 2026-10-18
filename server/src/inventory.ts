@@ -1,4 +1,4 @@
-import { MAIL_ITEM_EXPIRY_MS, START_BAG_TABS, firstFreeCell, stackLimit, type BagItem, type BagOp, type MailView } from "@game/shared";
+import { MAIL_ITEM_EXPIRY_MS, START_BAG_TABS, carried, firstFreeCell, stackLimit, type BagItem, type BagOp, type EquippedItem, type EquipSlot, type MailView } from "@game/shared";
 
 /**
  * D1 side of the bag. The room plans changes against its in-memory copy (shared/src/inventory.ts) and this module
@@ -16,29 +16,69 @@ export interface MailItem {
   type: string;
   qty: number;
   subject: string;
+  /** Gear: durability the new item starts with. */
+  dur?: number;
+  max?: number;
+  /** True: the mail never expires (gear that cannot be handed to the bag). */
+  permanent?: boolean;
 }
 
 export interface BagState {
   tabs: number;
   items: BagItem[];
+  /** Worn pieces. */
+  equipped: EquippedItem[];
+}
+
+interface BagRow {
+  id: string;
+  item_type: string;
+  bag_tab: number | null;
+  cell: number | null;
+  qty: number;
+  equip_slot: EquipSlot | null;
+  durability: number | null;
+  max_durability: number | null;
+  refine_level: number | null;
+  refine_exp: number | null;
+}
+
+/** Wear and training fields of a row, in the shape the room and the client use. */
+function wearOf(r: { durability: number | null; max_durability: number | null; refine_level?: number | null; refine_exp?: number | null }): { dur?: number; max?: number; lv?: number; xp?: number } {
+  return {
+    ...(r.durability !== null && r.max_durability !== null ? { dur: r.durability, max: r.max_durability } : {}),
+    ...(r.refine_level != null ? { lv: r.refine_level } : {}),
+    ...(r.refine_exp != null ? { xp: r.refine_exp } : {}),
+  };
+}
+
+/** Writes the training of a pháp bảo bản mệnh (level and EXP). Only the room that holds the character lock writes it, so no guard is needed. */
+export async function saveRefine(db: D1Database, characterId: string, itemId: string, lv: number, xp: number): Promise<void> {
+  await db.prepare("UPDATE item_instances SET refine_level = ?, refine_exp = ? WHERE id = ? AND owner_character_id = ?").bind(lv, xp, itemId, characterId).run();
 }
 
 export async function loadBag(db: D1Database, characterId: string): Promise<BagState> {
   const [tabsRow, rows] = await Promise.all([
     db.prepare("SELECT bag_tabs FROM characters WHERE id = ?").bind(characterId).first<{ bag_tabs: number }>(),
     db
-      .prepare("SELECT id, item_type, bag_tab, cell, qty FROM item_instances WHERE owner_character_id = ? AND cell IS NOT NULL")
+      .prepare(
+        "SELECT id, item_type, bag_tab, cell, qty, equip_slot, durability, max_durability, refine_level, refine_exp FROM item_instances " +
+          "WHERE owner_character_id = ? AND (cell IS NOT NULL OR equip_slot IS NOT NULL)",
+      )
       .bind(characterId)
-      .all<{ id: string; item_type: string; bag_tab: number; cell: number; qty: number }>(),
+      .all<BagRow>(),
   ]);
-  return {
-    tabs: tabsRow?.bag_tabs ?? START_BAG_TABS,
-    items: rows.results.map((r) => ({ id: r.id, type: r.item_type, tab: r.bag_tab, cell: r.cell, qty: r.qty })),
-  };
+  const items: BagItem[] = [];
+  const equipped: EquippedItem[] = [];
+  for (const r of rows.results) {
+    if (r.equip_slot) equipped.push({ id: r.id, type: r.item_type, slot: r.equip_slot, ...wearOf(r) });
+    else if (r.bag_tab !== null && r.cell !== null) items.push({ id: r.id, type: r.item_type, tab: r.bag_tab, cell: r.cell, qty: r.qty, ...wearOf(r) });
+  }
+  return { tabs: tabsRow?.bag_tabs ?? START_BAG_TABS, items, equipped };
 }
 
 /** `INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (...)`: throws (NOT NULL) when the row is not as expected. */
-function guard(db: D1Database, characterId: string, id: string, expect: { qty?: number; tab?: number | null; cell?: number | null }): D1PreparedStatement {
+function guard(db: D1Database, characterId: string, id: string, expect: { qty?: number; tab?: number | null; cell?: number | null; slot?: string | null; dur?: number }): D1PreparedStatement {
   const conds = ["id = ?", "owner_character_id = ?"];
   const args: unknown[] = [id, characterId];
   if (expect.qty !== undefined) {
@@ -54,6 +94,15 @@ function guard(db: D1Database, characterId: string, id: string, expect: { qty?: 
   else if (expect.cell !== undefined) {
     conds.push("cell = ?");
     args.push(expect.cell);
+  }
+  if (expect.slot === null) conds.push("equip_slot IS NULL");
+  else if (expect.slot !== undefined) {
+    conds.push("equip_slot = ?");
+    args.push(expect.slot);
+  }
+  if (expect.dur !== undefined) {
+    conds.push("durability = ?");
+    args.push(expect.dur);
   }
   return db.prepare(`INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM item_instances WHERE ${conds.join(" AND ")})`).bind(...args);
 }
@@ -110,15 +159,47 @@ function arrangeStatements(db: D1Database, characterId: string, op: Extract<BagO
   return out;
 }
 
-function opStatements(db: D1Database, characterId: string, op: BagOp, now: number): D1PreparedStatement[] {
+export function opStatements(db: D1Database, characterId: string, op: BagOp, now: number): D1PreparedStatement[] {
   switch (op.op) {
     case "arrange":
       return arrangeStatements(db, characterId, op);
     case "add":
       return [
         db
-          .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(op.id, characterId, op.type, op.qty, op.tab, op.cell, now),
+          .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, durability, max_durability, refine_level, refine_exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(op.id, characterId, op.type, op.qty, op.tab, op.cell, op.dur ?? null, op.max ?? null, op.lv ?? null, op.xp ?? null, now),
+      ];
+    case "equip":
+      return [
+        guard(db, characterId, op.id, { tab: op.tab, cell: op.cell, slot: null }),
+        db.prepare("UPDATE item_instances SET bag_tab = NULL, cell = NULL, equip_slot = ? WHERE id = ? AND owner_character_id = ?").bind(op.slot, op.id, characterId),
+      ];
+    case "unequip":
+      return [
+        guard(db, characterId, op.id, { tab: null, cell: null, slot: op.slot }),
+        db.prepare("UPDATE item_instances SET bag_tab = ?, cell = ?, equip_slot = NULL WHERE id = ? AND owner_character_id = ?").bind(op.tab, op.cell, op.id, characterId),
+      ];
+    case "swapequip":
+      // The new piece is parked (no cell, no slot) while the old one takes its cell and the slot is handed over.
+      return [
+        guard(db, characterId, op.id, { tab: op.tab, cell: op.cell, slot: null }),
+        guard(db, characterId, op.oldId, { tab: null, cell: null, slot: op.slot }),
+        db.prepare("UPDATE item_instances SET bag_tab = NULL, cell = NULL WHERE id = ? AND owner_character_id = ?").bind(op.id, characterId),
+        db.prepare("UPDATE item_instances SET bag_tab = ?, cell = ?, equip_slot = NULL WHERE id = ? AND owner_character_id = ?").bind(op.tab, op.cell, op.oldId, characterId),
+        db.prepare("UPDATE item_instances SET equip_slot = ? WHERE id = ? AND owner_character_id = ?").bind(op.slot, op.id, characterId),
+      ];
+    case "setdur":
+      return [
+        guard(db, characterId, op.id, { dur: op.from }),
+        db.prepare("UPDATE item_instances SET durability = ? WHERE id = ? AND owner_character_id = ? AND max_durability >= ?").bind(op.to, op.id, characterId, op.to),
+      ];
+    case "mailequip":
+      return [
+        guard(db, characterId, op.id, { tab: null, cell: null, slot: op.slot }),
+        db.prepare("UPDATE item_instances SET equip_slot = NULL WHERE id = ? AND owner_character_id = ?").bind(op.id, characterId),
+        db
+          .prepare("INSERT INTO mailbox (id, character_id, subject, body, item_id, expires_at, created_at) VALUES (?, ?, ?, '', ?, NULL, ?)")
+          .bind(op.mailId, characterId, op.subject, op.id, now),
       ];
     case "setqty":
       return [
@@ -153,7 +234,15 @@ function opStatements(db: D1Database, characterId: string, op: BagOp, now: numbe
 function classify(err: unknown): CommitResult {
   const msg = String(err);
   if (msg.includes("item_grants")) return "duplicate";
-  if (msg.includes("inv_guard") || msg.includes("idx_items_cell") || msg.includes("item_instances.bag_tab") || msg.includes("item_instances.cell")) return "stale";
+  if (
+    msg.includes("inv_guard") ||
+    msg.includes("idx_items_cell") ||
+    msg.includes("idx_items_equip") ||
+    msg.includes("item_instances.bag_tab") ||
+    msg.includes("item_instances.cell") ||
+    msg.includes("item_instances.equip_slot")
+  )
+    return "stale";
   throw err;
 }
 
@@ -175,11 +264,11 @@ export async function commitBagOps(
     const itemId = crypto.randomUUID();
     statements.push(
       db
-        .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, created_at) VALUES (?, ?, ?, ?, NULL, NULL, ?)")
-        .bind(itemId, characterId, m.type, m.qty, now),
+        .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, durability, max_durability, created_at) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)")
+        .bind(itemId, characterId, m.type, m.qty, m.dur ?? null, m.max ?? null, now),
       db
         .prepare("INSERT INTO mailbox (id, character_id, subject, body, item_id, expires_at, created_at) VALUES (?, ?, ?, '', ?, ?, ?)")
-        .bind(crypto.randomUUID(), characterId, m.subject, itemId, now + MAIL_ITEM_EXPIRY_MS, now),
+        .bind(crypto.randomUUID(), characterId, m.subject, itemId, m.permanent ? null : now + MAIL_ITEM_EXPIRY_MS, now),
     );
   }
   statements.push(...(opts.extra ?? []));
@@ -200,7 +289,7 @@ export interface MailEntry {
   body: string;
   currency: string | null;
   amount: number;
-  item: { type: string; qty: number } | null;
+  item: { type: string; qty: number; dur?: number; max?: number; lv?: number; xp?: number } | null;
   /** Epoch ms, or null when it never expires. */
   expiresAt: number | null;
 }
@@ -209,19 +298,19 @@ export interface MailEntry {
 export async function listMail(db: D1Database, characterId: string, now = Date.now()): Promise<MailEntry[]> {
   const { results } = await db
     .prepare(
-      "SELECT m.id, m.subject, m.body, m.currency, m.amount, m.expires_at, i.item_type, i.qty " +
+      "SELECT m.id, m.subject, m.body, m.currency, m.amount, m.expires_at, i.item_type, i.qty, i.durability, i.max_durability, i.refine_level, i.refine_exp " +
         "FROM mailbox m LEFT JOIN item_instances i ON i.id = m.item_id " +
         "WHERE m.character_id = ? AND m.claimed_at IS NULL AND (m.expires_at IS NULL OR m.expires_at > ?) ORDER BY m.created_at, m.id",
     )
     .bind(characterId, now)
-    .all<{ id: string; subject: string; body: string; currency: string | null; amount: number; expires_at: number | null; item_type: string | null; qty: number | null }>();
+    .all<{ id: string; subject: string; body: string; currency: string | null; amount: number; expires_at: number | null; item_type: string | null; qty: number | null; durability: number | null; max_durability: number | null; refine_level: number | null; refine_exp: number | null }>();
   return results.map((r) => ({
     id: r.id,
     subject: r.subject,
     body: r.body,
     currency: r.currency,
     amount: r.amount,
-    item: r.item_type && r.qty ? { type: r.item_type, qty: r.qty } : null,
+    item: r.item_type && r.qty ? { type: r.item_type, qty: r.qty, ...wearOf(r) } : null,
     expiresAt: r.expires_at,
   }));
 }
@@ -243,7 +332,7 @@ export async function deleteExpiredMail(db: D1Database, now: number, characterId
   const marks = (n: number) => Array(n).fill("?").join(", ");
   const statements = [db.prepare(`DELETE FROM mailbox WHERE id IN (${marks(mailIds.length)}) AND claimed_at IS NULL`).bind(...mailIds)];
   // Only items still unplaced: a claimed item is in a bag by now and must not be touched.
-  if (itemIds.length > 0) statements.push(db.prepare(`DELETE FROM item_instances WHERE id IN (${marks(itemIds.length)}) AND cell IS NULL`).bind(...itemIds));
+  if (itemIds.length > 0) statements.push(db.prepare(`DELETE FROM item_instances WHERE id IN (${marks(itemIds.length)}) AND cell IS NULL AND equip_slot IS NULL`).bind(...itemIds));
   await db.batch(statements);
   return results.length;
 }
@@ -262,13 +351,15 @@ export type ClaimItemResult =
 export async function claimMailItem(db: D1Database, characterId: string, mailId: string, bag: BagState, now = Date.now()): Promise<ClaimItemResult> {
   const mail = await db
     .prepare(
-      "SELECT m.item_id, m.claimed_at, m.expires_at, i.item_type, i.qty FROM mailbox m LEFT JOIN item_instances i ON i.id = m.item_id " +
+      "SELECT m.item_id, m.claimed_at, m.expires_at, i.item_type, i.qty, i.durability, i.max_durability, i.refine_level, i.refine_exp FROM mailbox m LEFT JOIN item_instances i ON i.id = m.item_id " +
         "WHERE m.id = ? AND m.character_id = ?",
     )
     .bind(mailId, characterId)
-    .first<{ item_id: string | null; claimed_at: number | null; expires_at: number | null; item_type: string | null; qty: number | null }>();
-  if (!mail || !mail.item_id || !mail.item_type || !mail.qty) return { status: "not_found" };
+    .first<{ item_id: string | null; claimed_at: number | null; expires_at: number | null; item_type: string | null; qty: number | null; durability: number | null; max_durability: number | null }>();
+  if (!mail) return { status: "not_found" };
+  // A claimed mail no longer points at its item, so this is checked first.
   if (mail.claimed_at !== null) return { status: "already_claimed" };
+  if (!mail.item_id || !mail.item_type || !mail.qty) return { status: "not_found" };
   if (mail.expires_at !== null && mail.expires_at <= now) return { status: "expired" };
 
   const limit = stackLimit(mail.item_type);
@@ -292,11 +383,12 @@ export async function claimMailItem(db: D1Database, characterId: string, mailId:
   } else {
     const free = firstFreeCell(bag.items, bag.tabs);
     if (!free) return { status: "bag_full" };
-    ops = [{ op: "add", id: mail.item_id, type: mail.item_type, tab: free.tab, cell: free.cell, qty: mail.qty }];
+    ops = [{ op: "add", id: mail.item_id, type: mail.item_type, tab: free.tab, cell: free.cell, qty: mail.qty, ...wearOf(mail) }];
     statements.push(
       db.prepare("UPDATE item_instances SET bag_tab = ?, cell = ? WHERE id = ? AND owner_character_id = ? AND cell IS NULL").bind(free.tab, free.cell, mail.item_id, characterId),
     );
-    statements.push(db.prepare("UPDATE mailbox SET claimed_at = ? WHERE id = ? AND claimed_at IS NULL").bind(now, mailId));
+    // The mail stops pointing at the item (foreign key): the item is the player's now and may be discarded later.
+    statements.push(db.prepare("UPDATE mailbox SET claimed_at = ?, item_id = NULL WHERE id = ? AND claimed_at IS NULL").bind(now, mailId));
   }
   try {
     await db.batch(statements);
@@ -327,7 +419,7 @@ export function diffBag(before: readonly BagItem[], after: readonly BagItem[]): 
   const was = new Map(before.map((i) => [i.id, i]));
   const items = after.filter((i) => {
     const w = was.get(i.id);
-    return !w || w.type !== i.type || w.tab !== i.tab || w.cell !== i.cell || w.qty !== i.qty;
+    return !w || w.type !== i.type || w.tab !== i.tab || w.cell !== i.cell || w.qty !== i.qty || w.dur !== i.dur;
   });
   const now = new Set(after.map((i) => i.id));
   return { items, removed: before.filter((i) => !now.has(i.id)).map((i) => i.id) };

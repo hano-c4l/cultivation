@@ -1,3 +1,4 @@
+import { type EquipSlot, type EquippedItem } from "./equipment-data";
 import { ITEM_RARITIES, getItemDef } from "./items";
 
 /**
@@ -31,6 +32,27 @@ export interface BagItem {
   tab: number;
   cell: number;
   qty: number;
+  /** Equipment only: current and maximum durability (both absent for gear that never wears out). */
+  dur?: number;
+  max?: number;
+  /** Pháp bảo bản mệnh: trained level and EXP (see refineExpNeeded). */
+  lv?: number;
+  xp?: number;
+}
+
+/** The wear and training fields of an item that must travel with it between the bag, the slots and the mailbox. */
+export function carried(x: { dur?: number; max?: number; lv?: number; xp?: number }): { dur?: number; max?: number; lv?: number; xp?: number } {
+  return {
+    ...(x.dur !== undefined && x.max !== undefined ? { dur: x.dur, max: x.max } : {}),
+    ...(x.lv !== undefined ? { lv: x.lv } : {}),
+    ...(x.xp !== undefined ? { xp: x.xp } : {}),
+  };
+}
+
+/** Everything a character owns that is not in mail: the bag and the worn pieces. */
+export interface BagContents {
+  items: BagItem[];
+  equipped: EquippedItem[];
 }
 
 export interface BagPos {
@@ -43,7 +65,7 @@ export interface BagPos {
  * (the row must still look like `expected`), so a stale plan fails instead of duplicating or destroying items.
  */
 export type BagOp =
-  | { op: "add"; id: string; type: string; tab: number; cell: number; qty: number }
+  | { op: "add"; id: string; type: string; tab: number; cell: number; qty: number; dur?: number; max?: number; lv?: number; xp?: number }
   | { op: "setqty"; id: string; from: number; to: number }
   /** Deletes the whole row; `qty` is what the row must still hold for the write to be accepted. */
   | { op: "remove"; id: string; qty: number }
@@ -53,7 +75,17 @@ export type BagOp =
    * Rewrites many rows at once (the sort). `before` is every row that changes or disappears, as it must still be in the
    * database; `after` is the final state of the rows that stay. Rows in `before` but not in `after` are deleted (merged).
    */
-  | { op: "arrange"; before: BagItem[]; after: BagItem[] };
+  | { op: "arrange"; before: BagItem[]; after: BagItem[] }
+  /** Wear the bag item at (tab, cell) in an empty slot. */
+  | { op: "equip"; id: string; slot: EquipSlot; tab: number; cell: number }
+  /** Wear the bag item at (tab, cell) in an occupied slot; the piece that was there takes its cell. */
+  | { op: "swapequip"; id: string; slot: EquipSlot; tab: number; cell: number; oldId: string }
+  /** Take a worn piece off into a bag cell. */
+  | { op: "unequip"; id: string; slot: EquipSlot; tab: number; cell: number }
+  /** Durability of a worn or carried piece changes from `from` to `to` (guarded: it must still be `from`). */
+  | { op: "setdur"; id: string; from: number; to: number }
+  /** Take a worn piece off into the mailbox, never expiring (the bag had no room). `mailId` names the new mail. */
+  | { op: "mailequip"; id: string; slot: EquipSlot; mailId: string; subject: string };
 
 export function inBounds(pos: BagPos, bagTabs: number): boolean {
   return Number.isInteger(pos.tab) && Number.isInteger(pos.cell) && pos.tab >= 0 && pos.tab < bagTabs && pos.cell >= 0 && pos.cell < BAG_CELLS_PER_TAB;
@@ -83,13 +115,29 @@ export function stackLimit(type: string): number {
   return getItemDef(type)?.maxStack ?? 1;
 }
 
-/** Applies ops to a copy of the bag. The server applies the same ops to its cache only after they were committed. */
-export function applyOps(bag: readonly BagItem[], ops: readonly BagOp[]): BagItem[] {
-  let next = bag.map((i) => ({ ...i }));
+/** Applies ops to a copy of the bag and the worn pieces. The server applies the same ops to its cache only after they were committed. */
+export function applyBag(state: BagContents, ops: readonly BagOp[]): BagContents {
+  let next = state.items.map((i) => ({ ...i }));
+  let worn = state.equipped.map((e) => ({ ...e }));
+  const place = (id: string, tab: number, cell: number) => {
+    next = next.map((i) => (i.id === id ? { ...i, tab, cell } : i));
+  };
+  const wear = (id: string, slot: EquipSlot) => {
+    const it = next.find((i) => i.id === id);
+    if (!it) return;
+    next = next.filter((i) => i.id !== id);
+    worn.push({ id, type: it.type, slot, ...carried(it) });
+  };
+  const takeOff = (id: string, tab: number, cell: number) => {
+    const it = worn.find((e) => e.id === id);
+    if (!it) return;
+    worn = worn.filter((e) => e.id !== id);
+    next.push({ id, type: it.type, tab, cell, qty: 1, ...carried(it) });
+  };
   for (const op of ops) {
     switch (op.op) {
       case "add":
-        next.push({ id: op.id, type: op.type, tab: op.tab, cell: op.cell, qty: op.qty });
+        next.push({ id: op.id, type: op.type, tab: op.tab, cell: op.cell, qty: op.qty, ...carried(op) });
         break;
       case "setqty":
         next = next.map((i) => (i.id === op.id ? { ...i, qty: op.to } : i));
@@ -98,7 +146,7 @@ export function applyOps(bag: readonly BagItem[], ops: readonly BagOp[]): BagIte
         next = next.filter((i) => i.id !== op.id);
         break;
       case "move":
-        next = next.map((i) => (i.id === op.id ? { ...i, tab: op.tab, cell: op.cell } : i));
+        place(op.id, op.tab, op.cell);
         break;
       case "swap":
         next = next.map((i) =>
@@ -110,16 +158,38 @@ export function applyOps(bag: readonly BagItem[], ops: readonly BagOp[]): BagIte
         next = [...next.filter((i) => !gone.has(i.id)), ...op.after.map((i) => ({ ...i }))];
         break;
       }
+      case "equip":
+        wear(op.id, op.slot);
+        break;
+      case "swapequip":
+        takeOff(op.oldId, op.tab, op.cell);
+        wear(op.id, op.slot);
+        break;
+      case "unequip":
+        takeOff(op.id, op.tab, op.cell);
+        break;
+      case "setdur":
+        next = next.map((i) => (i.id === op.id ? { ...i, dur: op.to } : i));
+        worn = worn.map((e) => (e.id === op.id ? { ...e, dur: op.to } : e));
+        break;
+      case "mailequip":
+        worn = worn.filter((e) => e.id !== op.id);
+        break;
     }
   }
-  return next;
+  return { items: next, equipped: worn };
+}
+
+/** Bag-only view of applyBag, for callers (and tests) that never wear anything. */
+export function applyOps(bag: readonly BagItem[], ops: readonly BagOp[]): BagItem[] {
+  return applyBag({ items: bag as BagItem[], equipped: [] }, ops).items;
 }
 
 /**
  * Plans adding `qty` of an item: first onto existing stacks (reading order), then into free cells. Returns null when
  * the whole quantity does not fit, in which case nothing is planned (the caller sends the item by mail instead).
  */
-export function planAdd(bag: readonly BagItem[], bagTabs: number, type: string, qty: number, newId: () => string): BagOp[] | null {
+export function planAdd(bag: readonly BagItem[], bagTabs: number, type: string, qty: number, newId: () => string, wear?: { dur: number; max: number }): BagOp[] | null {
   const limit = stackLimit(type);
   if (!Number.isInteger(qty) || qty <= 0) return null;
   const ops: BagOp[] = [];
@@ -139,7 +209,7 @@ export function planAdd(bag: readonly BagItem[], bagTabs: number, type: string, 
       const next = cells.next();
       if (next.done) return null;
       const put = Math.min(left, limit);
-      ops.push({ op: "add", id: newId(), type, tab: next.value.tab, cell: next.value.cell, qty: put });
+      ops.push({ op: "add", id: newId(), type, tab: next.value.tab, cell: next.value.cell, qty: put, ...(wear ? { dur: wear.dur, max: wear.max } : {}) });
       left -= put;
     }
   }
@@ -227,7 +297,7 @@ export function planSort(bag: readonly BagItem[], bagTabs: number, mode: SortMod
     for (const row of rows) {
       if (left === 0) break;
       const put = Math.min(left, limit);
-      after.push({ id: row.id, type, tab: Math.floor(position / BAG_CELLS_PER_TAB), cell: position % BAG_CELLS_PER_TAB, qty: put });
+      after.push({ id: row.id, type, tab: Math.floor(position / BAG_CELLS_PER_TAB), cell: position % BAG_CELLS_PER_TAB, qty: put, ...carried(row) });
       position++;
       left -= put;
     }

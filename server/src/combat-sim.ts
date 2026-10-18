@@ -11,6 +11,7 @@ import {
   clusterSlots,
   killExp,
   levelIndex,
+  rollEquipmentDrop,
   rollLinhThachDrop,
   rollLoot,
   type LootDrop,
@@ -25,6 +26,8 @@ import {
   type BaseStats,
   type Combatant,
   type Element,
+  type EquipStats,
+  type Gender,
   type HitKind,
   type MapData,
   type MapId,
@@ -45,6 +48,9 @@ export interface ProfileSeed {
   rootGrade: number;
   constitution: string;
   constitutionTier: number;
+  gender: Gender;
+  /** Stats of the gear worn right now (equipmentBonus); recomputed by the room whenever gear or requirements change. */
+  gear?: EquipStats;
   realm: number;
   stage: number;
   exp: number;
@@ -104,6 +110,8 @@ export type SimEvent =
   | { t: "hp"; playerId: string; hp: number; maxHp: number }
   /** EXP changed after a kill; `stagesGained > 0` means points changed and the room must persist right away. */
   | { t: "progress"; playerId: string; stagesGained: number }
+  /** The kill's EXP, which the pháp bảo bản mệnh of the winner also receives (its own stream, no effect on the character's EXP). */
+  | { t: "refine"; playerId: string; gain: number }
   /** A kill dropped items for this player; the room puts them in the bag (or mails them when it is full). */
   | { t: "loot"; playerId: string; drops: LootDrop[] }
   /** A kill dropped Linh Thạch for this player; the room writes it to the ledger. */
@@ -125,7 +133,7 @@ function lastPoint(path: Vec2[]): Vec2 {
 }
 
 function derivedCombatant(seed: ProfileSeed, stage = seed.stage): { stats: Combatant; maxHp: number; expBonus: number } {
-  const d = deriveStats(seed.base, seed.realm, stage, seed.rootGrade);
+  const d = deriveStats(seed.base, seed.realm, stage, seed.rootGrade, seed.gear);
   return {
     stats: { attack: d.attack, defense: d.defense, critRate: d.critRate, dodgeRate: d.dodgeRate, element: seed.element },
     maxHp: d.maxHp,
@@ -278,6 +286,14 @@ export class CombatSim {
     const p = this.players.get(id);
     if (!p) return;
     p.base = base;
+    this.recompute(p, false);
+  }
+
+  /** Gear changed (worn, taken off, worn out): re-derive combat stats, keeping the HP ratio. */
+  updateGear(id: string, gear: EquipStats): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.gear = gear;
     this.recompute(p, false);
   }
 
@@ -503,18 +519,22 @@ export class CombatSim {
       m.rank === "normal"
         ? p
         : this.players.get(topContributor(m.damage, m.maxHp, p.id, (id) => !!this.players.get(id) && !this.players.get(id)!.dead) ?? p.id) ?? p;
-    const stagesGained = this.reward(winner, m);
+    const { stagesGained, gain } = this.reward(winner, m);
     events.push({ t: "progress", playerId: winner.id, stagesGained });
+    events.push({ t: "refine", playerId: winner.id, gain });
     const drop = rollLinhThachDrop(levelIndex(this.realm, m.tier), m.rank, this.rand(), this.rand());
     if (drop > 0) events.push({ t: "drop", playerId: winner.id, amount: drop });
     const loot = rollLoot(m.rank, this.rand);
+    // Drawn after every other roll of the kill, so the sequence of the older rolls does not change.
+    const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand);
+    if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
   }
 
   /** Gives the killer EXP (with their bonus) and applies any stage-ups. Linh Thạch drops are rolled by the caller. */
-  private reward(p: PlayerProfile, m: Monster): number {
+  private reward(p: PlayerProfile, m: Monster): { stagesGained: number; gain: number } {
     const gain = killExp({ realm: this.realm, tier: m.tier, rank: m.rank }, p.realm, p.expBonus);
     const r = applyExp({ realm: p.realm, stage: p.stage, exp: p.exp, potentialPoints: 0 }, gain);
     p.exp = r.exp;
@@ -525,7 +545,7 @@ export class CombatSim {
       p.potentialPoints += r.potentialPoints;
       this.recompute(p, true);
     }
-    return r.stagesGained;
+    return { stagesGained: r.stagesGained, gain };
   }
 
   /** Death handling by the room: EXP penalty is applied to the working copy; the room then persists and transfers. */
