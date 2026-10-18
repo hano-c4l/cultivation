@@ -71,6 +71,31 @@ Chi tiết kỹ thuật và giá trị nằm ở `docs/PHASE2.md`; đây chỉ l
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
 
+### Danh sách giai đoạn và hạng mục
+Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm ở file giai đoạn tương ứng; trạng thái làm đến đâu ở `docs/STATUS.md`).
+- **Giai đoạn 0**: Lát cắt rủi ro nhất (xương sống kỹ thuật)
+- **Giai đoạn 1**: MVP chơi được (`docs/PHASE1.md`)
+  - 1a. Tài khoản và nhân vật
+  - 1b. Thế giới và trò chuyện
+  - 1c. Chỉ số, cảnh giới, tiềm năng
+  - 1d. Quái và chiến đấu realtime (kèm 1d+: Vùng quái, bậc, quái hiếm)
+  - 1e. Kinh tế khung xương
+  - 1f. Kiểm thử tải và hoàn thiện
+- **Giai đoạn 2**: Chiều sâu nhân vật (`docs/PHASE2.md`)
+  - 2a. Vật phẩm và túi đồ
+  - 2b. Trang bị và độ bền
+  - 2c. Kỹ năng, MP và ngũ hành đầy đủ
+  - 2d. Chủ tu/phụ tu và đột phá
+  - 2e. NPC thương nhân và nhiệm vụ
+  - 2f. PvP, sát khí và vệ binh
+  - 2g. Chat nhiều chế độ
+  - 2h. Bảng xếp hạng và boss
+  - 2i. Màn admin quản lý thể chất
+- **Giai đoạn 3**: Kinh tế và xã hội (chưa chia hạng mục)
+- **Giai đoạn 4**: Hoàn thiện và vận hành (chưa chia hạng mục)
+
+Giai đoạn 3, 4 và các giai đoạn sau sẽ có file `docs/PHASE3.md`, `docs/PHASE4.md`... khi bắt đầu làm.
+
 ### Giai đoạn 0: Lát cắt rủi ro nhất (xương sống kỹ thuật)
 Làm: `git init`, monorepo, Worker + DO + D1 migration deploy lên Cloudflare, map isometric mẫu, tap/click để di chuyển, **người chơi thứ hai hiển thị**.
 Nghiệm thu:
