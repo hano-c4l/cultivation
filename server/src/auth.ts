@@ -17,7 +17,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminCharacter, adminGrant, adminLookup, adminSupply } from "./admin";
+import { adminBagTabs, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
 import { getCharacterByAccount, grantExp, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import {
@@ -260,6 +260,9 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return adminCharacter(request, env, url);
     case "POST /api/admin/bag-tabs":
       return adminBagTabs(request, env);
+    case "GET /api/admin/settings":
+    case "POST /api/admin/settings":
+      return adminSettings(request, env);
     case "GET /api/admin/supply":
       return adminSupply(request, env);
     case "POST /api/dev/grant-exp":

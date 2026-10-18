@@ -59,6 +59,8 @@ export type ClientMessage =
   | { t: "inv_sort"; mode: SortMode }
   /** Split `qty` off a stack into the first free cell. */
   | { t: "inv_split"; tab: number; cell: number; qty: number }
+  /** Buy the next bag tab with Linh Thạch (the price is a game setting). */
+  | { t: "inv_expand" }
   /** Claim the item attached to a mail into the bag. */
   | { t: "mail_claim"; id: string }
   /** Wear the bag item at (tab, cell). Without `slot` the server picks the first empty slot of its kind (or replaces the first). */
@@ -84,6 +86,8 @@ export interface MailView {
 /** The bag as the client sees it. */
 export interface BagView {
   tabs: number;
+  /** Linh Thạch the next tab costs (a game setting, read when the character joins). */
+  tabPrice: number;
   items: BagItem[];
 }
 
@@ -141,7 +145,7 @@ export type ServerMessage =
   | { t: "loot"; items: Array<{ type: string; qty: number; mailed: boolean }> }
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
-  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
+  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   | { t: "hotbar"; slots: string[] }
@@ -228,6 +232,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const to = parseBagPos(m.to);
       return from && to ? { t: "inv_move", from, to } : null;
     }
+    case "inv_expand":
+      return { t: "inv_expand" };
     case "inv_sort":
       return typeof m.mode === "string" && (SORT_MODES as readonly string[]).includes(m.mode) ? { t: "inv_sort", mode: m.mode as SortMode } : null;
     case "inv_split":

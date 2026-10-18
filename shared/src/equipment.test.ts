@@ -213,7 +213,7 @@ describe("equip planning", () => {
     const worn: EquippedItem = { id: "s", type: sword, slot: "weapon", dur: 100, max: 100 };
     const plan = planUnequip({ items: [], equipped: [worn] }, 1, "weapon");
     expect(plan.ok && plan.ops).toEqual([{ op: "unequip", id: "s", slot: "weapon", tab: 0, cell: 0 }]);
-    const full: BagItem[] = Array.from({ length: 128 }, (_, i) => bagItem(`x${i}`, "linh_thao", 0, i));
+    const full: BagItem[] = Array.from({ length: 64 }, (_, i) => bagItem(`x${i}`, "linh_thao", 0, i));
     expect(planUnequip({ items: full, equipped: [worn] }, 1, "weapon")).toEqual({ ok: false, error: "full" });
     expect(planUnequip(empty, 1, "weapon")).toEqual({ ok: false, error: "invalid" });
   });
@@ -243,7 +243,7 @@ describe("death, repair and auto take-off", () => {
     expect(after.equipped).toEqual([]);
     expect(after.items[0]).toMatchObject({ id: "a", dur: 0, max: 100 });
 
-    const full: BagItem[] = Array.from({ length: 128 }, (_, i) => bagItem(`x${i}`, "linh_thao", 0, i));
+    const full: BagItem[] = Array.from({ length: 64 }, (_, i) => bagItem(`x${i}`, "linh_thao", 0, i));
     const r2 = planDeathWear({ items: full, equipped: st.equipped }, 1, maleWearer, newId);
     expect(r2.ops.map((o) => o.op)).toEqual(["setdur", "mailequip"]);
     expect(r2.removed[0]).toMatchObject({ mailed: true });

@@ -119,9 +119,9 @@ check("a potion is refused when there is nothing to heal (town) and is not consu
 
 // A bag that is full sends loot to the mailbox.
 const used = bagOf(a).length;
-await give("thu_cot", (128 - used) * 99); // exactly fills the free cells (a few thu_cot already sit in one)
+await give("thu_cot", (64 - used) * 99); // exactly fills the free cells (a few thu_cot already sit in one)
 await sleep(600);
-check("the bag can be filled to the last cell", bagOf(a).length === 128, `${bagOf(a).length} cells`);
+check("the bag can be filled to the last cell", bagOf(a).length === 64, `${bagOf(a).length} cells`);
 msgs = await after(a, () => give("yeu_dan", 1), 700);
 check("loot that does not fit is flagged as mailed and a mail arrives", msgs.some((m) => m.t === "loot" && m.items[0].mailed) && msgs.some((m) => m.t === "mail" && m.mail.length === 1 && m.mail[0].item.type === "yeu_dan"));
 const mailRows = sql(`SELECT m.id, m.expires_at, m.created_at, i.qty, i.cell FROM mailbox m JOIN item_instances i ON i.id=m.item_id WHERE m.character_id='${charId}'`);

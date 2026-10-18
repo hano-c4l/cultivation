@@ -219,7 +219,7 @@ describe("bag and mail messages", () => {
   const parse = (m: unknown) => parseClientMessage(JSON.stringify(m));
   it("accepts well-formed bag commands and refuses malformed ones", () => {
     expect(parse({ t: "inv_use", tab: 0, cell: 5 })).toEqual({ t: "inv_use", tab: 0, cell: 5 });
-    expect(parse({ t: "inv_use", tab: 0, cell: 128 })).toBeNull(); // past the end of a tab
+    expect(parse({ t: "inv_use", tab: 0, cell: 64 })).toBeNull(); // past the end of a tab
     expect(parse({ t: "inv_use", tab: 10, cell: 0 })).toBeNull(); // past the largest bag
     expect(parse({ t: "inv_use", tab: -1, cell: 0 })).toBeNull();
     expect(parse({ t: "inv_use", tab: 0.5, cell: 0 })).toBeNull();

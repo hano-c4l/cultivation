@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import {
+  MAX_BAG_TABS,
   ALLOCATE_MIN_GAP_MS,
   ATTACK_MIN_GAP_MS,
   BASE_SPEED,
@@ -99,6 +100,7 @@ import {
 import { getConstitutionCatalog } from "./constitution-catalog";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import {
+  addBagTabStatements,
   claimMailItem,
   commitBagOps,
   deleteExpiredMail,
@@ -114,6 +116,7 @@ import {
 } from "./inventory";
 import { CombatSim, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
+import { getSetting } from "./settings";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
 interface PlayerState {
@@ -412,7 +415,7 @@ export class MapRoom extends DurableObject<Env> {
         hp: profile?.hp ?? away.hp,
         maxHp,
         wallet,
-        bag: { tabs: bagNow.tabs, items: bagNow.items },
+        bag: { tabs: bagNow.tabs, items: bagNow.items, tabPrice: await getSetting(this.env.DB, "bag_tab_price") },
         mail: mailViews(mailNow),
         constitutions,
         equipped: bagNow.equipped,
@@ -478,6 +481,7 @@ export class MapRoom extends DurableObject<Env> {
       case "inv_move":
       case "inv_sort":
       case "inv_split":
+      case "inv_expand":
       case "mail_claim":
         return this.handleInventory(ws, state, msg);
       case "eq_equip":
@@ -1208,7 +1212,7 @@ export class MapRoom extends DurableObject<Env> {
     });
   }
 
-  private handleInventory(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "inv_use" | "inv_drop" | "inv_move" | "inv_sort" | "inv_split" | "mail_claim" }>): void {
+  private handleInventory(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "inv_use" | "inv_drop" | "inv_move" | "inv_sort" | "inv_split" | "inv_expand" | "mail_claim" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     if (msg.t === "inv_sort") {
@@ -1225,6 +1229,7 @@ export class MapRoom extends DurableObject<Env> {
     const id = state.id;
     void this.bagTask(id, async () => {
       if (msg.t === "mail_claim") return this.claimMail(ws, id, msg.id);
+      if (msg.t === "inv_expand") return this.buyBagTab(ws, id);
       if (msg.t === "inv_move") {
         const res = await this.mutateBag(id, (bag) => {
           const ops = planMove(bag.items, bag.tabs, msg.from, msg.to);
@@ -1264,6 +1269,35 @@ export class MapRoom extends DurableObject<Env> {
       }
       return this.usePotion(ws, id, msg.tab, msg.cell);
     });
+  }
+
+  /**
+   * Buys the next bag tab. The price is read from the game settings; the payment and the new tab commit in one batch
+   * (applyCurrencyDelta with the tab statements as `extra`), so Linh Thạch is never taken without the tab or the reverse.
+   */
+  private async buyBagTab(ws: WebSocket, id: string): Promise<void> {
+    const bag = await this.getBag(id);
+    if (bag.tabs >= MAX_BAG_TABS) return this.resync(ws, id, "max_tabs");
+    const price = await getSetting(this.env.DB, "bag_tab_price");
+    try {
+      const extra = addBagTabStatements(this.env.DB, id, bag.tabs);
+      const r = await applyCurrencyDelta(
+        this.env.DB,
+        { characterId: id, currency: "linh_thach", delta: -price, reason: "bag_tab", actor: "system", idempotencyKey: `bagtab:${crypto.randomUUID()}` },
+        extra,
+      );
+      if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+      if (r.status !== "applied") return this.resync(ws, id, "busy");
+      const after: BagState = { ...bag, tabs: bag.tabs + 1 };
+      this.bags.set(id, after);
+      this.sendToCharacter(id, { t: "inv", full: true, tabs: after.tabs, items: after.items, removed: [] });
+      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+    } catch (err) {
+      // A failed guard means the cached tab count was stale (nothing was charged): reload and let the player look again.
+      if (!String(err).includes("inv_guard")) console.error("bag tab purchase failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
   }
 
   /** After a refused command the client's picture may be wrong: tell it why and send the real bag. */

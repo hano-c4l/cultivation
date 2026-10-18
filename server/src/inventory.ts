@@ -431,3 +431,15 @@ export function mailViews(entries: readonly MailEntry[], now = Date.now()): Mail
     .filter((m) => m.item !== null)
     .map((m) => ({ id: m.id, subject: m.subject, item: m.item, expiresInMs: m.expiresAt === null ? null : Math.max(0, m.expiresAt - now) }));
 }
+
+/**
+ * The statements that add one bag tab, to run in the same batch as the payment. A statement that changes zero rows does
+ * not roll a batch back, so the check is a guard that fails loudly (inv_guard.ok is NOT NULL) when the character no longer
+ * has exactly `expectedTabs` tabs; the payment then rolls back with it.
+ */
+export function addBagTabStatements(db: D1Database, characterId: string, expectedTabs: number): D1PreparedStatement[] {
+  return [
+    db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM characters WHERE id = ? AND bag_tabs = ?)").bind(characterId, expectedTabs),
+    db.prepare("UPDATE characters SET bag_tabs = bag_tabs + 1 WHERE id = ? AND bag_tabs = ?").bind(characterId, expectedTabs),
+  ];
+}
