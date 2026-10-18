@@ -177,6 +177,7 @@ export const vi = {
     } as Record<string, string>,
   },
   equip: {
+    tabs: { gear: "Trang bị", artifact: "Pháp bảo" },
     button: "Trang bị",
     title: "Trang bị",
     slots: {

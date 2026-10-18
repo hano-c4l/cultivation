@@ -822,7 +822,7 @@ describe("skills from worn pháp bảo and teleport", () => {
 
   it("a gear skill is usable only while the piece is worn", () => {
     const s = sim();
-    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_phong_than", realm: 0, grade: 0 }] }));
+    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_phong_than", realm: 0, tier: 1, grade: 0 }] }));
     expect(s.skillsOf(p)).toContain("pt_phong_than");
     expect(s.queueCast("p1", "pt_phong_than", null, 0)).toEqual({ ok: true });
     s.updateGear("p1", p.gear ?? { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0 }, undefined, []);
@@ -832,7 +832,7 @@ describe("skills from worn pháp bảo and teleport", () => {
 
   it("the dodge buff raises the dodge chance and shows on the buff bar", () => {
     const s = sim();
-    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_phong_than", realm: 0, grade: 0 }] }));
+    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_phong_than", realm: 0, tier: 1, grade: 0 }] }));
     const before = p.stats.dodgeRate;
     s.queueCast("p1", "pt_phong_than", null, 0);
     const events = s.tick(0, at(spawn()));
@@ -842,7 +842,7 @@ describe("skills from worn pháp bảo and teleport", () => {
 
   it("a teleport emits where to move, pays and starts the cooldown", () => {
     const s = sim();
-    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_thuan_di", realm: 0, grade: 0 }] }));
+    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_thuan_di", realm: 0, tier: 1, grade: 0 }] }));
     const from = spawn();
     const near = nearestStandablePoint(getMap("forest"), from[0] + 4, from[1]) ?? from;
     p.targetId = "m1";
@@ -858,7 +858,7 @@ describe("skills from worn pháp bảo and teleport", () => {
 
   it("a teleport needs a point, and a point too far or not standable is refused without paying", () => {
     const s = sim();
-    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_thuan_di", realm: 0, grade: 0 }] }));
+    const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_thuan_di", realm: 0, tier: 1, grade: 0 }] }));
     const from = spawn();
     expect(s.queueCast("p1", "pt_thuan_di", null, 0)).toEqual({ ok: false, reason: "no_target" });
     s.queueCast("p1", "pt_thuan_di", null, 0, [from[0] + 30, from[1]]);
@@ -920,21 +920,34 @@ describe("mastery, realm and passives in the simulation", () => {
   it("gear skills have no mastery", () => {
     const sim = forestSim();
     const m = sim.snapshots(0)[0]!;
-    const p = sim.addPlayer(seed("p1", { gearSkills: [{ id: "pb_kim", realm: 0, grade: 0 }] }));
-    sim.queueCast("p1", "pb_kim", m.id, 0);
+    const p = sim.addPlayer(seed("p1", { gearSkills: [{ id: "pb_kim_1", realm: 0, tier: 1, grade: 0 }] }));
+    sim.queueCast("p1", "pb_kim_1", m.id, 0);
     const events = sim.tick(0, at([m.path[0]![0] + 2, m.path[0]![1]]));
-    expect(events.some((e) => e.t === "hit" && e.skill === "pb_kim")).toBe(true);
+    expect(events.some((e) => e.t === "hit" && e.skill === "pb_kim_1")).toBe(true);
     expect(events.some((e) => e.t === "mastery")).toBe(false);
     expect(p.masteries.pb_kim).toBeUndefined();
+  });
+
+  it("a piece of a higher bậc in the same realm gives a stronger gear skill (LK4 beats LK1)", () => {
+    const hit = (tier: number) => {
+      const sim = forestSim();
+      const m = sim.snapshots(0)[0]!;
+      sim.addPlayer(seed("p1", { gearSkills: [{ id: "pb_kim_1", realm: 0, tier, grade: 0 }] }));
+      sim.queueCast("p1", "pb_kim_1", m.id, 0);
+      const e = sim.tick(0, at([m.path[0]![0] + 2, m.path[0]![1]])).find((x) => x.t === "hit" && x.skill === "pb_kim_1");
+      return e && e.t === "hit" ? e.damage : 0;
+    };
+    expect(hit(4)).toBeGreaterThan(hit(1));
+    expect(hit(9)).toBeGreaterThan(hit(4));
   });
 
   it("a piece of a higher realm gives a stronger gear skill than a piece of the first realm", () => {
     const hit = (realm: number) => {
       const sim = forestSim();
       const m = sim.snapshots(0)[0]!;
-      sim.addPlayer(seed("p1", { gearSkills: [{ id: "pb_kim", realm, grade: 0 }] }));
-      sim.queueCast("p1", "pb_kim", m.id, 0);
-      const e = sim.tick(0, at([m.path[0]![0] + 2, m.path[0]![1]])).find((x) => x.t === "hit" && x.skill === "pb_kim");
+      sim.addPlayer(seed("p1", { gearSkills: [{ id: "pb_kim_1", realm, tier: 1, grade: 0 }] }));
+      sim.queueCast("p1", "pb_kim_1", m.id, 0);
+      const e = sim.tick(0, at([m.path[0]![0] + 2, m.path[0]![1]])).find((x) => x.t === "hit" && x.skill === "pb_kim_1");
       return e && e.t === "hit" ? e.damage : 0;
     };
     expect(hit(1)).toBeGreaterThan(hit(0));
