@@ -592,3 +592,71 @@ describe("skills", () => {
     expect(sim.skillsOf(p)).toContain("cuong_than");
   });
 });
+
+describe("vitals kept across a reload", () => {
+  const townSim = () => new CombatSim(getMap("town"), "town", noCrit, 0);
+
+  it("a profile created from stored vitals starts where the character left (with the regeneration of the time away)", () => {
+    const sim = townSim();
+    const base = sim.addPlayer(seed("p0"));
+    const now = Date.now();
+    const p = sim.addPlayer(seed("p1", { vitals: { hp: 40, mp: 5, at: now - 1000, cd: { kim_1: now + 20_000 }, buffs: [{ skill: "linh_thuan", until: now + 20_000 }] } }));
+    expect(p.hp).toBe(40);
+    expect(p.mp).toBe(5);
+    expect(p.cooldowns.get("kim_1")).toBe(now + 20_000);
+    expect(p.buffs).toHaveLength(1);
+    expect(p.stats.defense).toBeGreaterThan(base.stats.defense); // the buff still counts
+    // Away a long time: back to full.
+    const q = sim.addPlayer(seed("p2", { vitals: { hp: 40, mp: 5, at: now - 3_600_000, cd: {}, buffs: [] } }));
+    expect(q.hp).toBe(q.maxHp);
+    expect(q.mp).toBe(q.maxMp);
+  });
+
+  it("a fresh character (or one whose stored copy was cleared) starts full", () => {
+    const p = townSim().addPlayer(seed("p1", { vitals: null }));
+    expect(p.hp).toBe(p.maxHp);
+    expect(p.mp).toBe(p.maxMp);
+  });
+
+  it("what is written on leaving is null when nothing is worth keeping and when dead, and the live values otherwise", () => {
+    const sim = townSim();
+    const p = sim.addPlayer(seed("p1"));
+    expect(sim.snapshotVitals("p1", 1000)).toBeNull(); // full, nothing running
+    expect(sim.snapshotVitals("nobody", 1000)).toBeUndefined();
+    p.hp = 30;
+    p.mp = 10;
+    p.mpAt = 1000;
+    p.lastHurtAt = 1000;
+    p.cooldowns.set("kim_1", 9000);
+    p.cooldowns.set("old", 500);
+    p.buffs.push({ skill: "linh_thuan", stat: "defense", pct: 0.3, until: 9000 });
+    expect(sim.snapshotVitals("p1", 2000)).toEqual({ hp: 30, mp: 10, at: 2000, cd: { kim_1: 9000 }, buffs: [{ skill: "linh_thuan", until: 9000 }] });
+    expect(sim.cooldownsLeft(p, 2000)).toEqual({ kim_1: 7000 });
+    p.dead = true;
+    expect(sim.snapshotVitals("p1", 2000)).toBeNull();
+  });
+});
+
+describe("constitution skill damage", () => {
+  const effect = (targetKind: "all" | "element" | "weapon" | "skill", targetTag: string, value: number) => ({ stat: "skill_damage", targetKind, targetTag, mode: "percent" as const, value });
+  const damageOf = (over: Partial<ProfileSeed>, skill = "kim_1"): number => {
+    const sim = forestSim();
+    const m = sim.snapshots(0)[0]!;
+    sim.addPlayer(seed("p1", over));
+    sim.queueCast("p1", skill, m.id, 0);
+    const hit = sim.tick(0, new Map([["p1", [m.path[0]![0] + 3, m.path[0]![1]] as Vec2]])).find((e) => e.t === "hit" && e.skill === skill);
+    return hit && hit.t === "hit" ? hit.damage : 0;
+  };
+
+  it("adds its percent to matching skills only", () => {
+    const none = damageOf({});
+    expect(none).toBeGreaterThan(0);
+    expect(damageOf({ effects: [effect("all", "", 50)] })).toBeGreaterThan(none);
+    expect(damageOf({ effects: [effect("element", "kim", 50)] })).toBeGreaterThan(none);
+    expect(damageOf({ effects: [effect("skill", "kim_1", 50)] })).toBeGreaterThan(none);
+    expect(damageOf({ effects: [effect("element", "thuy", 50)] })).toBe(none);
+    expect(damageOf({ effects: [effect("weapon", "kiem", 50)] })).toBe(none); // no sword in hand
+    expect(damageOf({ effects: [effect("weapon", "kiem", 50)], weapon: "kiem" })).toBeGreaterThan(none);
+    expect(damageOf({ effects: [effect("skill", "kim_2", 50)] })).toBe(none);
+  });
+});

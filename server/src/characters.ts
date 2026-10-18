@@ -25,6 +25,7 @@ export interface CharacterRow {
   constitution_tier: number;
   gender: Gender;
   hotbar: string;
+  vitals: string | null;
   stat_can_cot: number;
   stat_than_phap: number;
   stat_ngo_tinh: number;
@@ -34,7 +35,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 export function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
@@ -71,19 +72,23 @@ export async function saveCharacterPosition(
   x: number,
   y: number,
   progress?: ProgressWrite,
+  /** HP/MP/cooldowns/buffs JSON (same row, no extra write); null clears it (fresh: full HP and MP); undefined leaves it as it is. */
+  vitals?: string | null,
 ): Promise<void> {
+  const vitalsSql = vitals === undefined ? "" : ", vitals = ?";
+  const vitalsArg = vitals === undefined ? [] : [vitals];
   if (!progress) {
     await db
-      .prepare("UPDATE characters SET map_id = ?, x = ?, y = ?, updated_at = ? WHERE id = ?")
-      .bind(mapId, x, y, Date.now(), id)
+      .prepare(`UPDATE characters SET map_id = ?, x = ?, y = ?${vitalsSql}, updated_at = ? WHERE id = ?`)
+      .bind(mapId, x, y, ...vitalsArg, Date.now(), id)
       .run();
     return;
   }
   await db
     .prepare(
-      "UPDATE characters SET map_id = ?, x = ?, y = ?, stage = ?, exp = ?, potential_points = potential_points + ?, updated_at = ? WHERE id = ?",
+      `UPDATE characters SET map_id = ?, x = ?, y = ?, stage = ?, exp = ?, potential_points = potential_points + ?${vitalsSql}, updated_at = ? WHERE id = ?`,
     )
-    .bind(mapId, x, y, progress.stage, progress.exp, progress.addPoints, Date.now(), id)
+    .bind(mapId, x, y, progress.stage, progress.exp, progress.addPoints, ...vitalsArg, Date.now(), id)
     .run();
 }
 

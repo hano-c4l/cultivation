@@ -17,6 +17,7 @@ import {
 } from "@game/shared";
 import { getCatalog } from "./constitution-store";
 import { vi } from "./locales/vi";
+import { wearerOfSheet } from "./wearer";
 import { registerWindow } from "./window-manager";
 
 export interface CharacterPanel {
@@ -128,7 +129,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
     const preview: BaseStats = { ...s.base };
     for (const def of STAT_DEFS) preview[def.key] += pending[def.key] ?? 0;
     // Gear counts as the server counts it: requirements are judged against the saved stats, not the unconfirmed clicks.
-    const gear = equipmentBonus(worn, { gender: s.gender, realm: s.realm, stage: s.stage, base: s.base });
+    const gear = equipmentBonus(worn, wearerOfSheet(s));
     const d = deriveStats(preview, s.realm, s.stage, s.rootGrade, gear);
     const derived = el("div", "cp-derived");
     const lines: [string, string][] = [

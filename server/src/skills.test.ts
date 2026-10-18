@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { parseHotbar, planAdd, planRemove } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
-import { getCharacterById, loadLearnedSkills, saveHotbar } from "./characters";
+import { getCharacterById, loadLearnedSkills, saveCharacterPosition, saveHotbar } from "./characters";
 import { commitBagOps, loadBag } from "./inventory";
 import { makeDb } from "./test-db";
 
@@ -64,5 +64,23 @@ describe("hotbar", () => {
     const slots = ["s:kim_1", "", "i:hoi_huyet_dan", "", "", "", "", ""];
     await saveHotbar(db, A, slots);
     expect(parseHotbar((await getCharacterById(db, A))!.hotbar)).toEqual(slots);
+  });
+});
+
+describe("vitals stored with the position", () => {
+  const vitalsOf = async () => (await getCharacterById(db, A))!.vitals;
+
+  it("are written in the same update as the position, cleared with null and left alone when undefined", async () => {
+    expect(await vitalsOf()).toBeNull();
+    await saveCharacterPosition(db, A, "forest", 3.5, 4.5, undefined, JSON.stringify({ hp: 50, mp: 5, at: 1 }));
+    expect(JSON.parse((await vitalsOf())!)).toMatchObject({ hp: 50, mp: 5 });
+    await saveCharacterPosition(db, A, "forest", 5.5, 4.5); // undefined: untouched
+    expect(JSON.parse((await vitalsOf())!)).toMatchObject({ hp: 50 });
+    await saveCharacterPosition(db, A, "forest", 5.5, 4.5, { stage: 2, exp: 7, addPoints: 0 }, JSON.stringify({ hp: 20, mp: 1, at: 2 }));
+    const row = (await getCharacterById(db, A))!;
+    expect(JSON.parse(row.vitals!)).toMatchObject({ hp: 20 });
+    expect(row.stage).toBe(2);
+    await saveCharacterPosition(db, A, "town", 20.5, 20.5, undefined, null); // respawn: fresh
+    expect(await vitalsOf()).toBeNull();
   });
 });

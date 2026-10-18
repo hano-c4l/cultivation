@@ -14,6 +14,11 @@ import {
   rollEquipmentDrop,
   rollBookDrop,
   MP_REGEN_DELAY_MS,
+  modifierTotal,
+  restoreVitals,
+  type ConstitutionEffect,
+  type GearAffinity,
+  type Vitals,
   MP_REGEN_PER_S,
   availableSkills,
   getSkill,
@@ -61,6 +66,11 @@ export interface ProfileSeed {
   weapon?: string | null;
   /** Skills learned from bí tịch (the basic ones are worked out from root, realm and stage). */
   learned?: readonly string[];
+  /** What the character resonates with (gear of that element or weapon family gives more), and their constitution's effects. */
+  affinity?: GearAffinity;
+  effects?: readonly ConstitutionEffect[];
+  /** HP, MP, cooldowns and buffs they left with (null/absent: fresh). Applied once, when the profile is created. */
+  vitals?: Vitals | null;
   realm: number;
   stage: number;
   exp: number;
@@ -302,8 +312,45 @@ export class CombatSim {
       pendingCast: null,
       buffs: [],
     };
+    if (seed.vitals) {
+      // Back from a reload or another map: pick up where they left, with the regeneration of the time away.
+      const now = Date.now();
+      const r = restoreVitals(seed.vitals, now, d.maxHp, d.maxMp);
+      profile.hp = r.hp;
+      profile.mp = r.mp;
+      profile.mpAt = now;
+      for (const [skill, readyAt] of Object.entries(r.cooldowns)) profile.cooldowns.set(skill, readyAt);
+      for (const b of r.buffs) {
+        const def = getSkill(b.skill);
+        if (def?.buff) profile.buffs.push({ skill: b.skill, stat: def.buff.stat, pct: def.power, until: b.until });
+      }
+      if (profile.buffs.length > 0) this.recompute(profile, false);
+    }
     this.players.set(seed.id, profile);
     return profile;
+  }
+
+  /**
+   * What to store when a character leaves: HP, MP, cooldowns and buffs. null: nothing worth keeping (dead, or already full
+   * with nothing running), which clears the stored copy. undefined: no such player (do not touch the stored copy).
+   */
+  snapshotVitals(id: string, now: number): Vitals | null | undefined {
+    const p = this.players.get(id);
+    if (!p) return undefined;
+    if (p.dead) return null;
+    const cd: Record<string, number> = {};
+    for (const [skill, readyAt] of p.cooldowns) if (readyAt > now) cd[skill] = readyAt;
+    const buffs = p.buffs.filter((b) => b.until > now).map((b) => ({ skill: b.skill, until: b.until }));
+    const mp = this.currentMp(p, now);
+    if (p.hp >= p.maxHp && mp >= p.maxMp && Object.keys(cd).length === 0 && buffs.length === 0) return null;
+    return { hp: p.hp, mp, at: now, cd, buffs };
+  }
+
+  /** Remaining cooldown of each skill still cooling down, in ms (for the client). */
+  cooldownsLeft(p: PlayerProfile, now: number): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const [skill, readyAt] of p.cooldowns) if (readyAt > now) out[skill] = readyAt - now;
+    return out;
   }
 
   removePlayer(id: string): void {
@@ -660,7 +707,10 @@ export class CombatSim {
   private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef): void {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
     // A skill hits as the caster's own stats scaled by its power, in its own element (or the caster's when it has none).
-    const attacker = skill ? { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * skill.power)), element: skill.element ?? p.element } : p.stats;
+    // The constitution's "skill damage" effects (percent) add to a matching skill: all skills, its element, the wielded weapon family or the skill itself.
+    const element = skill ? (skill.element ?? p.element) : p.element;
+    const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent : 0;
+    const attacker = skill ? { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * skill.power * (1 + bonusPct / 100))), element } : p.stats;
     const hit = computeDamage(attacker, m.combatant, this.rand);
     const applied = Math.min(m.hp, hit.damage);
     m.hp -= applied;

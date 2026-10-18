@@ -180,6 +180,7 @@ export const vi = {
     variantElements: { loi: "Lôi", bang: "Băng", phong: "Phong" } as Record<string, string>,
     element: (name: string) => `Ngũ hành: ${name}`,
     elementShort: (name: string) => `Hệ ${name}`,
+    resonates: (pct: number) => `Hợp linh căn/thể chất của bạn: +${pct}% chỉ số`,
     statsLabel: "Chỉ số",
     refine: (xp: number, need: number) => `Luyện cấp: ${xp.toLocaleString("vi-VN")} / ${need.toLocaleString("vi-VN")} EXP (riêng, không quá cấp của bạn)`,
     refined: (name: string, level: string) => `${name} đã lên cấp luyện ${level}.`,

@@ -16,6 +16,7 @@ import {
 } from "@game/shared";
 import { describeItem, durabilityShort, durabilityText, elementDot, equipLines, itemTierTag, statText } from "./equip-text";
 import { vi } from "./locales/vi";
+import { wearerOfSheet } from "./wearer";
 import { registerWindow } from "./window-manager";
 
 export interface EquipmentUi {
@@ -53,7 +54,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   /** The worn piece whose details are open. */
   let inspecting: EquipSlot | null = null;
 
-  const wearer = (): WearerCtx | null => (sheet ? { gender: sheet.gender, realm: sheet.realm, stage: sheet.stage, base: sheet.base } : null);
+  const wearer = (): WearerCtx | null => (sheet ? wearerOfSheet(sheet) : null);
   const nameOf = (type: string) => getItemDef(type)?.nameVi ?? type;
   /** The small realm/bậc label ("LK3") in the top left corner of a row. */
   const tagOf = (type: string, lv?: number): HTMLElement => el("span", "eq-tag", itemTierTag(type, lv) ?? "");
@@ -95,7 +96,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   /** Full description of a worn piece: grade, rarity, stats at the current durability, durability, requirements, style. */
   function renderInfo(piece: EquippedItem): HTMLElement {
     const box = el("div", `eq-info rar-${getItemDef(piece.type)?.rarity ?? "common"}`);
-    box.append(describeItem(piece.type, { dur: piece.dur, max: piece.max, lv: piece.lv, xp: piece.xp }));
+    box.append(describeItem(piece.type, { dur: piece.dur, max: piece.max, lv: piece.lv, xp: piece.xp, wearer: wearer() ?? undefined }));
     return box;
   }
 
