@@ -1,6 +1,6 @@
 import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
-import { BOOK_SKILLS, bookItemId } from "./skills";
+import { BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId } from "./skills";
 
 /**
  * Item catalogue. Placeholder game-design values (listed under "giá trị tạm" in docs/STATUS.md). Display strings are
@@ -30,6 +30,8 @@ export interface ItemDef {
   healOverMs?: number;
   /** Equipment only: the template behind the item (slot kind, stats, requirements, durability). */
   equip?: EquipInfo;
+  /** Pills that raise the mastery of a skill: how many mastery points one gives (used from the skills window). */
+  masteryPills?: number;
   /** Skill books (bí tịch): the skill the book teaches when used. */
   teaches?: string;
 }
@@ -64,6 +66,16 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     grade: 1,
     healFraction: 0.4,
     healOverMs: 5000,
+  },
+  ngo_dao_dan: {
+    id: "ngo_dao_dan",
+    nameVi: "Ngộ Đạo Đan",
+    descVi: "Dùng từ cửa sổ Kỹ năng để tăng độ thuần thục cho một kỹ năng (kỹ năng linh căn, tông môn hoặc học được).",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "rare",
+    grade: 3,
+    masteryPills: MASTERY_PILL_POINTS,
   },
   linh_thao: { id: "linh_thao", nameVi: "Linh Thảo", descVi: "Thảo dược mọc nơi linh khí dồi dào, dùng làm nguyên liệu luyện đan.", category: "material", maxStack: 99, rarity: "common", grade: 1 },
   thu_cot: { id: "thu_cot", nameVi: "Thú Cốt", descVi: "Xương của yêu thú, dùng làm nguyên liệu.", category: "material", maxStack: 99, rarity: "common", grade: 1 },
@@ -118,12 +130,14 @@ export const LOOT_TABLES: Readonly<Record<MonsterRank, readonly LootEntry[]>> = 
     { item: "linh_thao", chance: 0.5, min: 1, max: 3 },
     { item: "hoi_huyet_dan", chance: 0.2, min: 1, max: 2 },
     { item: "duong_huyet_dan", chance: 0.15, min: 1, max: 1 },
+    { item: "ngo_dao_dan", chance: 0.05, min: 1, max: 1 },
   ],
   rare2: [
     { item: "yeu_dan", chance: 1, min: 1, max: 2 },
     { item: "linh_thao", chance: 0.8, min: 2, max: 4 },
     { item: "hoi_huyet_dan", chance: 0.5, min: 1, max: 3 },
     { item: "duong_huyet_dan", chance: 0.4, min: 1, max: 2 },
+    { item: "ngo_dao_dan", chance: 0.25, min: 1, max: 1 },
   ],
 };
 

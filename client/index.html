@@ -50,6 +50,11 @@
         background: rgba(27, 33, 48, 0.96); color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; }
       #sk-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
       #sk-panel .sk-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; } #sk-panel .sk-head b { flex: 1; font-size: 15px; } #sk-panel .sk-small { padding: 4px 8px; min-height: 28px; }
+      #sk-panel .sk-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; } #sk-panel .sk-tabs button { padding: 4px 8px; font-size: 12px; background: #3a4560; color: #e8e4d8; } #sk-panel .sk-tabs button.active { background: #d6a94b; color: #1b1405; }
+      #sk-panel .sk-tag { margin-left: 6px; padding: 0 4px; border-radius: 4px; background: #ffd54a; color: #1b1405; font-size: 10px; font-weight: 700; } #sk-panel .sk-meta { font-size: 12px; color: #ffd54a; }
+      #sk-panel .sk-bar { height: 5px; margin: 3px 0 1px; border-radius: 3px; background: #10141c; overflow: hidden; } #sk-panel .sk-bar-fill { height: 100%; background: #6fcf97; }
+      #sk-panel .sk-actions { display: flex; flex-direction: column; align-items: stretch; gap: 4px; max-width: 120px; } #sk-panel .sk-el { display: flex; align-items: center; justify-content: center; }
+      #sk-panel .sk-pill { background: #2f6b4f; color: #e8f5e9; } #sk-panel button:disabled { opacity: 0.45; cursor: default; }
       #sk-panel .sk-card { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px; background: rgba(255, 255, 255, 0.06); border: 1px solid #3a4560; border-radius: 6px; }
       #sk-panel .sk-info { flex: 1; min-width: 0; } #sk-panel .muted { opacity: 0.7; font-size: 12px; }
       #hotbar { position: fixed; right: 12px; bottom: 12px; z-index: 5; font: 12px "Be Vietnam Pro", system-ui, sans-serif; color: #e8e4d8; }
@@ -58,6 +63,7 @@
       #hotbar .hb-row { display: flex; gap: 3px; }
       #hotbar .hb-slot { position: relative; width: 44px; height: 44px; padding: 2px; box-sizing: border-box; border: 1px solid #3a4560; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #e8e4d8; cursor: pointer; overflow: hidden; }
       #hotbar .hb-slot.assigning { border-color: #ffd54a; box-shadow: 0 0 0 1px #ffd54a inset; } #hotbar .hb-slot.dim { opacity: 0.5; }
+      #hotbar .hb-elem { position: absolute; top: 2px; left: 12px; margin: 0; width: 9px; height: 9px; }
       #hotbar .hb-key { position: absolute; top: 1px; left: 3px; font-size: 9px; color: #ffd54a; font-weight: 700; }
       #hotbar .hb-name { display: block; margin-top: 8px; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
       #hotbar .hb-count { position: absolute; right: 3px; bottom: 1px; font-size: 10px; font-weight: 700; }

@@ -51,6 +51,14 @@ import {
   RATE_CAP,
   type BuffStat,
   type EffectView,
+  type EffectiveSkill,
+  type GearSkillInfo,
+  type SkillContext,
+  type SpiritualRoot,
+  addMastery,
+  passiveTotals,
+  effectiveSkill,
+  skillGrade,
 } from "@game/shared";
 
 /** Everything the simulation needs to know about a character when it joins. */
@@ -72,10 +80,12 @@ export interface ProfileSeed {
   gear?: EquipStats;
   /** Weapon family of the worn weapon (a skill may need one); null: no weapon or a weapon without a family. */
   weapon?: string | null;
-  /** Skills learned from bí tịch (the basic ones are worked out from root, realm and stage). */
-  learned?: readonly string[];
-  /** Skills granted by the pháp bảo worn right now (gearSkillIds); the room refreshes them whenever the gear changes. */
-  gearSkills?: readonly string[];
+  /** The skills the character was given: its root skills of each realm reached and the ones learned from bí tịch (by id). */
+  granted?: readonly string[];
+  /** Mastery of the granted skills that have it (level index and points); a skill without an entry is at nhập môn with no points. */
+  skillState?: Readonly<Record<string, { lv: number; xp: number }>>;
+  /** Skills granted by the pháp bảo worn right now, with each piece's realm and grade; the room refreshes them whenever the gear changes. */
+  gearSkills?: readonly GearSkillInfo[];
   /** What the character resonates with (gear of that element or weapon family gives more), and their constitution's effects. */
   affinity?: GearAffinity;
   effects?: readonly ConstitutionEffect[];
@@ -119,10 +129,12 @@ export interface PlayerProfile extends ProfileSeed {
   /** Skill ready times (ms), by skill id. Memory only: leaving the room resets them (known gap). */
   cooldowns: Map<string, number>;
   /** A skill to use as soon as it can (walking into range first); cleared by moving, targeting or a failure. */
-  pendingCast: { skill: string; target: string | null; dest?: Vec2 } | null;
+  pendingCast: { skill: string; target: string | null; dest?: Vec2; element?: SpiritualRoot } | null;
   buffs: ActiveBuff[];
   /** Potions that heal over time (memory only; what is left is paid out when the player leaves). */
   hots: ActiveHot[];
+  /** Live mastery of the granted skills (a copy of the seed that the sim changes as skills are used). */
+  masteries: Record<string, { lv: number; xp: number }>;
 }
 
 /** A potion healing a little every `tickMs` until `left` ticks have run. */
@@ -181,6 +193,8 @@ export type SimEvent =
   /** A teleport went off: the room moves the player to `to` (it owns the player's position). */
   | { t: "teleport"; playerId: string; to: Vec2 }
   | { t: "buff"; playerId: string; skill: string; ms: number }
+  /** A skill gained mastery (`up`: it reached a new level). The room keeps the value and writes it with the next save. */
+  | { t: "mastery"; playerId: string; skill: string; lv: number; xp: number; up: boolean }
   /** The running effects changed (a buff or a timed potion started or ended): the full list for the buff bar. */
   | { t: "effects"; playerId: string; list: EffectView[] }
   /** A kill dropped items for this player; the room puts them in the bag (or mails them when it is full). */
@@ -203,19 +217,34 @@ function lastPoint(path: Vec2[]): Vec2 {
   return path[path.length - 1] ?? [0, 0];
 }
 
-function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[] }, stage = seed.stage): { stats: Combatant; maxHp: number; maxMp: number; expBonus: number } {
+/** The skill's realm, grade and mastery level for this character: what effectiveSkill needs. */
+export function skillContextOf(seed: Pick<ProfileSeed, "rootGrade" | "gearSkills"> & { masteries?: Readonly<Record<string, { lv: number }>>; skillState?: Readonly<Record<string, { lv: number }>> }, def: SkillDef): SkillContext {
+  const gear = def.source === "gear" ? seed.gearSkills?.find((g) => g.id === def.id) : undefined;
+  const grade = skillGrade(def, seed.rootGrade, gear?.grade);
+  const lv = def.source === "gear" ? 0 : ((seed.masteries ?? seed.skillState)?.[def.id]?.lv ?? 0);
+  return { realm: gear ? gear.realm : def.realm, grade, level: lv };
+}
+
+function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; masteries?: Readonly<Record<string, { lv: number; xp: number }>> }, stage = seed.stage): { stats: Combatant; maxHp: number; maxMp: number; expBonus: number } {
   const d = deriveStats(seed.base, seed.realm, stage, seed.rootGrade, seed.gear, (seed.roots ?? [seed.element]).length);
-  // Buffs only touch attack and defense (never max HP), so their expiry cannot move the HP ratio.
+  // Buffs and passives only touch attack, defense, dodge and crit (never max HP), so their expiry cannot move the HP ratio.
   let attack = d.attack;
   let defense = d.defense;
   let dodge = d.dodgeRate;
+  let crit = d.critRate;
   for (const b of seed.buffs ?? []) {
     if (b.stat === "attack") attack = Math.floor(attack + d.attack * b.pct);
     else if (b.stat === "defense") defense = Math.floor(defense + d.defense * b.pct);
     else dodge += b.pct * 100;
   }
+  // Passive skills work all the time, at the strength their realm, grade and mastery give them (the same sum the character panel shows).
+  const passive = passiveTotals(seed.granted ?? [], seed.masteries ?? seed.skillState ?? {}, seed.rootGrade);
+  attack = Math.floor(attack + d.attack * passive.attackPct);
+  defense = Math.floor(defense + d.defense * passive.defensePct);
+  dodge += passive.dodgePoints;
+  crit += passive.critPoints;
   return {
-    stats: { attack, defense, critRate: d.critRate, dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element },
+    stats: { attack, defense, critRate: Math.min(RATE_CAP, crit), dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element },
     maxHp: d.maxHp,
     maxMp: d.maxMp,
     expBonus: d.expBonus,
@@ -340,6 +369,7 @@ export class CombatSim {
       pendingCast: null,
       buffs: [],
       hots: [],
+      masteries: { ...(seed.skillState ?? {}) },
     };
     if (seed.vitals) {
       // Back from a reload or another map: pick up where they left, with the regeneration of the time away.
@@ -351,7 +381,7 @@ export class CombatSim {
       for (const [skill, readyAt] of Object.entries(r.cooldowns)) profile.cooldowns.set(skill, readyAt);
       for (const b of r.buffs) {
         const def = getSkill(b.skill);
-        if (def?.buff) profile.buffs.push({ skill: b.skill, stat: def.buff.stat, pct: def.power, until: b.until });
+        if (def?.buff) profile.buffs.push({ skill: b.skill, stat: def.buff.stat, pct: effectiveSkill(def, skillContextOf(profile, def)).power, until: b.until });
       }
       if (profile.buffs.length > 0) this.recompute(profile, false);
     }
@@ -443,7 +473,7 @@ export class CombatSim {
   }
 
   /** Gear changed (worn, taken off, worn out): re-derive combat stats, keeping the HP ratio. */
-  updateGear(id: string, gear: EquipStats, weapon?: string | null, gearSkills?: readonly string[]): void {
+  updateGear(id: string, gear: EquipStats, weapon?: string | null, gearSkills?: readonly GearSkillInfo[]): void {
     const p = this.players.get(id);
     if (!p) return;
     p.gear = gear;
@@ -454,13 +484,27 @@ export class CombatSim {
 
   /** The skills this character can use now: unlocked basic ones plus learned books. */
   skillsOf(p: PlayerProfile): string[] {
-    return availableSkills(p.roots ?? [p.element], p.realm, p.stage, p.learned ?? [], p.gearSkills ?? []);
+    return availableSkills(p.granted ?? [], (p.gearSkills ?? []).map((g) => g.id));
   }
 
-  /** A book was learned. */
-  addLearned(id: string, skill: string): void {
+  /** A skill was granted (a book was read, or a realm gave its root skills). */
+  addGranted(id: string, skill: string): void {
     const p = this.players.get(id);
-    if (p && !(p.learned ?? []).includes(skill)) p.learned = [...(p.learned ?? []), skill];
+    if (p && !(p.granted ?? []).includes(skill)) p.granted = [...(p.granted ?? []), skill];
+    if (p) this.recompute(p, false); // a passive takes effect at once
+  }
+
+  /** Sets the mastery of a skill (a Ngộ Đạo Đan was used); the passives follow the new level. */
+  setMastery(id: string, skill: string, lv: number, xp: number): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.masteries[skill] = { lv, xp };
+    this.recompute(p, false);
+  }
+
+  /** What the skill does for this character right now (realm, grade and mastery level included). */
+  effectiveOf(p: PlayerProfile, def: SkillDef): EffectiveSkill {
+    return effectiveSkill(def, skillContextOf(p, def));
   }
 
   /** MP at time `now`: the stored value plus regeneration since it was stored (starting MP_REGEN_DELAY_MS after the last hit). */
@@ -485,13 +529,13 @@ export class CombatSim {
    * Asks to use a skill: checked now (so a refusal is immediate) and again when it goes off. An attack walks into range
    * of its target first (the player's chase does that); heals and buffs go off on the next tick.
    */
-  queueCast(playerId: string, skillId: string, targetId: string | null, now: number, dest?: Vec2): { ok: true } | { ok: false; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" } {
+  queueCast(playerId: string, skillId: string, targetId: string | null, now: number, dest?: Vec2, element?: SpiritualRoot): { ok: true } | { ok: false; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" } {
     const p = this.players.get(playerId);
     const skill = getSkill(skillId);
-    if (!p || p.dead || !skill || !this.skillsOf(p).includes(skillId)) return { ok: false, reason: "unknown" };
+    if (!p || p.dead || !skill || skill.kind === "passive" || !this.skillsOf(p).includes(skillId)) return { ok: false, reason: "unknown" };
     if (skill.weapon !== undefined && p.weapon !== skill.weapon) return { ok: false, reason: "weapon" };
     if (now < (p.cooldowns.get(skillId) ?? 0)) return { ok: false, reason: "cooldown" };
-    if (this.currentMp(p, now) < skill.mpCost) return { ok: false, reason: "mp" };
+    if (this.currentMp(p, now) < this.effectiveOf(p, skill).mpCost) return { ok: false, reason: "mp" };
     let target: string | null = null;
     if (skill.kind === "attack") {
       target = targetId ?? p.targetId;
@@ -501,7 +545,9 @@ export class CombatSim {
       p.lastRepathAt = Number.NEGATIVE_INFINITY;
     }
     if (skill.kind === "teleport" && !dest) return { ok: false, reason: "no_target" };
-    p.pendingCast = { skill: skillId, target, ...(skill.kind === "teleport" && dest ? { dest } : {}) };
+    // The element of a flexible attack is one of the caster's own (the main one when none is named or the name is not theirs).
+    const chosen = skill.flex ? (element && (p.roots ?? [p.element]).includes(element) ? element : p.element) : undefined;
+    p.pendingCast = { skill: skillId, target, ...(skill.kind === "teleport" && dest ? { dest } : {}), ...(chosen ? { element: chosen } : {}) };
     return { ok: true };
   }
 
@@ -752,7 +798,8 @@ export class CombatSim {
     };
     if (skill.weapon !== undefined && p.weapon !== skill.weapon) return fail("weapon");
     if (now < (p.cooldowns.get(skill.id) ?? 0)) return fail("cooldown");
-    if (this.currentMp(p, now) < skill.mpCost) return fail("mp");
+    const eff = this.effectiveOf(p, skill);
+    if (this.currentMp(p, now) < eff.mpCost) return fail("mp");
     // A teleport is checked again at the moment it goes off, from where the player really stands: close enough, a standable
     // spot, and reachable on foot (so nobody can land inside a sealed area).
     if (skill.kind === "teleport") {
@@ -771,27 +818,31 @@ export class CombatSim {
     }
     // The skill goes off: pay, start the cooldown, then its effect.
     this.settleMp(p, now);
-    p.mp -= skill.mpCost;
-    p.cooldowns.set(skill.id, now + skill.cooldownMs);
+    p.mp -= eff.mpCost;
+    p.cooldowns.set(skill.id, now + eff.cooldownMs);
     p.pendingCast = null;
-    events.push(this.mpEvent(p, now), { t: "cast_ok", playerId: p.id, skill: skill.id, cdMs: skill.cooldownMs });
+    events.push(this.mpEvent(p, now), { t: "cast_ok", playerId: p.id, skill: skill.id, cdMs: eff.cooldownMs });
     if (skill.kind === "teleport" && pending.dest) {
       p.targetId = null;
       events.push({ t: "teleport", playerId: p.id, to: pending.dest });
     } else if (skill.kind === "heal") {
-      p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(p.maxHp * skill.power)));
+      const before = p.hp;
+      p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(p.maxHp * eff.power)));
       events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+      if (p.hp > before) this.gainMastery(p, skill, events); // healing at full HP teaches nothing
     } else if (skill.kind === "buff" && skill.buff) {
-      p.buffs = [...p.buffs.filter((b) => b.skill !== skill.id), { skill: skill.id, stat: skill.buff.stat, pct: skill.power, until: now + skill.buff.durationMs }];
+      this.gainMastery(p, skill, events);
+      p.buffs = [...p.buffs.filter((b) => b.skill !== skill.id), { skill: skill.id, stat: skill.buff.stat, pct: eff.power, until: now + skill.buff.durationMs }];
       this.recompute(p, false);
       events.push({ t: "buff", playerId: p.id, skill: skill.id, ms: skill.buff.durationMs }, { t: "effects", playerId: p.id, list: this.effectsOf(p, now) });
     } else if (m && mpos) {
-      this.playerAttack(p, m, mpos, now, events, skill);
+      const done = this.playerAttack(p, m, mpos, now, events, skill, eff.power, pending.element);
+      if (done > 0) this.gainMastery(p, skill, events);
     }
     return true;
   }
 
-  private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef): void {
+  private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): number {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
     // A skill hits as the caster's own stats scaled by its power, in its own element; one without an element (and the basic
     // attack) uses the caster's MAIN element, so having more elements never hits harder (breadth is only in which skills
@@ -799,10 +850,11 @@ export class CombatSim {
     // (phẩm cấp); the number of elements does not change damage.
     // The constitution's "skill damage" effects (percent) add to a matching skill: all skills, its element, the wielded weapon family or the skill itself.
     const roots = p.roots ?? [p.element];
-    const element = skill?.element ?? p.element;
-    const gradePct = roots.includes(element) ? getRootGrade(p.rootGrade).elementDamagePct : 0;
+    const element = skill ? (skillElement ?? skill.element ?? p.element) : p.element;
+    // A skill's grade is already in its power (effectiveSkill), so only the plain attack takes the root grade's damage share here.
+    const gradePct = !skill && roots.includes(element) ? getRootGrade(p.rootGrade).elementDamagePct : 0;
     const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent : 0;
-    const power = skill ? skill.power : 1;
+    const power = skill ? skillPower : 1;
     const attacker = { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100))), element };
     const hit = computeDamage(attacker, m.combatant, this.rand);
     const applied = Math.min(m.hp, hit.damage);
@@ -816,7 +868,7 @@ export class CombatSim {
         m.targetId = p.id;
         m.lastRepathAt = Number.NEGATIVE_INFINITY;
       }
-      return;
+      return applied;
     }
     m.state = "dead";
     m.respawnAt = now + m.def.respawnMs;
@@ -844,6 +896,18 @@ export class CombatSim {
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
+    return applied;
+  }
+
+  /** Mastery from one successful use of a skill that has levels (not a gear skill). A new level re-derives passives. */
+  private gainMastery(p: PlayerProfile, skill: SkillDef, events: SimEvent[]): void {
+    if (skill.source === "gear") return;
+    const now = p.masteries[skill.id] ?? { lv: 0, xp: 0 };
+    const r = addMastery(now.lv, now.xp, 1, skillGrade(skill, p.rootGrade));
+    if (r.level === now.lv && r.mastery === now.xp) return;
+    p.masteries[skill.id] = { lv: r.level, xp: r.mastery };
+    events.push({ t: "mastery", playerId: p.id, skill: skill.id, lv: r.level, xp: r.mastery, up: r.up });
+    if (r.up) this.recompute(p, false);
   }
 
   /** Gives the killer EXP (with their bonus) and applies any stage-ups. Linh Thạch drops are rolled by the caller. */

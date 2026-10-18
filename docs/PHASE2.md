@@ -33,6 +33,7 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Trang bị và 
 - **Thanh phím tắt:** 8 ô, phím 1-8, chạm trên điện thoại; dùng chung cho kỹ năng và đan dược tiêu hao (kéo/gán từ túi đồ).
 - **MP:** hồi theo thời gian, ngừng hồi một lúc sau khi bị đánh (như hồi máu); kỹ năng tốn MP và có hồi chiêu.
 **Chia PR:** A = dữ liệu kỹ năng, MP, tung kỹ năng (hồi chiêu, tầm đánh, hồi máu, buff), mở khóa cơ bản, thanh phím tắt (kỹ năng + đan), giao diện; B = bí tịch (vật phẩm, học, rơi) và ràng buộc họ vũ khí; C (hỏi người dùng trước) = buff theo ngũ hành/họ vũ khí của trang bị, `skill_damage` của thể chất, trục số hệ linh căn (chỉ mở rộng `elementMultiplier`, không đổi dữ liệu nhân vật).
+- **Kỹ năng có cảnh giới, phẩm cấp, thuần thục (2026-10-18, nhánh `features_skill-tiers`):** 2 kỹ năng linh căn mỗi cảnh giới (1 tấn công + 1 ngẫu nhiên, hệ chọn khi gán phím tắt), cửa sổ 4 tab, cấp nhập môn đến thần thông, Ngộ Đạo Đan. Cần gọi `ensureRootSkills` khi làm đột phá (2d). Chi tiết: `docs/STATUS.md`.
 - **Bổ sung (2026-10-18, nhánh `features_bag-buffs-artifact-skills`):** kỹ năng của pháp bảo thường/bản mệnh/phi hành (gồm Thuấn Di và buff né tránh), thanh buff, đan hồi dần. Chi tiết: `docs/STATUS.md`.
 - Hiệu ứng buff của thể chất (xem `docs/PLAN.md` mục 9, `shared/src/constitutions.ts`): sát thương và độ thuần thục kỹ năng theo nguyên tố/vũ khí (phần C). Các ô dùng nhanh vật phẩm tiêu hao nằm trên cùng thanh phím tắt này.
 - Bảng sát thương ngũ hành đầy đủ (tương khắc ×1.3, bị khắc ×0.75, tương sinh bonus nhỏ) mở rộng được cho **trục số hệ linh căn** (đơn/song/tam/tứ/ngũ, biến dị Lôi/Băng/Phong) đã hẹn ở GĐ2.
@@ -41,6 +42,7 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Trang bị và 
 - **Số hệ linh căn: ĐÃ LÀM (2026-10-18)** theo số liệu người dùng chốt (đơn 20%, song 48%, tam 25%, tứ 5%, ngũ 2%; tu vi +10/0/-15/-30/-40%; không ảnh hưởng sát thương) cùng phẩm cấp ảnh hưởng tu vi và sát thương theo hệ. Nhân vật có sẵn giữ là đơn linh căn. Chi tiết: `docs/STATUS.md` mục "Linh căn nhiều hệ". Biến dị Lôi/Băng/Phong chưa làm.
 
 ## 2d. Chủ tu/phụ tu và đột phá (`features_cultivation-paths`)
+- **Việc phải nối khi làm đột phá:** gọi `ensureRootSkills` với cảnh giới mới (cấp thêm 2 kỹ năng linh căn của cảnh giới đó) rồi gửi lại `skills`; truyền cấp luyện của pháp bảo bản mệnh vào kỹ năng của nó (hiện chỉ theo id của món).
 - Chọn chủ tu (Kiếm tu, Thuật tu, Đan tu) và phụ tu; hệ số EXP `1 / (1 + k·n)` (PLAN mục 9), `k` chỉnh được trong cấu hình.
 - **Đột phá cảnh giới**: hiện tiến độ dừng ở tầng 9 và EXP bị chặn. Thêm cơ chế đột phá có tỉ lệ thất bại, đan dược tăng tỉ lệ, tiền sink.
 - Nghiệm thu: test công thức hệ số; đột phá thành/bại đúng tỉ lệ (RNG truyền vào), trừ đúng vật phẩm/tiền.

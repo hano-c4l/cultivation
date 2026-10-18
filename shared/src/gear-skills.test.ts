@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeEquipmentId } from "./equipment-data";
-import { gearSkillIds } from "./gear-skills";
+import { gearSkillIds, gearSkillInfo } from "./gear-skills";
 import { BOOK_SKILLS, SKILLS, availableSkills, getSkill } from "./skills";
 import { parseClientMessage } from "./protocol";
 
@@ -19,7 +19,7 @@ describe("skills granted by worn pháp bảo", () => {
     const ids = gearSkillIds([{ slot: "bonded", type: bonded("kim") }]);
     expect(ids).toEqual(expect.arrayContaining(["bm_kim", "bm_ho_the", "bm_hoi_sinh"]));
     expect(getSkill("bm_kim")!.power).toBeGreaterThan(getSkill("pb_kim")!.power);
-    expect(getSkill("bm_kim")!.power).toBeGreaterThan(getSkill("kim_3")!.power); // beyond even a book skill
+    expect(getSkill("bm_kim")!.power).toBeGreaterThan(getSkill("kim_3")!.power * 1.5); // beyond even the strongest book skill, realm bonus included
     expect(getSkill("bm_kim")!.cooldownMs).toBeGreaterThan(getSkill("pb_kim")!.cooldownMs);
   });
 
@@ -37,10 +37,18 @@ describe("skills granted by worn pháp bảo", () => {
   });
 
   it("they show up in availableSkills only while worn, and are never learnable from a book", () => {
-    expect(availableSkills(["kim"], 0, 1, [])).not.toContain("pt_thuan_di");
-    expect(availableSkills(["kim"], 0, 1, [], ["pt_thuan_di"])).toContain("pt_thuan_di");
-    expect(availableSkills(["kim"], 0, 1, ["pt_thuan_di"])).not.toContain("pt_thuan_di"); // a learned id does not grant a gear skill
+    expect(availableSkills(["chuong_0"])).not.toContain("pt_thuan_di");
+    expect(availableSkills(["chuong_0"], ["pt_thuan_di"])).toContain("pt_thuan_di");
+    expect(availableSkills(["pt_thuan_di"])).not.toContain("pt_thuan_di"); // a granted id does not give a gear skill
     for (const s of BOOK_SKILLS) expect(s.gear).toBeUndefined();
+  });
+
+  it("each skill carries the realm and grade of the piece behind it, the better piece winning", () => {
+    const lowRing = makeEquipmentId("charm", "u", 0, 1, 1, "hoa");
+    const highCharm = makeEquipmentId("charm", "u", 1, 3, 3, "hoa");
+    expect(gearSkillInfo([{ slot: "charm1", type: lowRing }])).toEqual([{ id: "pb_hoa", realm: 0, grade: 0 }]);
+    expect(gearSkillInfo([{ slot: "charm1", type: lowRing }, { slot: "charm2", type: highCharm }])).toEqual([{ id: "pb_hoa", realm: 1, grade: 2 }]);
+    expect(gearSkillInfo([{ slot: "charm1", type: highCharm }, { slot: "charm2", type: lowRing }])).toEqual([{ id: "pb_hoa", realm: 1, grade: 2 }]);
   });
 
   it("a cast carries a point only as two sane coordinates", () => {
