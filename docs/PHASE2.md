@@ -1,11 +1,11 @@
 # Giai đoạn 2: Chiều sâu nhân vật — đề xuất chia nhánh (bản nháp)
 
-Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g xong (`features_chat-channels`), 2a xong (`features_inventory`), hệ thống thể chất (dữ liệu và hiển thị) xong (`features_constitution`); **2b (trang bị, độ bền, giới tính) đã viết xong ở nhánh `features_equipment`, chờ duyệt rồi PR**. 2g, 2a và thể chất đã ở production (2026-10-17). Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
+Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g xong (`features_chat-channels`), 2a xong (`features_inventory`), hệ thống thể chất (dữ liệu và hiển thị) xong (`features_constitution`); **2b (trang bị, độ bền, giới tính, ngũ hành/loại vũ khí, pháp bảo bản mệnh và phi hành) xong**. Tất cả đã ở production (2g, 2a, thể chất 2026-10-17; 2b 2026-10-18). **Kế tiếp là 2c** (phạm vi đang chốt với người dùng). Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
 
 Nghiệm thu chung của GĐ2 (từ PLAN): một nhân vật đi trọn chuỗi nhiệm vụ tân thủ; công thức sát thương ngũ hành đúng test; sát khí/rơi đồ/vệ binh theo đúng luật mặc định.
 
 ## Thứ tự phụ thuộc
-2g (xong) → 2a (xong) → 2b (xong, chờ PR) → 2c → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
+2g (xong) → 2a (xong) → 2b (xong) → 2c → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
 
 ## 2a. Vật phẩm và túi đồ (`features_inventory`) — ĐÃ LÀM
 Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và hòm thư (2a)". Quyết định thêm (2026-10-17): túi đầy thì đồ rơi được **gửi vào hòm thư, phải nhận trong 30 phút nếu không sẽ mất**.
@@ -16,7 +16,7 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và 
 - UI túi đồ (phím `I`), thông báo nhặt đồ.
 - Nghiệm thu: nhặt/dùng/bỏ đồ lưu và tải lại đúng; không nhân đôi đồ khi đăng nhập hai nơi; test chủ sở hữu.
 
-## 2b. Trang bị và độ bền (`features_equipment`) — ĐÃ LÀM (chờ PR)
+## 2b. Trang bị và độ bền (`features_equipment`) — ĐÃ LÀM (đã ở production)
 Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Trang bị và độ bền (2b)". Quyết định của người dùng (2026-10-17):
 - **13 ô:** vũ khí, mũ, áo, bao cổ tay, 2 nhẫn, ngọc bội, dây chuyền, đai lưng, 4 pháp bảo. Mũ, áo, bao cổ tay, ngọc bội, dây chuyền có bản nam/nữ (tên khác nhau) và phải đúng kiểu đồ mới mặc được.
 - **Giới tính** chọn lúc tạo nhân vật: Nam, Nữ, Nam (mặc đồ nữ), Nữ (mặc đồ nam); hai bản sau chỉ mặc đồ của giới kia. Không đổi được (sau này cho đổi sang bản "chéo" của chính giới mình). Nhân vật có sẵn tung ngẫu nhiên Nam/Nữ.
