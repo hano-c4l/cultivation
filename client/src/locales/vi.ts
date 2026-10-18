@@ -40,7 +40,7 @@ export const vi = {
   createCharacter: "Nhập đạo",
   linhCanNote: "Linh căn sẽ được thiên đạo quyết định khi bạn nhập đạo.",
   rootRevealTitle: "Thiên đạo đã định",
-  rootReveal: (element: string, grade: string) => `Linh căn của bạn là ${element} hệ, phẩm cấp: ${grade}.`,
+  rootReveal: (elements: string, count: string, grade: string) => `Linh căn của bạn là ${count} (${elements}), phẩm cấp: ${grade}.`,
   constitutionReveal: (name: string) => `Ngươi còn mang thể chất đặc biệt: ${name}.`,
   gender: {
     label: "Giới tính",
@@ -221,6 +221,7 @@ export const vi = {
   character: {
     button: "Nhân vật",
     root: "Linh căn",
+    rootTitle: (exp: number, dmg: number) => `Tốc độ tu vi ${exp >= 0 ? "+" : ""}${exp}% (số hệ và phẩm cấp), sát thương theo hệ của mình +${dmg}% (phẩm cấp). Càng nhiều hệ càng dùng được nhiều kỹ năng nhưng tu vi chậm hơn.`,
     constitution: "Thể chất",
     gender: "Giới tính",
     constitutionTier: (tier: number, max: number) => `Cấp ${tier}/${max}`,

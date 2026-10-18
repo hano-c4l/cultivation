@@ -47,19 +47,41 @@ export interface RootGradeDef {
   nameVi: string;
   /** Out of 100: the grade is rolled once at creation; weights sum to 100. */
   weight: number;
-  /** Percent added to EXP gained (can be negative). */
+  /** Percent added to EXP gained (can be negative); adds to the element-count bonus (ROOT_COUNTS). */
   expBonusPct: number;
   /** Extra potential points granted at creation. Keep in sync with migration 0004. */
   bonusPoints: number;
+  /** Percent added to the damage of attacks in one of the character's own elements (skills and the basic attack). */
+  elementDamagePct: number;
 }
 
-/** Spiritual root quality (phẩm cấp linh căn), independent of the element. The element-count axis comes in phase 2. */
+/** Spiritual root quality (phẩm cấp linh căn), independent of the elements and their number (ROOT_COUNTS). */
 export const ROOT_GRADES: readonly RootGradeDef[] = [
-  { id: 0, key: "ha", nameVi: "Hạ phẩm linh căn", weight: 50, expBonusPct: -10, bonusPoints: 0 },
-  { id: 1, key: "trung", nameVi: "Trung phẩm linh căn", weight: 30, expBonusPct: 0, bonusPoints: 1 },
-  { id: 2, key: "thuong", nameVi: "Thượng phẩm linh căn", weight: 13, expBonusPct: 10, bonusPoints: 2 },
-  { id: 3, key: "dia", nameVi: "Địa linh căn", weight: 5, expBonusPct: 25, bonusPoints: 4 },
-  { id: 4, key: "thien", nameVi: "Thiên linh căn", weight: 2, expBonusPct: 50, bonusPoints: 6 },
+  { id: 0, key: "ha", nameVi: "Hạ phẩm linh căn", weight: 50, expBonusPct: -10, bonusPoints: 0, elementDamagePct: 0 },
+  { id: 1, key: "trung", nameVi: "Trung phẩm linh căn", weight: 30, expBonusPct: 5, bonusPoints: 1, elementDamagePct: 5 },
+  { id: 2, key: "thuong", nameVi: "Thượng phẩm linh căn", weight: 13, expBonusPct: 15, bonusPoints: 2, elementDamagePct: 10 },
+  { id: 3, key: "dia", nameVi: "Địa linh căn", weight: 5, expBonusPct: 30, bonusPoints: 4, elementDamagePct: 20 },
+  { id: 4, key: "thien", nameVi: "Thiên linh căn", weight: 2, expBonusPct: 50, bonusPoints: 6, elementDamagePct: 30 },
+];
+
+export interface RootCountDef {
+  /** How many of the five elements the character has (1..5). */
+  count: number;
+  key: string;
+  nameVi: string;
+  /** Out of 100: the count is rolled once at creation; weights sum to 100. */
+  weight: number;
+  /** Percent added to EXP gained (can be negative). The count changes how fast cultivation goes, never the damage. */
+  expBonusPct: number;
+}
+
+/** Number of elements of the spiritual root (đơn, song, tam, tứ, ngũ linh căn). Fewer is purer (faster), more is broader (more skills). */
+export const ROOT_COUNTS: readonly RootCountDef[] = [
+  { count: 1, key: "don", nameVi: "Đơn linh căn", weight: 20, expBonusPct: 10 },
+  { count: 2, key: "song", nameVi: "Song linh căn", weight: 48, expBonusPct: 0 },
+  { count: 3, key: "tam", nameVi: "Tam linh căn", weight: 25, expBonusPct: -15 },
+  { count: 4, key: "tu", nameVi: "Tứ linh căn", weight: 5, expBonusPct: -30 },
+  { count: 5, key: "ngu", nameVi: "Ngũ linh căn", weight: 2, expBonusPct: -40 },
 ];
 
 /** Potential points a new character can spend right away (there is no EXP source before combat). */

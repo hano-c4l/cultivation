@@ -1,4 +1,4 @@
-import type { SpiritualRoot } from "./character";
+import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import type { EquipStats } from "./equipment-data";
 import type { Gender } from "./gender";
 import { BASE_SPEED } from "./pathfinding";
@@ -18,8 +18,10 @@ import {
   STARTING_POTENTIAL_POINTS,
   STAGE_EXP_GROWTH,
   type BaseStats,
+  ROOT_COUNTS,
   ROOT_GRADES,
   type RealmDef,
+  type RootCountDef,
   type RootGradeDef,
   type StatKey,
 } from "./progression-data";
@@ -35,7 +37,10 @@ export interface CharacterProgress {
 export interface CharacterSheet extends CharacterProgress {
   id: string;
   name: string;
+  /** The main element (the first of `roots`). */
   spiritualRoot: SpiritualRoot;
+  /** All the character's elements, main one first (1 to 5 of them). */
+  roots: SpiritualRoot[];
   /** Index into ROOT_GRADES. */
   rootGrade: number;
   /** Thể chất: an id from CONSTITUTIONS and its 1-based tier (see constitutions.ts). */
@@ -113,6 +118,52 @@ export function rootGradeFromRoll(roll: number): number {
   return ROOT_GRADES.length - 1;
 }
 
+export function getRootCount(count: number): RootCountDef {
+  const def = ROOT_COUNTS[Math.min(Math.max(Math.trunc(count), 1), ROOT_COUNTS.length) - 1];
+  return def ?? (ROOT_COUNTS[0] as RootCountDef);
+}
+
+/** Maps a uniform integer roll in 0..99 to how many elements the root has, by the configured weights. */
+export function rootCountFromRoll(roll: number): number {
+  let acc = 0;
+  for (const c of ROOT_COUNTS) {
+    acc += c.weight;
+    if (roll < acc) return c.count;
+  }
+  return ROOT_COUNTS.length;
+}
+
+/**
+ * The elements of a new character: `count` distinct ones out of the five, picked with the given random numbers (any
+ * non-negative integers; each picks from what is left). The first is the main element.
+ */
+export function rollRoots(count: number, picks: readonly number[]): SpiritualRoot[] {
+  const pool: SpiritualRoot[] = [...SPIRITUAL_ROOTS];
+  const out: SpiritualRoot[] = [];
+  for (let i = 0; i < Math.min(Math.max(Math.trunc(count), 1), pool.length + out.length); i++) {
+    const idx = Math.abs(Math.trunc(picks[i] ?? 0)) % pool.length;
+    out.push(pool.splice(idx, 1)[0] as SpiritualRoot);
+  }
+  return out;
+}
+
+/** The roots stored on a character: the list when there is one, otherwise just the main element (older characters). */
+export function parseRoots(raw: string | null | undefined, primary: SpiritualRoot): SpiritualRoot[] {
+  const list = (raw ?? "").split(",").filter((r): r is SpiritualRoot => (SPIRITUAL_ROOTS as readonly string[]).includes(r));
+  const unique = [...new Set(list)];
+  return unique.length > 0 ? unique : [primary];
+}
+
+/**
+ * The element an attack from `roots` uses against a defender of `defender` element: the one with the best multiplier
+ * (the first of them on a tie), so a multi-root character always fights with its most favourable element.
+ */
+export function bestElementVs(roots: readonly Element[], defender: Element): Element {
+  let best = roots[0] as Element;
+  for (const r of roots) if (elementMultiplier(r, defender) > elementMultiplier(best, defender)) best = r;
+  return best;
+}
+
 /** Base stats and potential points of a freshly created character; a better root grade starts with more points. */
 export function startingStats(root: SpiritualRoot, grade: number): { base: BaseStats; potentialPoints: number } {
   const base = {} as BaseStats;
@@ -143,7 +194,7 @@ const RATE_CAP = 60;
  * Combat stats from base stats and cultivation level, plus the stats of worn gear (`gear`, see equipmentBonus).
  * Formulas live here so client and server always agree.
  */
-export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number, gear?: EquipStats): DerivedStats {
+export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number, gear?: EquipStats, rootCount = 1): DerivedStats {
   const lv = levelIndex(realm, stage);
   return {
     maxHp: 100 + base.canCot * 15 + lv * 25 + (gear?.maxHp ?? 0),
@@ -152,7 +203,7 @@ export function deriveStats(base: BaseStats, realm: number, stage: number, rootG
     defense: Math.floor(2 + base.canCot * 1.5 + lv * 2 + (gear?.defense ?? 0)),
     critRate: Math.min(RATE_CAP, 5 + base.thanThuc * 0.5 + (gear?.critRate ?? 0)),
     dodgeRate: Math.min(RATE_CAP, base.thanPhap * 0.5 + (gear?.dodgeRate ?? 0)),
-    expBonus: Math.max(-50, base.ngoTinh + getRootGrade(rootGrade).expBonusPct),
+    expBonus: Math.max(-50, base.ngoTinh + getRootGrade(rootGrade).expBonusPct + getRootCount(rootCount).expBonusPct),
     dropBonus: Math.min(RATE_CAP, base.phucDuyen * 0.5),
     moveSpeed: Math.round(BASE_SPEED * (1 + base.thanPhap * 0.01) * (1 + (gear?.moveSpeed ?? 0) / 100) * 100) / 100,
   };

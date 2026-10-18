@@ -8,6 +8,6 @@ export function wearerOfSheet(sheet: CharacterSheet): WearerCtx {
     realm: sheet.realm,
     stage: sheet.stage,
     base: sheet.base,
-    affinity: gearAffinity(sheet.spiritualRoot, constitutionEffects(getCatalog(), sheet.constitution, sheet.constitutionTier)),
+    affinity: gearAffinity(sheet.roots, constitutionEffects(getCatalog(), sheet.constitution, sheet.constitutionTier)),
   };
 }

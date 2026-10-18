@@ -6,6 +6,7 @@ import {
   CLUSTERS,
   RANKS,
   applyExp,
+  getRootGrade,
   computeDamage,
   deriveStats,
   clusterSlots,
@@ -54,7 +55,10 @@ export interface ProfileSeed {
   name: string;
   /** Spendable potential points as last known (D1 value plus unflushed stage-up points). */
   potentialPoints: number;
+  /** The main element (defence uses it). */
   element: Element;
+  /** All the elements, main one first; absent: just `element`. More elements give more skills, never more damage. */
+  roots?: readonly Element[];
   base: BaseStats;
   rootGrade: number;
   constitution: string;
@@ -178,7 +182,7 @@ function lastPoint(path: Vec2[]): Vec2 {
 }
 
 function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[] }, stage = seed.stage): { stats: Combatant; maxHp: number; maxMp: number; expBonus: number } {
-  const d = deriveStats(seed.base, seed.realm, stage, seed.rootGrade, seed.gear);
+  const d = deriveStats(seed.base, seed.realm, stage, seed.rootGrade, seed.gear, (seed.roots ?? [seed.element]).length);
   // Buffs only touch attack and defense (never max HP), so their expiry cannot move the HP ratio.
   let attack = d.attack;
   let defense = d.defense;
@@ -395,7 +399,7 @@ export class CombatSim {
 
   /** The skills this character can use now: unlocked basic ones plus learned books. */
   skillsOf(p: PlayerProfile): string[] {
-    return availableSkills(p.element, p.realm, p.stage, p.learned ?? []);
+    return availableSkills(p.roots ?? [p.element], p.realm, p.stage, p.learned ?? []);
   }
 
   /** A book was learned. */
@@ -706,11 +710,17 @@ export class CombatSim {
 
   private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef): void {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
-    // A skill hits as the caster's own stats scaled by its power, in its own element (or the caster's when it has none).
+    // A skill hits as the caster's own stats scaled by its power, in its own element; one without an element (and the basic
+    // attack) uses the caster's MAIN element, so having more elements never hits harder (breadth is only in which skills
+    // the player may choose). An attack in one of the caster's own elements gets the damage share of the root's grade
+    // (phẩm cấp); the number of elements does not change damage.
     // The constitution's "skill damage" effects (percent) add to a matching skill: all skills, its element, the wielded weapon family or the skill itself.
-    const element = skill ? (skill.element ?? p.element) : p.element;
+    const roots = p.roots ?? [p.element];
+    const element = skill?.element ?? p.element;
+    const gradePct = roots.includes(element) ? getRootGrade(p.rootGrade).elementDamagePct : 0;
     const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent : 0;
-    const attacker = skill ? { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * skill.power * (1 + bonusPct / 100))), element } : p.stats;
+    const power = skill ? skill.power : 1;
+    const attacker = { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100))), element };
     const hit = computeDamage(attacker, m.combatant, this.rand);
     const applied = Math.min(m.hp, hit.damage);
     m.hp -= applied;
