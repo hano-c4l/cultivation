@@ -24,26 +24,29 @@
       .card button.link { background: none; color: #9db4e0; font-weight: 400; }
       .card .error { margin: 0; min-height: 1.2em; color: #ff8a80; font-size: 14px; }
       .card .note { margin: 0; font-size: 13px; color: #aab3c5; }
-      #logout { position: fixed; right: 12px; top: 12px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      /* Top right, one row: Linh Thạch, Cống Hiến, Tiên Ngọc, then log out; every one has its own background. */
+      #topbar { position: fixed; right: 12px; top: 12px; display: flex; align-items: center; justify-content: flex-end; gap: 6px; z-index: 6; }
+      #logout { padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       /* --hud-bottom follows the status line's real height (it wraps on a phone), so the HP bar never overlaps it. */
-      #vitals { position: fixed; left: 12px; top: calc(var(--hud-bottom, 50px) + 6px); width: 200px; padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 12px/1.3 "Be Vietnam Pro", system-ui, sans-serif; pointer-events: none; box-sizing: border-box; }
+      #vitals-wrap { position: fixed; left: 12px; top: calc(var(--hud-bottom, 50px) + 6px); width: 200px; pointer-events: none; }
+      #vitals { padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
+        color: #e8e4d8; font: 12px/1.3 "Be Vietnam Pro", system-ui, sans-serif; box-sizing: border-box; }
       #vitals[hidden] { display: none; }
-      /* Buff tiles sit right under the MP bar and wrap onto more rows when there are many. */
-      #buffs { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; pointer-events: auto; } #buffs[hidden] { display: none; }
+      /* Buff tiles sit under the HP/MP box (outside its dark background) and wrap onto more rows when there are many. */
+      #buffs { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; pointer-events: auto; } #buffs[hidden] { display: none; }
       #buffs .buff { position: relative; width: 28px; height: 28px; box-sizing: border-box; border-radius: 5px; border: 1px solid #d6a94b; background: rgba(214, 169, 75, 0.22); text-align: center; overflow: hidden; }
-      #buffs .buff { cursor: pointer; } #buffs .buff-name { flex-basis: 100%; font-size: 11px; opacity: 0.9; }
+      #buffs .buff { cursor: pointer; } #buffs .buff-name { flex-basis: 100%; padding: 2px 6px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); color: #e8e4d8; font: 11px "Be Vietnam Pro", system-ui, sans-serif; }
       #buffs .buff.buff-item { border-color: #6fcf97; background: rgba(111, 207, 151, 0.2); }
       #buffs .buff-tag { display: block; font-size: 11px; font-weight: 700; line-height: 17px; }
       #buffs .buff-left { position: absolute; left: 0; right: 0; bottom: 0; font-size: 9px; line-height: 10px; background: rgba(0, 0, 0, 0.6); font-variant-numeric: tabular-nums; }
-      #wallet { position: fixed; right: 12px; top: 172px; min-width: 150px; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 12px/1.5 "Be Vietnam Pro", system-ui, sans-serif; pointer-events: none; box-sizing: border-box; }
+      #wallet { display: flex; gap: 6px; pointer-events: none; }
       #wallet[hidden] { display: none; }
-      #wallet div { display: flex; justify-content: space-between; gap: 12px; }
+      #wallet div { display: flex; align-items: baseline; gap: 6px; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
+        color: #e8e4d8; font: 12px/1.4 "Be Vietnam Pro", system-ui, sans-serif; white-space: nowrap; }
       #vitals-bar { height: 8px; border-radius: 4px; background: #10141c; overflow: hidden; margin-top: 3px; }
       #vitals-mp-fill { height: 100%; width: 100%; background: #42a5f5; transition: width 0.3s; } #vitals-mp-text { display: block; margin-top: 4px; }
-      #sk-btn { position: fixed; right: 12px; top: 132px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      #sk-btn { position: fixed; right: 12px; top: 132px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #sk-btn[hidden], #sk-panel[hidden] { display: none; }
       #sk-panel { position: fixed; left: 50%; top: 56px; width: min(360px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); overflow-y: auto; padding: 10px; border-radius: 10px;
@@ -70,13 +73,13 @@
       #hotbar .hb-slot.cooling { background: rgba(0, 0, 0, 0.85); } #hotbar .hb-cd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, 0.45); }
       @media (max-width: 760px) { #hotbar { right: auto; left: 50%; transform: translateX(-50%); bottom: calc(var(--chat-h, 150px) + 20px); } #hotbar .hb-slot { width: 38px; height: 40px; } }
       #vitals-fill { height: 100%; width: 100%; background: #e53935; transition: width 0.15s; }
-      #char-btn { position: fixed; right: 12px; top: 52px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      #char-btn { position: fixed; right: 12px; top: 52px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #char-btn[hidden], #char-panel[hidden] { display: none; }
-      #bag-btn { position: fixed; right: 12px; top: 92px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      #bag-btn { position: fixed; right: 12px; top: 172px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #bag-btn.alert { color: #ff5252; font-weight: 600; }
-      #eq-btn { position: fixed; right: 100px; top: 92px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      #eq-btn { position: fixed; right: 12px; top: 92px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #eq-btn[hidden], #eq-panel[hidden] { display: none; }
       #eq-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(460px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
@@ -209,6 +212,11 @@
       #chat-to[hidden] { display: none; }
       #chat-input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid #3a4560; background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
       #chat-send { padding: 6px 10px; border-radius: 8px; border: 0; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
+      @media (max-width: 1200px) {
+        #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout { padding: 4px 8px; font-size: 12px; }
+        #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
+        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; }
+      }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;
         background: rgba(0, 0, 0, 0.55); color: #e8e4d8; font: 14px/1.4 "Be Vietnam Pro", system-ui, sans-serif;
@@ -220,9 +228,8 @@
     <div id="game"></div>
     <div id="auth" hidden></div>
     <div id="hud">Đang tải…</div>
-    <div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div><div id="buffs" hidden></div></div>
-    <div id="wallet" hidden></div>
-    <button id="logout" hidden></button>
+    <div id="vitals-wrap"><div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div></div><div id="buffs" hidden></div></div>
+    <div id="topbar"><div id="wallet" hidden></div><button id="logout" hidden></button></div>
     <div id="chat" hidden>
       <div id="chat-tabs"></div>
       <div id="chat-log"></div>

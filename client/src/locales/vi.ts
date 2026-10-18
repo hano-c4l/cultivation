@@ -252,9 +252,7 @@ export const vi = {
   },
   breakthrough: {
     title: "Đột phá",
-    needFull: "Cần tu vi đầy ở tầng 9 để đột phá.",
     top: "Đã ở cảnh giới cao nhất hiện có.",
-    overflow: (pct: number) => `Tu vi tràn ${pct}%`,
     overflowBonus: (b: number) => `+${b}% tỉ lệ đột phá`,
     overflowHint: "Tu vi tràn từ 50% được +5% tỉ lệ, tăng dần tới +15% khi tràn 100%. Phần tràn mất khi bắt đầu đột phá.",
     pills: (name: string, have: number) => `${name}: có ${have}`,
@@ -298,7 +296,8 @@ export const vi = {
     constitutionTier: (tier: number, max: number) => `Cấp ${tier}/${max}`,
     stage: (realm: string, stage: number) => `${realm} tầng ${stage}`,
     exp: "Tu vi",
-    atStageCap: (exp: number, need: number) => `Tu vi đã đầy (${exp} / ${need}), chờ đột phá.`,
+    expFull: "Đầy",
+    expMax: "Tối đa",
     points: "Điểm tiềm năng",
     confirm: "Xác nhận cộng điểm",
     derived: {

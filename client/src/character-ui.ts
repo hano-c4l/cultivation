@@ -1,12 +1,11 @@
 import {
-  REALMS,
   STAGES_PER_REALM,
   breakthroughRate,
   checkBreakthroughReady,
   getBreakthrough,
   getItemDef,
+  expCap,
   overflowBonus,
-  overflowExp,
   STAT_DEFS,
   clampConstitutionTier,
   constitutionTierName,
@@ -110,17 +109,22 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     const constitutionLine = el("div", "cp-constitution", `${vi.character.constitution}: ${constitutionTierName(catalog, s.constitution, tier)}${tierText}`);
     constitutionLine.title = constitution.descVi;
 
-    const stageText = vi.character.stage(realm.nameVi, s.stage);
     const need = expToNext(s.realm, s.stage);
-    const atCap = s.stage >= STAGES_PER_REALM;
-    const realmLine = el("div", "cp-realm", stageText);
+    // The EXP sits on the realm line: "3605/11032" while filling, "Đầy" when the bar is full, the overflow as a percentage
+    // of the bar, and "Tối đa" at the most it can hold.
+    const expText =
+      s.stage < STAGES_PER_REALM || s.exp < need
+        ? `${s.exp}/${need}`
+        : s.exp === need
+          ? vi.character.expFull
+          : s.exp >= expCap(s.realm, s.stage)
+            ? vi.character.expMax
+            : `${Math.floor((s.exp / need) * 100)}%`;
+    const realmLine = el("div", "cp-realm", `${vi.character.stage(realm.nameVi, s.stage)} · ${expText}`);
     const bar = el("div", "cp-bar");
     const fill = el("div", "cp-fill");
     fill.style.width = `${Math.min(100, (s.exp / need) * 100)}%`;
     bar.append(fill);
-    const over = overflowExp(s.realm, s.stage, s.exp);
-    const overText = over > 0 ? ` · ${vi.breakthrough.overflow(Math.round((over / need) * 100))}${overflowBonus(s.realm, s.stage, s.exp) > 0 ? ` (${vi.breakthrough.overflowBonus(overflowBonus(s.realm, s.stage, s.exp))})` : ""}` : "";
-    const expLine = el("div", "cp-exp", (atCap && s.realm < REALMS.length - 1 ? vi.character.atStageCap(Math.min(s.exp, need), need) : `${vi.character.exp}: ${s.exp} / ${need}`) + overText);
 
     const points = el("div", "cp-points", `${vi.character.points}: ${left}`);
 
@@ -185,13 +189,14 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       derived.append(row);
     }
 
-    panel.append(head, genderLine, constitutionLine, realmLine, bar, expLine, breakthroughBox(s), points, stats, confirm, derived);
+    panel.append(head, genderLine, constitutionLine, realmLine, bar, breakthroughBox(s), points, stats, confirm, derived);
   }
 
   /** The breakthrough section: shown from stage 9 (or while one runs); a countdown while it goes. */
   function breakthroughBox(s: CharacterSheet): HTMLElement {
     const box = el("div", "cp-bt");
-    if (!running && s.stage < STAGES_PER_REALM) return box;
+    // Only a full bar at stage 9 can break through (or one that is already running).
+    if (!running && (s.stage < STAGES_PER_REALM || s.exp < expToNext(s.realm, s.stage))) return box;
     const def = getBreakthrough(s.realm);
     box.append(el("b", undefined, vi.breakthrough.title));
     if (running) {
@@ -213,7 +218,6 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     const have = deps.countOf(def.pill);
     chosenPills = Math.min(Math.max(chosenPills, 1), def.maxPills);
     const bonus = ready.ok ? ready.overflowBonus : 0;
-    if (!ready.ok) box.append(el("div", "cp-bt-line", vi.breakthrough.needFull));
     box.append(el("div", "cp-bt-line", vi.breakthrough.pills(pillName, have)));
     const row = el("div", "cp-row");
     const minus = el("button", undefined, "−");
@@ -234,6 +238,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       el("div", "cp-bt-line", vi.breakthrough.rate(breakthroughRate(def, chosenPills, bonus))),
       el("div", "cp-bt-line", vi.breakthrough.cost(def.cost)),
       el("div", "cp-bt-line", vi.breakthrough.time(Math.round(def.durationMs / 1000))),
+      ...(bonus > 0 ? [el("div", "cp-bt-line", vi.breakthrough.overflowBonus(bonus))] : []),
       el("div", "cp-bt-line", vi.breakthrough.overflowHint),
       el("div", "cp-bt-warn", vi.breakthrough.warn),
     );
