@@ -1,6 +1,6 @@
 # Kế hoạch: Web game tu tiên (MMO nhỏ-vừa, 2.5D isometric)
 
-Trạng thái: **ĐANG THỰC HIỆN** — giai đoạn 0 và 1 đã xong (1f đo tải thật trên Cloudflare được hoãn), giai đoạn 2 đang làm: 2g (chat), 2a (túi đồ), hệ thống thể chất đã xong, 2b (trang bị, độ bền, giới tính) đã viết xong chờ PR, kế tiếp 2c (xem `docs/STATUS.md` mục "Bàn giao nhanh", `docs/PHASE1.md` và `docs/PHASE2.md`). Mọi mục "Mặc định" bên dưới đều có thể sửa.
+Trạng thái: **ĐANG THỰC HIỆN** — giai đoạn 0 và 1 đã xong (1f đo tải thật trên Cloudflare được hoãn), giai đoạn 2 đang làm: 2g (chat), 2a (túi đồ), hệ thống thể chất đã xong, 2b (trang bị, độ bền, giới tính, pháp bảo bản mệnh/phi hành) xong và đã ở production, kế tiếp 2c (xem `docs/STATUS.md` mục "Bàn giao nhanh", `docs/PHASE1.md` và `docs/PHASE2.md`). Mọi mục "Mặc định" bên dưới đều có thể sửa.
 
 ## 1. Yêu cầu đã chốt
 | Hạng mục | Quyết định |
