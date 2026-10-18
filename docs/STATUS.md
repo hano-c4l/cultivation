@@ -1,11 +1,11 @@
 # Trạng thái dự án (bàn giao)
 
-Cập nhật: 2026-10-17 (cuối ngày). Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `docs/PLAN.md` (kế hoạch tổng), `docs/PHASE1.md` (giai đoạn 1, đã xong) và `docs/PHASE2.md` (giai đoạn 2, đang làm). Ngôn ngữ: giao diện và tài liệu tiếng Việt, code (hàm, biến, comment) tiếng Anh.
+Cập nhật: 2026-10-18 (cuối ngày). Đọc cùng `CLAUDE.md` (quy trình nhánh/deploy), `docs/PLAN.md` (kế hoạch tổng), `docs/PHASE1.md` (giai đoạn 1, đã xong) và `docs/PHASE2.md` (giai đoạn 2, đang làm). Ngôn ngữ: giao diện và tài liệu tiếng Việt, code (hàm, biến, comment) tiếng Anh.
 
 ## Bàn giao nhanh (cho session mới)
-- **Đang ở đâu:** giai đoạn 1 xong (1f đo tải thật trên Cloudflare được hoãn theo quyết định của người dùng). Giai đoạn 2 đã làm: **2g** chat nhiều kênh, **2a** vật phẩm và túi đồ (gồm hòm thư, sắp xếp, chia), **hệ thống thể chất** (dữ liệu và hiển thị), **2b trang bị, độ bền, giới tính, ngũ hành/loại vũ khí, pháp bảo bản mệnh và phi hành (đã lên preview và production 2026-10-18**; xem mục "Trang bị và độ bền (2b)"). **Việc kế tiếp:** 2c → 2d → 2e → 2f → 2i → 2h (xem `docs/PHASE2.md`).
-- **Production và preview đang chạy cùng một bản code** (nhánh `main` và `preview` trùng nội dung, gồm cả 2b), D1 đã áp dụng migration `0001` đến `0011` ở cả hai. Xem mục "Đang chạy ở đâu".
-- **Phản hồi gần nhất của người dùng đều đã xử lý:** lỗi bố cục túi đồ trên điện thoại (sửa và đã lên production), sắp xếp/chia, hiển thị chat đỏ, thể chất.
+- **Đang ở đâu:** giai đoạn 1 xong (1f đo tải thật trên Cloudflare được hoãn theo quyết định của người dùng). Giai đoạn 2 đã làm và **đã ở cả preview lẫn production (2026-10-18)**: **2g** chat nhiều kênh, **2a** vật phẩm và túi đồ, thể chất, **2b** trang bị/độ bền/giới tính/ngũ hành và loại vũ khí/pháp bảo bản mệnh và phi hành, **2c** kỹ năng/MP/thanh phím tắt 8 ô/bí tịch, **HP-MP-hồi chiêu giữ khi tải lại**, trang bị hợp +15%, thể chất `skill_damage`, **linh căn 1-5 hệ** (xem các mục cùng tên bên dưới). **Việc kế tiếp:** 2d (chủ tu/phụ tu và đột phá) → 2e → 2f → 2i → 2h (xem `docs/PHASE2.md`); các thứ đang chỉ là dữ liệu cần nối (tốc độ pháp bảo phi hành, buff hợp trang bị đã nối, kỹ năng đặc biệt của pháp bảo, biến dị Lôi/Băng/Phong).
+- **Production và preview đang chạy cùng một bản code** (nhánh `main` và `preview` trùng nội dung), D1 đã áp dụng migration `0001` đến `0014` ở cả hai. Xem mục "Đang chạy ở đâu".
+- **Phản hồi gần nhất của người dùng đều đã xử lý:** bố cục và cửa sổ (nhân vật/kỹ năng/trang bị/túi đồ), chi tiết đồ một kiểu duy nhất, giữ HP/MP khi tải lại, buff trang bị hợp 15%, nhiều linh căn. **Quyết định giữ nguyên, sẽ chỉnh sau (người dùng, 2026-10-18):** trang bị "hợp" tính theo **mọi** hệ của nhân vật (ngũ linh căn gần như món nào cũng hợp; người dùng cho rằng ngũ linh căn bậc cao quá hiếm nên chưa ảnh hưởng); nhân vật có sẵn giữ là đơn linh căn.
 - **Quy ước làm việc với người dùng:**
   - Khi người dùng nói **"PR"** nghĩa là: mở PR, merge, rồi deploy chỗ đó (chạy migration D1 **trước**, riêng một bước, nếu có). Nếu không nói "PR", làm xong thì hỏi một câu "mở PR vào preview (merge và deploy preview luôn)?".
   - Quy trình nhánh trong `CLAUDE.md`: `features_xxxx` từ `preview` → PR vào `preview` → deploy preview → (chỉ khi người dùng đồng ý) PR `preview` → `main` → migrate production → deploy production. Không commit thẳng vào `main`/`preview`.
@@ -14,7 +14,7 @@ Cập nhật: 2026-10-17 (cuối ngày). Đọc cùng `CLAUDE.md` (quy trình nh
   - Báo cáo cuối mỗi việc: nói rõ **đã kiểm gì, chưa kiểm gì**, giá trị tạm đã dùng và việc người dùng cần thử.
 - **Máy mới (laptop):** cần `.dev.vars` (không commit) với `DISABLE_RATE_LIMIT=1` và `ENABLE_DEV_GRANT=1` để chạy các smoke script, `npm install`, `gh` đã đăng nhập, `CLOUDFLARE_API_TOKEN` và `CLOUDFLARE_ACCOUNT_ID` để dùng wrangler, danh tính git `hano-c4l` / `hano.c4l@gmail.com` đặt theo repo, bản Node có `node:sqlite` (các test D1 dùng nó; máy hiện chạy Node 26).
 - **Lệnh gán admin trên production** (người dùng đã có): `npx wrangler d1 execute DB --remote --command "UPDATE accounts SET role='admin' WHERE email='...'"`, preview thêm `--env preview`; đăng nhập lại sau khi gán.
-- **Việc nhỏ đang chờ quyết định hoặc chưa làm:** giá mở khóa tab túi đồ trong game; tiền tệ trong thư; nhận thể chất qua vật phẩm; nối buff thể chất vào gameplay (chờ kỹ năng 2c); màn admin quản lý thể chất (2i); ô dùng nhanh vật phẩm (trong thanh phím tắt 2c); boss (2h); các giá trị tạm (xem "Giá trị tạm" bên dưới).
+- **Việc nhỏ đang chờ quyết định hoặc chưa làm:** giá mở khóa tab túi đồ trong game; tiền tệ trong thư; nhận thể chất qua vật phẩm; tốc độ pháp bảo phi hành vào di chuyển; kỹ năng đặc biệt của pháp bảo; biến dị Lôi/Băng/Phong; tung lại số hệ cho nhân vật có sẵn (cần người dùng duyệt); màn admin quản lý thể chất (2i); học kỹ năng từ NPC/tông môn; boss (2h); các giá trị tạm (xem "Giá trị tạm" bên dưới và các mục "(giá trị tạm)" của từng tính năng).
 
 ## Đã xong
 | Hạng mục | Ghi chú |
@@ -41,14 +41,14 @@ Cập nhật: 2026-10-17 (cuối ngày). Đọc cùng `CLAUDE.md` (quy trình nh
 | Thể chất | Trục thứ hai bên cạnh linh căn; đa số là Phàm Thể, số ít có thể chất đặc biệt với thang cấp bậc riêng. **Danh mục là dữ liệu trong D1** để sau này làm màn admin quản lý (xem mục "Thể chất: thiết kế dữ liệu" bên dưới). Migration `0007` (cột `characters.constitution`/`constitution_tier`, tung ngẫu nhiên cho mọi nhân vật đã có) và `0008` (các bảng danh mục + seed). Tạo nhân vật do server tung từ danh mục; cửa sổ nhân vật có dòng "Thể chất: … · Cấp n/m" ngay dưới Linh căn (di chuột xem mô tả); màn hình sau khi tạo nhân vật báo thể chất nếu không phải Phàm Thể. **Hiệu ứng `skill_damage` đã có tác dụng ở 2c** (các hiệu ứng khác chưa), và thể chất cùng linh căn quyết định trang bị nào được +15% "hợp"; nhận thể chất qua vật phẩm và màn admin chưa làm. |
 
 ## Đang chạy ở đâu
-- **Production** (`cultivation`, nhánh `main`): deploy 2026-10-17, version `6c232fd3`, đã chạy migration D1 `0001` đến `0008`. Gồm mọi thứ ở bảng trên.
-- **Preview** (`cultivation-preview`, nhánh `preview`): cùng code, version `6d070283`, D1 cũng đã áp dụng `0001` đến `0008`.
+- **Production** (`cultivation`, nhánh `main`): deploy 2026-10-18 (version ghi trong lịch sử PR/`wrangler deployments`), đã chạy migration D1 `0001` đến `0014`. Gồm mọi thứ ở bảng trên và các mục bên dưới.
+- **Preview** (`cultivation-preview`, nhánh `preview`): cùng code, D1 cũng đã áp dụng `0001` đến `0014`.
 - Số version đổi mỗi lần deploy (kể cả deploy chỉ có thay đổi tài liệu); các số ở đây là lần deploy có thay đổi code gần nhất.
 - Production còn hai tài khoản thử do người dùng tự tạo; preview còn nhiều tài khoản thử của smoke script (`smoke-*`, `cpu-*`, `eco-*`, `chat-*`... `@example.test`, không đụng chạm).
 
 ## Việc kế tiếp và còn lại
-- **Kế tiếp:** 2c phần A+B đã viết xong trên nhánh `features_skills` (chờ duyệt rồi PR; xem mục "Kỹ năng, MP và thanh phím tắt"); còn phần C (cần người dùng chốt số liệu) và nối các thứ đang chỉ là dữ liệu: buff theo ngũ hành/loại vũ khí của trang bị, tốc độ pháp bảo phi hành (đổi tốc độ phải đổi lúc bắt đầu đường đi mới), kỹ năng đặc biệt của pháp bảo.
-- Thứ tự còn lại của giai đoạn 2: 2c Kỹ năng/MP/ngũ hành đầy đủ/thanh phím tắt (gồm ô dùng nhanh đan dược và nối buff thể chất) → 2d Chủ tu/phụ tu và đột phá → 2e NPC thương nhân và nhiệm vụ → 2f PvP, sát khí, vệ binh (và area-of-interest) → 2i màn admin thể chất → 2h Bảng xếp hạng và boss.
+- **Kế tiếp:** 2d (chủ tu/phụ tu, đột phá: hiện tiến độ vẫn dừng ở tầng 9, mọi người chưa qua Luyện Khí 9) rồi 2e → 2f → 2i → 2h. Trước đó, nếu muốn: tung lại số hệ cho nhân vật có sẵn, tốc độ phi hành, biến dị Lôi/Băng/Phong.
+- Thứ tự còn lại của giai đoạn 2: 2d Chủ tu/phụ tu và đột phá → 2e NPC thương nhân và nhiệm vụ → 2f PvP, sát khí, vệ binh (và area-of-interest) → 2i màn admin thể chất → 2h Bảng xếp hạng và boss.
 - **1f** (đo tải 50 client trên Cloudflare thật) **hoãn theo quyết định của người dùng (2026-10-17)**. **Chỉ nâng Workers Paid khi gặp một trong các dấu hiệu**: có vài chục người online cùng lúc; lỗi quota hoặc 1015/1102/1042 kéo dài, đăng nhập lỗi hàng loạt; bảng điều khiển Cloudflare cho thấy GB-s, request Durable Object hoặc dòng ghi D1 trên khoảng 80% hạn mức ngày (hạn mức chung preview và production). Khi nâng thì báo người dùng trước (`docs/PLAN.md` mục 2a), rồi mới chạy đo tải thật.
 
 Việc tồn đọng khác:
