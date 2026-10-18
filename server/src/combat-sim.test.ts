@@ -466,3 +466,129 @@ describe("CombatSim potions and loot", () => {
     }
   });
 });
+
+describe("skills", () => {
+  const townSim = () => new CombatSim(getMap("town"), "town", noCrit, 0);
+  const near = (sim: CombatSim): { id: string; at: Vec2; stand: Vec2 } => {
+    const m = sim.snapshots(0)[0]!;
+    return { id: m.id, at: m.path[0]!, stand: [m.path[0]![0] + 3, m.path[0]![1]] };
+  };
+  const at = (v: Vec2) => new Map<string, Vec2>([["p1", v]]);
+
+  it("an attack skill spends MP, starts its cooldown and hits harder than a basic attack", () => {
+    const sim = forestSim();
+    const m = near(sim);
+    const p = sim.addPlayer(seed("p1"));
+    const startMp = p.mp;
+    expect(sim.queueCast("p1", "kim_1", m.id, 0)).toEqual({ ok: true });
+    const events = sim.tick(0, at(m.stand));
+    const hit = events.find((e) => e.t === "hit" && e.skill === "kim_1");
+    expect(hit).toBeDefined();
+    expect(events).toContainEqual(expect.objectContaining({ t: "cast_ok", skill: "kim_1", cdMs: 3000 }));
+    expect(p.mp).toBe(startMp - 8);
+    expect(events.find((e) => e.t === "mp")).toMatchObject({ mp: startMp - 8 });
+    // The same player's basic hit on an identical monster does less than the power-1.6 skill.
+    const basic = forestSim();
+    basic.addPlayer(seed("p1"));
+    basic.setTarget("p1", near(basic).id);
+    const basicHit = basic.tick(0, at([near(basic).at[0] + 1, near(basic).at[1]])).find((e) => e.t === "hit" && e.from === "p1");
+    expect(hit && basicHit && hit.t === "hit" && basicHit.t === "hit" && hit.damage > basicHit.damage).toBe(true);
+    // Cooldown: refused until it is over.
+    expect(sim.queueCast("p1", "kim_1", m.id, 1000)).toEqual({ ok: false, reason: "cooldown" });
+    expect(sim.queueCast("p1", "kim_1", m.id, 3000)).toEqual({ ok: true });
+  });
+
+  it("refuses a skill the character does not have, without MP, without a target or without the right weapon", () => {
+    const sim = forestSim();
+    const m = near(sim);
+    const p = sim.addPlayer(seed("p1", { learned: ["ngu_kiem_tram"] }));
+    expect(sim.queueCast("p1", "hoa_1", m.id, 0)).toEqual({ ok: false, reason: "unknown" }); // another root's skill
+    expect(sim.queueCast("p1", "cuong_than", null, 0)).toEqual({ ok: false, reason: "unknown" }); // a book not learned
+    expect(sim.queueCast("p1", "kim_1", null, 0)).toEqual({ ok: false, reason: "no_target" });
+    expect(sim.queueCast("p1", "kim_1", "m999", 0)).toEqual({ ok: false, reason: "no_target" });
+    expect(sim.queueCast("p1", "ngu_kiem_tram", m.id, 0)).toEqual({ ok: false, reason: "weapon" }); // learned, but no sword
+    p.weapon = "dao";
+    expect(sim.queueCast("p1", "ngu_kiem_tram", m.id, 0)).toEqual({ ok: false, reason: "weapon" });
+    p.weapon = "kiem";
+    expect(sim.queueCast("p1", "ngu_kiem_tram", m.id, 0)).toEqual({ ok: true });
+    p.mp = 3;
+    sim.cancelCast("p1");
+    expect(sim.queueCast("p1", "kim_1", m.id, 0)).toEqual({ ok: false, reason: "mp" });
+  });
+
+  it("walks into range first, and a move or a new target cancels a waiting skill", () => {
+    const sim = forestSim();
+    const m = near(sim);
+    sim.addPlayer(seed("p1", { stage: 5 }));
+    expect(sim.queueCast("p1", "kim_2", m.id, 0)).toEqual({ ok: true });
+    const far: Vec2 = [m.at[0] + 12, m.at[1]];
+    const first = sim.tick(0, at(far));
+    expect(first.some((e) => e.t === "path_request")).toBe(true);
+    expect(first.some((e) => e.t === "hit" || e.t === "cast_ok")).toBe(false);
+    const arrived = sim.tick(100, at([m.at[0] + 3, m.at[1]]));
+    expect(arrived.some((e) => e.t === "cast_ok" && e.skill === "kim_2")).toBe(true);
+
+    const other = forestSim();
+    const o = near(other);
+    other.addPlayer(seed("p1", { stage: 5 }));
+    other.queueCast("p1", "kim_2", o.id, 0);
+    other.clearTarget("p1"); // a click on the ground
+    expect(other.tick(0, at(o.stand)).some((e) => e.t === "cast_ok")).toBe(false);
+    other.queueCast("p1", "kim_2", o.id, 0);
+    other.setTarget("p1", o.id); // a new target
+    expect(other.tick(0, at(o.stand)).some((e) => e.t === "cast_ok")).toBe(false);
+  });
+
+  it("a heal restores a share of max HP; a buff raises defense and ends on time", () => {
+    const sim = townSim();
+    const p = sim.addPlayer(seed("p1", { stage: 3 }));
+    p.hp = 10;
+    expect(sim.queueCast("p1", "hoi_khi", null, 0)).toEqual({ ok: true });
+    const healed = sim.tick(0, at([1, 1]));
+    expect(p.hp).toBe(10 + Math.round(p.maxHp * 0.3));
+    expect(healed.some((e) => e.t === "hp")).toBe(true);
+
+    const before = p.stats.defense;
+    expect(sim.queueCast("p1", "linh_thuan", null, 100)).toEqual({ ok: true });
+    const buffed = sim.tick(100, at([1, 1]));
+    expect(buffed).toContainEqual(expect.objectContaining({ t: "buff", skill: "linh_thuan", ms: 15_000 }));
+    expect(p.stats.defense).toBe(Math.floor(before + before * 0.3));
+    sim.tick(10_000, at([1, 1]));
+    expect(p.stats.defense).toBeGreaterThan(before); // still running
+    sim.tick(15_200, at([1, 1]));
+    expect(p.stats.defense).toBe(before);
+    expect(p.buffs).toHaveLength(0);
+  });
+
+  it("MP regenerates with time but not for a while after a hit, and is worked out on demand", () => {
+    const sim = townSim();
+    const p = sim.addPlayer(seed("p1"));
+    p.mp = 10;
+    p.mpAt = 0;
+    p.lastHurtAt = -1_000_000; // never hit recently
+    expect(sim.currentMp(p, 0)).toBe(10);
+    expect(sim.currentMp(p, 5000)).toBe(10 + Math.floor(5 * Math.max(1, p.maxMp * 0.02)));
+    expect(sim.currentMp(p, 1_000_000)).toBe(p.maxMp);
+    p.lastHurtAt = 4000; // hit at 4 s: regeneration waits until 9 s
+    expect(sim.currentMp(p, 8000)).toBe(10);
+    expect(sim.currentMp(p, 11_000)).toBe(10 + Math.floor(2 * Math.max(1, p.maxMp * 0.02)));
+  });
+
+  it("being hit stores the MP regenerated so far and tells the client", () => {
+    const sim = forestSim();
+    const m = near(sim);
+    const p = sim.addPlayer(seed("p1"));
+    p.mp = 20;
+    const events = run(sim, 0, 8000, at([m.at[0] + 2, m.at[1]]));
+    expect(events.some((e) => e.t === "hit" && e.to === "p1")).toBe(true);
+    expect(events.some((e) => e.t === "mp")).toBe(true);
+  });
+
+  it("learning updates what a profile can use", () => {
+    const sim = townSim();
+    const p = sim.addPlayer(seed("p1"));
+    expect(sim.skillsOf(p)).not.toContain("cuong_than");
+    sim.addLearned("p1", "cuong_than");
+    expect(sim.skillsOf(p)).toContain("cuong_than");
+  });
+});

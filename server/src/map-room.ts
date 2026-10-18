@@ -11,7 +11,14 @@ import {
   DEFAULT_CATALOG,
   EMPTY_WALLET,
   INV_MIN_GAP_MS,
+  MP_REGEN_PER_S,
   POTION_COOLDOWN_MS,
+  HOTBAR_SLOTS,
+  availableSkills,
+  canLearn,
+  getSkill,
+  isSkillId,
+  parseHotbar,
   applyBag,
   applyRefineExp,
   equipmentBonus,
@@ -74,6 +81,8 @@ import { filterChat } from "./chat";
 import {
   allocatePoints,
   getCharacterById,
+  loadLearnedSkills,
+  saveHotbar,
   saveCharacterPosition,
   saveCharacterProgress,
   toCharacterSheet,
@@ -112,6 +121,9 @@ interface PlayerState {
   lastMoveAt: number;
   /** Last bag command, to rate-limit them (each one is a D1 write). */
   lastInvAt?: number;
+  /** Last skill / hotbar command, to rate-limit them. */
+  lastCastAt?: number;
+  lastHotbarAt?: number;
   /** Times of recent sorts: a sort rewrites many rows, so it has its own, stricter limit. */
   sortTimes?: number[];
   /** Position changed since the last save to D1. */
@@ -140,6 +152,10 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
 
+/** Minimum gaps between two skill commands and two hotbar edits (a hotbar edit is a D1 write). */
+const CAST_MIN_GAP_MS = 150;
+const HOTBAR_MIN_GAP_MS = 300;
+
 /** Moves are saved at most this often per room, so D1 writes stay low and the room can still hibernate. */
 const SAVE_DEBOUNCE_MS = 10_000;
 
@@ -152,9 +168,17 @@ function wearerOfRow(row: CharacterRow): WearerCtx {
   return { gender: row.gender, realm: row.realm, stage: row.stage, base: baseOf(row) };
 }
 
-function seedOf(row: CharacterRow, bag?: BagState): ProfileSeed {
+/** Weapon family of the worn weapon, or null (no weapon, a broken one, or one without a family). */
+function weaponFamily(equipped: readonly { slot: string; type: string; dur?: number }[]): string | null {
+  const w = equipped.find((e) => e.slot === "weapon");
+  return w && (w.dur === undefined || w.dur > 0) ? (equipmentInfo(w.type)?.weaponType ?? null) : null;
+}
+
+function seedOf(row: CharacterRow, bag?: BagState, learned?: readonly string[]): ProfileSeed {
   return {
     gear: bag ? equipmentBonus(bag.equipped, wearerOfRow(row)) : undefined,
+    weapon: bag ? weaponFamily(bag.equipped) : null,
+    learned,
     gender: row.gender,
     id: row.id,
     name: row.name,
@@ -209,6 +233,9 @@ export class MapRoom extends DurableObject<Env> {
   private bagQueues = new Map<string, Promise<void>>();
   /** Characters whose pháp bảo bản mệnh EXP changed since it was last written. */
   private refineDirty = new Set<string>();
+  /** Skills learned from bí tịch and the hotbar of each character in this room, read on join (and after a sleep). */
+  private learnedSkills = new Map<string, string[]>();
+  private hotbars = new Map<string, string[]>();
   private pauses = 0;
   private wakes = 0;
   private tickStat = { count: 0, totalMs: 0, maxMs: 0, maxDriftMs: 0, skipped: 0 };
@@ -299,6 +326,13 @@ export class MapRoom extends DurableObject<Env> {
         return [];
       });
       const bagNow = this.bags.get(row.id) ?? bag;
+      const learned = await loadLearnedSkills(this.env.DB, row.id).catch((err) => {
+        console.error("skills read failed", row.id, err);
+        return [] as string[];
+      });
+      this.learnedSkills.set(row.id, learned);
+      const hotbar = parseHotbar(row.hotbar);
+      this.hotbars.set(row.id, hotbar);
       // Pieces mailed because the bag was full must be in the mail list the welcome carries.
       const mailNow = removedAtJoin.some((r) => r.mailed) ? await listMail(this.env.DB, row.id).catch(() => mail) : mail;
       // Names and descriptions of the constitutions are data: the client shows what the server's catalogue says. If it
@@ -337,7 +371,7 @@ export class MapRoom extends DurableObject<Env> {
       // Includes the joining player so the client gets its own authoritative snapshot.
       const players = this.players().map((p) => this.snapshot(p));
       const sim = this.sim;
-      const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow))) : undefined;
+      const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow, learned))) : undefined;
       if (sim) this.startTick();
       const maxHp = profile?.maxHp ?? deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row))).maxHp;
       this.send(server, {
@@ -355,6 +389,10 @@ export class MapRoom extends DurableObject<Env> {
         mail: mailViews(mailNow),
         constitutions,
         equipped: bagNow.equipped,
+        skills: profile && sim ? sim.skillsOf(profile) : availableSkills(row.spiritual_root, row.realm, row.stage, learned),
+        hotbar,
+        mp: profile && sim ? sim.currentMp(profile, Date.now()) : deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row))).maxMp,
+        maxMp: profile?.maxMp ?? deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row))).maxMp,
       });
       if (removedAtJoin.length > 0) this.send(server, { t: "eq_removed", items: removedAtJoin.map((r) => ({ type: r.item.type, reason: r.reason, mailed: r.mailed })) });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
@@ -417,6 +455,12 @@ export class MapRoom extends DurableObject<Env> {
       case "eq_unequip":
       case "eq_repair":
         return this.handleEquipment(ws, state, msg);
+      case "cast":
+        return this.handleCast(ws, state, msg);
+      case "hotbar_set":
+        return this.handleHotbar(ws, state, msg.slot, msg.v);
+      case "use_type":
+        return this.handleUseType(ws, state, msg.type);
     }
   }
 
@@ -531,6 +575,7 @@ export class MapRoom extends DurableObject<Env> {
         this.sim?.updateBase(state.id, baseOf(row));
         this.send(ws, { t: "stats", character: sheetOf(profile) });
         this.send(ws, { t: "hp", hp: profile.hp, maxHp: profile.maxHp });
+        this.sendMp(ws, profile, now); // more Linh lực raises max MP
       } else {
         this.send(ws, { t: "stats", character: toCharacterSheet(row) });
       }
@@ -632,7 +677,8 @@ export class MapRoom extends DurableObject<Env> {
         if (!row || !stillHere.has(row.id) || sim.getPlayer(row.id)) continue;
         // The worn gear counts too, so the bag is read for every player the sim lost.
         const bag = await this.getBag(row.id).catch(() => undefined);
-        sim.addPlayer(seedOf(row, bag));
+        const learned = await this.getLearned(row.id).catch(() => []);
+        sim.addPlayer(seedOf(row, bag, learned));
       }
     } catch (err) {
       this.sim = null; // the next move or attack retries the whole rebuild
@@ -719,10 +765,20 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** Dev-only (see /api/dev/evict): imitates the runtime evicting a paused object, which wrangler dev does not do reliably. */
-  devEvict(): boolean {
+  devEvict(force = false): boolean {
+    // `force` also stops a running tick: a room full of fighting players never pauses, but its caches must still be testable.
+    if (force && this.tickTimer) {
+      clearInterval(this.tickTimer);
+      this.tickTimer = null;
+    }
     if (this.tickTimer || !this.sim) return false;
     this.sim = null;
     this.ranksJson = null;
+    // A real eviction loses every in-memory copy, not just the simulation.
+    this.bags.clear();
+    this.bagQueues.clear();
+    this.hotbars.clear();
+    this.learnedSkills.clear();
     return true;
   }
 
@@ -781,7 +837,7 @@ export class MapRoom extends DurableObject<Env> {
       case "mon_gone":
         return this.broadcast({ t: "mon_gone", id: ev.id });
       case "hit":
-        return this.broadcast({ t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp });
+        return this.broadcast({ t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}) });
       case "hp": {
         const entry = sockets.get(ev.playerId);
         if (entry) this.send(entry.ws, { t: "hp", hp: ev.hp, maxHp: ev.maxHp });
@@ -793,7 +849,11 @@ export class MapRoom extends DurableObject<Env> {
         if (!entry || !profile) return;
         this.send(entry.ws, { t: "stats", character: sheetOf(profile) });
         // A stage-up changes points, so it is written at once; plain EXP waits for the debounced save.
-        if (ev.stagesGained > 0) later.push(this.flushProgress(entry.state.id));
+        if (ev.stagesGained > 0) {
+          this.send(entry.ws, { t: "skills", ids: this.sim?.skillsOf(profile) ?? [] }); // a stage-up may unlock a skill
+          this.sendMp(entry.ws, profile, now); // and raises max MP (with a full refill)
+          later.push(this.flushProgress(entry.state.id));
+        }
         else later.push(this.ensureSaveAlarm(now));
         return;
       }
@@ -803,6 +863,26 @@ export class MapRoom extends DurableObject<Env> {
       case "refine":
         later.push(this.addRefineExp(ev.playerId, ev.gain, now));
         return;
+      case "mp": {
+        const entry = sockets.get(ev.playerId);
+        if (entry) this.send(entry.ws, { t: "mp", mp: ev.mp, maxMp: ev.maxMp, regenInMs: ev.regenInMs, perSec: MP_REGEN_PER_S });
+        return;
+      }
+      case "cast_ok": {
+        const entry = sockets.get(ev.playerId);
+        if (entry) this.send(entry.ws, { t: "cast_ok", skill: ev.skill, cdMs: ev.cdMs });
+        return;
+      }
+      case "cast_fail": {
+        const entry = sockets.get(ev.playerId);
+        if (entry) this.send(entry.ws, { t: "cast_error", skill: ev.skill, reason: ev.reason });
+        return;
+      }
+      case "buff": {
+        const entry = sockets.get(ev.playerId);
+        if (entry) this.send(entry.ws, { t: "buff", skill: ev.skill, ms: ev.ms });
+        return;
+      }
       case "loot":
         this.enqueueLoot(ev.playerId, ev.drops);
         return;
@@ -876,6 +956,8 @@ export class MapRoom extends DurableObject<Env> {
     await (this.bagQueues.get(id) ?? Promise.resolve());
     await this.flushRefine(id); // the artifact's EXP is written before the lock is released
     this.bags.delete(id);
+    this.learnedSkills.delete(id);
+    this.hotbars.delete(id);
   }
 
   /**
@@ -934,14 +1016,14 @@ export class MapRoom extends DurableObject<Env> {
    */
   private async mutateBag(
     id: string,
-    plan: (bag: BagState) => { ops: BagOp[]; mail?: MailItem[] } | null,
+    plan: (bag: BagState) => { ops: BagOp[]; mail?: MailItem[]; extra?: D1PreparedStatement[] } | null,
     grantKey?: string,
   ): Promise<{ ok: true; before: BagState; after: BagState; mailed: MailItem[] } | { ok: false; reason: "invalid" | "failed" | "duplicate" }> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const before = await this.getBag(id);
       const p = plan(before);
       if (!p) return { ok: false, reason: "invalid" };
-      const r = await commitBagOps(this.env.DB, id, p.ops, { grantKey, mail: p.mail });
+      const r = await commitBagOps(this.env.DB, id, p.ops, { grantKey, mail: p.mail, extra: p.extra });
       if (r === "ok") {
         const next = applyBag({ items: before.items, equipped: before.equipped }, p.ops);
         const after: BagState = { tabs: before.tabs, items: next.items, equipped: next.equipped };
@@ -976,7 +1058,7 @@ export class MapRoom extends DurableObject<Env> {
   private applyGear(id: string, bag: BagState, direct?: WebSocket): void {
     const p = this.sim?.getPlayer(id);
     if (!p || !this.sim) return;
-    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base }));
+    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base }), weaponFamily(bag.equipped));
     this.sendToCharacter(id, { t: "hp", hp: p.hp, maxHp: p.maxHp }, direct);
   }
 
@@ -1191,10 +1273,137 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  /**
+   * The hotbar and the learned skills of a character, from the room's copy or (after the object slept, which loses every
+   * in-memory copy) from D1. Like the bag, they are loaded lazily: a stale empty default here would wipe a saved hotbar.
+   */
+  private async getHotbar(id: string): Promise<string[]> {
+    let bar = this.hotbars.get(id);
+    if (!bar) {
+      bar = parseHotbar((await getCharacterById(this.env.DB, id))?.hotbar);
+      this.hotbars.set(id, bar);
+    }
+    return bar;
+  }
+
+  private async getLearned(id: string): Promise<string[]> {
+    let learned = this.learnedSkills.get(id);
+    if (!learned) {
+      learned = await loadLearnedSkills(this.env.DB, id);
+      this.learnedSkills.set(id, learned);
+    }
+    return learned;
+  }
+
+  /** Tells the client its MP (after a change of max MP the client's extrapolation would otherwise use the old maximum). */
+  private sendMp(ws: WebSocket, profile: PlayerProfile, now: number): void {
+    const e = this.sim?.mpEvent(profile, now);
+    if (e?.t === "mp") this.send(ws, { t: "mp", mp: e.mp, maxMp: e.maxMp, regenInMs: e.regenInMs, perSec: MP_REGEN_PER_S });
+  }
+
+  /** Who is casting: the live profile in a combat map, otherwise the saved row. */
+  private async casterOf(id: string): Promise<{ root: CharacterRow["spiritual_root"]; realm: number; stage: number } | null> {
+    const p = this.sim?.getPlayer(id);
+    if (p) return { root: p.element, realm: p.realm, stage: p.stage };
+    const row = await getCharacterById(this.env.DB, id);
+    return row ? { root: row.spiritual_root, realm: row.realm, stage: row.stage } : null;
+  }
+
+  /** Uses a skill. Memory only: a cast costs no D1 write. Casting needs the fight simulation, so it only works in combat maps. */
+  private async handleCast(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "cast" }>): Promise<void> {
+    const now = Date.now();
+    if (now - (state.lastCastAt ?? 0) < CAST_MIN_GAP_MS) return;
+    state.lastCastAt = now;
+    ws.serializeAttachment(state);
+    if (getMap(state.mapId).safe) return void this.send(ws, { t: "cast_error", skill: msg.skill, reason: "town" });
+    try {
+      await this.wake(state.mapId);
+    } catch (err) {
+      console.error("wake failed", err);
+      return;
+    }
+    const profile = this.sim?.getPlayer(state.id);
+    if (!this.sim || !profile) return;
+    if (profile.dead) return void this.send(ws, { t: "cast_error", skill: msg.skill, reason: "dead" });
+    const r = this.sim.queueCast(state.id, msg.skill, msg.target ?? null, now);
+    if (!r.ok) this.send(ws, { t: "cast_error", skill: msg.skill, reason: r.reason });
+  }
+
+  /** Sets one hotbar slot. A skill must be one the character can use; a potion slot holds an item type (never an item id). */
+  private async handleHotbar(ws: WebSocket, state: PlayerState, slot: number, v: string): Promise<void> {
+    const now = Date.now();
+    if (now - (state.lastHotbarAt ?? 0) < HOTBAR_MIN_GAP_MS) return;
+    state.lastHotbarAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    const current = await this.getHotbar(id);
+    const resend = () => this.send(ws, { t: "hotbar", slots: current });
+    if (slot < 0 || slot >= HOTBAR_SLOTS) return resend();
+    if (v.startsWith("s:")) {
+      const who = await this.casterOf(id);
+      const known = who ? availableSkills(who.root, who.realm, who.stage, await this.getLearned(id)) : [];
+      if (!isSkillId(v.slice(2)) || !known.includes(v.slice(2))) return resend();
+    } else if (v.startsWith("i:")) {
+      if (getItemDef(v.slice(2))?.healFraction === undefined) return resend();
+    }
+    const next = [...current];
+    next[slot] = v;
+    try {
+      await saveHotbar(this.env.DB, id, next);
+      this.hotbars.set(id, next);
+      this.send(ws, { t: "hotbar", slots: next });
+    } catch (err) {
+      console.error("hotbar save failed", id, err);
+      resend();
+    }
+  }
+
+  /** A potion on the hotbar: the first stack of that type in the bag is used (same rules and cooldown as using it from the bag). */
+  private handleUseType(ws: WebSocket, state: PlayerState, type: string): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      const bag = await this.getBag(id);
+      const item = bag.items.find((i) => i.type === type);
+      if (!item) return this.send(ws, { t: "inv_error", reason: "invalid" });
+      return this.usePotion(ws, id, item.tab, item.cell);
+    });
+  }
+
+  /**
+   * Reads a bí tịch: the book is consumed and the skill stored in ONE batch (a skill already known has a primary-key
+   * clash and rolls the whole batch back, so nothing is consumed). The room's copy and the client are updated afterwards.
+   */
+  private async learnBook(ws: WebSocket, id: string, tab: number, cell: number, skillId: string): Promise<void> {
+    const skill = getSkill(skillId);
+    const who = await this.casterOf(id);
+    if (!skill || !who) return this.resync(ws, id, "invalid");
+    const learned = await this.getLearned(id);
+    if (availableSkills(who.root, who.realm, who.stage, learned).includes(skillId)) return this.send(ws, { t: "inv_error", reason: "known" });
+    if (!canLearn(skill, who.realm, who.stage)) return this.send(ws, { t: "inv_error", reason: "level_low" });
+    const res = await this.mutateBag(id, (bag) => {
+      const ops = planRemove(bag.items, bag.tabs, { tab, cell }, 1);
+      if (!ops) return null;
+      return { ops, extra: [this.env.DB.prepare("INSERT INTO character_skills (character_id, skill_id, learned_at) VALUES (?, ?, ?)").bind(id, skillId, Date.now())] };
+    });
+    if (!res.ok) {
+      if (res.reason === "duplicate") return this.send(ws, { t: "inv_error", reason: "known" });
+      return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
+    }
+    this.learnedSkills.set(id, [...learned, skillId]);
+    this.sim?.addLearned(id, skillId);
+    this.sendBagDelta(id, res.before, res.after);
+    this.sendToCharacter(id, { t: "skills", ids: availableSkills(who.root, who.realm, who.stage, [...learned, skillId]) });
+  }
+
   /** Consumes one potion and heals. The potion is committed first; HP only changes after the write succeeded. */
   private async usePotion(ws: WebSocket, id: string, tab: number, cell: number): Promise<void> {
     const bag = await this.getBag(id);
     const item = itemAt(bag.items, { tab, cell });
+    if (item && getItemDef(item.type)?.teaches) return this.learnBook(ws, id, tab, cell, getItemDef(item.type)!.teaches!);
     const heal = item ? getItemDef(item.type)?.healFraction : undefined;
     if (!item || heal === undefined) return this.resync(ws, id, "invalid");
     const profile = this.sim?.getPlayer(id);

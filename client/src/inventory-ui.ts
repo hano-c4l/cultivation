@@ -44,7 +44,7 @@ function fmtTime(ms: number): string {
  * move it there (an empty cell moves, the same item merges, a different item swaps). The server owns the bag, so a
  * command only names cells; the screen changes when the server's delta comes back.
  */
-export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
+export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (value: string, label: string) => void = () => undefined): InventoryUi {
   const toggle = el("button", undefined, vi.inventory.button);
   toggle.id = "bag-btn";
   toggle.hidden = true;
@@ -52,7 +52,7 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
   panel.id = "bag-panel";
   panel.hidden = true;
   document.body.append(toggle, panel);
-  registerWindow("bag", panel, 2);
+  registerWindow("bag", panel, 3);
 
   let items = new Map<string, BagItem>();
   let tabs = 1;
@@ -227,10 +227,15 @@ export function initInventory(send: (msg: ClientMessage) => void): InventoryUi {
       wear.onclick = () => send({ t: "eq_equip", tab: sel.tab, cell: sel.cell });
       actions.append(wear);
     }
-    if (def?.healFraction !== undefined) {
-      const use = el("button", undefined, vi.inventory.use);
+    if (def?.healFraction !== undefined || def?.teaches) {
+      const use = el("button", undefined, def.teaches ? vi.inventory.learn : vi.inventory.use);
       use.onclick = () => send({ t: "inv_use", tab: sel.tab, cell: sel.cell });
       actions.append(use);
+    }
+    if (def?.healFraction !== undefined) {
+      const quick = el("button", undefined, vi.inventory.toHotbar);
+      quick.onclick = () => toHotbar(`i:${item.type}`, itemName(item.type));
+      actions.append(quick);
     }
     if (item.qty > 1 && (def?.maxStack ?? 1) > 1) {
       const split = el("button", undefined, vi.inventory.split);

@@ -12,6 +12,12 @@ import {
   killExp,
   levelIndex,
   rollEquipmentDrop,
+  rollBookDrop,
+  MP_REGEN_DELAY_MS,
+  MP_REGEN_PER_S,
+  availableSkills,
+  getSkill,
+  type SkillDef,
   rollLinhThachDrop,
   rollLoot,
   type LootDrop,
@@ -51,6 +57,10 @@ export interface ProfileSeed {
   gender: Gender;
   /** Stats of the gear worn right now (equipmentBonus); recomputed by the room whenever gear or requirements change. */
   gear?: EquipStats;
+  /** Weapon family of the worn weapon (a skill may need one); null: no weapon or a weapon without a family. */
+  weapon?: string | null;
+  /** Skills learned from bí tịch (the basic ones are worked out from root, realm and stage). */
+  learned?: readonly string[];
   realm: number;
   stage: number;
   exp: number;
@@ -79,6 +89,26 @@ export interface PlayerProfile extends ProfileSeed {
   dead: boolean;
   /** Earliest time the next potion may be used. */
   potionReadyAt: number;
+  /**
+   * MP is stored as `mp` at time `mpAt` and worked out for any later time (currentMp), so regeneration never needs a tick:
+   * a room that is otherwise idle can pause. It regenerates from MP_REGEN_DELAY_MS after the last hit taken.
+   */
+  maxMp: number;
+  mp: number;
+  mpAt: number;
+  /** Skill ready times (ms), by skill id. Memory only: leaving the room resets them (known gap). */
+  cooldowns: Map<string, number>;
+  /** A skill to use as soon as it can (walking into range first); cleared by moving, targeting or a failure. */
+  pendingCast: { skill: string; target: string | null } | null;
+  buffs: ActiveBuff[];
+}
+
+/** A running buff: it adds `pct` (a fraction) to attack or defense until `until`. */
+interface ActiveBuff {
+  skill: string;
+  stat: "attack" | "defense";
+  pct: number;
+  until: number;
 }
 
 type MonsterState = "idle" | "chase" | "return" | "dead";
@@ -106,12 +136,17 @@ interface Monster {
 export type SimEvent =
   | { t: "mon"; monster: MonsterSnapshot }
   | { t: "mon_gone"; id: string }
-  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number }
+  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string }
   | { t: "hp"; playerId: string; hp: number; maxHp: number }
   /** EXP changed after a kill; `stagesGained > 0` means points changed and the room must persist right away. */
   | { t: "progress"; playerId: string; stagesGained: number }
   /** The kill's EXP, which the pháp bảo bản mệnh of the winner also receives (its own stream, no effect on the character's EXP). */
   | { t: "refine"; playerId: string; gain: number }
+  /** MP changed (spent, or settled when hit); the client regenerates it from the snapshot. */
+  | { t: "mp"; playerId: string; mp: number; maxMp: number; regenInMs: number }
+  | { t: "cast_ok"; playerId: string; skill: string; cdMs: number }
+  | { t: "cast_fail"; playerId: string; skill: string; reason: "mp" | "cooldown" | "no_target" | "weapon" | "unknown" }
+  | { t: "buff"; playerId: string; skill: string; ms: number }
   /** A kill dropped items for this player; the room puts them in the bag (or mails them when it is full). */
   | { t: "loot"; playerId: string; drops: LootDrop[] }
   /** A kill dropped Linh Thạch for this player; the room writes it to the ledger. */
@@ -132,11 +167,19 @@ function lastPoint(path: Vec2[]): Vec2 {
   return path[path.length - 1] ?? [0, 0];
 }
 
-function derivedCombatant(seed: ProfileSeed, stage = seed.stage): { stats: Combatant; maxHp: number; expBonus: number } {
+function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[] }, stage = seed.stage): { stats: Combatant; maxHp: number; maxMp: number; expBonus: number } {
   const d = deriveStats(seed.base, seed.realm, stage, seed.rootGrade, seed.gear);
+  // Buffs only touch attack and defense (never max HP), so their expiry cannot move the HP ratio.
+  let attack = d.attack;
+  let defense = d.defense;
+  for (const b of seed.buffs ?? []) {
+    if (b.stat === "attack") attack = Math.floor(attack + d.attack * b.pct);
+    else defense = Math.floor(defense + d.defense * b.pct);
+  }
   return {
-    stats: { attack: d.attack, defense: d.defense, critRate: d.critRate, dodgeRate: d.dodgeRate, element: seed.element },
+    stats: { attack, defense, critRate: d.critRate, dodgeRate: d.dodgeRate, element: seed.element },
     maxHp: d.maxHp,
+    maxMp: d.maxMp,
     expBonus: d.expBonus,
   };
 }
@@ -253,6 +296,11 @@ export class CombatSim {
       expDirty: false,
       dead: false,
       potionReadyAt: 0,
+      mp: d.maxMp,
+      mpAt: 0,
+      cooldowns: new Map(),
+      pendingCast: null,
+      buffs: [],
     };
     this.players.set(seed.id, profile);
     return profile;
@@ -290,11 +338,69 @@ export class CombatSim {
   }
 
   /** Gear changed (worn, taken off, worn out): re-derive combat stats, keeping the HP ratio. */
-  updateGear(id: string, gear: EquipStats): void {
+  updateGear(id: string, gear: EquipStats, weapon?: string | null): void {
     const p = this.players.get(id);
     if (!p) return;
     p.gear = gear;
+    if (weapon !== undefined) p.weapon = weapon;
     this.recompute(p, false);
+  }
+
+  /** The skills this character can use now: unlocked basic ones plus learned books. */
+  skillsOf(p: PlayerProfile): string[] {
+    return availableSkills(p.element, p.realm, p.stage, p.learned ?? []);
+  }
+
+  /** A book was learned. */
+  addLearned(id: string, skill: string): void {
+    const p = this.players.get(id);
+    if (p && !(p.learned ?? []).includes(skill)) p.learned = [...(p.learned ?? []), skill];
+  }
+
+  /** MP at time `now`: the stored value plus regeneration since it was stored (starting MP_REGEN_DELAY_MS after the last hit). */
+  currentMp(p: PlayerProfile, now: number): number {
+    if (p.mp >= p.maxMp) return p.maxMp;
+    const from = Math.max(p.mpAt, p.lastHurtAt + MP_REGEN_DELAY_MS);
+    if (now <= from) return p.mp;
+    return Math.min(p.maxMp, p.mp + Math.floor(((now - from) / 1000) * Math.max(1, p.maxMp * MP_REGEN_PER_S)));
+  }
+
+  /** Stores the MP worked out for `now` (call before changing it or before `lastHurtAt` moves). */
+  private settleMp(p: PlayerProfile, now: number): void {
+    p.mp = this.currentMp(p, now);
+    p.mpAt = now;
+  }
+
+  mpEvent(p: PlayerProfile, now: number): SimEvent {
+    return { t: "mp", playerId: p.id, mp: this.currentMp(p, now), maxMp: p.maxMp, regenInMs: Math.max(0, p.lastHurtAt + MP_REGEN_DELAY_MS - now) };
+  }
+
+  /**
+   * Asks to use a skill: checked now (so a refusal is immediate) and again when it goes off. An attack walks into range
+   * of its target first (the player's chase does that); heals and buffs go off on the next tick.
+   */
+  queueCast(playerId: string, skillId: string, targetId: string | null, now: number): { ok: true } | { ok: false; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" } {
+    const p = this.players.get(playerId);
+    const skill = getSkill(skillId);
+    if (!p || p.dead || !skill || !this.skillsOf(p).includes(skillId)) return { ok: false, reason: "unknown" };
+    if (skill.weapon !== undefined && p.weapon !== skill.weapon) return { ok: false, reason: "weapon" };
+    if (now < (p.cooldowns.get(skillId) ?? 0)) return { ok: false, reason: "cooldown" };
+    if (this.currentMp(p, now) < skill.mpCost) return { ok: false, reason: "mp" };
+    let target: string | null = null;
+    if (skill.kind === "attack") {
+      target = targetId ?? p.targetId;
+      const m = target ? this.monsters.get(target) : undefined;
+      if (!target || !m || m.state === "dead") return { ok: false, reason: "no_target" };
+      p.targetId = target;
+      p.lastRepathAt = Number.NEGATIVE_INFINITY;
+    }
+    p.pendingCast = { skill: skillId, target };
+    return { ok: true };
+  }
+
+  cancelCast(playerId: string): void {
+    const p = this.players.get(playerId);
+    if (p) p.pendingCast = null;
   }
 
   private recompute(p: PlayerProfile, fullHeal: boolean): void {
@@ -304,12 +410,15 @@ export class CombatSim {
     p.maxHp = d.maxHp;
     p.expBonus = d.expBonus;
     p.hp = fullHeal ? d.maxHp : Math.max(p.hp > 0 ? 1 : 0, Math.round(d.maxHp * ratio));
+    p.maxMp = d.maxMp;
+    p.mp = fullHeal ? d.maxMp : Math.min(p.mp, d.maxMp);
   }
 
   setTarget(playerId: string, monsterId: string): boolean {
     const p = this.players.get(playerId);
     const m = this.monsters.get(monsterId);
     if (!p || p.dead || !m || m.state === "dead") return false;
+    p.pendingCast = null; // a new target cancels a waiting skill
     p.targetId = monsterId;
     p.lastRepathAt = Number.NEGATIVE_INFINITY;
     return true;
@@ -317,7 +426,10 @@ export class CombatSim {
 
   clearTarget(playerId: string): void {
     const p = this.players.get(playerId);
-    if (p) p.targetId = null;
+    if (p) {
+      p.targetId = null;
+      p.pendingCast = null;
+    }
   }
 
   private snapshot(m: Monster, now: number): MonsterSnapshot {
@@ -444,9 +556,11 @@ export class CombatSim {
     m.nextAttackAt = now + m.def.attackCooldownMs;
     const hit = computeDamage(m.combatant, p.stats, this.rand);
     p.hp = Math.max(0, p.hp - hit.damage);
+    this.settleMp(p, now); // regeneration up to this hit is kept; it pauses from here
     p.lastHurtAt = now;
     events.push({ t: "hit", from: m.id, to: p.id, kind: hit.kind, damage: hit.damage, hp: p.hp });
     events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+    if (p.mp < p.maxMp) events.push(this.mpEvent(p, now));
     // Standing still and being hit with nothing targeted: fight back (in reach, since the monster is in melee range).
     // A walking player is fleeing and keeps going; a player who already has a target keeps it. PvP will reuse this.
     if (p.hp > 0 && p.targetId === null && !this.moving.has(p.id)) {
@@ -472,6 +586,12 @@ export class CombatSim {
         events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
       }
 
+      if (p.buffs.length > 0 && p.buffs.some((b) => b.until <= now)) {
+        p.buffs = p.buffs.filter((b) => b.until > now);
+        this.recompute(p, false);
+      }
+      if (p.pendingCast && this.runCast(p, pos, now, events)) continue;
+
       if (!p.targetId) continue;
       const m = this.monsters.get(p.targetId);
       if (!m || m.state === "dead") {
@@ -491,13 +611,61 @@ export class CombatSim {
     }
   }
 
-  private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[]): void {
+  /**
+   * Goes off with the queued skill when it can. Returns true when the skill was used or dropped (the player's turn is
+   * over), false while the player is still walking into range.
+   */
+  private runCast(p: PlayerProfile, pos: Vec2, now: number, events: SimEvent[]): boolean {
+    const pending = p.pendingCast;
+    const skill = pending ? getSkill(pending.skill) : undefined;
+    if (!pending || !skill) {
+      p.pendingCast = null;
+      return false;
+    }
+    const fail = (reason: "mp" | "cooldown" | "no_target" | "weapon" | "unknown") => {
+      p.pendingCast = null;
+      events.push({ t: "cast_fail", playerId: p.id, skill: skill.id, reason });
+      return true;
+    };
+    if (skill.weapon !== undefined && p.weapon !== skill.weapon) return fail("weapon");
+    if (now < (p.cooldowns.get(skill.id) ?? 0)) return fail("cooldown");
+    if (this.currentMp(p, now) < skill.mpCost) return fail("mp");
+    let m: Monster | undefined;
+    let mpos: Vec2 | undefined;
+    if (skill.kind === "attack") {
+      m = pending.target ? this.monsters.get(pending.target) : undefined;
+      if (!m || m.state === "dead") return fail("no_target");
+      mpos = this.position(m, now);
+      if (dist(pos, mpos) > skill.range) return false; // still walking: the chase below brings the player closer
+    }
+    // The skill goes off: pay, start the cooldown, then its effect.
+    this.settleMp(p, now);
+    p.mp -= skill.mpCost;
+    p.cooldowns.set(skill.id, now + skill.cooldownMs);
+    p.pendingCast = null;
+    events.push(this.mpEvent(p, now), { t: "cast_ok", playerId: p.id, skill: skill.id, cdMs: skill.cooldownMs });
+    if (skill.kind === "heal") {
+      p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(p.maxHp * skill.power)));
+      events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+    } else if (skill.kind === "buff" && skill.buff) {
+      p.buffs = [...p.buffs.filter((b) => b.skill !== skill.id), { skill: skill.id, stat: skill.buff.stat, pct: skill.power, until: now + skill.buff.durationMs }];
+      this.recompute(p, false);
+      events.push({ t: "buff", playerId: p.id, skill: skill.id, ms: skill.buff.durationMs });
+    } else if (m && mpos) {
+      this.playerAttack(p, m, mpos, now, events, skill);
+    }
+    return true;
+  }
+
+  private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef): void {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
-    const hit = computeDamage(p.stats, m.combatant, this.rand);
+    // A skill hits as the caster's own stats scaled by its power, in its own element (or the caster's when it has none).
+    const attacker = skill ? { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * skill.power)), element: skill.element ?? p.element } : p.stats;
+    const hit = computeDamage(attacker, m.combatant, this.rand);
     const applied = Math.min(m.hp, hit.damage);
     m.hp -= applied;
     m.damage.set(p.id, (m.damage.get(p.id) ?? 0) + applied);
-    events.push({ t: "hit", from: p.id, to: m.id, kind: hit.kind, damage: hit.damage, hp: m.hp });
+    events.push({ t: "hit", from: p.id, to: m.id, kind: hit.kind, damage: hit.damage, hp: m.hp, ...(skill ? { skill: skill.id } : {}) });
     if (m.hp > 0) {
       // Being hit pulls an idle or retreating monster onto the attacker.
       if (m.state === "idle" || m.state === "return") {
@@ -528,6 +696,8 @@ export class CombatSim {
     // Drawn after every other roll of the kill, so the sequence of the older rolls does not change.
     const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand);
     if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
+    const book = rollBookDrop(m.rank, this.rand); // two more rolls, after everything else
+    if (book) loot.push({ item: book, qty: 1 });
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();

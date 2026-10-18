@@ -1,11 +1,12 @@
 import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
+import { BOOK_SKILLS, bookItemId } from "./skills";
 
 /**
  * Item catalogue. Placeholder game-design values (listed under "giá trị tạm" in docs/STATUS.md). Display strings are
  * Vietnamese data fields, like monster names. Equipment (never stacked, PLAN section 4) arrives with phase 2b.
  */
-export type ItemCategory = "consumable" | "material" | "equipment";
+export type ItemCategory = "consumable" | "material" | "equipment" | "skill_book";
 
 /** Độ hiếm (rarity), from common to rarest. The order here is the order used when sorting. */
 export const ITEM_RARITIES = ["common", "uncommon", "rare", "epic"] as const;
@@ -27,9 +28,20 @@ export interface ItemDef {
   healFraction?: number;
   /** Equipment only: the template behind the item (slot kind, stats, requirements, durability). */
   equip?: EquipInfo;
+  /** Skill books (bí tịch): the skill the book teaches when used. */
+  teaches?: string;
 }
 
+/** One bí tịch per book skill, made from the skill list so a new book skill needs no item entry. */
+const BOOKS: Record<string, ItemDef> = Object.fromEntries(
+  BOOK_SKILLS.map((s) => [
+    bookItemId(s.id),
+    { id: bookItemId(s.id), nameVi: `Bí Tịch: ${s.nameVi}`, descVi: `Dùng để học kỹ năng ${s.nameVi}.`, category: "skill_book", maxStack: 1, rarity: "epic", grade: 4, teaches: s.id } satisfies ItemDef,
+  ]),
+);
+
 export const ITEMS: Readonly<Record<string, ItemDef>> = {
+  ...BOOKS,
   hoi_huyet_dan: {
     id: "hoi_huyet_dan",
     nameVi: "Hồi Huyết Đan",

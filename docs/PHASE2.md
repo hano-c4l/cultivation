@@ -26,7 +26,7 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Trang bị và 
 - Pháp bảo ở 2b chỉ cộng chỉ số; kỹ năng đặc biệt của pháp bảo và vũ khí theo bí tịch làm ở 2c.
 - Nghiệm thu: mặc/tháo đổi đúng chỉ số; chết giảm độ bền; sửa đồ trừ đúng tiền, không âm (đã có test và `tools/equipment-smoke.mjs`).
 
-## 2c. Kỹ năng, MP và ngũ hành đầy đủ (`features_skills`) — ĐANG LÀM
+## 2c. Kỹ năng, MP và ngũ hành đầy đủ (`features_skills`) — A và B ĐÃ LÀM (chờ PR), C chưa
 **Đã chốt với người dùng (2026-10-18):**
 - **Học kỹ năng:** kỹ năng cơ bản mở theo cảnh giới/tầng (theo ngũ hành linh căn của nhân vật + kỹ năng dùng chung); kỹ năng cao hơn học từ **bí tịch** (vật phẩm). Học từ NPC và gia nhập tông môn (cần Cống Hiến) để sau, phần phức tạp.
 - **Loại kỹ năng đợt này:** chỉ đánh **một mục tiêu**, hồi máu và buff đơn giản (tăng công/thủ trong thời gian ngắn). Chưa có diện rộng, chưa có hiệu ứng trạng thái (bỏng, chậm, choáng).

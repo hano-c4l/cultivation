@@ -94,7 +94,7 @@ export default {
         const room = url.searchParams.get("room") ?? "";
         if (env.ENABLE_DEV_GRANT !== "1" || !/^(forest|cave):\d{1,3}$/.test(room)) return errorResponse("not_found", 404);
         const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
-        return json({ evicted: await stub.devEvict() });
+        return json({ evicted: await stub.devEvict(url.searchParams.get("force") === "1") });
       }
       if (url.pathname.startsWith("/api/")) return await handleApi(request, env, url);
       if (url.pathname === "/ws") return await handleWebSocket(request, env, url);
