@@ -1,4 +1,4 @@
-import { HOTBAR_SLOTS, getItemDef, getSkill, type ClientMessage, type SkillDef } from "@game/shared";
+import { HOTBAR_SLOTS, getItemDef, getSkill, parseSkillSlot, type ClientMessage, type SkillDef } from "@game/shared";
 import { vi } from "./locales/vi";
 
 export interface HotbarUi {
@@ -28,7 +28,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
  * (skills window, bag), then tap a slot", which also works on a touch screen. The server decides everything; the bar only
  * shows cooldowns it was told about and dims what MP cannot pay.
  */
-export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (skill: SkillDef) => void; getTarget: () => string | null; getMp: () => number; countOf: (type: string) => number }): HotbarUi {
+export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (skill: SkillDef) => void; mpCostOf: (skill: SkillDef) => number; getTarget: () => string | null; getMp: () => number; countOf: (type: string) => number }): HotbarUi {
   const root = el("div");
   root.id = "hotbar";
   root.hidden = true;
@@ -54,12 +54,17 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
       const b = el("button", "hb-slot");
       b.append(el("span", "hb-key", String(i + 1)));
       if (pending) b.classList.add("assigning");
-      if (v.startsWith("s:")) {
-        const skill = getSkill(v.slice(2));
-        b.append(el("span", "hb-name", skill?.nameVi ?? v.slice(2)));
+      const slotSkill = parseSkillSlot(v);
+      if (slotSkill) {
+        const skill = getSkill(slotSkill.id);
+        b.append(el("span", "hb-name", skill?.nameVi ?? slotSkill.id));
+        // The element the skill is used with (its own, or the one picked when it was put here) shows in the corner, like on gear.
+        const element = skill?.element ?? slotSkill.element;
+        if (element) b.append(el("span", `elem-dot hb-elem elem-${element}`));
         if (skill) {
-          b.title = `${skill.nameVi} · ${vi.skills.mp(skill.mpCost)}`;
-          if (!usable.has(skill.id) || deps.getMp() < skill.mpCost) b.classList.add("dim");
+          const cost = deps.mpCostOf(skill);
+          b.title = `${skill.nameVi} · ${vi.skills.mp(cost)}`;
+          if (!usable.has(skill.id) || deps.getMp() < cost) b.classList.add("dim");
           const left = (readyAt.get(skill.id) ?? 0) - Date.now();
           if (left > 0) {
             busy = true;
@@ -93,9 +98,12 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
     }
     const v = slots[i] ?? "";
     const target = deps.getTarget();
-    const chosen = v.startsWith("s:") ? getSkill(v.slice(2)) : undefined;
+    const slotSkill = parseSkillSlot(v);
+    const chosen = slotSkill ? getSkill(slotSkill.id) : undefined;
     if (chosen?.kind === "teleport") deps.aim(chosen); // needs a point: the next map click gives it
-    else if (v.startsWith("s:")) deps.send(target ? { t: "cast", skill: v.slice(2), target } : { t: "cast", skill: v.slice(2) });
+    else if (slotSkill) {
+      deps.send({ t: "cast", skill: slotSkill.id, ...(target ? { target } : {}), ...(slotSkill.element ? { el: slotSkill.element } : {}) });
+    }
     else if (v.startsWith("i:")) deps.send({ t: "use_type", type: v.slice(2) });
   }
 

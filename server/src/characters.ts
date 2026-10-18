@@ -93,7 +93,9 @@ export async function ensureRootSkills(db: D1Database, characterId: string, real
 /** Writes the mastery of the given skills (absolute values, one row write each). */
 export async function saveSkillMastery(db: D1Database, characterId: string, list: ReadonlyArray<{ id: string; lv: number; xp: number }>): Promise<void> {
   if (list.length === 0) return;
-  await db.batch(list.map((m) => db.prepare("UPDATE character_skills SET level = ?, mastery = ? WHERE character_id = ? AND skill_id = ?").bind(m.lv, m.xp, characterId, m.id)));
+  const results = await db.batch(list.map((m) => db.prepare("UPDATE character_skills SET level = ?, mastery = ? WHERE character_id = ? AND skill_id = ?").bind(m.lv, m.xp, characterId, m.id)));
+  // Logged so `wrangler tail` shows the real D1 write cost of a mastery flush (docs/STATUS.md).
+  console.log("skill mastery rows_written", list.length, results.reduce((n, r) => n + (r.meta?.rows_written ?? 0), 0));
 }
 
 /** Writes the whole hotbar (one D1 row write); the room has already validated every slot. */
