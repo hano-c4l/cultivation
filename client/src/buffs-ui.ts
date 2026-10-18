@@ -14,10 +14,10 @@ function tag(name: string): string {
     .join("");
 }
 
-/** Remaining time as shown on a tile: seconds up to a minute, then minutes. */
+/** Remaining time as shown on a tile: seconds while under 100, then minutes. */
 export function formatLeft(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
-  return s >= 60 ? `${Math.ceil(s / 60)}p` : `${s}s`;
+  return s >= 100 ? `${Math.ceil(s / 60)}p` : `${s}s`;
 }
 
 /**
