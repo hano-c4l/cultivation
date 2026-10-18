@@ -7,6 +7,7 @@ import {
   getSkill,
   type SkillDef,
   type SkillContext,
+  type SpiritualRoot,
   type SkillStateView,
   type EquippedItem,
   effectiveSkill,
@@ -85,6 +86,8 @@ interface MonsterActor {
   id: string;
   tier: number;
   rank: MonsterRank;
+  /** The element rolled when it (re)spawned: it shows in the name and in the colour of the body. */
+  element: SpiritualRoot;
   path: Vec2[];
   startedAt: number;
   speed: number;
@@ -187,6 +190,7 @@ export class GameScene extends Phaser.Scene {
       mpCostOf: (skill) => effectiveSkill(skill, this.skillContext(skill)).mpCost,
       getTarget: () => this.targetId,
       getMp: () => this.vitals.getMp(),
+      contextOf: (skill) => this.skillContext(skill),
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
     this.buffs = initBuffs();
@@ -710,18 +714,20 @@ export class GameScene extends Phaser.Scene {
     const def = getMonsterDef(snap.kind);
     let m = this.monsters.get(snap.id);
     if (!m) {
-      const color = ELEMENT_COLOR[def?.element ?? ""] ?? 0xcccccc;
+      const color = ELEMENT_COLOR[snap.element] ?? 0xcccccc;
       const body = this.add.rectangle(0, 0, 26, 26, color).setStrokeStyle(2, 0x000000, 0.7);
       const label = this.add
-        .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
+        .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank, snap.element), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1);
-      m = { color: "#ffffff", id: snap.id, tier: snap.tier, rank: snap.rank, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
+      m = { color: "#ffffff", id: snap.id, tier: snap.tier, rank: snap.rank, element: snap.element, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
       this.monsters.set(snap.id, m);
     }
     // A respawn can roll a different rank, so name and size follow the latest snapshot.
     m.tier = snap.tier;
     m.rank = snap.rank;
-    m.label.setText(this.monsterName(snap.kind, snap.tier, snap.rank));
+    m.element = snap.element;
+    m.body.setFillStyle(ELEMENT_COLOR[snap.element] ?? 0xcccccc);
+    m.label.setText(this.monsterName(snap.kind, snap.tier, snap.rank, snap.element));
     m.body.setScale(snap.rank === "rare2" ? 1.4 : snap.rank === "rare1" ? 1.2 : 1);
     const now = performance.now();
     // Monsters are re-planned often; blending keeps them from snapping, but a plain swap is fine at their speed.
@@ -734,9 +740,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** "Sói Rừng · Bậc 4" plus the class tag for rare monsters. */
-  private monsterName(kind: string, tier: number, rank: MonsterRank): string {
+  private monsterName(kind: string, tier: number, rank: MonsterRank, element: SpiritualRoot): string {
     const tag = RANKS[rank].tagVi;
-    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${vi.combat.tier(tier)}${tag ? ` · ${tag}` : ""}`;
+    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${vi.roots[element] ?? element} · ${vi.combat.tier(tier)}${tag ? ` · ${tag}` : ""}`;
   }
 
   /** Rare monsters have their own colours; normal ones are coloured by how their bậc compares to the player's level. */

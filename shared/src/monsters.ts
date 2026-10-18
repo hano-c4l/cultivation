@@ -1,4 +1,4 @@
-import type { SpiritualRoot } from "./character";
+import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import { MAP_IDS, getMap, type MapId } from "./map";
 import { levelIndex, monsterBaseExp } from "./progression";
 
@@ -66,6 +66,14 @@ export function rollRank(roll: number): MonsterRank {
   if (roll < RANKS.rare2.chance) return "rare2";
   if (roll < RANKS.rare2.chance + RANKS.rare1.chance) return "rare1";
   return "normal";
+}
+
+/**
+ * Every spawn and respawn rolls the monster's element (uniformly out of the five); `element` on its species is only what it
+ * shows until then and what an older stored monster keeps. Takes a uniform [0, 1) number.
+ */
+export function rollMonsterElement(roll: number): SpiritualRoot {
+  return SPIRITUAL_ROOTS[Math.min(SPIRITUAL_ROOTS.length - 1, Math.floor(roll * SPIRITUAL_ROOTS.length))] as SpiritualRoot;
 }
 
 export interface MonsterStats {

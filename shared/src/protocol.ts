@@ -74,6 +74,8 @@ export type ClientMessage =
   | { t: "cast"; skill: string; target?: string; x?: number; y?: number; el?: SpiritualRoot }
   /** Set one hotbar slot: "" (empty), "s:<skill id>" or "i:<item type>". One slot per message, one D1 write. */
   | { t: "hotbar_set"; slot: number; v: string }
+  /** Swap two hotbar slots (drag and drop): one message, one D1 write. */
+  | { t: "hotbar_swap"; a: number; b: number }
   /** Use the first stack of an item type in the bag (hotbar potion slots); the server picks the stack, the client never names an item id. */
   | { t: "use_type"; type: string }
   /** Spend one Ngộ Đạo Đan on a skill to raise its mastery. */
@@ -116,6 +118,8 @@ export interface MonsterSnapshot {
   /** Bậc 1..9 within the map's realm, and the class (normal or one of the two rare tiers). */
   tier: number;
   rank: MonsterRank;
+  /** The element rolled when it (re)spawned. */
+  element: SpiritualRoot;
   path: Vec2[];
   ageMs: number;
   speed: number;
@@ -281,6 +285,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     }
     case "hotbar_set":
       return isInt(m.slot) && m.slot >= 0 && m.slot < HOTBAR_SLOTS && typeof m.v === "string" && HOTBAR_SLOT_PATTERN.test(m.v) ? { t: "hotbar_set", slot: m.slot, v: m.v } : null;
+    case "hotbar_swap":
+      return isInt(m.a) && isInt(m.b) && m.a >= 0 && m.b >= 0 && m.a < HOTBAR_SLOTS && m.b < HOTBAR_SLOTS && m.a !== m.b ? { t: "hotbar_swap", a: m.a, b: m.b } : null;
     case "use_type":
       return typeof m.type === "string" && /^[a-z0-9_.]{1,60}$/.test(m.type) ? { t: "use_type", type: m.type } : null;
     case "bt_start":

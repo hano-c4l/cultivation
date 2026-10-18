@@ -16,6 +16,7 @@ import {
   type SkillStateView,
   type SpiritualRoot,
 } from "@game/shared";
+import { realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -104,7 +105,7 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
     const title = el("b");
     if (s.element) title.append(elementDot(s.element)); // a skill bound to an element shows it; a flexible one is given one on the hotbar
     // A gear skill carries the piece's realm and bậc ("LK4"), so pieces of one kind can be told apart.
-    title.append(s.nameVi, el("span", "sk-tag", `${REALMS[ctx.realm]?.shortVi ?? ""}${s.source === "gear" ? (ctx.tier ?? 1) : ""}`));
+    title.append(s.nameVi, el("span", `sk-tag ${realmClass(ctx.realm)}`, `${REALMS[ctx.realm]?.shortVi ?? ""}${s.source === "gear" ? (ctx.tier ?? 1) : ""}`));
     const meta: string[] = [vi.skills.grades[ctx.grade] ?? ""];
     if (s.source !== "gear") meta.push(vi.skills.levels[ctx.level] ?? "");
     const weapon = s.weapon ? ` · ${vi.skills.weapon(vi.equip.weaponTypes[s.weapon] ?? s.weapon)}` : "";

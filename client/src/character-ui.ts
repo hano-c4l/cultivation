@@ -25,6 +25,7 @@ import {
 } from "@game/shared";
 import { getCatalog } from "./constitution-store";
 import { vi } from "./locales/vi";
+import { realmClass } from "./equip-text";
 import { wearerOfSheet } from "./wearer";
 import { registerWindow } from "./window-manager";
 
@@ -120,7 +121,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
           : s.exp >= expCap(s.realm, s.stage)
             ? vi.character.expMax
             : `${Math.floor((s.exp / need) * 100)}%`;
-    const realmLine = el("div", "cp-realm", `${vi.character.stage(realm.nameVi, s.stage)} · ${expText}`);
+    const realmLine = el("div", `cp-realm ${realmClass(s.realm)}`, `${vi.character.stage(realm.nameVi, s.stage)} · ${expText}`);
     const bar = el("div", "cp-bar");
     const fill = el("div", "cp-fill");
     fill.style.width = `${Math.min(100, (s.exp / need) * 100)}%`;

@@ -132,6 +132,6 @@ export const ROOT_FAVOURED_STAT: Record<SpiritualRoot, StatKey> = {
 export const MAX_ALLOCATE_PER_STAT = 200;
 
 /** Element multipliers (ngũ hành). Overcoming = tương khắc, generating = tương sinh. */
-export const ELEMENT_OVERCOME_MULT = 1.3;
-export const ELEMENT_OVERCOME_BY_MULT = 0.75;
+export const ELEMENT_OVERCOME_MULT = 1.15;
+export const ELEMENT_OVERCOME_BY_MULT = 0.85;
 export const ELEMENT_GENERATE_MULT = 1.05;

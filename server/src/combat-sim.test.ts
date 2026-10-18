@@ -1,4 +1,4 @@
-import { MASTERY_NEEDED, CLUSTERS, RANKS, expToNext, getMap, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
+import { MASTERY_NEEDED, CLUSTERS, RANKS, expToNext, getMap, getMonsterDef, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -22,8 +22,11 @@ const seed = (id = "p1", over: Partial<ProfileSeed> = {}): ProfileSeed => ({
   ...over,
 });
 
+/** A forest sim whose monsters keep their species' element (every spawn rolls one at random; a fixed roll would give them all the same). */
 function forestSim(rand = noCrit) {
-  return new CombatSim(getMap("forest"), "forest", rand, 0);
+  const sim = new CombatSim(getMap("forest"), "forest", rand, 0);
+  for (const s of sim.snapshots(0)) sim.setMonsterElement(s.id, getMonsterDef(s.kind)!.element);
+  return sim;
 }
 
 /** Runs ticks every 100 ms and collects events; the player stands still at `pos`. */
@@ -414,14 +417,41 @@ describe("CombatSim ranks across a sleep", () => {
   it("a rebuilt sim restores the saved classes instead of rolling again", () => {
     const first = new CombatSim(getMap("forest"), "forest", () => 0.01, 0); // 0.01 rolls the rarest class everywhere
     const saved = first.ranks();
-    expect(Object.values(saved).every((r) => r === "rare2")).toBe(true);
+    expect(Object.values(saved).every((r) => r.startsWith("rare2|"))).toBe(true);
     const rebuilt = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, saved); // would roll "normal" everywhere
     expect(rebuilt.ranks()).toEqual(saved);
   });
 
   it("an unknown saved class is ignored and rolled normally", () => {
     const sim = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, { m1: "bogus" as never });
-    expect(sim.ranks()["m1"]).toBe("normal");
+    expect(sim.ranks()["m1"]).toMatch(/^normal\|/);
+  });
+
+  it("the element is rolled with the class and restored with it, and an older saved value keeps the species' own element", () => {
+    const first = new CombatSim(getMap("forest"), "forest", () => 0.01, 0); // 0.01 also rolls the first element (kim)
+    expect(first.snapshots(0).every((m) => m.element === "kim")).toBe(true);
+    const saved = first.ranks();
+    expect(Object.values(saved).every((r) => r === "rare2|kim")).toBe(true);
+    const rebuilt = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, saved);
+    expect(rebuilt.snapshots(0).every((m) => m.element === "kim")).toBe(true);
+    const older = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, { m1: "rare1" });
+    expect(older.snapshots(0)[0]).toMatchObject({ rank: "rare1", element: getMonsterDef("soi_rung")!.element });
+  });
+
+  it("every respawn rolls the element again", () => {
+    let roll = 0.99; // rolls the last element (tho) and a normal class
+    const sim = new CombatSim(getMap("forest"), "forest", () => roll, 0);
+    const m = sim.snapshots(0)[0]!;
+    expect(m.element).toBe("tho");
+    sim.addPlayer(seed("p1", { base: { ...seed().base, linhLuc: 500 } }));
+    sim.setTarget("p1", m.id);
+    const positions = new Map<string, Vec2>([["p1", [m.path[0]![0] + 1, m.path[0]![1]]]]);
+    run(sim, 0, 3000, positions);
+    expect(sim.snapshots(3000).some((s) => s.id === m.id)).toBe(false);
+    roll = 0.01; // the respawn will roll the first element (kim)
+    const later = run(sim, 3100, 3000 + 16_000, positions);
+    const back = later.find((e) => e.t === "mon" && e.monster.id === m.id);
+    expect(back && back.t === "mon" ? back.monster.element : null).toBe("kim");
   });
 });
 
@@ -713,9 +743,14 @@ describe("several elements (đơn ... ngũ linh căn) and the grade of the root"
       const hit = sim.tick(0, new Map([["p1", [m.path[0]![0] + 1, m.path[0]![1]] as Vec2]])).find((e) => e.t === "hit" && e.from === "p1");
       return hit && hit.t === "hit" ? hit.damage : 0;
     };
+    // The first monster is a moc one (a Sói Rừng): kim overcomes it. The plain attack goes by all the roots (rootsMultiplier):
+    // nothing in the set is countered by moc (that would be tho) for kim + moc, so the best root hits; with tho in the set
+    // the whole set counts as countered unless one root answers moc (its own element or kim), which gives a plain x1.
     const one = basic(["kim"]);
     expect(one).toBeGreaterThan(0);
-    for (const roots of [["kim", "moc"], ["kim", "moc", "thuy"], [...all]] as const) expect(basic(roots)).toBe(one);
+    expect(basic(["kim", "moc"])).toBe(one);
+    expect(basic(["kim", "moc", "thuy"])).toBe(one);
+    expect(basic([...all])).toBeLessThan(one);
     const sword = (roots: ProfileSeed["roots"]) => damageWith({ roots, granted: [...BASE_SKILLS, "ngu_kiem_tram"], weapon: "kiem" }, "ngu_kiem_tram");
     expect(sword([...all])).toBe(sword(["kim"]));
   });

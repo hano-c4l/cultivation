@@ -1,5 +1,5 @@
 import { BAG_CELLS_PER_TAB, BAG_COLS, MAX_BAG_TABS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type WearerCtx } from "@game/shared";
-import { describeItem, elementDot, itemTierTag } from "./equip-text";
+import { describeItem, elementDot, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
 import { wearerOfSheet } from "./wearer";
 import { registerWindow } from "./window-manager";
@@ -199,7 +199,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
         slot.title = itemName(item.type);
         slot.append(el("span", "bag-name", itemName(item.type)));
         const tag = itemTierTag(item.type, item.lv);
-        if (tag) slot.append(el("span", "bag-tag", tag));
+        if (tag) slot.append(el("span", `bag-tag ${realmClass(itemTierRealm(item.type, item.lv))}`, tag));
         const dot = elementDot(item.type);
         if (dot) {
           dot.classList.add("bag-elem");

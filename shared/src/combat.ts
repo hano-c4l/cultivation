@@ -1,6 +1,6 @@
 import { LOW_MAP_EXP_MULT } from "./progression-data";
 import { RANKS, homeExpCap, type MonsterRank } from "./monsters";
-import { elementMultiplier, monsterBaseExp, type Element } from "./progression";
+import { elementMultiplier, monsterBaseExp, rootsMultiplier, type Element } from "./progression";
 
 /** Server tick rate for combat (ms). */
 export const TICK_MS = 100;
@@ -21,6 +21,18 @@ export interface Combatant {
   critRate: number;
   dodgeRate: number;
   element: Element;
+  /**
+   * All the elements of a player, when there are several. A player's plain attack and every hit taken by a player go by the
+   * whole set (rootsMultiplier); a skill hits with the one element chosen for it, so it leaves this out.
+   */
+  roots?: readonly Element[];
+}
+
+/** The element table's factor for one hit, going by all of a player's elements where they matter. */
+export function elementFactor(attacker: Combatant, defender: Combatant): number {
+  if (attacker.roots && attacker.roots.length > 1 && !defender.roots) return rootsMultiplier(attacker.roots, defender.element, "attack");
+  if (defender.roots && defender.roots.length > 1 && !attacker.roots) return rootsMultiplier(defender.roots, attacker.element, "defend");
+  return elementMultiplier(attacker.element, defender.element);
 }
 
 export type HitKind = "miss" | "hit" | "crit";
@@ -40,7 +52,7 @@ export function computeDamage(attacker: Combatant, defender: Combatant, rand: ()
   const raw =
     attacker.attack *
     (100 / (100 + defender.defense)) *
-    elementMultiplier(attacker.element, defender.element) *
+    elementFactor(attacker, defender) *
     (0.9 + 0.2 * rand()) *
     (crit ? 1.5 : 1);
   return { kind: crit ? "crit" : "hit", damage: Math.max(1, Math.round(raw)) };

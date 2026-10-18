@@ -66,8 +66,17 @@
       #hotbar .hb-row { display: flex; gap: 3px; }
       #hotbar .hb-slot { position: relative; width: 44px; height: 44px; padding: 2px; box-sizing: border-box; border: 1px solid #3a4560; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #e8e4d8; cursor: pointer; overflow: hidden; }
       #hotbar .hb-slot.assigning { border-color: #ffd54a; box-shadow: 0 0 0 1px #ffd54a inset; } #hotbar .hb-slot.dim { opacity: 0.5; }
-      #hotbar .hb-elem { position: absolute; top: 2px; left: 12px; margin: 0; width: 9px; height: 9px; }
-      #hotbar .hb-key { position: absolute; top: 1px; left: 3px; font-size: 9px; color: #ffd54a; font-weight: 700; }
+      #hotbar .hb-elem { position: absolute; bottom: 2px; left: 2px; margin: 0; width: 9px; height: 9px; }
+      #hotbar .hb-key { position: absolute; top: 1px; right: 3px; font-size: 9px; color: #ffd54a; font-weight: 700; }
+      #hotbar .hb-tag, .hb-ghost .hb-tag { position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; line-height: 1; text-shadow: 0 0 2px #000; }
+      /* The background of a skill slot follows the grade of the skill: Hạ, Trung, Thượng, Địa, Thiên. */
+      #hotbar .hb-slot.hb-grade-0 { background: rgba(158, 158, 158, 0.28); } #hotbar .hb-slot.hb-grade-1 { background: rgba(76, 175, 80, 0.3); }
+      #hotbar .hb-slot.hb-grade-2 { background: rgba(66, 165, 245, 0.32); } #hotbar .hb-slot.hb-grade-3 { background: rgba(171, 71, 188, 0.34); }
+      #hotbar .hb-slot.hb-grade-4 { background: rgba(255, 179, 0, 0.36); }
+      .hb-ghost { position: fixed; z-index: 20; box-sizing: border-box; padding: 2px; border: 1px solid; border-radius: 6px; overflow: hidden; opacity: 0.9; pointer-events: none;
+        color: #e8e4d8; font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
+      .hb-ghost .hb-name { display: block; margin-top: 8px; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
+      .hb-ghost .hb-key, .hb-ghost .hb-cd, .hb-ghost .hb-count { display: none; }
       #hotbar .hb-name { display: block; margin-top: 8px; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
       #hotbar .hb-count { position: absolute; right: 3px; bottom: 1px; font-size: 10px; font-weight: 700; }
       #hotbar .hb-slot.cooling { background: rgba(0, 0, 0, 0.85); } #hotbar .hb-cd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, 0.45); }
@@ -131,6 +140,10 @@
       #bag-panel .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; line-height: 1; text-shadow: 0 0 2px #000; pointer-events: none; }
       #bag-panel .bag-mark.x { color: #ff5252; } #bag-panel .bag-mark.plus { color: #ffd54a; }
       #bag-panel .bag-actions button.active { background: #6fcf97; }
+      /* Realm tags (LK, TC1...) are coloured by realm everywhere: Luyện Khí green, Trúc Cơ blue, Kim Đan orange, Nguyên Anh purple. */
+      .realm-0 { --realm: #8bc34a; } .realm-1 { --realm: #4fc3f7; } .realm-2 { --realm: #ffb300; } .realm-3 { --realm: #e040fb; }
+      .bag-tag[class*="realm-"], .eq-tag[class*="realm-"], .eq-tier[class*="realm-"], .hb-tag[class*="realm-"], .cp-realm[class*="realm-"] { color: var(--realm) !important; }
+      .sk-tag[class*="realm-"] { background: var(--realm) !important; }
       /* The dragged copy of a cell lives outside the panel, so it carries its own styling. */
       .bag-ghost { position: fixed; z-index: 20; box-sizing: border-box; padding: 1px; border: 1px solid; border-radius: 6px; overflow: hidden; opacity: 0.9; pointer-events: none;
         color: #e8e4d8; font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
