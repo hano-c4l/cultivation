@@ -233,7 +233,7 @@ export function opStatements(db: D1Database, characterId: string, op: BagOp, now
 
 function classify(err: unknown): CommitResult {
   const msg = String(err);
-  if (msg.includes("item_grants")) return "duplicate";
+  if (msg.includes("item_grants") || msg.includes("character_skills")) return "duplicate";
   if (
     msg.includes("inv_guard") ||
     msg.includes("idx_items_cell") ||

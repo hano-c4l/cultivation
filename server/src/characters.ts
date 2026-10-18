@@ -24,6 +24,7 @@ export interface CharacterRow {
   constitution: string;
   constitution_tier: number;
   gender: Gender;
+  hotbar: string;
   stat_can_cot: number;
   stat_than_phap: number;
   stat_ngo_tinh: number;
@@ -33,7 +34,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 export function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
@@ -42,6 +43,17 @@ export function getCharacterByAccount(db: D1Database, accountId: string): Promis
 
 export function getCharacterById(db: D1Database, id: string): Promise<CharacterRow | null> {
   return db.prepare(`SELECT ${COLUMNS} FROM characters WHERE id = ?`).bind(id).first<CharacterRow>();
+}
+
+/** Skills learned from bí tịch (the basic ones are not stored). */
+export async function loadLearnedSkills(db: D1Database, characterId: string): Promise<string[]> {
+  const { results } = await db.prepare("SELECT skill_id FROM character_skills WHERE character_id = ?").bind(characterId).all<{ skill_id: string }>();
+  return results.map((r) => r.skill_id);
+}
+
+/** Writes the whole hotbar (one D1 row write); the room has already validated every slot. */
+export async function saveHotbar(db: D1Database, characterId: string, slots: readonly string[]): Promise<void> {
+  await db.prepare("UPDATE characters SET hotbar = ? WHERE id = ?").bind(JSON.stringify(slots), characterId).run();
 }
 
 /** Progression the room holds in memory; written together with the position when present. */

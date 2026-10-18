@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import {
   equipmentInfo,
   getItemDef,
+  getSkill,
   refineLevelOf,
   TILE_H,
   TILE_W,
@@ -31,6 +32,8 @@ import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
 import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
+import { initHotbar, type HotbarUi } from "./hotbar-ui";
+import { initSkills, type SkillsUi } from "./skills-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
@@ -125,6 +128,10 @@ export class GameScene extends Phaser.Scene {
   private chat!: ChatUi;
   private inventory!: InventoryUi;
   private equipment!: EquipmentUi;
+  private hotbar!: HotbarUi;
+  private skillsUi!: SkillsUi;
+  /** The skills last announced, to report a new one. */
+  private knownSkills: string[] | null = null;
   /** Level of the worn pháp bảo bản mệnh, to report level-ups. */
   private bondedLv: number | undefined;
   private charPanel!: CharacterPanel;
@@ -154,7 +161,14 @@ export class GameScene extends Phaser.Scene {
       this.chatNet.send(to ? { t: "chat", channel, text, to } : { t: "chat", channel, text });
     }, this.registry.get("isAdmin") === true);
     this.vitals = initVitals();
-    this.inventory = initInventory((msg) => this.net.send(msg));
+    this.hotbar = initHotbar({
+      send: (msg) => this.net.send(msg),
+      getTarget: () => this.targetId,
+      getMp: () => this.vitals.getMp(),
+      countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
+    });
+    this.skillsUi = initSkills((value, label) => this.hotbar.beginAssign(value, label));
+    this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
     this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
 
@@ -339,6 +353,7 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
         this.inventory.setSheet(msg.character);
+        this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
         this.vitals.set(msg.hp, msg.maxHp);
         this.vitals.setWallet(msg.wallet);
@@ -349,6 +364,11 @@ export class GameScene extends Phaser.Scene {
         this.inventory.setEquipped(msg.equipped);
         this.charPanel.setEquipped(msg.equipped);
         this.inventory.setMail(msg.mail);
+        this.knownSkills = msg.skills;
+        this.skillsUi.setSkills(msg.skills);
+        this.hotbar.setSkills(msg.skills);
+        this.hotbar.setSlots(msg.hotbar);
+        this.vitals.setMp(msg.mp, msg.maxMp, 0, 0.02);
         this.refreshHud();
         break;
       case "mon":
@@ -375,6 +395,7 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
         this.inventory.setSheet(msg.character);
+        this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
         const c = msg.character;
         if (before && (c.realm > before.realm || (c.realm === before.realm && c.stage > before.stage))) {
@@ -412,6 +433,7 @@ export class GameScene extends Phaser.Scene {
         if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items });
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
         this.equipment.refresh();
+        this.hotbar.refresh();
         break;
       case "eq": {
         // The pháp bảo bản mệnh reaching a new training level is worth a line.
@@ -426,6 +448,31 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.setEquipped(msg.items);
         break;
       }
+      case "skills": {
+        // A new skill (a stage-up unlocked it, or a book taught it) is worth a line.
+        if (this.knownSkills) {
+          for (const id of msg.ids.filter((s) => !this.knownSkills!.includes(s))) this.chat.system((getSkill(id)?.unlock ? vi.skills.unlocked : vi.skills.learned)(getSkill(id)?.nameVi ?? id), "important");
+        }
+        this.knownSkills = msg.ids;
+        this.skillsUi.setSkills(msg.ids);
+        this.hotbar.setSkills(msg.ids);
+        break;
+      }
+      case "hotbar":
+        this.hotbar.setSlots(msg.slots);
+        break;
+      case "mp":
+        this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, msg.perSec);
+        break;
+      case "cast_ok":
+        this.hotbar.setCooldown(msg.skill, msg.cdMs);
+        break;
+      case "cast_error":
+        this.chat.system(vi.skills.errors[msg.reason] ?? vi.skills.errors.unknown!, "error");
+        break;
+      case "buff":
+        this.chat.system(vi.skills.buffOn(getSkill(msg.skill)?.nameVi ?? msg.skill, Math.round(msg.ms / 1000)));
+        break;
       case "eq_removed":
         for (const it of msg.items) {
           const name = getItemDef(it.type)?.nameVi ?? it.type;

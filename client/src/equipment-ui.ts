@@ -45,7 +45,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   panel.id = "eq-panel";
   panel.hidden = true;
   document.body.append(toggle, panel);
-  registerWindow("equipment", panel, 1);
+  registerWindow("equipment", panel, 2);
 
   let sheet: CharacterSheet | null = null;
   let worn: EquippedItem[] = [];
