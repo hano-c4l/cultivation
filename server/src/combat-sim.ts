@@ -70,9 +70,9 @@ export interface ProfileSeed {
   name: string;
   /** Spendable potential points as last known (D1 value plus unflushed stage-up points). */
   potentialPoints: number;
-  /** The main element (defence uses it). */
+  /** The main element (the one a skill without an element, and the grade bonus, go by). */
   element: Element;
-  /** All the elements, main one first; absent: just `element`. More elements give more skills, never more damage. */
+  /** All the elements, main one first; absent: just `element`. More elements give more skills, and the plain attack and the hits it takes go by all of them (elementOutcome). */
   roots?: readonly Element[];
   base: BaseStats;
   rootGrade: number;
@@ -889,10 +889,9 @@ export class CombatSim {
 
   private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): number {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
-    // A skill hits as the caster's own stats scaled by its power, in its own element; one without an element (and the basic
-    // attack) uses the caster's MAIN element, so having more elements never hits harder (breadth is only in which skills
-    // the player may choose). An attack in one of the caster's own elements gets the damage share of the root's grade
-    // (phẩm cấp); the number of elements does not change damage.
+    // A skill hits as the caster's own stats scaled by its power, in its own element; one without an element uses the caster's
+    // MAIN element. The plain attack goes by ALL the caster's elements against the target's (elementOutcome: every pair scores +1, -1 or 0 and the sum decides); a skill has one element, so only its pairs count.
+    // An attack in one of the caster's own elements gets the damage share of the root's grade (phẩm cấp).
     // The constitution's "skill damage" effects (percent) add to a matching skill: all skills, its element, the wielded weapon family or the skill itself.
     const roots = p.roots ?? [p.element];
     const element = skill ? (skillElement ?? skill.element ?? p.element) : p.element;

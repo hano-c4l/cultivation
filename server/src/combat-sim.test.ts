@@ -734,7 +734,7 @@ describe("several elements (đơn ... ngũ linh căn) and the grade of the root"
     for (const roots of [["kim", "moc"], ["kim", "moc", "thuy"], [...all]] as const) expect(damageWith({ roots }, "chuong_0")).toBe(one);
   });
 
-  it("... and neither does the basic attack or a skill without an element: they use the main element, however many there are", () => {
+  it("... a skill without an element uses the main element however many there are; the plain attack goes by every element (elementOutcome)", () => {
     const basic = (roots: ProfileSeed["roots"]) => {
       const sim = forestSim();
       const m = sim.snapshots(0)[0]!;
@@ -743,14 +743,14 @@ describe("several elements (đơn ... ngũ linh căn) and the grade of the root"
       const hit = sim.tick(0, new Map([["p1", [m.path[0]![0] + 1, m.path[0]![1]] as Vec2]])).find((e) => e.t === "hit" && e.from === "p1");
       return hit && hit.t === "hit" ? hit.damage : 0;
     };
-    // The first monster is a moc one (a Sói Rừng): kim overcomes it. The plain attack goes by all the roots (rootsMultiplier):
-    // nothing in the set is countered by moc (that would be tho) for kim + moc, so the best root hits; with tho in the set
-    // the whole set counts as countered unless one root answers moc (its own element or kim), which gives a plain x1.
+    // The first monster is a moc one (a Sói Rừng). The plain attack sums every root against it (elementOutcome): kim overcomes moc
+    // (+1); moc and thuy score 0 against moc, so kim + moc and kim + moc + thuy stay at +1 (x1.2).
     const one = basic(["kim"]);
     expect(one).toBeGreaterThan(0);
     expect(basic(["kim", "moc"])).toBe(one);
     expect(basic(["kim", "moc", "thuy"])).toBe(one);
-    expect(basic([...all])).toBeLessThan(one);
+    // tho is overcome by moc (-1): it hits for 20% less than thuy (0).
+    expect(basic(["tho"])).toBeLessThan(basic(["thuy"]));
     const sword = (roots: ProfileSeed["roots"]) => damageWith({ roots, granted: [...BASE_SKILLS, "ngu_kiem_tram"], weapon: "kiem" }, "ngu_kiem_tram");
     expect(sword([...all])).toBe(sword(["kim"]));
   });

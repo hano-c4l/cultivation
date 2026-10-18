@@ -11,7 +11,7 @@ import {
   applyExp,
   deriveStats,
   elementMultiplier,
-  rootsMultiplier,
+  elementOutcome,
   expCap,
   expToNext,
   getRootGrade,
@@ -147,25 +147,26 @@ describe("parseAllocation", () => {
 
 describe("elementMultiplier", () => {
   it("overcoming is stronger and being overcome is weaker", () => {
-    expect(elementMultiplier("kim", "moc")).toBe(1.15);
-    expect(elementMultiplier("moc", "kim")).toBe(0.85);
-    expect(elementMultiplier("hoa", "kim")).toBe(1.15);
-    expect(elementMultiplier("thuy", "hoa")).toBe(1.15);
-    // The user's example: moc hits tho for 15% more, tho hits moc for 15% less.
-    expect(elementMultiplier("moc", "tho")).toBe(1.15);
-    expect(elementMultiplier("tho", "moc")).toBe(0.85);
+    expect(elementMultiplier("kim", "moc")).toBe(1.2);
+    expect(elementMultiplier("moc", "kim")).toBe(0.8);
+    expect(elementMultiplier("hoa", "kim")).toBe(1.2);
+    expect(elementMultiplier("thuy", "hoa")).toBe(1.2);
+    // moc hits tho for 20% more, tho hits moc for 20% less: the two sides match.
+    expect(elementMultiplier("moc", "tho")).toBe(1.2);
+    expect(elementMultiplier("tho", "moc")).toBe(0.8);
   });
 
   it("every element overcomes exactly one and is overcome by exactly one", () => {
     for (const a of SPIRITUAL_ROOTS) {
-      expect(SPIRITUAL_ROOTS.filter((d) => elementMultiplier(a, d) === 1.15)).toHaveLength(1);
-      expect(SPIRITUAL_ROOTS.filter((d) => elementMultiplier(a, d) === 0.85)).toHaveLength(1);
+      expect(SPIRITUAL_ROOTS.filter((d) => elementMultiplier(a, d) === 1.2)).toHaveLength(1);
+      expect(SPIRITUAL_ROOTS.filter((d) => elementMultiplier(a, d) === 0.8)).toHaveLength(1);
     }
   });
 
-  it("same element is neutral and generating gives a small bonus", () => {
+  it("same element and elements that neither overcome nor are overcome are neutral (no generation bonus)", () => {
     expect(elementMultiplier("kim", "kim")).toBe(1);
-    expect(elementMultiplier("kim", "thuy")).toBe(1.05);
+    expect(elementMultiplier("kim", "thuy")).toBe(1);
+    expect(elementMultiplier("kim", "tho")).toBe(1);
   });
 });
 
@@ -386,32 +387,30 @@ describe("spiritual root count (đơn, song, tam, tứ, ngũ linh căn)", () => 
   });
 });
 
-describe("rootsMultiplier (several elements against one opponent element)", () => {
-  // The monster is moc; moc overcomes tho, kim overcomes moc.
-  it("a countered set is rescued by the opponent's own element or by an element that overcomes it", () => {
-    expect(rootsMultiplier(["tho", "moc"], "moc", "defend")).toBe(1);
-    expect(rootsMultiplier(["tho", "kim"], "moc", "defend")).toBe(1);
-    expect(rootsMultiplier(["tho", "moc"], "moc", "attack")).toBe(1);
-    expect(rootsMultiplier(["tho", "kim"], "moc", "attack")).toBe(1);
+describe("elementOutcome (every attacker element against every target element, summed)", () => {
+  it("scores +1 for overcoming, -1 for being overcome and 0 otherwise, then takes the sign", () => {
+    expect(elementOutcome(["kim"], ["moc"])).toBe(1.2);
+    expect(elementOutcome(["moc"], ["kim"])).toBe(0.8);
+    expect(elementOutcome(["kim"], ["kim"])).toBe(1);
+    expect(elementOutcome(["kim"], ["thuy"])).toBe(1);
+    expect(elementOutcome([], ["moc"])).toBe(1);
+    expect(elementOutcome(["moc"], [])).toBe(1);
   });
 
-  it("a countered set nothing answers is countered: x1.15 against it when defending, x0.85 when attacking", () => {
-    expect(rootsMultiplier(["tho", "hoa"], "moc", "defend")).toBe(1.15);
-    expect(rootsMultiplier(["tho", "hoa"], "moc", "attack")).toBe(0.85);
-    expect(rootsMultiplier(["tho"], "moc", "defend")).toBe(1.15);
-    expect(rootsMultiplier(["tho"], "moc", "attack")).toBe(0.85);
+  it("the user's example: A kim moc thuy against B kim hoa is -1 -1 +1 = -1, so x0.8", () => {
+    expect(elementOutcome(["kim", "moc", "thuy"], ["kim", "hoa"])).toBe(0.8);
   });
 
-  it("with nothing countered the best root decides, and one root is the plain table", () => {
-    for (const a of SPIRITUAL_ROOTS) {
-      for (const d of SPIRITUAL_ROOTS) {
-        if (a === d) continue;
-        expect(rootsMultiplier([a], d, "attack")).toBe(elementMultiplier(a, d));
-        expect(rootsMultiplier([a], d, "defend")).toBe(elementMultiplier(d, a));
-      }
-    }
-    // kim + thuy against a moc monster: nothing is countered (moc overcomes tho); kim hits it for 15% more, and being hit the best root takes 15% less.
-    expect(rootsMultiplier(["thuy", "kim"], "moc", "attack")).toBe(1.15);
-    expect(rootsMultiplier(["thuy", "kim"], "moc", "defend")).toBe(0.85);
+  it("the user's skill example: hoa against a moc + kim target is 0 + 1, so x1.2", () => {
+    expect(elementOutcome(["hoa"], ["moc", "kim"])).toBe(1.2);
+  });
+
+  it("an element that overcomes and one that is overcome cancel out", () => {
+    expect(elementOutcome(["kim"], ["moc", "hoa"])).toBe(1); // +1 (moc), -1 (hoa)
+    expect(elementOutcome(["kim", "hoa"], ["moc", "thuy"])).toBe(1); // kim +1 (moc); hoa -1 (thuy)
+  });
+
+  it("a single pair is the plain table (one element each)", () => {
+    for (const a of SPIRITUAL_ROOTS) for (const d of SPIRITUAL_ROOTS) expect(elementOutcome([a], [d])).toBe(elementMultiplier(a, d));
   });
 });

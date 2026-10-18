@@ -3,6 +3,11 @@ import { api } from "./api";
 import { hideAuth, showAuth, showCharacterCreate } from "./auth-ui";
 import { vi } from "./locales/vi";
 import { GameScene } from "./scene";
+import { applyTheme } from "./theme";
+import { DEFAULT_THEME } from "@game/shared";
+
+// Colours come from data (a stored theme can replace this later), not from the stylesheet.
+applyTheme(DEFAULT_THEME);
 
 // `?renderer=canvas` forces the Canvas renderer for devices with broken or weak WebGL.
 const forceCanvas = new URLSearchParams(location.search).get("renderer") === "canvas";

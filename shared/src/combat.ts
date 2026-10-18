@@ -1,6 +1,6 @@
 import { LOW_MAP_EXP_MULT } from "./progression-data";
 import { RANKS, homeExpCap, type MonsterRank } from "./monsters";
-import { elementMultiplier, monsterBaseExp, rootsMultiplier, type Element } from "./progression";
+import { elementOutcome, monsterBaseExp, type Element } from "./progression";
 
 /** Server tick rate for combat (ms). */
 export const TICK_MS = 100;
@@ -22,17 +22,15 @@ export interface Combatant {
   dodgeRate: number;
   element: Element;
   /**
-   * All the elements of a player, when there are several. A player's plain attack and every hit taken by a player go by the
-   * whole set (rootsMultiplier); a skill hits with the one element chosen for it, so it leaves this out.
+   * All the elements of a player. As the target, every one of them counts; as the attacker, a plain attack goes by all of them
+   * while a skill hits with the one element chosen for it, so it leaves this out (see elementOutcome).
    */
   roots?: readonly Element[];
 }
 
-/** The element table's factor for one hit, going by all of a player's elements where they matter. */
+/** The element table's factor for one hit, from the attacker's side: its elements (or the skill's one) against all of the target's. */
 export function elementFactor(attacker: Combatant, defender: Combatant): number {
-  if (attacker.roots && attacker.roots.length > 1 && !defender.roots) return rootsMultiplier(attacker.roots, defender.element, "attack");
-  if (defender.roots && defender.roots.length > 1 && !attacker.roots) return rootsMultiplier(defender.roots, attacker.element, "defend");
-  return elementMultiplier(attacker.element, defender.element);
+  return elementOutcome(attacker.roots ?? [attacker.element], defender.roots ?? [defender.element]);
 }
 
 export type HitKind = "miss" | "hit" | "crit";

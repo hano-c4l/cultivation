@@ -4,7 +4,6 @@ import type { Gender } from "./gender";
 import { BASE_SPEED } from "./pathfinding";
 import {
   BASE_STAT_START,
-  ELEMENT_GENERATE_MULT,
   KILLS_BASE,
   KILLS_GROWTH,
   ELEMENT_OVERCOME_BY_MULT,
@@ -246,32 +245,30 @@ export type Element = SpiritualRoot;
 
 /** Each element overcomes (tương khắc) the next one in this cycle: kim > mộc > thổ > thủy > hỏa > kim. */
 const OVERCOMES: Record<Element, Element> = { kim: "moc", moc: "tho", tho: "thuy", thuy: "hoa", hoa: "kim" };
-/** Generating cycle (tương sinh): kim > thủy > mộc > hỏa > thổ > kim. */
-const GENERATES: Record<Element, Element> = { kim: "thuy", thuy: "moc", moc: "hoa", hoa: "tho", tho: "kim" };
 
 /**
- * Damage multiplier for a holder of several elements (`roots`) against one `opponent` element, either as the one hitting
- * (`attack`) or the one being hit (`defend`). Being countered means the opponent's element overcomes one of the roots; it only
- * counts when no root can answer it: a root of the opponent's own element or one that overcomes it makes the whole set count as
- * not countered (a plain x1). With nothing countered the best root for the holder decides (the highest multiplier when hitting,
- * the lowest when being hit). One root gives exactly elementMultiplier.
+ * Damage multiplier of one attack, judged from the attacker's side only (the one hit simply takes what the attacker deals).
+ * Every element of the attacker is compared with every element of the target: +1 when the attacker's element overcomes the
+ * target's (khắc), -1 when the target's overcomes it (bị khắc), 0 otherwise (the same element, or no relation). The scores are
+ * added up: a positive total is x1.2, a negative one x0.8, zero x1. Nothing else matters (a spare element or an element in common
+ * does not cancel anything by itself; it only adds its own zeros and scores).
+ * Example: A kim + mộc + thủy against B kim + hỏa: kim is 0 against kim and -1 against hỏa, mộc is -1 against kim and 0 against
+ * hỏa, thủy is 0 against kim and +1 against hỏa; -1 -1 +1 = -1, so x0.8. A skill has one element, a plain attack uses them all.
  */
-export function rootsMultiplier(roots: readonly Element[], opponent: Element, role: "attack" | "defend"): number {
-  if (roots.length === 0) return 1;
-  const countered = roots.some((r) => OVERCOMES[opponent] === r);
-  if (countered) {
-    const rescued = roots.some((r) => r === opponent || OVERCOMES[r] === opponent);
-    if (rescued) return 1;
-    return role === "attack" ? ELEMENT_OVERCOME_BY_MULT : ELEMENT_OVERCOME_MULT;
+export function elementOutcome(attacker: readonly Element[], target: readonly Element[]): number {
+  let score = 0;
+  for (const a of attacker) {
+    for (const t of target) {
+      if (OVERCOMES[a] === t) score += 1;
+      else if (OVERCOMES[t] === a) score -= 1;
+    }
   }
-  const values = roots.map((r) => (role === "attack" ? elementMultiplier(r, opponent) : elementMultiplier(opponent, r)));
-  return role === "attack" ? Math.max(...values) : Math.min(...values);
+  if (score > 0) return ELEMENT_OVERCOME_MULT;
+  if (score < 0) return ELEMENT_OVERCOME_BY_MULT;
+  return 1;
 }
 
-/** Damage multiplier of an attack by `attacker` element against a `defender` element. */
+/** Damage multiplier of an attack by one `attacker` element against one `defender` element. */
 export function elementMultiplier(attacker: Element, defender: Element): number {
-  if (OVERCOMES[attacker] === defender) return ELEMENT_OVERCOME_MULT;
-  if (OVERCOMES[defender] === attacker) return ELEMENT_OVERCOME_BY_MULT;
-  if (GENERATES[attacker] === defender) return ELEMENT_GENERATE_MULT;
-  return 1;
+  return elementOutcome([attacker], [defender]);
 }
