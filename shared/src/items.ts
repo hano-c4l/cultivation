@@ -1,5 +1,7 @@
+import { BREAKTHROUGHS } from "./breakthrough";
 import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
+import { REALMS } from "./progression-data";
 import { BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId } from "./skills";
 
 /**
@@ -34,6 +36,8 @@ export interface ItemDef {
   masteryPills?: number;
   /** Skill books (bí tịch): the skill the book teaches when used. */
   teaches?: string;
+  /** Breakthrough pills: the realm the pill leads to. Used from the breakthrough panel, not from the bag. */
+  breakthroughTo?: number;
 }
 
 /** One bí tịch per book skill, made from the skill list so a new book skill needs no item entry. */
@@ -44,8 +48,29 @@ const BOOKS: Record<string, ItemDef> = Object.fromEntries(
   ]),
 );
 
+/** One breakthrough pill per realm step, made from the breakthrough table. Higher realms are rarer and better (grade 1..4). */
+const BREAKTHROUGH_PILLS: Record<string, ItemDef> = Object.fromEntries(
+  BREAKTHROUGHS.map((b) => {
+    const realm = REALMS[b.to]?.nameVi ?? "";
+    return [
+      b.pill,
+      {
+        id: b.pill,
+        nameVi: `Đan Đột Phá ${realm}`,
+        descVi: `Cần để đột phá lên cảnh giới ${realm} (tối đa ${b.maxPills} viên mỗi lần, càng nhiều càng dễ thành công). Dùng từ bảng Nhân vật.`,
+        category: "consumable",
+        maxStack: 99,
+        rarity: "epic",
+        grade: Math.min(MAX_ITEM_GRADE, b.to + 1),
+        breakthroughTo: b.to,
+      } satisfies ItemDef,
+    ];
+  }),
+);
+
 export const ITEMS: Readonly<Record<string, ItemDef>> = {
   ...BOOKS,
+  ...BREAKTHROUGH_PILLS,
   hoi_huyet_dan: {
     id: "hoi_huyet_dan",
     nameVi: "Hồi Huyết Đan",

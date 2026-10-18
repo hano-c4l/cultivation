@@ -14,6 +14,7 @@ import {
   levelIndex,
   rollEquipmentDrop,
   rollBookDrop,
+  rollPillDrop,
   MP_REGEN_DELAY_MS,
   modifierTotal,
   restoreVitals,
@@ -502,6 +503,29 @@ export class CombatSim {
     this.recompute(p, false);
   }
 
+  /**
+   * A breakthrough succeeded: the character is at stage 1 of the next realm with no EXP, and the points are already in D1 (so they
+   * are spendable but not pending). Stats follow the new realm and HP/MP refill, like after a stage-up.
+   */
+  applyBreakthrough(id: string, realm: number, points: number): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.realm = realm;
+    p.stage = 1;
+    p.exp = 0;
+    p.expDirty = false;
+    p.potentialPoints += points;
+    this.recompute(p, true);
+  }
+
+  /** A breakthrough failed: `lost` EXP comes off the working copy (and is written absolutely with the next save). */
+  applyBreakthroughLoss(id: string, lost: number): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.exp = Math.max(0, p.exp - lost);
+    p.expDirty = true;
+  }
+
   /** What the skill does for this character right now (realm, grade and mastery level included). */
   effectiveOf(p: PlayerProfile, def: SkillDef): EffectiveSkill {
     return effectiveSkill(def, skillContextOf(p, def));
@@ -893,6 +917,8 @@ export class CombatSim {
     if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
     const book = rollBookDrop(m.rank, this.rand); // two more rolls, after everything else
     if (book) loot.push({ item: book, qty: 1 });
+    const pill = rollPillDrop(this.realm, m.rank, this.rand); // one more roll, after everything else
+    if (pill) loot.push({ item: pill, qty: 1 });
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
@@ -938,10 +964,10 @@ export class CombatSim {
    * leave or portal cannot send it a second time) and must be settled with `endFlush`. Returns null when nothing
    * is waiting. EXP is absolute, so writing it twice would be harmless, but it is reserved the same way.
    */
-  beginFlush(id: string): { stage: number; exp: number; addPoints: number } | null {
+  beginFlush(id: string): { realm: number; stage: number; exp: number; addPoints: number } | null {
     const p = this.players.get(id);
     if (!p || (!p.expDirty && p.pendingPoints === 0)) return null;
-    const write = { stage: p.stage, exp: p.exp, addPoints: p.pendingPoints };
+    const write = { realm: p.realm, stage: p.stage, exp: p.exp, addPoints: p.pendingPoints };
     p.inflightPoints += write.addPoints;
     p.pendingPoints = 0;
     p.expDirty = false;

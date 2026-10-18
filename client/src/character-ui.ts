@@ -1,6 +1,12 @@
 import {
   REALMS,
   STAGES_PER_REALM,
+  breakthroughRate,
+  checkBreakthroughReady,
+  getBreakthrough,
+  getItemDef,
+  hasOverflowBonus,
+  overflowExp,
   STAT_DEFS,
   clampConstitutionTier,
   constitutionTierName,
@@ -29,6 +35,22 @@ export interface CharacterPanel {
   setSkills(ids: readonly string[], states: Readonly<Record<string, { lv: number }>>): void;
   /** The worn gear, whose stats are part of the derived stats shown. */
   setEquipped(items: EquippedItem[]): void;
+  /** The bag changed (the breakthrough pills on offer are counted from it). */
+  refresh(): void;
+  /** A breakthrough started: `ms` from now until it ends. */
+  breakthroughStarted(ms: number, ratePct: number): void;
+  /** The breakthrough ended (any way). */
+  breakthroughEnded(): void;
+  /** A breakthrough is running, so the player must stand still. */
+  isBreaking(): boolean;
+}
+
+export interface CharacterPanelDeps {
+  sendAllocate: (points: Partial<BaseStats>) => void;
+  startBreakthrough: (pills: number) => void;
+  cancelBreakthrough: () => void;
+  /** How many of an item type the bag holds. */
+  countOf: (type: string) => number;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -42,7 +64,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
  * Character sheet overlay (button or the C key). Points are collected locally and sent as one `allocate`
  * message on confirm, so every confirmation is a single server write. The server answers with `stats`.
  */
-export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) => void): CharacterPanel {
+export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
+  const sendAllocate = deps.sendAllocate;
   const toggle = el("button", undefined, vi.character.button);
   toggle.id = "char-btn";
   toggle.hidden = true;
@@ -57,6 +80,10 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
   let worn: EquippedItem[] = [];
   let skillIds: readonly string[] = [];
   let skillStates: Readonly<Record<string, { lv: number }>> = {};
+  /** The running breakthrough (client clock), and how many pills the player has chosen to use. */
+  let running: { endsAt: number; startedAt: number; ratePct: number } | null = null;
+  let chosenPills = 1;
+  let tick: number | null = null;
 
   const pendingTotal = () => Object.values(pending).reduce((a, b) => a + (b ?? 0), 0);
 
@@ -91,7 +118,9 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
     const fill = el("div", "cp-fill");
     fill.style.width = `${Math.min(100, (s.exp / need) * 100)}%`;
     bar.append(fill);
-    const expLine = el("div", "cp-exp", atCap && s.realm < REALMS.length - 1 ? vi.character.atStageCap(s.exp, need) : `${vi.character.exp}: ${s.exp} / ${need}`);
+    const over = overflowExp(s.realm, s.stage, s.exp);
+    const overText = over > 0 ? ` · ${vi.breakthrough.overflow(Math.round((over / need) * 100))}${hasOverflowBonus(s.realm, s.stage, s.exp) ? ` (${vi.breakthrough.overflowBonus})` : ""}` : "";
+    const expLine = el("div", "cp-exp", (atCap && s.realm < REALMS.length - 1 ? vi.character.atStageCap(Math.min(s.exp, need), need) : `${vi.character.exp}: ${s.exp} / ${need}`) + overText);
 
     const points = el("div", "cp-points", `${vi.character.points}: ${left}`);
 
@@ -156,7 +185,70 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
       derived.append(row);
     }
 
-    panel.append(head, genderLine, constitutionLine, realmLine, bar, expLine, points, stats, confirm, derived);
+    panel.append(head, genderLine, constitutionLine, realmLine, bar, expLine, breakthroughBox(s), points, stats, confirm, derived);
+  }
+
+  /** The breakthrough section: shown from stage 9 (or while one runs); a countdown while it goes. */
+  function breakthroughBox(s: CharacterSheet): HTMLElement {
+    const box = el("div", "cp-bt");
+    if (!running && s.stage < STAGES_PER_REALM) return box;
+    const def = getBreakthrough(s.realm);
+    box.append(el("b", undefined, vi.breakthrough.title));
+    if (running) {
+      const info = el("div", "cp-bt-line");
+      const left = Math.max(0, Math.ceil((running.endsAt - Date.now()) / 1000));
+      info.textContent = vi.breakthrough.running(left, running.ratePct);
+      info.dataset.bt = "left";
+      const cancel = el("button", "cp-confirm", vi.breakthrough.cancel);
+      cancel.onclick = () => deps.cancelBreakthrough();
+      box.append(info, cancel);
+      return box;
+    }
+    if (!def) {
+      box.append(el("div", "cp-bt-line", vi.breakthrough.top));
+      return box;
+    }
+    const ready = checkBreakthroughReady(s.realm, s.stage, s.exp);
+    const pillName = getItemDef(def.pill)?.nameVi ?? def.pill;
+    const have = deps.countOf(def.pill);
+    chosenPills = Math.min(Math.max(chosenPills, 1), def.maxPills);
+    const overflow = ready.ok ? ready.overflow : false;
+    if (!ready.ok) box.append(el("div", "cp-bt-line", vi.breakthrough.needFull));
+    box.append(el("div", "cp-bt-line", vi.breakthrough.pills(pillName, have)));
+    const row = el("div", "cp-row");
+    const minus = el("button", undefined, "−");
+    minus.disabled = chosenPills <= 1;
+    minus.onclick = () => {
+      chosenPills -= 1;
+      render();
+    };
+    const plus = el("button", undefined, "+");
+    plus.disabled = chosenPills >= def.maxPills;
+    plus.onclick = () => {
+      chosenPills += 1;
+      render();
+    };
+    row.append(el("span", "cp-name", vi.breakthrough.use), minus, el("span", "cp-val", String(chosenPills)), plus);
+    box.append(
+      row,
+      el("div", "cp-bt-line", vi.breakthrough.rate(breakthroughRate(def, chosenPills, overflow))),
+      el("div", "cp-bt-line", vi.breakthrough.cost(def.cost)),
+      el("div", "cp-bt-line", vi.breakthrough.time(Math.round(def.durationMs / 1000))),
+      el("div", "cp-bt-warn", vi.breakthrough.warn),
+    );
+    const start = el("button", "cp-confirm", vi.breakthrough.start);
+    start.disabled = !ready.ok || have < chosenPills;
+    start.onclick = () => {
+      start.disabled = true;
+      deps.startBreakthrough(chosenPills);
+    };
+    box.append(start);
+    return box;
+  }
+
+  function stopTick(): void {
+    if (tick !== null) window.clearInterval(tick);
+    tick = null;
   }
 
   toggle.onclick = () => {
@@ -178,6 +270,36 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
     setEquipped(items) {
       worn = items;
       render();
+    },
+    refresh() {
+      if (!running) render();
+    },
+    breakthroughStarted(ms, ratePct) {
+      const now = Date.now();
+      running = { startedAt: now, endsAt: now + ms, ratePct };
+      stopTick();
+      // Only the countdown line changes each second; the rest of the panel keeps its state.
+      tick = window.setInterval(() => {
+        // The server always ends a breakthrough, but its message can be lost (a reconnect, a death in the same tick): never stay stuck.
+        if (running && Date.now() > running.endsAt + 8000) {
+          running = null;
+          stopTick();
+          render();
+          return;
+        }
+        const line = panel.querySelector<HTMLElement>('[data-bt="left"]');
+        if (!running || !line) return;
+        line.textContent = vi.breakthrough.running(Math.max(0, Math.ceil((running.endsAt - Date.now()) / 1000)), running.ratePct);
+      }, 500);
+      render();
+    },
+    breakthroughEnded() {
+      running = null;
+      stopTick();
+      render();
+    },
+    isBreaking() {
+      return running !== null;
     },
     update(next) {
       // A kill also sends a sheet; keep the player's unconfirmed clicks unless the stats changed (an allocate
