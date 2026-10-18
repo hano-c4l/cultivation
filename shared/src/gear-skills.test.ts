@@ -80,4 +80,13 @@ describe("skills granted by worn pháp bảo", () => {
     expect(parseClientMessage(JSON.stringify({ t: "cast", skill: "pt_thuan_di", x: "a", y: 1 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: "cast", skill: "pt_thuan_di", x: 99999, y: 1 }))).toBeNull();
   });
+  it("the bonded artifact grows with its trained level: its skills follow the refine level, not the level it was made at", () => {
+    const made = gearSkillInfo([{ slot: "bonded", type: bonded("kim"), dur: 100 }]).find((g) => g.id === "bm_ho_the")!;
+    const trained = gearSkillInfo([{ slot: "bonded", type: bonded("kim"), dur: 100, lv: 10 }]).find((g) => g.id === "bm_ho_the")!;
+    expect(made.realm).toBe(0);
+    expect(trained).toMatchObject({ realm: 1, tier: 2 });
+    // A level below the one it was made at never lowers it.
+    const floor = gearSkillInfo([{ slot: "bonded", type: bonded("kim"), dur: 100, lv: 0 }]).find((g) => g.id === "bm_ho_the")!;
+    expect(floor.realm).toBeGreaterThanOrEqual(made.realm);
+  });
 });

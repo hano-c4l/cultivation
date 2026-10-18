@@ -7,6 +7,12 @@ import {
   getSkill,
   type SkillDef,
   type SkillContext,
+  skillContextFor,
+  PATHS,
+  pathLevel,
+  pathLevelName,
+  type PathId,
+  type SpiritualRoot,
   type SkillStateView,
   type EquippedItem,
   effectiveSkill,
@@ -52,6 +58,8 @@ import { Net } from "./net";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
 
+/** The element icon in front of a monster's name: the same colours as the element dots on gear and skills (index.html .elem-*). */
+const ELEMENT_DOT: Record<string, number> = { kim: 0xfbc02d, moc: 0x43a047, thuy: 0x1e88e5, hoa: 0xe53935, tho: 0x8d6e63 };
 const ELEMENT_COLOR: Record<string, number> = { kim: 0xe0e0e0, moc: 0x4caf50, thuy: 0x2196f3, hoa: 0xff5722, tho: 0x9c7a5b };
 /** A click within this many screen pixels of a monster (around its body) targets it instead of walking. */
 const MONSTER_PICK_PX = 34;
@@ -85,6 +93,8 @@ interface MonsterActor {
   id: string;
   tier: number;
   rank: MonsterRank;
+  /** The element rolled when it (re)spawned: it shows in the name and in the colour of the body. */
+  element: SpiritualRoot;
   path: Vec2[];
   startedAt: number;
   speed: number;
@@ -92,6 +102,8 @@ interface MonsterActor {
   maxHp: number;
   body: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
+  /** The element icon drawn just before the name. */
+  icon: Phaser.GameObjects.Arc;
   bar: Phaser.GameObjects.Graphics;
   /** Last label colour applied; Text.setColor redraws the text texture, so it is only called on a change. */
   color: string;
@@ -178,11 +190,16 @@ export class GameScene extends Phaser.Scene {
     }, this.registry.get("isAdmin") === true);
     this.vitals = initVitals();
     this.hotbar = initHotbar({
-      send: (msg) => this.net.send(msg),
+      // A skill is an action: during a breakthrough it would end it (hotbar potions are fine).
+      send: (msg) => {
+        if (msg.t === "cast" && this.guardBreakthrough()) return;
+        this.net.send(msg);
+      },
       aim: (skill) => this.beginAim(skill),
       mpCostOf: (skill) => effectiveSkill(skill, this.skillContext(skill)).mpCost,
       getTarget: () => this.targetId,
       getMp: () => this.vitals.getMp(),
+      contextOf: (skill) => this.skillContext(skill),
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
     this.buffs = initBuffs();
@@ -193,7 +210,16 @@ export class GameScene extends Phaser.Scene {
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
-    this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
+    this.charPanel = initCharacterPanel({
+      sendAllocate: (points) => this.net.send({ t: "allocate", points }),
+      startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
+      cancelBreakthrough: () => this.net.send({ t: "bt_cancel" }),
+      choosePath: (path) => this.net.send({ t: "path_choose", path }),
+      swapPath: (path) => this.net.send({ t: "path_swap", path }),
+      dropPath: (path) => this.net.send({ t: "path_drop", path }),
+      claimPath: (path) => this.net.send({ t: "path_claim", path }),
+      countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
+    });
 
     const camera = this.cameras.main;
     const center = toScreen(this.map.spawn[0] + 0.5, this.map.spawn[1] + 0.5);
@@ -324,7 +350,8 @@ export class GameScene extends Phaser.Scene {
   /** The realm, grade and mastery level a skill works at for this character (the same inputs the server uses). */
   private skillContext(skill: SkillDef): SkillContext {
     const gear = skill.source === "gear" ? gearSkillInfo(this.worn).find((g) => g.id === skill.id) : undefined;
-    return { realm: gear ? gear.realm : skill.realm, ...(gear ? { tier: gear.tier } : {}), grade: skillGrade(skill, this.selfSheet?.rootGrade ?? 0, gear?.grade), level: skill.source === "gear" ? 0 : (this.skillStates[skill.id]?.lv ?? 0) };
+    const sheet = this.selfSheet;
+    return skillContextFor(skill, { rootGrade: sheet?.rootGrade ?? 0, realm: sheet?.realm ?? 0, level: this.skillStates[skill.id]?.lv ?? 0, ...(sheet ? { paths: sheet.paths } : {}), ...(gear ? { gear } : {}) });
   }
 
   private beginAim(skill: SkillDef): void {
@@ -337,8 +364,16 @@ export class GameScene extends Phaser.Scene {
     this.hotbar.setAimNote(null);
   }
 
+  /** While a breakthrough runs, actions that would break it are not sent; tells the player why. */
+  private guardBreakthrough(): boolean {
+    if (!this.charPanel.isBreaking()) return false;
+    this.chat.system(vi.breakthrough.blocked, "error");
+    return true;
+  }
+
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.transferring) return;
+    if (this.guardBreakthrough()) return;
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
@@ -406,6 +441,8 @@ export class GameScene extends Phaser.Scene {
         this.upsertActor(msg.players);
         for (const m of msg.monsters) this.upsertMonster(m);
         setCatalog(msg.constitutions);
+        // A breakthrough never survives a (re)connect: the server settled it as a failure when the old connection ended.
+        this.charPanel.breakthroughEnded();
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
         this.inventory.setSheet(msg.character);
@@ -414,6 +451,7 @@ export class GameScene extends Phaser.Scene {
         this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
         this.vitals.setWallet(msg.wallet);
         this.inventory.setBag(msg.bag);
+        this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
         const wornBonded = msg.equipped.find((e) => e.slot === "bonded");
         this.bondedLv = wornBonded ? bondedLevel(wornBonded) : undefined;
@@ -461,6 +499,18 @@ export class GameScene extends Phaser.Scene {
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
         const c = msg.character;
+        // A hướng tu was taken (the sheet carries the paths): say which, and whether it is the chủ tu.
+        if (before && JSON.stringify(before.paths) !== JSON.stringify(c.paths)) {
+          const had = [before.paths.main, ...before.paths.subs].filter((p): p is PathId => !!p);
+          const has = [c.paths.main, ...c.paths.subs].filter((p): p is PathId => !!p);
+          const taken = has.find((p) => !had.includes(p));
+          const lost = had.find((p) => !has.includes(p));
+          const leveled = has.find((p) => pathLevel(c.paths, p) > pathLevel(before.paths, p));
+          if (taken) this.chat.system(vi.paths.chosen(PATHS[taken].nameVi, taken === c.paths.main), "important");
+          else if (lost) this.chat.system(vi.paths.dropped(PATHS[lost].nameVi), "important");
+          else if (leveled) this.chat.system(vi.paths.leveled(PATHS[leveled].nameVi, pathLevelName(c.paths, leveled)), "important");
+          else if (c.paths.main && c.paths.main !== before.paths.main) this.chat.system(vi.paths.swapped(PATHS[c.paths.main].nameVi), "important");
+        }
         if (before && (c.realm > before.realm || (c.realm === before.realm && c.stage > before.stage))) {
           this.chat.system(vi.chat.levelUp(REALMS[c.realm]?.nameVi ?? "", c.stage));
         } else if (before && c.realm === before.realm && c.stage === before.stage && c.exp > before.exp) {
@@ -495,6 +545,7 @@ export class GameScene extends Phaser.Scene {
       case "inv":
         if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items, tabPrice: msg.tabPrice });
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
+        this.charPanel.refresh();
         this.equipment.refresh();
         this.hotbar.refresh();
         this.skillsUi.refresh(); // the pill count
@@ -586,6 +637,25 @@ export class GameScene extends Phaser.Scene {
         this.inventory.rejected(msg.reason);
         if (msg.reason !== "rate") this.chat.system(vi.inventory.errors[msg.reason] ?? vi.inventory.errors.invalid!, "error");
         break;
+      case "bt":
+        this.charPanel.breakthroughStarted(msg.ms, msg.ratePct);
+        this.chat.system(vi.breakthrough.started(msg.ratePct), "important");
+        break;
+      case "bt_end": {
+        this.charPanel.breakthroughEnded();
+        if (msg.ok) this.chat.system(vi.breakthrough.success(REALMS[msg.realm ?? 0]?.nameVi ?? "", msg.points ?? 0), "important");
+        else this.chat.system((vi.breakthrough.failed[msg.reason] ?? vi.breakthrough.failed.timeout!) + (msg.expLost ? vi.breakthrough.lost(msg.expLost) : ""), "important");
+        break;
+      }
+      case "path_error":
+        this.chat.system(vi.paths.errors[msg.reason] ?? vi.paths.errors.invalid!, "error");
+        break;
+      case "path_claimed":
+        this.chat.system(vi.paths.claimed(PATHS[msg.path].itemNameVi), "important");
+        break;
+      case "bt_error":
+        this.chat.system(vi.breakthrough.errors[msg.reason] ?? vi.breakthrough.errors.invalid!, "error");
+        break;
       case "chat":
       case "chat_error":
         this.handleChatMessage(msg);
@@ -676,17 +746,21 @@ export class GameScene extends Phaser.Scene {
     const def = getMonsterDef(snap.kind);
     let m = this.monsters.get(snap.id);
     if (!m) {
-      const color = ELEMENT_COLOR[def?.element ?? ""] ?? 0xcccccc;
+      const color = ELEMENT_COLOR[snap.element] ?? 0xcccccc;
       const body = this.add.rectangle(0, 0, 26, 26, color).setStrokeStyle(2, 0x000000, 0.7);
       const label = this.add
         .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1);
-      m = { color: "#ffffff", id: snap.id, tier: snap.tier, rank: snap.rank, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
+      const icon = this.add.circle(0, 0, 5, ELEMENT_DOT[snap.element] ?? 0xcccccc).setStrokeStyle(1, 0xffffff, 1);
+      m = { color: "#ffffff", icon, id: snap.id, tier: snap.tier, rank: snap.rank, element: snap.element, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
       this.monsters.set(snap.id, m);
     }
     // A respawn can roll a different rank, so name and size follow the latest snapshot.
     m.tier = snap.tier;
     m.rank = snap.rank;
+    m.element = snap.element;
+    m.body.setFillStyle(ELEMENT_COLOR[snap.element] ?? 0xcccccc);
+    m.icon.setFillStyle(ELEMENT_DOT[snap.element] ?? 0xcccccc);
     m.label.setText(this.monsterName(snap.kind, snap.tier, snap.rank));
     m.body.setScale(snap.rank === "rare2" ? 1.4 : snap.rank === "rare1" ? 1.2 : 1);
     const now = performance.now();
@@ -702,7 +776,8 @@ export class GameScene extends Phaser.Scene {
   /** "Sói Rừng · Bậc 4" plus the class tag for rare monsters. */
   private monsterName(kind: string, tier: number, rank: MonsterRank): string {
     const tag = RANKS[rank].tagVi;
-    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${vi.combat.tier(tier)}${tag ? ` · ${tag}` : ""}`;
+    // The bậc shows as the realm tag and the bậc ("TC2"), like on gear.
+    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[this.map.realm ?? 0]?.shortVi ?? ""}${tier}${tag ? ` · ${tag}` : ""}`;
   }
 
   /** Rare monsters have their own colours; normal ones are coloured by how their bậc compares to the player's level. */
@@ -722,6 +797,7 @@ export class GameScene extends Phaser.Scene {
     if (!m) return;
     m.body.destroy();
     m.label.destroy();
+    m.icon.destroy();
     m.bar.destroy();
     this.monsters.delete(id);
     if (this.targetId === id) this.targetId = null;
@@ -773,6 +849,8 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       m.body.setPosition(s.x, s.y - 13).setDepth(depth);
       m.label.setPosition(s.x, s.y - 40).setDepth(depth + 0.1);
+      // The element icon sits just left of the name, level with its middle.
+      m.icon.setPosition(s.x - m.label.width / 2 - 8, s.y - 40 - m.label.height / 2).setDepth(depth + 0.1);
       const color = this.monsterColor(m);
       if (color !== m.color) {
         m.color = color;
@@ -789,7 +867,7 @@ export class GameScene extends Phaser.Scene {
     // Standing still on a portal tile asks the server to transfer us (the server re-checks the position).
     const self = this.actors.get(this.selfId);
     // Retry after 1.5 s in case the server's (slightly lagging) position was not yet in range.
-    if (self && !this.transferring && now - this.portalSentAt > 1500) {
+    if (self && !this.transferring && !this.charPanel.isBreaking() && now - this.portalSentAt > 1500) {
       const pos = currentPos(self, now);
       if (!pos.moving && portalNear(this.map, pos.x, pos.y)) {
         this.portalSentAt = now;

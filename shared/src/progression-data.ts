@@ -32,6 +32,16 @@ export const KILLS_GROWTH = 1.13;
  */
 export const LOW_MAP_EXP_MULT = 1;
 export const STAGE_EXP_GROWTH = 1.35;
+/**
+ * At stage 9 a full EXP bar does not stop the EXP: it keeps filling past the stage's need, by up to OVERFLOW_EXP_MAX of the
+ * need (the overflow). The overflow raises the chance of a breakthrough: nothing below BREAKTHROUGH_OVERFLOW_FROM of the need,
+ * BREAKTHROUGH_OVERFLOW_FROM_BONUS points at that mark, growing evenly to BREAKTHROUGH_OVERFLOW_MAX_BONUS points at OVERFLOW_EXP_MAX.
+ * Starting a breakthrough uses the overflow up (like a pill), whatever the outcome.
+ */
+export const OVERFLOW_EXP_MAX = 1;
+export const BREAKTHROUGH_OVERFLOW_FROM = 0.5;
+export const BREAKTHROUGH_OVERFLOW_FROM_BONUS = 5;
+export const BREAKTHROUGH_OVERFLOW_MAX_BONUS = 15;
 
 export const REALMS: readonly RealmDef[] = [
   { id: 0, key: "luyen_khi", nameVi: "Luyện Khí", shortVi: "LK", expBase: 1_000, pointsPerStage: 5 },
@@ -122,6 +132,5 @@ export const ROOT_FAVOURED_STAT: Record<SpiritualRoot, StatKey> = {
 export const MAX_ALLOCATE_PER_STAT = 200;
 
 /** Element multipliers (ngũ hành). Overcoming = tương khắc, generating = tương sinh. */
-export const ELEMENT_OVERCOME_MULT = 1.3;
-export const ELEMENT_OVERCOME_BY_MULT = 0.75;
-export const ELEMENT_GENERATE_MULT = 1.05;
+export const ELEMENT_OVERCOME_MULT = 1.2;
+export const ELEMENT_OVERCOME_BY_MULT = 0.8;

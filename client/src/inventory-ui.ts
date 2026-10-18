@@ -1,5 +1,5 @@
-import { BAG_CELLS_PER_TAB, BAG_COLS, MAX_BAG_TABS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type WearerCtx } from "@game/shared";
-import { describeItem, elementDot, itemTierTag } from "./equip-text";
+import { BAG_CELLS_PER_TAB, BAG_COLS, MAX_BAG_TABS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type SortMode, type WearerCtx } from "@game/shared";
+import { describeItem, elementDot, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
 import { wearerOfSheet } from "./wearer";
 import { registerWindow } from "./window-manager";
@@ -71,11 +71,9 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
   /** Set when a mouse drag just ended, so the click that follows it does not also select. */
   let justDragged = false;
   let confirmDrop: "one" | "all" | null = null;
-  /** Each click on the sort button uses the next mode; -1 until the first click. */
-  let sortStep = -1;
-  /** The step before the last click, restored when the server refuses that sort. */
-  let prevSortStep = -1;
-  /** The button is dimmed briefly after a click, matching the server's minimum gap. */
+  /** The mode picked in the list next to the sort button; the button sorts by it. */
+  let sortMode: SortMode = "name";
+  /** The button is locked after a click, matching the server's limit of one sort per 15 seconds. */
   let sortLockedUntil = 0;
   /** Set by a "wait" refusal: the button shows the seconds left and stays locked until then. */
   let sortBanUntil = 0;
@@ -83,9 +81,8 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
   let banTimer: ReturnType<typeof setInterval> | undefined;
 
   const sortLabel = (): string => {
-    const base = sortStep < 0 ? vi.inventory.sort : vi.inventory.sortBy(vi.inventory.sortModes[SORT_MODES[sortStep]!] ?? "");
-    const left = Math.ceil((sortBanUntil - Date.now()) / 1000);
-    return left > 0 ? `${base} (${left}s)` : base;
+    const left = Math.ceil((Math.max(sortBanUntil, sortLockedUntil) - Date.now()) / 1000);
+    return left > 0 ? `${vi.inventory.sort} (${left}s)` : vi.inventory.sort;
   };
   const banned = (): boolean => Date.now() < sortBanUntil;
 
@@ -97,7 +94,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
         sortBtn.textContent = sortLabel();
         sortBtn.disabled = banned() || Date.now() < sortLockedUntil;
       }
-      if (!banned()) {
+      if (!banned() && Date.now() >= sortLockedUntil) {
         clearInterval(banTimer);
         banTimer = undefined;
         render();
@@ -132,19 +129,27 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
     sort.disabled = banned() || Date.now() < sortLockedUntil;
     sort.onclick = () => {
       if (banned() || Date.now() < sortLockedUntil) return;
-      prevSortStep = sortStep;
-      sortLockedUntil = Date.now() + SORT_MIN_GAP_MS + 100;
-      setTimeout(render, SORT_MIN_GAP_MS + 150);
-      sortStep = (sortStep + 1) % SORT_MODES.length;
+      sortLockedUntil = Date.now() + SORT_MIN_GAP_MS + 200;
+      runBanTimer();
       selected = null;
       splitQty = null;
       resetConfirm();
-      send({ t: "inv_sort", mode: SORT_MODES[sortStep]! });
+      send({ t: "inv_sort", mode: sortMode });
       render();
+    };
+    const modes = el("select", "bag-sort-mode");
+    for (const m of SORT_MODES) {
+      const o = el("option", undefined, vi.inventory.sortModes[m] ?? m);
+      o.value = m;
+      if (m === sortMode) o.selected = true;
+      modes.append(o);
+    }
+    modes.onchange = () => {
+      sortMode = modes.value as SortMode;
     };
     const close = el("button", undefined, "✕");
     close.onclick = () => setOpen(false);
-    head.append(used, sort, close);
+    head.append(used, modes, sort, close);
     panel.append(head);
 
     // The tab row is always shown: it carries the button that unlocks the next tab.
@@ -199,7 +204,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
         slot.title = itemName(item.type);
         slot.append(el("span", "bag-name", itemName(item.type)));
         const tag = itemTierTag(item.type, item.lv);
-        if (tag) slot.append(el("span", "bag-tag", tag));
+        if (tag) slot.append(el("span", `bag-tag ${realmClass(itemTierRealm(item.type, item.lv))}`, tag));
         const dot = elementDot(item.type);
         if (dot) {
           dot.classList.add("bag-elem");
@@ -506,8 +511,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
     },
     rejected(reason, retryMs) {
       if (reason !== "wait" && reason !== "rate") return false;
-      // The sort did not happen: show the mode that is really applied.
-      sortStep = prevSortStep;
+      // The sort did not happen: the button opens again unless the server asked to wait.
       sortLockedUntil = 0;
       let started = false;
       if (reason === "wait") {

@@ -55,6 +55,18 @@ export function itemTierTag(type: string, lv?: number): string | null {
   return equipTierTag(info);
 }
 
+/** The realm index behind itemTierTag (to colour the tag by realm), or null for items without one. */
+export function itemTierRealm(type: string, lv?: number): number | null {
+  const info = equipmentInfo(type);
+  if (!info) return null;
+  return info.kind === "bonded" ? Math.floor(refineLevelOf(info, lv) / STAGES_PER_REALM) : info.realm;
+}
+
+/** CSS class that colours a realm tag ("LK", "TC1"...) by its realm. */
+export function realmClass(realm: number | null | undefined): string {
+  return realm === null || realm === undefined ? "" : `realm-${Math.min(Math.max(Math.trunc(realm), 0), 3)}`;
+}
+
 /** Durability as "63/100 (63%)", or the never-wears-out note. */
 export function durabilityText(dur?: number, max?: number): string {
   if (dur === undefined || max === undefined) return vi.equip.unbreakable;

@@ -14,6 +14,7 @@ import {
   levelIndex,
   rollEquipmentDrop,
   rollBookDrop,
+  rollPillDrop,
   MP_REGEN_DELAY_MS,
   modifierTotal,
   restoreVitals,
@@ -29,6 +30,14 @@ import {
   type LootDrop,
   monsterStats,
   rollRank,
+  rollMonsterElement,
+  NO_PATHS,
+  pathExpFactor,
+  pathBonuses,
+  pathSkillDamagePct,
+  skillContextFor,
+  type PathState,
+  SPIRITUAL_ROOTS,
   topContributor,
   findSmoothPath,
   isStandable,
@@ -67,9 +76,11 @@ export interface ProfileSeed {
   name: string;
   /** Spendable potential points as last known (D1 value plus unflushed stage-up points). */
   potentialPoints: number;
-  /** The main element (defence uses it). */
+  /** The main element (the one a skill without an element, and the grade bonus, go by). */
   element: Element;
-  /** All the elements, main one first; absent: just `element`. More elements give more skills, never more damage. */
+  /** The hướng tu the character has taken up (shared/src/paths.ts); absent: none. */
+  paths?: PathState;
+  /** All the elements, main one first; absent: just `element`. More elements give more skills, and the plain attack and the hits it takes go by all of them (elementOutcome). */
   roots?: readonly Element[];
   base: BaseStats;
   rootGrade: number;
@@ -218,11 +229,13 @@ function lastPoint(path: Vec2[]): Vec2 {
 }
 
 /** The skill's realm, grade and mastery level for this character: what effectiveSkill needs. */
-export function skillContextOf(seed: Pick<ProfileSeed, "rootGrade" | "gearSkills"> & { masteries?: Readonly<Record<string, { lv: number }>>; skillState?: Readonly<Record<string, { lv: number }>> }, def: SkillDef): SkillContext {
+export function skillContextOf(
+  seed: Pick<ProfileSeed, "rootGrade" | "gearSkills"> & { realm?: number; paths?: PathState; masteries?: Readonly<Record<string, { lv: number }>>; skillState?: Readonly<Record<string, { lv: number }>> },
+  def: SkillDef,
+): SkillContext {
   const gear = def.source === "gear" ? seed.gearSkills?.find((g) => g.id === def.id) : undefined;
-  const grade = skillGrade(def, seed.rootGrade, gear?.grade);
   const lv = def.source === "gear" ? 0 : ((seed.masteries ?? seed.skillState)?.[def.id]?.lv ?? 0);
-  return { realm: gear ? gear.realm : def.realm, ...(gear ? { tier: gear.tier } : {}), grade, level: lv };
+  return skillContextFor(def, { rootGrade: seed.rootGrade, realm: seed.realm ?? def.realm, level: lv, ...(seed.paths ? { paths: seed.paths } : {}), ...(gear ? { gear } : {}) });
 }
 
 function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; masteries?: Readonly<Record<string, { lv: number; xp: number }>> }, stage = seed.stage): { stats: Combatant; maxHp: number; maxMp: number; expBonus: number } {
@@ -243,11 +256,17 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
   defense = Math.floor(defense + d.defense * passive.defensePct);
   dodge += passive.dodgePoints;
   crit += passive.critPoints;
+  // The hướng tu add percent to attack, defense and maximum MP (the same sums the character panel shows) and slow the EXP gained.
+  const paths = seed.paths ?? NO_PATHS;
+  const pb = pathBonuses(paths);
+  attack = Math.floor(attack * (1 + pb.attackPct / 100));
+  defense = Math.floor(defense * (1 + pb.defensePct / 100));
   return {
-    stats: { attack, defense, critRate: Math.min(RATE_CAP, crit), dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element },
+    stats: { attack, defense, critRate: Math.min(RATE_CAP, crit), dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element, roots: seed.roots ?? [seed.element] },
     maxHp: d.maxHp,
-    maxMp: d.maxMp,
-    expBonus: d.expBonus,
+    maxMp: Math.floor(d.maxMp * (1 + pb.maxMpPct / 100)),
+    // The EXP gained is multiplied by 1 / (1 + k * phu tu): folded into the bonus percentage the kill reward takes.
+    expBonus: paths.subs.length === 0 ? d.expBonus : ((1 + d.expBonus / 100) * pathExpFactor(paths) - 1) * 100,
   };
 }
 
@@ -268,7 +287,7 @@ export class CombatSim {
     private readonly rand: () => number,
     now: number,
     /** Classes to restore after the room slept, by monster id; without them every monster rolls its class. */
-    ranks?: Readonly<Record<string, MonsterRank>>,
+    ranks?: Readonly<Record<string, string>>,
   ) {
     this.realm = map.realm ?? 0;
     for (const cluster of CLUSTERS[mapId]) {
@@ -303,19 +322,31 @@ export class CombatSim {
     }
   }
 
-  /** (Re)rolls the monster's class and derives its stats from the map's realm, its bậc, species and class. */
-  private applyRank(m: Monster, rank?: MonsterRank): void {
-    m.rank = rank && rank in RANKS ? rank : rollRank(this.rand());
+  /**
+   * (Re)rolls the monster's class and element and derives its stats from the map's realm, its bậc, species and class. `saved` is
+   * what the room kept across a sleep ("rare1|moc"; an older value is only the class, and then the species' own element stays).
+   */
+  private applyRank(m: Monster, saved?: string): void {
+    const [savedRank, savedElement] = (saved ?? "").split("|");
+    const known = savedRank !== undefined && savedRank in RANKS;
+    m.rank = known ? (savedRank as MonsterRank) : rollRank(this.rand());
+    m.combatant.element = (SPIRITUAL_ROOTS as readonly string[]).includes(savedElement ?? "") ? (savedElement as SpiritualRoot) : known ? m.def.element : rollMonsterElement(this.rand());
     const stats = monsterStats(m.def, this.realm, m.tier, m.rank);
     m.maxHp = stats.maxHp;
     m.combatant.attack = stats.attack;
     m.combatant.defense = stats.defense;
   }
 
+  /** Sets a monster's element (the room never does; tests use it to pin the table's outcome). */
+  setMonsterElement(id: string, element: SpiritualRoot): void {
+    const m = this.monsters.get(id);
+    if (m) m.combatant.element = element;
+  }
+
   /** Current class of every monster, kept by the room across a sleep so a rebuilt sim cannot reroll rare monsters. */
-  ranks(): Record<string, MonsterRank> {
-    const out: Record<string, MonsterRank> = {};
-    for (const m of this.monsters.values()) out[m.id] = m.rank;
+  ranks(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const m of this.monsters.values()) out[m.id] = `${m.rank}|${m.combatant.element}`;
     return out;
   }
 
@@ -487,11 +518,28 @@ export class CombatSim {
     return availableSkills(p.granted ?? [], (p.gearSkills ?? []).map((g) => g.id));
   }
 
+  /** The character took up a hướng tu: its bonuses and skill strengths follow at once. */
+  setPaths(id: string, paths: PathState): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.paths = paths;
+    this.recompute(p, false);
+  }
+
   /** A skill was granted (a book was read, or a realm gave its root skills). */
   addGranted(id: string, skill: string): void {
     const p = this.players.get(id);
     if (p && !(p.granted ?? []).includes(skill)) p.granted = [...(p.granted ?? []), skill];
     if (p) this.recompute(p, false); // a passive takes effect at once
+  }
+
+  /** Skills were taken away (a hướng tu was dropped). */
+  removeGranted(id: string, skills: readonly string[]): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.granted = (p.granted ?? []).filter((s) => !skills.includes(s));
+    for (const s of skills) p.cooldowns.delete(s);
+    this.recompute(p, false);
   }
 
   /** Sets the mastery of a skill (a Ngộ Đạo Đan was used); the passives follow the new level. */
@@ -500,6 +548,35 @@ export class CombatSim {
     if (!p) return;
     p.masteries[skill] = { lv, xp };
     this.recompute(p, false);
+  }
+
+  /**
+   * A breakthrough succeeded: the character is at stage 1 of the next realm with no EXP, and the points are already in D1 (so they
+   * are spendable but not pending). Stats follow the new realm and HP/MP refill, like after a stage-up.
+   */
+  applyBreakthrough(id: string, realm: number, points: number): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.realm = realm;
+    p.stage = 1;
+    p.exp = 0;
+    p.expDirty = false;
+    p.potentialPoints += points;
+    this.recompute(p, true);
+  }
+
+  /** A breakthrough started: the EXP overflow is used up (already written to D1 by the start batch). */
+  applyBreakthroughStart(id: string, capExp: number): void {
+    const p = this.players.get(id);
+    if (p) p.exp = Math.min(p.exp, capExp);
+  }
+
+  /** A breakthrough failed: the working copy is cut to `capExp`, then `lost` EXP comes off (written absolutely with the next save). */
+  applyBreakthroughLoss(id: string, lost: number, capExp: number): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.exp = Math.max(0, Math.min(p.exp, capExp) - lost);
+    p.expDirty = true;
   }
 
   /** What the skill does for this character right now (realm, grade and mastery level included). */
@@ -591,6 +668,7 @@ export class CombatSim {
       kind: m.def.id,
       tier: m.tier,
       rank: m.rank,
+      element: m.combatant.element,
       path: m.path,
       ageMs: now - m.startedAt,
       speed: m.def.speed,
@@ -844,18 +922,17 @@ export class CombatSim {
 
   private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): number {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
-    // A skill hits as the caster's own stats scaled by its power, in its own element; one without an element (and the basic
-    // attack) uses the caster's MAIN element, so having more elements never hits harder (breadth is only in which skills
-    // the player may choose). An attack in one of the caster's own elements gets the damage share of the root's grade
-    // (phẩm cấp); the number of elements does not change damage.
+    // A skill hits as the caster's own stats scaled by its power, in its own element; one without an element uses the caster's
+    // MAIN element. The plain attack goes by ALL the caster's elements against the target's (elementOutcome: every pair scores +1, -1 or 0 and the sum decides); a skill has one element, so only its pairs count.
+    // An attack in one of the caster's own elements gets the damage share of the root's grade (phẩm cấp).
     // The constitution's "skill damage" effects (percent) add to a matching skill: all skills, its element, the wielded weapon family or the skill itself.
     const roots = p.roots ?? [p.element];
     const element = skill ? (skillElement ?? skill.element ?? p.element) : p.element;
     // A skill's grade is already in its power (effectiveSkill), so only the plain attack takes the root grade's damage share here.
     const gradePct = !skill && roots.includes(element) ? getRootGrade(p.rootGrade).elementDamagePct : 0;
-    const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent : 0;
+    const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent + pathSkillDamagePct(p.paths ?? NO_PATHS, skill, p.weapon ?? null) : 0;
     const power = skill ? skillPower : 1;
-    const attacker = { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100))), element };
+    const attacker = { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100))), element, roots: skill ? undefined : roots };
     const hit = computeDamage(attacker, m.combatant, this.rand);
     const applied = Math.min(m.hp, hit.damage);
     m.hp -= applied;
@@ -893,6 +970,8 @@ export class CombatSim {
     if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
     const book = rollBookDrop(m.rank, this.rand); // two more rolls, after everything else
     if (book) loot.push({ item: book, qty: 1 });
+    const pill = rollPillDrop(this.realm, m.rank, this.rand); // one more roll, after everything else
+    if (pill) loot.push({ item: pill, qty: 1 });
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
@@ -938,10 +1017,10 @@ export class CombatSim {
    * leave or portal cannot send it a second time) and must be settled with `endFlush`. Returns null when nothing
    * is waiting. EXP is absolute, so writing it twice would be harmless, but it is reserved the same way.
    */
-  beginFlush(id: string): { stage: number; exp: number; addPoints: number } | null {
+  beginFlush(id: string): { realm: number; stage: number; exp: number; addPoints: number } | null {
     const p = this.players.get(id);
     if (!p || (!p.expDirty && p.pendingPoints === 0)) return null;
-    const write = { stage: p.stage, exp: p.exp, addPoints: p.pendingPoints };
+    const write = { realm: p.realm, stage: p.stage, exp: p.exp, addPoints: p.pendingPoints };
     p.inflightPoints += write.addPoints;
     p.pendingPoints = 0;
     p.expDirty = false;

@@ -181,6 +181,10 @@ describe("hotbar", () => {
 describe("protocol messages", () => {
   it("cast, hotbar_set and use_type are validated", () => {
     expect(parseClientMessage('{"t":"cast","skill":"chuong_0"}')).toEqual({ t: "cast", skill: "chuong_0" });
+    expect(parseClientMessage('{"t":"hotbar_swap","a":0,"b":5}')).toEqual({ t: "hotbar_swap", a: 0, b: 5 });
+    expect(parseClientMessage('{"t":"hotbar_swap","a":2,"b":2}')).toBeNull();
+    expect(parseClientMessage('{"t":"hotbar_swap","a":0,"b":8}')).toBeNull();
+    expect(parseClientMessage('{"t":"hotbar_swap","a":-1,"b":3}')).toBeNull();
     expect(parseClientMessage('{"t":"cast","skill":"chuong_0","target":"m3"}')).toEqual({ t: "cast", skill: "chuong_0", target: "m3" });
     expect(parseClientMessage('{"t":"cast","skill":"Hoa 1"}')).toBeNull();
     expect(parseClientMessage('{"t":"cast","skill":"chuong_0","el":"kim"}')).toEqual({ t: "cast", skill: "chuong_0", el: "kim" });

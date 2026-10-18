@@ -14,7 +14,7 @@ import {
   type EquippedItem,
   type WearerCtx,
 } from "@game/shared";
-import { describeItem, durabilityShort, durabilityText, elementDot, equipLines, itemTierTag, statText } from "./equip-text";
+import { describeItem, durabilityShort, durabilityText, elementDot, equipLines, itemTierRealm, itemTierTag, realmClass, statText } from "./equip-text";
 import { vi } from "./locales/vi";
 import { wearerOfSheet } from "./wearer";
 import { registerWindow } from "./window-manager";
@@ -49,7 +49,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   panel.id = "eq-panel";
   panel.hidden = true;
   document.body.append(toggle, panel);
-  registerWindow("equipment", panel, 2);
+  registerWindow("equipment", panel, 1);
 
   let sheet: CharacterSheet | null = null;
   let worn: EquippedItem[] = [];
@@ -62,7 +62,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   const wearer = (): WearerCtx | null => (sheet ? wearerOfSheet(sheet) : null);
   const nameOf = (type: string) => getItemDef(type)?.nameVi ?? type;
   /** The small realm/bậc label ("LK3") in the top left corner of a row. */
-  const tagOf = (type: string, lv?: number): HTMLElement => el("span", "eq-tag", itemTierTag(type, lv) ?? "");
+  const tagOf = (type: string, lv?: number): HTMLElement => el("span", `eq-tag ${realmClass(itemTierRealm(type, lv))}`, itemTierTag(type, lv) ?? "");
 
   function renderChooser(slot: EquipSlot, w: WearerCtx): HTMLElement {
     const box = el("div", "eq-choose");
@@ -154,6 +154,8 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
         if (dot) middle.append(dot);
         middle.append(el("span", broken ? "eq-broken" : "eq-label", nameOf(piece.type)));
         tier.textContent = itemTierTag(piece.type, piece.lv) ?? "";
+        const realmCls = realmClass(itemTierRealm(piece.type, piece.lv));
+        if (realmCls) tier.classList.add(realmCls);
         durability.textContent = durabilityShort(piece.dur, piece.max);
         if (broken) durability.classList.add("eq-broken");
         // Tapping the piece opens or closes its details just below the row.

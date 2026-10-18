@@ -2,5 +2,5 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": { "types": ["@cloudflare/workers-types"], "lib": ["ES2022"] },
   "include": ["src"],
-  "exclude": ["src/economy.test.ts", "src/inventory.test.ts", "src/equipment.test.ts", "src/skills.test.ts", "src/bagtab.test.ts", "src/constitution-catalog.test.ts", "src/test-db.ts"]
+  "exclude": ["src/economy.test.ts", "src/inventory.test.ts", "src/equipment.test.ts", "src/skills.test.ts", "src/breakthrough.test.ts", "src/paths.test.ts", "src/bagtab.test.ts", "src/constitution-catalog.test.ts", "src/test-db.ts"]
 }

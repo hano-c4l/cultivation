@@ -24,26 +24,29 @@
       .card button.link { background: none; color: #9db4e0; font-weight: 400; }
       .card .error { margin: 0; min-height: 1.2em; color: #ff8a80; font-size: 14px; }
       .card .note { margin: 0; font-size: 13px; color: #aab3c5; }
-      #logout { position: fixed; right: 12px; top: 12px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      /* Top right, one row: Linh Thạch, Cống Hiến, Tiên Ngọc, then log out; every one has its own background. */
+      #topbar { position: fixed; right: 12px; top: 12px; display: flex; align-items: center; justify-content: flex-end; gap: 6px; z-index: 6; }
+      #logout { padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       /* --hud-bottom follows the status line's real height (it wraps on a phone), so the HP bar never overlaps it. */
-      #vitals { position: fixed; left: 12px; top: calc(var(--hud-bottom, 50px) + 6px); width: 200px; padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 12px/1.3 "Be Vietnam Pro", system-ui, sans-serif; pointer-events: none; box-sizing: border-box; }
+      #vitals-wrap { position: fixed; left: 12px; top: calc(var(--hud-bottom, 50px) + 6px); width: 200px; pointer-events: none; }
+      #vitals { padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
+        color: #e8e4d8; font: 12px/1.3 "Be Vietnam Pro", system-ui, sans-serif; box-sizing: border-box; }
       #vitals[hidden] { display: none; }
-      /* Buff tiles sit right under the MP bar and wrap onto more rows when there are many. */
-      #buffs { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; pointer-events: auto; } #buffs[hidden] { display: none; }
+      /* Buff tiles sit under the HP/MP box (outside its dark background) and wrap onto more rows when there are many. */
+      #buffs { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; pointer-events: auto; } #buffs[hidden] { display: none; }
       #buffs .buff { position: relative; width: 28px; height: 28px; box-sizing: border-box; border-radius: 5px; border: 1px solid #d6a94b; background: rgba(214, 169, 75, 0.22); text-align: center; overflow: hidden; }
-      #buffs .buff { cursor: pointer; } #buffs .buff-name { flex-basis: 100%; font-size: 11px; opacity: 0.9; }
+      #buffs .buff { cursor: pointer; } #buffs .buff-name { flex-basis: 100%; padding: 2px 6px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); color: #e8e4d8; font: 11px "Be Vietnam Pro", system-ui, sans-serif; }
       #buffs .buff.buff-item { border-color: #6fcf97; background: rgba(111, 207, 151, 0.2); }
       #buffs .buff-tag { display: block; font-size: 11px; font-weight: 700; line-height: 17px; }
       #buffs .buff-left { position: absolute; left: 0; right: 0; bottom: 0; font-size: 9px; line-height: 10px; background: rgba(0, 0, 0, 0.6); font-variant-numeric: tabular-nums; }
-      #wallet { position: fixed; right: 12px; top: 172px; min-width: 150px; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 12px/1.5 "Be Vietnam Pro", system-ui, sans-serif; pointer-events: none; box-sizing: border-box; }
+      #wallet { display: flex; gap: 6px; pointer-events: none; }
       #wallet[hidden] { display: none; }
-      #wallet div { display: flex; justify-content: space-between; gap: 12px; }
+      #wallet div { display: flex; align-items: baseline; gap: 6px; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
+        color: #e8e4d8; font: 12px/1.4 "Be Vietnam Pro", system-ui, sans-serif; white-space: nowrap; }
       #vitals-bar { height: 8px; border-radius: 4px; background: #10141c; overflow: hidden; margin-top: 3px; }
       #vitals-mp-fill { height: 100%; width: 100%; background: #42a5f5; transition: width 0.3s; } #vitals-mp-text { display: block; margin-top: 4px; }
-      #sk-btn { position: fixed; right: 12px; top: 132px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      #sk-btn { position: fixed; right: 12px; top: 132px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #sk-btn[hidden], #sk-panel[hidden] { display: none; }
       #sk-panel { position: fixed; left: 50%; top: 56px; width: min(360px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); overflow-y: auto; padding: 10px; border-radius: 10px;
@@ -63,20 +66,29 @@
       #hotbar .hb-row { display: flex; gap: 3px; }
       #hotbar .hb-slot { position: relative; width: 44px; height: 44px; padding: 2px; box-sizing: border-box; border: 1px solid #3a4560; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #e8e4d8; cursor: pointer; overflow: hidden; }
       #hotbar .hb-slot.assigning { border-color: #ffd54a; box-shadow: 0 0 0 1px #ffd54a inset; } #hotbar .hb-slot.dim { opacity: 0.5; }
-      #hotbar .hb-elem { position: absolute; top: 2px; left: 12px; margin: 0; width: 9px; height: 9px; }
-      #hotbar .hb-key { position: absolute; top: 1px; left: 3px; font-size: 9px; color: #ffd54a; font-weight: 700; }
+      #hotbar .hb-elem { position: absolute; bottom: 2px; left: 2px; margin: 0; width: 9px; height: 9px; }
+      #hotbar .hb-key { position: absolute; top: 1px; right: 3px; font-size: 9px; color: #ffd54a; font-weight: 700; }
+      #hotbar .hb-tag, .hb-ghost .hb-tag { position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; line-height: 1; text-shadow: 0 0 2px #000; }
+      /* The background of a skill slot follows the grade of the skill: Hạ, Trung, Thượng, Địa, Thiên. */
+      #hotbar .hb-slot.hb-grade-0 { background: var(--grade-0, rgba(158, 158, 158, 0.28)); } #hotbar .hb-slot.hb-grade-1 { background: var(--grade-1, rgba(76, 175, 80, 0.3)); }
+      #hotbar .hb-slot.hb-grade-2 { background: var(--grade-2, rgba(66, 165, 245, 0.32)); } #hotbar .hb-slot.hb-grade-3 { background: var(--grade-3, rgba(171, 71, 188, 0.34)); }
+      #hotbar .hb-slot.hb-grade-4 { background: var(--grade-4, rgba(255, 179, 0, 0.36)); }
+      .hb-ghost { position: fixed; z-index: 20; box-sizing: border-box; padding: 2px; border: 1px solid; border-radius: 6px; overflow: hidden; opacity: 0.9; pointer-events: none;
+        color: #e8e4d8; font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
+      .hb-ghost .hb-name { display: block; margin-top: 8px; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
+      .hb-ghost .hb-key, .hb-ghost .hb-cd, .hb-ghost .hb-count { display: none; }
       #hotbar .hb-name { display: block; margin-top: 8px; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
       #hotbar .hb-count { position: absolute; right: 3px; bottom: 1px; font-size: 10px; font-weight: 700; }
       #hotbar .hb-slot.cooling { background: rgba(0, 0, 0, 0.85); } #hotbar .hb-cd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, 0.45); }
       @media (max-width: 760px) { #hotbar { right: auto; left: 50%; transform: translateX(-50%); bottom: calc(var(--chat-h, 150px) + 20px); } #hotbar .hb-slot { width: 38px; height: 40px; } }
       #vitals-fill { height: 100%; width: 100%; background: #e53935; transition: width 0.15s; }
-      #char-btn { position: fixed; right: 12px; top: 52px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      #char-btn { position: fixed; right: 12px; top: 52px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #char-btn[hidden], #char-panel[hidden] { display: none; }
-      #bag-btn { position: fixed; right: 12px; top: 92px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      #bag-btn { position: fixed; right: 12px; top: 172px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #bag-btn.alert { color: #ff5252; font-weight: 600; }
-      #eq-btn { position: fixed; right: 100px; top: 92px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      #eq-btn { position: fixed; right: 12px; top: 92px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #eq-btn[hidden], #eq-panel[hidden] { display: none; }
       #eq-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(460px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
@@ -114,7 +126,8 @@
       #bag-panel button:disabled { opacity: 0.45; cursor: default; }
       #bag-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
       #bag-panel .bag-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-      #bag-panel .bag-head b { flex: 1; font-size: 15px; } #bag-panel .bag-used { opacity: 0.7; } #bag-panel .bag-head button { padding: 2px 8px; } #bag-panel .bag-head .bag-sort { padding: 4px 8px; font-size: 12px; }
+      #bag-panel .bag-head b { flex: 1; font-size: 15px; } #bag-panel .bag-used { opacity: 0.7; } #bag-panel .bag-head button { padding: 2px 8px; } #bag-panel .bag-head .bag-sort-mode { padding: 3px 4px; border-radius: 6px; border: 1px solid #3a4560; background: #10141c; color: inherit; font: inherit; font-size: 12px; max-width: 96px; }
+      #bag-panel .bag-head .bag-sort { padding: 4px 8px; font-size: 12px; }
       #bag-panel .bag-tabs { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
       #bag-panel .bag-tabs button { padding: 3px 8px; background: #3a4560; color: #e8e4d8; } #bag-panel .bag-tabs button.active { background: #d6a94b; color: #1b1405; }
       /* The whole 8x8 tab is shown; only the panel scrolls, and only when the window is too short for it. */
@@ -128,6 +141,10 @@
       #bag-panel .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; line-height: 1; text-shadow: 0 0 2px #000; pointer-events: none; }
       #bag-panel .bag-mark.x { color: #ff5252; } #bag-panel .bag-mark.plus { color: #ffd54a; }
       #bag-panel .bag-actions button.active { background: #6fcf97; }
+      /* Realm tags (LK, TC1...) are coloured by realm everywhere: Luyện Khí green, Trúc Cơ blue, Kim Đan orange, Nguyên Anh purple. */
+      .realm-0 { --realm: var(--realm-0, #8bc34a); } .realm-1 { --realm: var(--realm-1, #4fc3f7); } .realm-2 { --realm: var(--realm-2, #ffb300); } .realm-3 { --realm: var(--realm-3, #e040fb); }
+      .bag-tag[class*="realm-"], .eq-tag[class*="realm-"], .eq-tier[class*="realm-"], .hb-tag[class*="realm-"], .cp-realm[class*="realm-"] { color: var(--realm) !important; }
+      .sk-tag[class*="realm-"] { background: var(--realm) !important; }
       /* The dragged copy of a cell lives outside the panel, so it carries its own styling. */
       .bag-ghost { position: fixed; z-index: 20; box-sizing: border-box; padding: 1px; border: 1px solid; border-radius: 6px; overflow: hidden; opacity: 0.9; pointer-events: none;
         color: #e8e4d8; font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
@@ -170,6 +187,14 @@
       .cp-bar { height: 8px; border-radius: 4px; background: #10141c; overflow: hidden; } .cp-fill { height: 100%; background: #6fcf97; }
       .cp-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; } .cp-name { flex: 1; } .cp-val { min-width: 32px; text-align: center; }
       .cp-changed { color: #6fcf97; font-weight: 600; } .cp-confirm { width: 100%; margin: 8px 0; padding: 8px 12px; }
+      .cp-bt { margin: 8px 0; padding: 8px; border-radius: 8px; background: rgba(214, 169, 75, 0.1); border: 1px solid #5a4a22; } .cp-bt:empty { display: none; }
+      .cp-path[hidden] { display: none; }
+      .cp-path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; font-size: 13px; color: #ffd54a; }
+      .cp-path-btn { padding: 4px 10px !important; min-height: 28px !important; } .cp-path-add { background: #3a4560 !important; color: #e8e4d8 !important; }
+      .cp-select { flex: 1; min-width: 0; padding: 4px 6px; border-radius: 6px; border: 1px solid #3a4560; background: #10141c; color: inherit; font: inherit; }
+      .cp-pathbox[hidden] { display: none; }
+      .cp-rate-pills { color: #ffd54a; font-weight: 600; } .cp-rate-over { color: #ff6b6b; font-weight: 600; }
+      .cp-bt-line { margin: 3px 0; font-size: 13px; } .cp-bt-warn { margin: 6px 0; font-size: 12px; color: #ff8a80; }
       .cp-derived { border-top: 1px solid #3a4560; padding-top: 6px; font-size: 13px; color: #c9d1e3; }
       #chat { position: fixed; left: 12px; bottom: 12px; width: min(360px, calc(100vw - 24px)); font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; color: #e8e4d8; }
       #chat[hidden] { display: none; }
@@ -207,6 +232,11 @@
       #chat-to[hidden] { display: none; }
       #chat-input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid #3a4560; background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
       #chat-send { padding: 6px 10px; border-radius: 8px; border: 0; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
+      @media (max-width: 1200px) {
+        #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout { padding: 4px 8px; font-size: 12px; }
+        #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
+        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; }
+      }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;
         background: rgba(0, 0, 0, 0.55); color: #e8e4d8; font: 14px/1.4 "Be Vietnam Pro", system-ui, sans-serif;
@@ -218,9 +248,8 @@
     <div id="game"></div>
     <div id="auth" hidden></div>
     <div id="hud">Đang tải…</div>
-    <div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div><div id="buffs" hidden></div></div>
-    <div id="wallet" hidden></div>
-    <button id="logout" hidden></button>
+    <div id="vitals-wrap"><div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div></div><div id="buffs" hidden></div></div>
+    <div id="topbar"><div id="wallet" hidden></div><button id="logout" hidden></button></div>
     <div id="chat" hidden>
       <div id="chat-tabs"></div>
       <div id="chat-log"></div>

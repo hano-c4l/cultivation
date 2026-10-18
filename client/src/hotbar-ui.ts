@@ -1,4 +1,5 @@
-import { HOTBAR_SLOTS, getItemDef, getSkill, parseSkillSlot, type ClientMessage, type SkillDef } from "@game/shared";
+import { HOTBAR_SLOTS, REALMS, getItemDef, getSkill, parseSkillSlot, type ClientMessage, type SkillContext, type SkillDef } from "@game/shared";
+import { realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
 
 export interface HotbarUi {
@@ -28,7 +29,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
  * (skills window, bag), then tap a slot", which also works on a touch screen. The server decides everything; the bar only
  * shows cooldowns it was told about and dims what MP cannot pay.
  */
-export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (skill: SkillDef) => void; mpCostOf: (skill: SkillDef) => number; getTarget: () => string | null; getMp: () => number; countOf: (type: string) => number }): HotbarUi {
+export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (skill: SkillDef) => void; mpCostOf: (skill: SkillDef) => number; getTarget: () => string | null; getMp: () => number; countOf: (type: string) => number; contextOf: (skill: SkillDef) => SkillContext }): HotbarUi {
   const root = el("div");
   root.id = "hotbar";
   root.hidden = true;
@@ -46,6 +47,8 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
   const readyAt = new Map<string, number>();
   let pending: { value: string; label: string } | null = null;
   let timer: ReturnType<typeof setInterval> | undefined;
+  /** Set when a mouse drag just ended, so the click that follows it does not also press the slot. */
+  let justDragged = false;
 
   function render(): void {
     row.replaceChildren();
@@ -53,6 +56,7 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
     slots.forEach((v, i) => {
       const b = el("button", "hb-slot");
       b.append(el("span", "hb-key", String(i + 1)));
+      b.dataset.slot = String(i);
       if (pending) b.classList.add("assigning");
       const slotSkill = parseSkillSlot(v);
       if (slotSkill) {
@@ -62,6 +66,10 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
         const element = skill?.element ?? slotSkill.element;
         if (element) b.append(el("span", `elem-dot hb-elem elem-${element}`));
         if (skill) {
+          // The realm tag sits in the top left corner like on gear (coloured by realm), and the background follows the grade (phẩm cấp).
+          const ctx = deps.contextOf(skill);
+          b.classList.add(`hb-grade-${Math.min(Math.max(ctx.grade, 0), 4)}`);
+          b.append(el("span", `hb-tag ${realmClass(ctx.realm)}`, `${REALMS[ctx.realm]?.shortVi ?? ""}${skill.source === "gear" ? (ctx.tier ?? 1) : ""}`));
           const cost = deps.mpCostOf(skill);
           b.title = `${skill.nameVi} · ${vi.skills.mp(cost)}`;
           if (!usable.has(skill.id) || deps.getMp() < cost) b.classList.add("dim");
@@ -78,7 +86,11 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
         b.append(el("span", "hb-name", getItemDef(type)?.nameVi ?? type), el("span", "hb-count", String(count)));
         if (count === 0) b.classList.add("dim");
       }
-      b.onclick = () => press(i);
+      b.onclick = () => {
+        if (justDragged) return;
+        press(i);
+      };
+      b.onpointerdown = (ev) => startDrag(ev, i, b);
       row.append(b);
     });
     if (busy && !timer) timer = setInterval(render, 250);
@@ -86,6 +98,58 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
       clearInterval(timer);
       timer = undefined;
     }
+  }
+
+  /** Mouse drag and drop of a slot onto another one swaps them (touch keeps tap-to-assign, so the page can still scroll). */
+  function startDrag(ev: PointerEvent, from: number, source: HTMLElement): void {
+    if (ev.pointerType !== "mouse" || ev.button !== 0 || pending || !(slots[from] ?? "")) return;
+    const sx = ev.clientX;
+    const sy = ev.clientY;
+    let ghost: HTMLElement | null = null;
+    // The bar is rebuilt every 250 ms while a skill cools down, so the slot may be gone from the page by the time the drag
+    // starts: its look (size, colours and a copy) is taken now, at the press.
+    const look = getComputedStyle(source);
+    const width = source.offsetWidth;
+    const height = source.offsetHeight;
+    const background = look.backgroundColor;
+    const border = look.borderTopColor;
+    const copy = source.cloneNode(true) as HTMLElement;
+    const move = (e: PointerEvent) => {
+      if (!ghost && Math.hypot(e.clientX - sx, e.clientY - sy) > 6) {
+        ghost = copy;
+        ghost.className = "hb-ghost";
+        ghost.style.width = `${width}px`;
+        ghost.style.height = `${height}px`;
+        ghost.style.backgroundColor = background;
+        ghost.style.borderColor = border;
+        document.body.append(ghost);
+      }
+      if (ghost) {
+        ghost.style.left = `${e.clientX - width / 2}px`;
+        ghost.style.top = `${e.clientY - height / 2}px`;
+      }
+    };
+    const up = (e: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (!ghost) return; // no drag: the click handler takes over
+      ghost.remove();
+      justDragged = true;
+      setTimeout(() => (justDragged = false), 0);
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>(".hb-slot");
+      const to = target?.dataset.slot === undefined ? NaN : Number(target.dataset.slot);
+      if (Number.isInteger(to) && to !== from) {
+        // Shown at once; the server's `hotbar` answer is what stays (it also corrects a refused swap).
+        const next = [...slots];
+        next[from] = slots[to] ?? "";
+        next[to] = slots[from] ?? "";
+        slots = next;
+        deps.send({ t: "hotbar_swap", a: from, b: to });
+        render();
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   }
 
   function press(i: number): void {

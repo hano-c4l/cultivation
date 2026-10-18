@@ -11,6 +11,8 @@ import {
   applyExp,
   deriveStats,
   elementMultiplier,
+  elementOutcome,
+  expCap,
   expToNext,
   getRootGrade,
   killsToNext,
@@ -67,11 +69,12 @@ describe("applyExp", () => {
     expect(r).toMatchObject({ stage: 4, exp: 0, stagesGained: 3, potentialPoints: 3 * REALMS[0]!.pointsPerStage });
   });
 
-  it("stops at stage 9 and caps EXP instead of entering the next realm", () => {
+  it("stops at stage 9 and caps EXP (need plus the overflow) instead of entering the next realm", () => {
     const r = applyExp(fresh, 1e12);
     expect(r.realm).toBe(0);
     expect(r.stage).toBe(STAGES_PER_REALM);
-    expect(r.exp).toBe(expToNext(0, STAGES_PER_REALM));
+    expect(r.exp).toBe(expCap(0, STAGES_PER_REALM));
+    expect(r.exp).toBeGreaterThan(expToNext(0, STAGES_PER_REALM));
     expect(r.stagesGained).toBe(STAGES_PER_REALM - 1);
     expect(r.potentialPoints).toBe((STAGES_PER_REALM - 1) * REALMS[0]!.pointsPerStage);
     expect(applyExp(r, 1000).stagesGained).toBe(0);
@@ -144,22 +147,26 @@ describe("parseAllocation", () => {
 
 describe("elementMultiplier", () => {
   it("overcoming is stronger and being overcome is weaker", () => {
-    expect(elementMultiplier("kim", "moc")).toBe(1.3);
-    expect(elementMultiplier("moc", "kim")).toBe(0.75);
-    expect(elementMultiplier("hoa", "kim")).toBe(1.3);
-    expect(elementMultiplier("thuy", "hoa")).toBe(1.3);
+    expect(elementMultiplier("kim", "moc")).toBe(1.2);
+    expect(elementMultiplier("moc", "kim")).toBe(0.8);
+    expect(elementMultiplier("hoa", "kim")).toBe(1.2);
+    expect(elementMultiplier("thuy", "hoa")).toBe(1.2);
+    // moc hits tho for 20% more, tho hits moc for 20% less: the two sides match.
+    expect(elementMultiplier("moc", "tho")).toBe(1.2);
+    expect(elementMultiplier("tho", "moc")).toBe(0.8);
   });
 
   it("every element overcomes exactly one and is overcome by exactly one", () => {
     for (const a of SPIRITUAL_ROOTS) {
-      expect(SPIRITUAL_ROOTS.filter((d) => elementMultiplier(a, d) === 1.3)).toHaveLength(1);
-      expect(SPIRITUAL_ROOTS.filter((d) => elementMultiplier(a, d) === 0.75)).toHaveLength(1);
+      expect(SPIRITUAL_ROOTS.filter((d) => elementMultiplier(a, d) === 1.2)).toHaveLength(1);
+      expect(SPIRITUAL_ROOTS.filter((d) => elementMultiplier(a, d) === 0.8)).toHaveLength(1);
     }
   });
 
-  it("same element is neutral and generating gives a small bonus", () => {
+  it("same element and elements that neither overcome nor are overcome are neutral (no generation bonus)", () => {
     expect(elementMultiplier("kim", "kim")).toBe(1);
-    expect(elementMultiplier("kim", "thuy")).toBe(1.05);
+    expect(elementMultiplier("kim", "thuy")).toBe(1);
+    expect(elementMultiplier("kim", "tho")).toBe(1);
   });
 });
 
@@ -377,5 +384,33 @@ describe("spiritual root count (đơn, song, tam, tứ, ngũ linh căn)", () => 
     expect(bestElementVs(["hoa"], "thuy")).toBe("hoa"); // the only one, even if bad
     expect(bestElementVs(["kim", "kim"], "hoa")).toBe("kim"); // equal: the first
     expect(bestElementVs(["moc", "tho"], "tho")).toBe("moc"); // moc overcomes tho
+  });
+});
+
+describe("elementOutcome (every attacker element against every target element, summed)", () => {
+  it("scores +1 for overcoming, -1 for being overcome and 0 otherwise, then takes the sign", () => {
+    expect(elementOutcome(["kim"], ["moc"])).toBe(1.2);
+    expect(elementOutcome(["moc"], ["kim"])).toBe(0.8);
+    expect(elementOutcome(["kim"], ["kim"])).toBe(1);
+    expect(elementOutcome(["kim"], ["thuy"])).toBe(1);
+    expect(elementOutcome([], ["moc"])).toBe(1);
+    expect(elementOutcome(["moc"], [])).toBe(1);
+  });
+
+  it("the user's example: A kim moc thuy against B kim hoa is -1 -1 +1 = -1, so x0.8", () => {
+    expect(elementOutcome(["kim", "moc", "thuy"], ["kim", "hoa"])).toBe(0.8);
+  });
+
+  it("the user's skill example: hoa against a moc + kim target is 0 + 1, so x1.2", () => {
+    expect(elementOutcome(["hoa"], ["moc", "kim"])).toBe(1.2);
+  });
+
+  it("an element that overcomes and one that is overcome cancel out", () => {
+    expect(elementOutcome(["kim"], ["moc", "hoa"])).toBe(1); // +1 (moc), -1 (hoa)
+    expect(elementOutcome(["kim", "hoa"], ["moc", "thuy"])).toBe(1); // kim +1 (moc); hoa -1 (thuy)
+  });
+
+  it("a single pair is the plain table (one element each)", () => {
+    for (const a of SPIRITUAL_ROOTS) for (const d of SPIRITUAL_ROOTS) expect(elementOutcome([a], [d])).toBe(elementMultiplier(a, d));
   });
 });

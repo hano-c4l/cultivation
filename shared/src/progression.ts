@@ -1,15 +1,16 @@
 import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
+import type { PathState } from "./paths";
 import type { EquipStats } from "./equipment-data";
 import type { Gender } from "./gender";
 import { BASE_SPEED } from "./pathfinding";
 import {
   BASE_STAT_START,
-  ELEMENT_GENERATE_MULT,
   KILLS_BASE,
   KILLS_GROWTH,
   ELEMENT_OVERCOME_BY_MULT,
   ELEMENT_OVERCOME_MULT,
   MAX_ALLOCATE_PER_STAT,
+  OVERFLOW_EXP_MAX,
   REALMS,
   ROOT_FAVOURED_STAT,
   ROOT_STAT_BONUS,
@@ -47,6 +48,8 @@ export interface CharacterSheet extends CharacterProgress {
   constitution: string;
   constitutionTier: number;
   gender: Gender;
+  /** The hướng tu the character has taken up (the chủ tu and up to two phụ tu). */
+  paths: PathState;
   base: BaseStats;
 }
 
@@ -72,7 +75,7 @@ export function monsterBaseExp(realm: number, tier: number): number {
   return Math.max(1, Math.round(expToNext(realm, tier) / killsToNext(realm, tier)));
 }
 
-/** EXP needed to finish the given stage. At stage 9 this is also the EXP cap until breakthrough exists. */
+/** EXP needed to finish the given stage. At stage 9 a full bar is what a breakthrough asks for (see breakthrough.ts). */
 export function expToNext(realm: number, stage: number): number {
   const s = Math.min(Math.max(Math.trunc(stage), 1), STAGES_PER_REALM);
   return Math.round(getRealm(realm).expBase * STAGE_EXP_GROWTH ** (s - 1));
@@ -84,8 +87,8 @@ export interface ExpResult extends CharacterProgress {
 
 /**
  * Adds EXP, advancing through as many stages as it pays for. Each new stage grants the realm's potential points.
- * Progress stops at stage 9 of a realm (EXP is capped, the overflow is dropped); moving to the next realm is a
- * separate breakthrough step that does not exist yet. Pure: the caller persists the result.
+ * Progress stops at stage 9 of a realm: the bar can fill past its need by up to OVERFLOW_EXP_MAX of it (see overflowExp),
+ * the rest is dropped; moving to the next realm is a separate breakthrough step. Pure: the caller persists the result.
  */
 export function applyExp(progress: CharacterProgress, gain: number): ExpResult {
   let { realm, stage, exp, potentialPoints } = progress;
@@ -99,8 +102,19 @@ export function applyExp(progress: CharacterProgress, gain: number): ExpResult {
     stagesGained += 1;
     potentialPoints += getRealm(realm).pointsPerStage;
   }
-  if (stage >= STAGES_PER_REALM) exp = Math.min(exp, expToNext(realm, stage));
+  if (stage >= STAGES_PER_REALM) exp = Math.min(exp, expCap(realm, stage));
   return { realm, stage, exp, potentialPoints, stagesGained };
+}
+
+/** Most EXP a character can hold at this stage: the stage's need, and at stage 9 also the overflow. */
+export function expCap(realm: number, stage: number): number {
+  const need = expToNext(realm, stage);
+  return stage >= STAGES_PER_REALM ? need + Math.round(need * OVERFLOW_EXP_MAX) : need;
+}
+
+/** EXP held beyond a full stage-9 bar (0 below stage 9 or while the bar is not full). */
+export function overflowExp(realm: number, stage: number, exp: number): number {
+  return stage >= STAGES_PER_REALM ? Math.max(0, exp - expToNext(realm, stage)) : 0;
 }
 
 export function getRootGrade(grade: number): RootGradeDef {
@@ -234,13 +248,30 @@ export type Element = SpiritualRoot;
 
 /** Each element overcomes (tương khắc) the next one in this cycle: kim > mộc > thổ > thủy > hỏa > kim. */
 const OVERCOMES: Record<Element, Element> = { kim: "moc", moc: "tho", tho: "thuy", thuy: "hoa", hoa: "kim" };
-/** Generating cycle (tương sinh): kim > thủy > mộc > hỏa > thổ > kim. */
-const GENERATES: Record<Element, Element> = { kim: "thuy", thuy: "moc", moc: "hoa", hoa: "tho", tho: "kim" };
 
-/** Damage multiplier of an attack by `attacker` element against a `defender` element. */
-export function elementMultiplier(attacker: Element, defender: Element): number {
-  if (OVERCOMES[attacker] === defender) return ELEMENT_OVERCOME_MULT;
-  if (OVERCOMES[defender] === attacker) return ELEMENT_OVERCOME_BY_MULT;
-  if (GENERATES[attacker] === defender) return ELEMENT_GENERATE_MULT;
+/**
+ * Damage multiplier of one attack, judged from the attacker's side only (the one hit simply takes what the attacker deals).
+ * Every element of the attacker is compared with every element of the target: +1 when the attacker's element overcomes the
+ * target's (khắc), -1 when the target's overcomes it (bị khắc), 0 otherwise (the same element, or no relation). The scores are
+ * added up: a positive total is x1.2, a negative one x0.8, zero x1. Nothing else matters (a spare element or an element in common
+ * does not cancel anything by itself; it only adds its own zeros and scores).
+ * Example: A kim + mộc + thủy against B kim + hỏa: kim is 0 against kim and -1 against hỏa, mộc is -1 against kim and 0 against
+ * hỏa, thủy is 0 against kim and +1 against hỏa; -1 -1 +1 = -1, so x0.8. A skill has one element, a plain attack uses them all.
+ */
+export function elementOutcome(attacker: readonly Element[], target: readonly Element[]): number {
+  let score = 0;
+  for (const a of attacker) {
+    for (const t of target) {
+      if (OVERCOMES[a] === t) score += 1;
+      else if (OVERCOMES[t] === a) score -= 1;
+    }
+  }
+  if (score > 0) return ELEMENT_OVERCOME_MULT;
+  if (score < 0) return ELEMENT_OVERCOME_BY_MULT;
   return 1;
+}
+
+/** Damage multiplier of an attack by one `attacker` element against one `defender` element. */
+export function elementMultiplier(attacker: Element, defender: Element): number {
+  return elementOutcome([attacker], [defender]);
 }

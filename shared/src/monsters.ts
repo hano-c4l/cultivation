@@ -1,4 +1,4 @@
-import type { SpiritualRoot } from "./character";
+import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import { MAP_IDS, getMap, type MapId } from "./map";
 import { levelIndex, monsterBaseExp } from "./progression";
 
@@ -57,8 +57,8 @@ export interface RankDef {
 
 export const RANKS: Readonly<Record<MonsterRank, RankDef>> = {
   normal: { chance: 0, hpMult: 1, attackMult: 1, defenseMult: 1, expMult: 1, tagVi: null },
-  rare1: { chance: 0.08, hpMult: 1.8, attackMult: 1.2, defenseMult: 1.2, expMult: 2.5, tagVi: "Hiếm · Tinh Anh" },
-  rare2: { chance: 0.02, hpMult: 3, attackMult: 1.5, defenseMult: 1.5, expMult: 5, tagVi: "Hiếm · Đại Yêu" },
+  rare1: { chance: 0.08, hpMult: 1.8, attackMult: 1.2, defenseMult: 1.2, expMult: 2.5, tagVi: "Tinh Anh" },
+  rare2: { chance: 0.02, hpMult: 3, attackMult: 1.5, defenseMult: 1.5, expMult: 5, tagVi: "Đại Yêu" },
 };
 
 /** Rolls a rank from a uniform [0, 1) number: rarest first so each configured chance holds. */
@@ -66,6 +66,14 @@ export function rollRank(roll: number): MonsterRank {
   if (roll < RANKS.rare2.chance) return "rare2";
   if (roll < RANKS.rare2.chance + RANKS.rare1.chance) return "rare1";
   return "normal";
+}
+
+/**
+ * Every spawn and respawn rolls the monster's element (uniformly out of the five); `element` on its species is only what it
+ * shows until then and what an older stored monster keeps. Takes a uniform [0, 1) number.
+ */
+export function rollMonsterElement(roll: number): SpiritualRoot {
+  return SPIRITUAL_ROOTS[Math.min(SPIRITUAL_ROOTS.length - 1, Math.floor(roll * SPIRITUAL_ROOTS.length))] as SpiritualRoot;
 }
 
 export interface MonsterStats {

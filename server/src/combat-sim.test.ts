@@ -1,6 +1,6 @@
-import { MASTERY_NEEDED, CLUSTERS, RANKS, expToNext, getMap, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
+import { MASTERY_NEEDED, CLUSTERS, RANKS, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
-import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
+import { CombatSim, skillContextOf, type ProfileSeed, type SimEvent } from "./combat-sim";
 
 const noCrit = () => 0.99; // never dodges, never crits, damage spread near the top
 /** What every test character was given: the two skills of a realm (an attack and a stronger one) and a heal and a buff. */
@@ -22,8 +22,11 @@ const seed = (id = "p1", over: Partial<ProfileSeed> = {}): ProfileSeed => ({
   ...over,
 });
 
+/** A forest sim whose monsters keep their species' element (every spawn rolls one at random; a fixed roll would give them all the same). */
 function forestSim(rand = noCrit) {
-  return new CombatSim(getMap("forest"), "forest", rand, 0);
+  const sim = new CombatSim(getMap("forest"), "forest", rand, 0);
+  for (const s of sim.snapshots(0)) sim.setMonsterElement(s.id, getMonsterDef(s.kind)!.element);
+  return sim;
 }
 
 /** Runs ticks every 100 ms and collects events; the player stands still at `pos`. */
@@ -414,14 +417,41 @@ describe("CombatSim ranks across a sleep", () => {
   it("a rebuilt sim restores the saved classes instead of rolling again", () => {
     const first = new CombatSim(getMap("forest"), "forest", () => 0.01, 0); // 0.01 rolls the rarest class everywhere
     const saved = first.ranks();
-    expect(Object.values(saved).every((r) => r === "rare2")).toBe(true);
+    expect(Object.values(saved).every((r) => r.startsWith("rare2|"))).toBe(true);
     const rebuilt = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, saved); // would roll "normal" everywhere
     expect(rebuilt.ranks()).toEqual(saved);
   });
 
   it("an unknown saved class is ignored and rolled normally", () => {
     const sim = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, { m1: "bogus" as never });
-    expect(sim.ranks()["m1"]).toBe("normal");
+    expect(sim.ranks()["m1"]).toMatch(/^normal\|/);
+  });
+
+  it("the element is rolled with the class and restored with it, and an older saved value keeps the species' own element", () => {
+    const first = new CombatSim(getMap("forest"), "forest", () => 0.01, 0); // 0.01 also rolls the first element (kim)
+    expect(first.snapshots(0).every((m) => m.element === "kim")).toBe(true);
+    const saved = first.ranks();
+    expect(Object.values(saved).every((r) => r === "rare2|kim")).toBe(true);
+    const rebuilt = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, saved);
+    expect(rebuilt.snapshots(0).every((m) => m.element === "kim")).toBe(true);
+    const older = new CombatSim(getMap("forest"), "forest", () => 0.99, 0, { m1: "rare1" });
+    expect(older.snapshots(0)[0]).toMatchObject({ rank: "rare1", element: getMonsterDef("soi_rung")!.element });
+  });
+
+  it("every respawn rolls the element again", () => {
+    let roll = 0.99; // rolls the last element (tho) and a normal class
+    const sim = new CombatSim(getMap("forest"), "forest", () => roll, 0);
+    const m = sim.snapshots(0)[0]!;
+    expect(m.element).toBe("tho");
+    sim.addPlayer(seed("p1", { base: { ...seed().base, linhLuc: 500 } }));
+    sim.setTarget("p1", m.id);
+    const positions = new Map<string, Vec2>([["p1", [m.path[0]![0] + 1, m.path[0]![1]]]]);
+    run(sim, 0, 3000, positions);
+    expect(sim.snapshots(3000).some((s) => s.id === m.id)).toBe(false);
+    roll = 0.01; // the respawn will roll the first element (kim)
+    const later = run(sim, 3100, 3000 + 16_000, positions);
+    const back = later.find((e) => e.t === "mon" && e.monster.id === m.id);
+    expect(back && back.t === "mon" ? back.monster.element : null).toBe("kim");
   });
 });
 
@@ -704,7 +734,7 @@ describe("several elements (đơn ... ngũ linh căn) and the grade of the root"
     for (const roots of [["kim", "moc"], ["kim", "moc", "thuy"], [...all]] as const) expect(damageWith({ roots }, "chuong_0")).toBe(one);
   });
 
-  it("... and neither does the basic attack or a skill without an element: they use the main element, however many there are", () => {
+  it("... a skill without an element uses the main element however many there are; the plain attack goes by every element (elementOutcome)", () => {
     const basic = (roots: ProfileSeed["roots"]) => {
       const sim = forestSim();
       const m = sim.snapshots(0)[0]!;
@@ -713,9 +743,14 @@ describe("several elements (đơn ... ngũ linh căn) and the grade of the root"
       const hit = sim.tick(0, new Map([["p1", [m.path[0]![0] + 1, m.path[0]![1]] as Vec2]])).find((e) => e.t === "hit" && e.from === "p1");
       return hit && hit.t === "hit" ? hit.damage : 0;
     };
+    // The first monster is a moc one (a Sói Rừng). The plain attack sums every root against it (elementOutcome): kim overcomes moc
+    // (+1); moc and thuy score 0 against moc, so kim + moc and kim + moc + thuy stay at +1 (x1.2).
     const one = basic(["kim"]);
     expect(one).toBeGreaterThan(0);
-    for (const roots of [["kim", "moc"], ["kim", "moc", "thuy"], [...all]] as const) expect(basic(roots)).toBe(one);
+    expect(basic(["kim", "moc"])).toBe(one);
+    expect(basic(["kim", "moc", "thuy"])).toBe(one);
+    // tho is overcome by moc (-1): it hits for 20% less than thuy (0).
+    expect(basic(["tho"])).toBeLessThan(basic(["thuy"]));
     const sword = (roots: ProfileSeed["roots"]) => damageWith({ roots, granted: [...BASE_SKILLS, "ngu_kiem_tram"], weapon: "kiem" }, "ngu_kiem_tram");
     expect(sword([...all])).toBe(sword(["kim"]));
   });
@@ -979,5 +1014,66 @@ describe("mastery, realm and passives in the simulation", () => {
       return p.buffs[0]!.pct;
     };
     expect(pct(3)).toBeGreaterThan(pct(0));
+  });
+});
+
+describe("hướng tu in the simulation", () => {
+  const withPaths = (paths: ProfileSeed["paths"], over: Partial<ProfileSeed> = {}) => {
+    const sim = forestSim();
+    return { sim, p: sim.addPlayer(seed("p1", { paths, ...over })) };
+  };
+
+  it("the chủ tu adds its stats; a phụ tu adds half", () => {
+    // A strong character, so the percentages are not lost in rounding.
+    const big = { base: { ...seed().base, linhLuc: 300, canCot: 100 } };
+    const none = withPaths(undefined, big).p;
+    const kiemMain = withPaths({ main: "kiem", subs: [] }, big).p;
+    const kiemSub = withPaths({ main: "dan", subs: ["kiem"] }, big).p;
+    expect(kiemMain.stats.attack).toBeGreaterThan(none.stats.attack);
+    expect(kiemSub.stats.attack).toBeGreaterThan(none.stats.attack);
+    expect(kiemMain.stats.attack - none.stats.attack).toBeGreaterThan(kiemSub.stats.attack - none.stats.attack);
+    expect(withPaths({ main: "thuat", subs: [] }, big).p.maxMp).toBeGreaterThan(none.maxMp);
+    expect(withPaths({ main: "dan", subs: [] }, big).p.stats.defense).toBeGreaterThan(none.stats.defense);
+  });
+
+  it("each phụ tu slows the EXP gained: x 1 / (1 + k n), the chủ tu alone does not", () => {
+    const base = withPaths(undefined).p.expBonus;
+    expect(withPaths({ main: "kiem", subs: [] }).p.expBonus).toBe(base);
+    const one = withPaths({ main: "kiem", subs: ["dan"] }).p.expBonus;
+    const two = withPaths({ main: "kiem", subs: ["dan", "thuat"] }).p.expBonus;
+    expect(one).toBeLessThan(base);
+    expect(two).toBeLessThan(one);
+    expect((1 + one / 100) / (1 + base / 100)).toBeCloseTo(1 / 1.25, 6);
+    expect((1 + two / 100) / (1 + base / 100)).toBeCloseTo(1 / 1.5, 6);
+  });
+
+  it("setPaths applies at once", () => {
+    const { sim, p } = withPaths(undefined);
+    const before = p.stats.attack;
+    sim.setPaths("p1", { main: "kiem", subs: [] });
+    expect(p.stats.attack).toBeGreaterThan(before);
+  });
+
+  it("a Thuật tu hits harder with an element skill, a Kiếm tu with a kiếm in hand", () => {
+    const dmg = (paths: ProfileSeed["paths"], over: Partial<ProfileSeed> = {}) => {
+      const sim = forestSim();
+      const m = sim.snapshots(0)[0]!;
+      sim.addPlayer(seed("p1", { paths, granted: [...BASE_SKILLS], ...over }));
+      const r = sim.queueCast("p1", "chuong_0", m.id, 0);
+      expect(r.ok).toBe(true);
+      const events = sim.tick(0, new Map([["p1", [m.path[0]![0] + 1, m.path[0]![1]] as Vec2]]));
+      const hit = events.find((e) => e.t === "hit" && e.from === "p1");
+      return hit && hit.t === "hit" ? hit.damage : 0;
+    };
+    const none = dmg(undefined);
+    expect(dmg({ main: "thuat", subs: [] })).toBeGreaterThan(none);
+    expect(dmg({ main: "kiem", subs: [] }, { weapon: "kiem" })).toBeGreaterThan(none);
+  });
+
+  it("a path skill is weaker as a phụ tu", () => {
+    const def = getSkill("kt_kiem_khi")!;
+    const main = effectiveSkill(def, skillContextOf({ rootGrade: 1, realm: 1, paths: { main: "kiem", subs: [] } }, def));
+    const sub = effectiveSkill(def, skillContextOf({ rootGrade: 1, realm: 1, paths: { main: "dan", subs: ["kiem"] } }, def));
+    expect(sub.power).toBeCloseTo(main.power * 0.5, 6);
   });
 });
