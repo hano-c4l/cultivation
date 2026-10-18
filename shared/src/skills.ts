@@ -6,7 +6,7 @@ import { RATE_CAP, getRootGrade, levelIndex, type Element } from "./progression"
 
 /**
  * Skills (phase 2c, reworked with realms, grades and mastery levels). Placeholder game-design values (listed under "giá trị
- * tạm" in docs/STATUS.md): every number here is meant to be tuned.
+ * tạm" in docs/PHASE2.md): every number here is meant to be tuned.
  *
  * Where a skill comes from (`source`):
  *  - "root": two per realm the character has reached, one attack and one at random (attack, heal, buff or passive). They are

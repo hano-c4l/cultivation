@@ -94,7 +94,7 @@ export async function ensureRootSkills(db: D1Database, characterId: string, real
 export async function saveSkillMastery(db: D1Database, characterId: string, list: ReadonlyArray<{ id: string; lv: number; xp: number }>): Promise<void> {
   if (list.length === 0) return;
   const results = await db.batch(list.map((m) => db.prepare("UPDATE character_skills SET level = ?, mastery = ? WHERE character_id = ? AND skill_id = ?").bind(m.lv, m.xp, characterId, m.id)));
-  // Logged so `wrangler tail` shows the real D1 write cost of a mastery flush (docs/STATUS.md).
+  // Logged so `wrangler tail` shows the real D1 write cost of a mastery flush (docs/PHASE2.md, 2c).
   console.log("skill mastery rows_written", list.length, results.reduce((n, r) => n + (r.meta?.rows_written ?? 0), 0));
 }
 
