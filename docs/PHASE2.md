@@ -1,11 +1,11 @@
 # Giai đoạn 2: Chiều sâu nhân vật — đề xuất chia nhánh (bản nháp)
 
-Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g xong (`features_chat-channels`), 2a xong (`features_inventory`), hệ thống thể chất (dữ liệu và hiển thị) xong (`features_constitution`); **2b (trang bị, độ bền, giới tính, ngũ hành/loại vũ khí, pháp bảo bản mệnh và phi hành) xong**. Tất cả đã ở production (2g, 2a, thể chất 2026-10-17; 2b 2026-10-18). **Kế tiếp là 2c** (phạm vi đang chốt với người dùng). Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
+Trạng thái: **ĐÃ CHỐT THỨ TỰ (2026-10-17): 2g làm trước, rồi 2a → 2b → 2c → 2d → 2e → 2f → 2h.** 2g xong (`features_chat-channels`), 2a xong (`features_inventory`), hệ thống thể chất (dữ liệu và hiển thị) xong (`features_constitution`); **2b (trang bị, độ bền, giới tính, ngũ hành/loại vũ khí, pháp bảo bản mệnh và phi hành) xong**. Tất cả đã ở production (2g, 2a, thể chất 2026-10-17; 2b 2026-10-18). **2c (kỹ năng, MP, thanh phím tắt, bí tịch, số hệ linh căn) cũng đã xong và ở production (2026-10-18); kế tiếp là 2d.** Nguồn: `docs/PLAN.md` mục 10 (GĐ2), mục 9 (luật mặc định), mục 9a (chat nhiều chế độ) và các việc đã hoãn từ GĐ1 (xem `docs/STATUS.md`). Mỗi mục là một nhánh `features_*` theo quy trình trong `CLAUDE.md`. Thứ tự và phạm vi có thể sửa; mục "Câu hỏi cần chốt" cần người dùng quyết trước khi làm mục tương ứng.
 
 Nghiệm thu chung của GĐ2 (từ PLAN): một nhân vật đi trọn chuỗi nhiệm vụ tân thủ; công thức sát thương ngũ hành đúng test; sát khí/rơi đồ/vệ binh theo đúng luật mặc định.
 
 ## Thứ tự phụ thuộc
-2g (xong) → 2a (xong) → 2b (xong) → 2c → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
+2g (xong) → 2a (xong) → 2b (xong) → 2c (xong) → 2d; 2e cần 2a (thưởng bằng đồ); 2f cần 2c (kỹ năng) và nên sau 2b; 2h cuối.
 
 ## 2a. Vật phẩm và túi đồ (`features_inventory`) — ĐÃ LÀM
 Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Túi đồ và hòm thư (2a)". Quyết định thêm (2026-10-17): túi đầy thì đồ rơi được **gửi vào hòm thư, phải nhận trong 30 phút nếu không sẽ mất**.
@@ -26,7 +26,7 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Trang bị và 
 - Pháp bảo ở 2b chỉ cộng chỉ số; kỹ năng đặc biệt của pháp bảo và vũ khí theo bí tịch làm ở 2c.
 - Nghiệm thu: mặc/tháo đổi đúng chỉ số; chết giảm độ bền; sửa đồ trừ đúng tiền, không âm (đã có test và `tools/equipment-smoke.mjs`).
 
-## 2c. Kỹ năng, MP và ngũ hành đầy đủ (`features_skills`) — A và B ĐÃ LÀM (chờ PR), C chưa
+## 2c. Kỹ năng, MP và ngũ hành đầy đủ (`features_skills`) — ĐÃ LÀM (đã ở production)
 **Đã chốt với người dùng (2026-10-18):**
 - **Học kỹ năng:** kỹ năng cơ bản mở theo cảnh giới/tầng (theo ngũ hành linh căn của nhân vật + kỹ năng dùng chung); kỹ năng cao hơn học từ **bí tịch** (vật phẩm). Học từ NPC và gia nhập tông môn (cần Cống Hiến) để sau, phần phức tạp.
 - **Loại kỹ năng đợt này:** chỉ đánh **một mục tiêu**, hồi máu và buff đơn giản (tăng công/thủ trong thời gian ngắn). Chưa có diện rộng, chưa có hiệu ứng trạng thái (bỏng, chậm, choáng).
