@@ -77,7 +77,7 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
   panel.id = "sk-panel";
   panel.hidden = true;
   document.body.append(toggle, panel);
-  registerWindow("skills", panel, 1);
+  registerWindow("skills", panel, 2);
 
   let ids: string[] = [];
   let states: SkillStateView = {};
