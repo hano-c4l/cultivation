@@ -130,6 +130,34 @@ await sleep(500);
 c = await connect(reg.cookie, 2);
 check("the learned skill is still there after reconnecting", c.welcome.skills.includes("cuong_than"));
 
+// Ngộ Đạo Đan, in town (no simulation there): spends the pill and raises the mastery in one batch.
+r = await after(c, { t: "skill_boost", skill: "chuong_0" }, 500);
+check("without a pill the boost is refused", r.some((m) => m.t === "inv_error" && m.reason === "no_pill"));
+await sleep(200);
+await give("ngo_dao_dan");
+await give("ngo_dao_dan");
+await sleep(700);
+const pills = () => bag().filter((i) => i.type === "ngo_dao_dan").reduce((n, i) => n + i.qty, 0);
+check("two pills arrived", pills() === 2, `${pills()}`);
+r = await after(c, { t: "skill_boost", skill: "chuong_0" }, 900);
+const boosted = r.find((m) => m.t === "skill_state" && m.id === "chuong_0");
+check("a pill gives 100 mastery points: the skill rises to the next level with the rest carried over", boosted && boosted.lv === 1 && boosted.up === true, JSON.stringify(boosted));
+check("... and exactly one pill was used", pills() === 1, `${pills()}`);
+await sleep(200);
+r = await after(c, { t: "skill_boost", skill: "pt_thuan_di" }, 500);
+check("a skill without mastery (not one the character has) is refused", r.some((m) => m.t === "inv_error" && m.reason === "no_skill") && pills() === 1);
+c.ws.close();
+await sleep(500);
+c = await connect(reg.cookie, 2);
+check("the boost was written to D1 together with the pill", (c.welcome.skillStates.chuong_0?.lv ?? 0) === 1, JSON.stringify(c.welcome.skillStates.chuong_0));
+sql(`UPDATE character_skills SET level = ${created.data.character.rootGrade >= 3 ? 4 : 3}, mastery = 0 WHERE character_id = '${charId}' AND skill_id = 'hoi_0'`);
+c.ws.close();
+await sleep(500);
+c = await connect(reg.cookie, 2);
+await sleep(200);
+r = await after(c, { t: "skill_boost", skill: "hoi_0" }, 600);
+check("a skill already at its top level (the top level of its grade) refuses the pill and keeps it", r.some((m) => m.t === "inv_error" && m.reason === "not_needed") && pills() === 1, `${pills()}`);
+
 // Forest: cast an attack, a heal and a buff.
 c.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1);
@@ -148,7 +176,7 @@ const hit = await c.wait((m) => m.t === "hit" && m.skill === "chuong_0", 3000, "
 check("the hit names the skill", hit.from === charId);
 const mp = [...c.log].reverse().find((m) => m.t === "mp");
 const state = await c.wait((m) => m.t === "skill_state" && m.id === "chuong_0", 3000, "the mastery of the skill");
-check("a skill that landed gained a mastery point", state.lv === 0 && state.xp >= 1, JSON.stringify(state));
+check("a skill that landed gained one mastery point on top of the pill (level 1 with 50 points, plus 1)", state.lv === 1 && state.xp === 51, JSON.stringify(state));
 check("MP was spent", mp && mp.maxMp === maxMp && mp.mp <= maxMp - 8, `mp ${mp?.mp}/${mp?.maxMp}`);
 r = await after(c, { t: "cast", skill: "chuong_0", target: prey.id }, 400);
 check("casting again at once is refused (cooldown)", r.some((m) => m.t === "cast_error" && m.reason === "cooldown"));

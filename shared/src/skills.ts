@@ -2,7 +2,7 @@ import type { SpiritualRoot } from "./character";
 import { SPIRITUAL_ROOTS } from "./character";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
-import { getRootGrade, levelIndex, type Element } from "./progression";
+import { RATE_CAP, getRootGrade, levelIndex, type Element } from "./progression";
 
 /**
  * Skills (phase 2c, reworked with realms, grades and mastery levels). Placeholder game-design values (listed under "giá trị
@@ -237,6 +237,43 @@ export function effectiveSkill(def: SkillDef, ctx: SkillContext): EffectiveSkill
     power = Math.min(rate ? 0.5 : 1.5, def.power * (1 + 0.2 * ctx.realm) * grade * lv);
   }
   return { power, mpCost: Math.round(def.mpCost * (1 + 0.5 * ctx.realm)), cooldownMs: Math.round(def.cooldownMs * (SKILL_LEVEL_COOLDOWN[level] ?? 1)) };
+}
+
+/** What a character's passive skills add all the time: fractions of attack and defense, percentage points of dodge and crit. */
+export interface PassiveTotals {
+  attackPct: number;
+  defensePct: number;
+  dodgePoints: number;
+  critPoints: number;
+}
+
+/**
+ * The sum of the passives among the skills a character was given, each at its realm, grade and mastery level. One function for
+ * the fight and for the character panel, so the panel shows the numbers the fight uses.
+ */
+export function passiveTotals(granted: Iterable<string>, state: Readonly<Record<string, { lv: number }>>, rootGrade: number): PassiveTotals {
+  const t: PassiveTotals = { attackPct: 0, defensePct: 0, dodgePoints: 0, critPoints: 0 };
+  for (const id of granted) {
+    const def = BY_ID.get(id);
+    if (def?.kind !== "passive" || !def.passive) continue;
+    const pct = effectiveSkill(def, { realm: def.realm, grade: skillGrade(def, rootGrade), level: state[id]?.lv ?? 0 }).power;
+    if (def.passive.stat === "attack") t.attackPct += pct;
+    else if (def.passive.stat === "defense") t.defensePct += pct;
+    else if (def.passive.stat === "dodge") t.dodgePoints += pct * 100;
+    else t.critPoints += pct * 100;
+  }
+  return t;
+}
+
+/** Derived stats with the passives added (the character panel); combat adds them next to the buffs instead. */
+export function withPassives<T extends { attack: number; defense: number; critRate: number; dodgeRate: number }>(d: T, t: PassiveTotals): T {
+  return {
+    ...d,
+    attack: Math.floor(d.attack + d.attack * t.attackPct),
+    defense: Math.floor(d.defense + d.defense * t.defensePct),
+    critRate: Math.min(RATE_CAP, d.critRate + t.critPoints),
+    dodgeRate: Math.min(RATE_CAP, d.dodgeRate + t.dodgePoints),
+  };
 }
 
 /** Adds mastery points; returns the new level and points and whether a level was gained. At the highest level nothing grows. */

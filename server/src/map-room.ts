@@ -376,9 +376,10 @@ export class MapRoom extends DurableObject<Env> {
         .then((rows) => ensureRootSkills(this.env.DB, row.id, row.realm, rows))
         .catch((err) => {
           console.error("skills read failed", row.id, err);
-          return [] as SkillRow[];
+          return null;
         });
-      this.skillRows.set(row.id, skills);
+      // A failed read is not cached as "no skills": getSkillRows tries again when a skill is next needed.
+      if (skills) this.skillRows.set(row.id, skills);
       const hotbar = parseHotbar(row.hotbar);
       this.hotbars.set(row.id, hotbar);
       // Pieces mailed because the bag was full must be in the mail list the welcome carries.
@@ -419,7 +420,7 @@ export class MapRoom extends DurableObject<Env> {
       // Includes the joining player so the client gets its own authoritative snapshot.
       const players = this.players().map((p) => this.snapshot(p));
       const sim = this.sim;
-      const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow, skills, constitutions))) : undefined;
+      const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow, skills ?? [], constitutions))) : undefined;
       if (sim) this.startTick();
       const derived = deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row, constitutions)), parseRoots(row.roots, row.spiritual_root).length);
       const maxHp = profile?.maxHp ?? derived.maxHp;
@@ -442,8 +443,8 @@ export class MapRoom extends DurableObject<Env> {
         mail: mailViews(mailNow),
         constitutions,
         equipped: bagNow.equipped,
-        skills: profile && sim ? sim.skillsOf(profile) : availableSkills(skills.map((r) => r.skill_id), gearSkillIds(bagNow.equipped)),
-        skillStates: stateOfRows(skills),
+        skills: profile && sim ? sim.skillsOf(profile) : availableSkills((skills ?? []).map((r) => r.skill_id), gearSkillIds(bagNow.equipped)),
+        skillStates: stateOfRows(skills ?? []),
         hotbar,
         cd: profile && sim ? sim.cooldownsLeft(profile, Date.now()) : Object.fromEntries(Object.entries(away.cooldowns).map(([k, t]) => [k, t - Date.now()])),
         mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
@@ -1571,10 +1572,12 @@ export class MapRoom extends DurableObject<Env> {
       const rootGrade = this.sim?.getPlayer(id)?.rootGrade ?? (await getCharacterById(this.env.DB, id))?.root_grade ?? 0;
       const next = addMastery(row.level, row.mastery, MASTERY_PILL_POINTS, skillGrade(def, rootGrade));
       if (next.level === row.level && next.mastery === row.mastery) return this.send(ws, { t: "inv_error", reason: "not_needed" }); // already at the top
-      const bag = await this.getBag(id);
-      const pill = bag.items.find((i) => getItemDef(i.type)?.masteryPills !== undefined);
-      if (!pill) return this.send(ws, { t: "inv_error", reason: "no_pill" });
+      const hasPill = (await this.getBag(id)).items.some((i) => getItemDef(i.type)?.masteryPills !== undefined);
+      if (!hasPill) return this.send(ws, { t: "inv_error", reason: "no_pill" });
       const res = await this.mutateBag(id, (b) => {
+        // Looked up in the bag this plan is made on: when the cache was stale and the bag was reloaded, a pill's cell may have moved.
+        const pill = b.items.find((i) => getItemDef(i.type)?.masteryPills !== undefined);
+        if (!pill) return null;
         const ops = planRemove(b.items, b.tabs, { tab: pill.tab, cell: pill.cell }, 1);
         if (!ops) return null;
         const guard = this.env.DB.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM character_skills WHERE character_id = ? AND skill_id = ?)").bind(id, skillId);

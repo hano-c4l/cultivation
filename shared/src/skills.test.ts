@@ -20,7 +20,9 @@ import {
   parseSkillSlot,
   rollBookDrop,
   rollRealmSkills,
+  passiveTotals,
   skillGrade,
+  withPassives,
 } from "./skills";
 
 /** A deterministic "random" source that walks through the given numbers. */
@@ -193,5 +195,25 @@ describe("protocol messages", () => {
     expect(parseClientMessage('{"t":"hotbar_set","slot":0,"v":"x:y"}')).toBeNull();
     expect(parseClientMessage('{"t":"use_type","type":"hoi_huyet_dan"}')).toEqual({ t: "use_type", type: "hoi_huyet_dan" });
     expect(parseClientMessage('{"t":"use_type","type":"A B"}')).toBeNull();
+  });
+});
+
+describe("passive skills", () => {
+  it("add up by kind, grow with level and realm, and ignore anything that is not a passive", () => {
+    expect(passiveTotals([], {}, 0)).toEqual({ attackPct: 0, defensePct: 0, dodgePoints: 0, critPoints: 0 });
+    const base = passiveTotals(["bd_cong_0", "bd_thu_0", "bd_than_0", "bd_mang_0", "chuong_0", "pt_thuan_di"], {}, 0);
+    expect(base.attackPct).toBeCloseTo(0.08);
+    expect(base.defensePct).toBeCloseTo(0.08);
+    expect(base.dodgePoints).toBeCloseTo(3);
+    expect(base.critPoints).toBeCloseTo(3);
+    expect(passiveTotals(["bd_cong_0"], { bd_cong_0: { lv: 3 } }, 0).attackPct).toBeGreaterThan(base.attackPct);
+    expect(passiveTotals(["bd_cong_0"], {}, 4).attackPct).toBeGreaterThan(base.attackPct); // a higher root grade
+    expect(passiveTotals(["bd_cong_1"], {}, 0).attackPct).toBeGreaterThan(base.attackPct); // a higher realm
+  });
+
+  it("withPassives raises the derived stats the way combat does, with the same caps", () => {
+    const d = { attack: 100, defense: 50, critRate: 58, dodgeRate: 10, other: 7 };
+    const out = withPassives(d, { attackPct: 0.1, defensePct: 0.2, dodgePoints: 5, critPoints: 10 });
+    expect(out).toEqual({ attack: 110, defense: 60, critRate: 60, dodgeRate: 15, other: 7 });
   });
 });

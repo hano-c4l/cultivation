@@ -56,6 +56,7 @@ import {
   type SkillContext,
   type SpiritualRoot,
   addMastery,
+  passiveTotals,
   effectiveSkill,
   skillGrade,
 } from "@game/shared";
@@ -236,16 +237,12 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
     else if (b.stat === "defense") defense = Math.floor(defense + d.defense * b.pct);
     else dodge += b.pct * 100;
   }
-  // Passive skills work all the time, at the strength their realm, grade and mastery give them.
-  for (const id of seed.granted ?? []) {
-    const def = getSkill(id);
-    if (def?.kind !== "passive" || !def.passive) continue;
-    const pct = effectiveSkill(def, skillContextOf(seed, def)).power;
-    if (def.passive.stat === "attack") attack = Math.floor(attack + d.attack * pct);
-    else if (def.passive.stat === "defense") defense = Math.floor(defense + d.defense * pct);
-    else if (def.passive.stat === "dodge") dodge += pct * 100;
-    else crit += pct * 100;
-  }
+  // Passive skills work all the time, at the strength their realm, grade and mastery give them (the same sum the character panel shows).
+  const passive = passiveTotals(seed.granted ?? [], seed.masteries ?? seed.skillState ?? {}, seed.rootGrade);
+  attack = Math.floor(attack + d.attack * passive.attackPct);
+  defense = Math.floor(defense + d.defense * passive.defensePct);
+  dodge += passive.dodgePoints;
+  crit += passive.critPoints;
   return {
     stats: { attack, defense, critRate: Math.min(RATE_CAP, crit), dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element },
     maxHp: d.maxHp,

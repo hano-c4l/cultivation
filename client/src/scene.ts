@@ -424,6 +424,7 @@ export class GameScene extends Phaser.Scene {
         this.skillStates = msg.skillStates;
         this.worn = msg.equipped;
         this.skillsUi.setStates(msg.skillStates);
+        this.charPanel.setSkills(msg.skills, msg.skillStates);
         this.skillsUi.setEquipped(msg.equipped);
         this.skillsUi.setSkills(msg.skills);
         this.hotbar.setSkills(msg.skills);
@@ -520,6 +521,7 @@ export class GameScene extends Phaser.Scene {
           for (const id of msg.ids.filter((s) => !this.knownSkills!.includes(s))) this.chat.system((getSkill(id)?.source === "root" ? vi.skills.rootGranted : getSkill(id)?.source === "gear" ? vi.skills.gearGranted : vi.skills.learned)(getSkill(id)?.nameVi ?? id), "important");
         }
         this.knownSkills = msg.ids;
+        this.charPanel.setSkills(msg.ids, this.skillStates);
         this.skillsUi.setSkills(msg.ids);
         this.hotbar.setSkills(msg.ids);
         break;
@@ -529,6 +531,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "skill_state": {
         this.skillStates[msg.id] = { lv: msg.lv, xp: msg.xp };
+        if (msg.up) this.charPanel.setSkills(this.knownSkills ?? [], this.skillStates); // a passive may be stronger now
         this.skillsUi.setState(msg.id, msg.lv, msg.xp);
         const def = getSkill(msg.id);
         if (msg.up && def) this.chat.system(vi.skills.levelUp(def.nameVi, vi.skills.levels[msg.lv] ?? ""), "important");

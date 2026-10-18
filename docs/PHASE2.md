@@ -42,6 +42,7 @@ Chi tiết kiến trúc và vận hành: `docs/STATUS.md` mục "Trang bị và 
 - **Số hệ linh căn: ĐÃ LÀM (2026-10-18)** theo số liệu người dùng chốt (đơn 20%, song 48%, tam 25%, tứ 5%, ngũ 2%; tu vi +10/0/-15/-30/-40%; không ảnh hưởng sát thương) cùng phẩm cấp ảnh hưởng tu vi và sát thương theo hệ. Nhân vật có sẵn giữ là đơn linh căn. Chi tiết: `docs/STATUS.md` mục "Linh căn nhiều hệ". Biến dị Lôi/Băng/Phong chưa làm.
 
 ## 2d. Chủ tu/phụ tu và đột phá (`features_cultivation-paths`)
+- **Việc phải nối khi làm đột phá:** gọi `ensureRootSkills` với cảnh giới mới (cấp thêm 2 kỹ năng linh căn của cảnh giới đó) rồi gửi lại `skills`; truyền cấp luyện của pháp bảo bản mệnh vào kỹ năng của nó (hiện chỉ theo id của món).
 - Chọn chủ tu (Kiếm tu, Thuật tu, Đan tu) và phụ tu; hệ số EXP `1 / (1 + k·n)` (PLAN mục 9), `k` chỉnh được trong cấu hình.
 - **Đột phá cảnh giới**: hiện tiến độ dừng ở tầng 9 và EXP bị chặn. Thêm cơ chế đột phá có tỉ lệ thất bại, đan dược tăng tỉ lệ, tiền sink.
 - Nghiệm thu: test công thức hệ số; đột phá thành/bại đúng tỉ lệ (RNG truyền vào), trừ đúng vật phẩm/tiền.
