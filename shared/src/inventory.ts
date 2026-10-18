@@ -6,7 +6,7 @@ import { ITEM_RARITIES, getItemDef } from "./items";
  * never at a single linear index, so the tab size can change later without moving items across tabs.
  */
 export const BAG_COLS = 8;
-export const BAG_ROWS = 16;
+export const BAG_ROWS = 8;
 export const BAG_CELLS_PER_TAB = BAG_COLS * BAG_ROWS;
 export const START_BAG_TABS = 1;
 export const MAX_BAG_TABS = 10;

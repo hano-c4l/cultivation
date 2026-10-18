@@ -30,6 +30,13 @@
       #vitals { position: fixed; left: 12px; top: calc(var(--hud-bottom, 50px) + 6px); width: 200px; padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 12px/1.3 "Be Vietnam Pro", system-ui, sans-serif; pointer-events: none; box-sizing: border-box; }
       #vitals[hidden] { display: none; }
+      /* Buff tiles sit right under the MP bar and wrap onto more rows when there are many. */
+      #buffs { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; pointer-events: auto; } #buffs[hidden] { display: none; }
+      #buffs .buff { position: relative; width: 28px; height: 28px; box-sizing: border-box; border-radius: 5px; border: 1px solid #d6a94b; background: rgba(214, 169, 75, 0.22); text-align: center; overflow: hidden; }
+      #buffs .buff { cursor: pointer; } #buffs .buff-name { flex-basis: 100%; font-size: 11px; opacity: 0.9; }
+      #buffs .buff.buff-item { border-color: #6fcf97; background: rgba(111, 207, 151, 0.2); }
+      #buffs .buff-tag { display: block; font-size: 11px; font-weight: 700; line-height: 17px; }
+      #buffs .buff-left { position: absolute; left: 0; right: 0; bottom: 0; font-size: 9px; line-height: 10px; background: rgba(0, 0, 0, 0.6); font-variant-numeric: tabular-nums; }
       #wallet { position: fixed; right: 12px; top: 172px; min-width: 150px; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 12px/1.5 "Be Vietnam Pro", system-ui, sans-serif; pointer-events: none; box-sizing: border-box; }
       #wallet[hidden] { display: none; }
@@ -43,6 +50,11 @@
         background: rgba(27, 33, 48, 0.96); color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; }
       #sk-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
       #sk-panel .sk-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; } #sk-panel .sk-head b { flex: 1; font-size: 15px; } #sk-panel .sk-small { padding: 4px 8px; min-height: 28px; }
+      #sk-panel .sk-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; } #sk-panel .sk-tabs button { padding: 4px 8px; font-size: 12px; background: #3a4560; color: #e8e4d8; } #sk-panel .sk-tabs button.active { background: #d6a94b; color: #1b1405; }
+      #sk-panel .sk-tag { margin-left: 6px; padding: 0 4px; border-radius: 4px; background: #ffd54a; color: #1b1405; font-size: 10px; font-weight: 700; } #sk-panel .sk-meta { font-size: 12px; color: #ffd54a; }
+      #sk-panel .sk-bar { height: 5px; margin: 3px 0 1px; border-radius: 3px; background: #10141c; overflow: hidden; } #sk-panel .sk-bar-fill { height: 100%; background: #6fcf97; }
+      #sk-panel .sk-actions { display: flex; flex-direction: column; align-items: stretch; gap: 4px; max-width: 120px; } #sk-panel .sk-el { display: flex; align-items: center; justify-content: center; }
+      #sk-panel .sk-pill { background: #2f6b4f; color: #e8f5e9; } #sk-panel button:disabled { opacity: 0.45; cursor: default; }
       #sk-panel .sk-card { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px; background: rgba(255, 255, 255, 0.06); border: 1px solid #3a4560; border-radius: 6px; }
       #sk-panel .sk-info { flex: 1; min-width: 0; } #sk-panel .muted { opacity: 0.7; font-size: 12px; }
       #hotbar { position: fixed; right: 12px; bottom: 12px; z-index: 5; font: 12px "Be Vietnam Pro", system-ui, sans-serif; color: #e8e4d8; }
@@ -51,6 +63,7 @@
       #hotbar .hb-row { display: flex; gap: 3px; }
       #hotbar .hb-slot { position: relative; width: 44px; height: 44px; padding: 2px; box-sizing: border-box; border: 1px solid #3a4560; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #e8e4d8; cursor: pointer; overflow: hidden; }
       #hotbar .hb-slot.assigning { border-color: #ffd54a; box-shadow: 0 0 0 1px #ffd54a inset; } #hotbar .hb-slot.dim { opacity: 0.5; }
+      #hotbar .hb-elem { position: absolute; top: 2px; left: 12px; margin: 0; width: 9px; height: 9px; }
       #hotbar .hb-key { position: absolute; top: 1px; left: 3px; font-size: 9px; color: #ffd54a; font-weight: 700; }
       #hotbar .hb-name { display: block; margin-top: 8px; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
       #hotbar .hb-count { position: absolute; right: 3px; bottom: 1px; font-size: 10px; font-weight: 700; }
@@ -90,6 +103,7 @@
       .elem-hoa { background: #e53935; } .elem-kim { background: #fbc02d; } .elem-tho { background: #8d6e63; } .elem-thuy { background: #1e88e5; } .elem-moc { background: #43a047; }
       .elem-loi { background: #8e24aa; } .elem-bang { background: #80deea; } .elem-phong { background: #cfd8dc; }
       #bag-panel .elem-dot.bag-elem, .bag-ghost .elem-dot.bag-elem { position: absolute; left: 2px; bottom: 2px; width: 9px; height: 9px; margin: 0; }
+      #eq-panel .eq-tabs { display: flex; gap: 4px; margin: 6px 0; } #eq-panel .eq-tabs button { padding: 4px 10px; font-size: 12px; border: 0; border-radius: 6px; background: #3a4560; color: #e8e4d8; font-weight: 600; cursor: pointer; } #eq-panel .eq-tabs button.active { background: #d6a94b; color: #1b1405; }
       #eq-panel .eq-choose { margin: 4px 0 0; padding: 6px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; }
       #eq-panel .eq-opt { border: 1px solid #3a4560; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 8px; margin-top: 6px; } #eq-panel .eq-opt > div { flex: 1; min-width: 0; }
       #eq-panel .eq-opt button { max-width: 120px; padding: 4px 8px; min-height: 28px; font-size: 12px; }
@@ -103,12 +117,12 @@
       #bag-panel .bag-head b { flex: 1; font-size: 15px; } #bag-panel .bag-used { opacity: 0.7; } #bag-panel .bag-head button { padding: 2px 8px; } #bag-panel .bag-head .bag-sort { padding: 4px 8px; font-size: 12px; }
       #bag-panel .bag-tabs { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
       #bag-panel .bag-tabs button { padding: 3px 8px; background: #3a4560; color: #e8e4d8; } #bag-panel .bag-tabs button.active { background: #d6a94b; color: #1b1405; }
-      /* About 5.5 rows are visible; the rest of the 16 rows scrolls, so the grid never pushes the details off a phone. */
-      /* Fixed row height (not aspect-ratio): with a capped grid height, aspect-ratio rows could shrink and overlap. */
-      #bag-panel .bag-grid { display: grid; grid-auto-rows: 40px; align-content: start; gap: 3px; max-height: min(250px, 34vh); overflow-y: auto; padding: 2px;
-        background: rgba(0, 0, 0, 0.25); border-radius: 6px; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; }
-      #bag-panel::-webkit-scrollbar, #bag-panel .bag-grid::-webkit-scrollbar { width: 8px; }
-      #bag-panel::-webkit-scrollbar-thumb, #bag-panel .bag-grid::-webkit-scrollbar-thumb { background: #6b7a99; border-radius: 4px; }
+      /* The whole 8x8 tab is shown; only the panel scrolls, and only when the window is too short for it. */
+      /* Fixed row height (not aspect-ratio): with a capped panel height, aspect-ratio rows could shrink and overlap. */
+      #bag-panel .bag-grid { display: grid; grid-auto-rows: 40px; align-content: start; gap: 3px; padding: 2px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; }
+      #bag-panel::-webkit-scrollbar { width: 8px; }
+      #bag-panel::-webkit-scrollbar-thumb { background: #6b7a99; border-radius: 4px; }
+      #bag-panel .bag-tabs button.bag-buy { background: #2f6b4f; color: #e8f5e9; }
       #bag-panel .bag-cell { position: relative; height: 100%; min-width: 0; padding: 1px; background: rgba(255, 255, 255, 0.07); color: #e8e4d8; border: 1px solid #3a4560; overflow: hidden; }
       #bag-panel .bag-cell.rar-uncommon { border-color: #4fc3f7; } #bag-panel .bag-cell.rar-rare { border-color: #ba68c8; } #bag-panel .bag-cell.rar-epic { border-color: #ffb300; }
       #bag-panel .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; line-height: 1; text-shadow: 0 0 2px #000; pointer-events: none; }
@@ -204,7 +218,7 @@
     <div id="game"></div>
     <div id="auth" hidden></div>
     <div id="hud">Đang tải…</div>
-    <div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div></div>
+    <div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div><div id="buffs" hidden></div></div>
     <div id="wallet" hidden></div>
     <button id="logout" hidden></button>
     <div id="chat" hidden>

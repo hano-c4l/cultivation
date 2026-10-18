@@ -42,7 +42,7 @@ export async function applyCurrencyDelta(db: D1Database, c: CurrencyChange, extr
         .bind(c.delta, c.characterId, c.currency),
       ...extra,
     ]);
-    // Logged so `wrangler tail` shows the real D1 write cost of a ledger change (docs/STATUS.md, economy notes).
+    // Logged so `wrangler tail` shows the real D1 write cost of a ledger change (docs/PHASE1.md, economy notes).
     console.log("ledger rows_written", c.reason, results.reduce((n, r) => n + (r.meta?.rows_written ?? 0), 0));
     const balance = results[2]?.results[0]?.balance;
     if (typeof balance !== "number") throw new Error("balance update returned no row");

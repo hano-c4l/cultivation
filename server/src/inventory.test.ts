@@ -295,8 +295,8 @@ describe("sort and split in D1", () => {
   });
 
   it("a large bag sorts in chunks within D1's parameter limit and keeps every item", async () => {
-    for (let i = 0; i < 200; i++) put(i % 2 ? "linh_thao" : "thu_cot", 1 + (i % 9), i < 128 ? 0 : 1, i % 128);
-    await expandBag(db, A, MAX_BAG_TABS);
+    for (let i = 0; i < 200; i++) put(i % 2 ? "linh_thao" : "thu_cot", 1 + (i % 9), Math.floor(i / 64), i % 64);
+    for (let t = 0; t < 3; t++) await expandBag(db, A, MAX_BAG_TABS);
     const bag = await loadBag(db, A);
     const ops = planSort(bag.items, bag.tabs, "name")!;
     expect(await commitBagOps(db, A, ops)).toBe("ok");

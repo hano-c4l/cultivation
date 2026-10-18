@@ -1,6 +1,6 @@
 # Kế hoạch: Web game tu tiên (MMO nhỏ-vừa, 2.5D isometric)
 
-Trạng thái: **ĐANG THỰC HIỆN** — giai đoạn 0 và 1 đã xong (1f đo tải thật trên Cloudflare được hoãn), giai đoạn 2 đang làm: 2g (chat), 2a (túi đồ), hệ thống thể chất đã xong, 2b (trang bị, độ bền, giới tính, pháp bảo bản mệnh/phi hành) và 2c (kỹ năng, MP, thanh phím tắt, bí tịch, linh căn nhiều hệ) xong và đã ở production, kế tiếp 2d (xem `docs/STATUS.md` mục "Bàn giao nhanh", `docs/PHASE1.md` và `docs/PHASE2.md`). Mọi mục "Mặc định" bên dưới đều có thể sửa.
+Trạng thái: **ĐANG THỰC HIỆN** — xem `docs/STATUS.md` (giai đoạn nào xong, đang làm, làm tiếp), `docs/TECHNICAL.md` (hạ tầng, cách chạy, kiểm thử), `docs/PHASE1.md` và `docs/PHASE2.md` (chi tiết từng giai đoạn). Mọi mục "Mặc định" bên dưới đều có thể sửa.
 
 ## 1. Yêu cầu đã chốt
 | Hạng mục | Quyết định |
@@ -18,41 +18,7 @@ Trạng thái: **ĐANG THỰC HIỆN** — giai đoạn 0 và 1 đã xong (1f đ
 | Hạ tầng | Cloudflare. **Gói áp dụng theo kế hoạch (vận hành thật): Workers Paid.** **Khi phát triển: dùng Workers Free nếu không cần thiết phải nâng.** Nếu một kỹ thuật/công nghệ cần bản Paid thì phải báo người dùng để nâng cấp, không tự giả định (xem mục 2a) |
 | Ngôn ngữ | Giao diện game: tiếng Việt. Code (hàm, biến, comment): tiếng Anh |
 
-## 2. Hình dạng deploy
-- **Một Worker duy nhất** phục vụ client (static assets), API HTTP, WebSocket, Durable Objects và D1. Cloudflare đang gộp Pages vào Workers nên **không có deploy Pages riêng**; đáp ứng yêu cầu "Workers and Pages" bằng Workers Static Assets.
-- Monorepo (pnpm workspaces), thư mục gốc cần `git init` (hiện chưa là git repo):
-  - `client/`: Vite + TypeScript, Phaser 3 (canvas) + lớp UI HTML/CSS phủ lên (inventory, chat, bảng nhiệm vụ).
-  - `server/`: Worker, các Durable Object, migration D1.
-  - `shared/`: kiểu dữ liệu, schema message (validate bằng zod hoặc tương đương), dữ liệu game (JSON/TS), công thức chỉ số/ngũ hành/cảnh giới, lưới đi được (walkability) dùng chung client/server.
-  - `tools/`: script build map/atlas, seed dữ liệu.
-  - `docs/`: tài liệu.
-
-## 2a. Gói Cloudflare: Paid là đích, Free khi phát triển
-- **Đích vận hành:** Workers Paid (CPU/request cao hơn, nhiều quota Durable Object và D1 hơn).
-- **Khi develop:** mặc định chạy trên Workers Free để tiết kiệm; thiết kế code sao cho chạy được trong giới hạn Free (ví dụ băm mật khẩu nằm trong Durable Object vì Worker Free chỉ có 10 ms CPU, ghi D1 theo batch/debounce).
-- **Quy tắc báo nâng cấp:** khi gặp việc mà giới hạn Free thực sự chặn (CPU 10 ms, quota request/GB-s của DO, 100k dòng ghi D1/ngày, kiểm thử tải 50 client, tick loop chạy liên tục...), trợ lý **dừng lại và thông báo người dùng** nêu rõ: giới hạn nào, vì sao cần Paid, có phương án né trong Free không. Chỉ nâng cấp khi người dùng đồng ý.
-- Không thiết kế lệch kiến trúc chỉ để né Free nếu việc đó làm sai hướng so với bản Paid; khi nghi ngờ, hỏi người dùng.
-
-## 3. Bảng sở hữu trạng thái (quan trọng nhất)
-Nguyên tắc: **server là nguồn sự thật**; mỗi nhân vật chỉ có **1 writer** tại một thời điểm.
-
-| Trạng thái | Bản chính nằm ở | Ghi xuống D1 khi nào |
-|---|---|---|
-| Vị trí, hướng, đường đi | `MapRoom` DO (bộ nhớ) | Khi rời bản đồ / ngắt kết nối / mỗi ~30-60s |
-| HP/MP, buff, cooldown, sát khí tức thời | `MapRoom` DO | Khi rời bản đồ / ngắt kết nối / định kỳ (HP/MP không cần lưu chính xác) |
-| EXP, cảnh giới, điểm tiềm năng, kỹ năng | `MapRoom` DO (bản làm việc), D1 là bản bền | Mỗi sự kiện quan trọng (lên tầng, học kỹ năng) và định kỳ |
-| Túi đồ, trang bị | D1 (bản chính); DO giữ cache khi nhân vật online | Mỗi thay đổi có giá trị (nhặt/dùng/bỏ đồ hiếm), batch theo khoảng thời gian cho đồ rác |
-| **3 loại tiền** | **D1 (sổ cái append-only)**; số dư là bản tổng hợp | **Đồng bộ mỗi giao dịch**, không bao giờ chỉ ở bộ nhớ |
-| Escrow giao dịch trực tiếp | D1 (bảng `trade_sessions`) + DO điều phối | Atomic: batch D1 với cập nhật có điều kiện |
-| Tin đăng chợ, đấu giá | D1 | Đồng bộ |
-| Hòm thư (tiền/đồ cho người offline) | D1 (`mailbox`) | Đồng bộ |
-| Phiên đăng nhập, khóa phiên | D1 + `CharacterLock` DO (khóa theo id nhân vật) | Khi đăng nhập/đăng xuất |
-
-Quy tắc bổ sung:
-- **Session lock**: mỗi nhân vật có 1 khóa phiên; đăng nhập lần 2 sẽ đá phiên cũ (hoặc từ chối) để tránh nhân đôi trạng thái.
-- **Chuyển bản đồ**: *lưu → giải phóng khóa bản đồ cũ → vào bản đồ mới*, theo đúng thứ tự này.
-- **Không ghi D1 mỗi tick.** Chỉ batch theo khoảng thời gian và khi ngắt kết nối.
-- Nếu DO bị evict đột ngột: tối đa mất ~30-60s tiến độ thường, **không bao giờ mất tiền/đồ giá trị** (vì ghi đồng bộ).
+> **Các mục 2 (hình dạng deploy), 2a (gói Cloudflare Free/Paid), 3 (bảng sở hữu trạng thái), 5 (vòng đời Map DO và netcode), 6 (đặc tả asset) và 8 (xác thực) đã chuyển sang `docs/TECHNICAL.md`, giữ nguyên số mục.**
 
 ## 4. Toàn vẹn kinh tế (làm từ Giai đoạn 1, dù chợ/giao dịch ra ở GĐ3)
 - Mỗi vật phẩm là một **instance có ID duy nhất** (`item_instances`), không dùng số lượng gộp cho trang bị/đồ hiếm.
@@ -62,35 +28,9 @@ Quy tắc bổ sung:
 - Hòm thư để người bán offline vẫn nhận tiền.
 - Tiền sink: thuế chợ, phí sửa đồ, đột phá, luyện chế; có dashboard admin theo dõi tổng cung từng loại tiền.
 
-## 5. Vòng đời Map DO và netcode
-- Mỗi **bản đồ + kênh** là một `MapRoom` DO (SQLite-backed, WebSocket Hibernation API).
-- **Tick loop chỉ chạy khi có người chơi** (interval giữ DO không ngủ và tính phí thời lượng). Phòng trống: dừng tick và bỏ trạng thái quái; hồi sinh quái/tài nguyên chạy bằng bộ đếm trong tick (không dùng alarm: alarm tính như request DO và không có quan sát viên khi phòng trống). Bản đồ an toàn không tick.
-- **Click-to-move**: client gửi ô đích → server chạy A* trên lưới đi được dùng chung → server phát `đường đi + thời điểm bắt đầu + tốc độ` → client nội suy. Không gửi vị trí mỗi frame.
-- Chiến đấu xử lý trên tick server (~10-15Hz); client chỉ dự đoán hiệu ứng.
-- **Area-of-interest**: chỉ gửi thực thể trong bán kính nhìn thấy, để 100 người không làm nghẽn client mobile.
-- Chống gian lận: kiểm tra tốc độ, khoảng cách kỹ năng, giới hạn tần suất message, mọi tham số từ client đều validate bằng schema.
-- Độ trễ cho người chơi Việt Nam: kiểm tra DO `locationHint` (APAC) và đo thực tế ở Giai đoạn 0.
-- Tải nhiều người: DO chạy 1 luồng; sẽ có kênh phụ (`map:channel`) và giới hạn dân số mỗi kênh.
-
-## 6. Đặc tả asset (để thay art sau không phải sửa code)
-Con số cố định (có thể chỉnh trước khi bắt đầu, sau đó khóa lại):
-- **Tile isometric: 64×32 px** (tỉ lệ 2:1). Chiều cao vật thể tính theo bội số 16 px.
-- **Nhân vật: khung 96×96 px, 8 hướng, neo (anchor) ở chân** (giữa đáy). 1 đơn vị thế giới = 1 tile.
-- Animation: `idle, run, attack, cast, hit, die` (số frame/hướng ghi trong manifest).
-- **Thú cưỡi là layer tách riêng** (vẽ dưới/trên nhân vật theo hướng) để ghép được với mọi nhân vật.
-- **Asset manifest** (`assets/manifest.json`): ánh xạ ID logic → file/atlas/neo/khung. Thay art chỉ sửa manifest và file ảnh.
-- Bản đồ vẽ bằng **Tiled** (isometric) với layer: nền, vật thể, **collision**, spawn, portal, NPC. Script `tools/` build ra JSON + lưới đi được cho server.
-- Cách tìm asset: tìm bộ CC0 isometric (OpenGameArt, itch.io, kho Kenney) lọc theo giấy phép, ghi nguồn vào `ASSETS.md`. Nhân vật tu tiên 8 hướng có animation nhiều khả năng sẽ phải dùng **placeholder** (hình khối/sprite tạm cùng kích thước chuẩn).
-
 ## 7. Tiếng Việt
 - Font web đủ dấu tiếng Việt cho lớp UI HTML. **Tránh bitmap font của Phaser** trừ khi tự sinh đủ glyph tiếng Việt.
 - Mọi chuỗi hiển thị nằm trong `client/src/locales/vi.ts` (và dữ liệu game có trường `name_vi`, `desc_vi`); code không hard-code chuỗi hiển thị.
-
-## 8. Xác thực
-- Băm mật khẩu bằng **PBKDF2 (WebCrypto)** với salt riêng, số vòng lặp cao.
-- Phiên bằng cookie **HttpOnly, Secure, SameSite**; cookie này cũng xác thực lúc nâng cấp WebSocket.
-- Giới hạn tần suất đăng nhập/đăng ký.
-- **Quên mật khẩu qua email là phụ thuộc cần bạn cung cấp** (dịch vụ gửi mail) → để giai đoạn sau; trước đó admin đặt lại mật khẩu thủ công.
 
 ## 9. Luật chơi mặc định (bạn có thể sửa từng mục)
 - **Sát khí**: tăng khi giết người chơi tên trắng/xám; **giết người tên đỏ không tăng sát khí**. Chỉ giảm khi **online** (theo thời gian) hoặc khi bị giết.
@@ -100,10 +40,10 @@ Con số cố định (có thể chỉnh trước khi bắt đầu, sau đó kh�
 - **Điểm tiềm năng**: nhận mỗi tầng; các chỉ số gốc (Căn cốt, Thân pháp, Ngộ tính, Linh lực, Thần thức, Phúc duyên) quy ra chỉ số chiến đấu bằng công thức trong `shared/`.
 - **Ngũ hành**: Kim/Mộc/Thủy/Hỏa/Thổ, bảng nhân sát thương (tương khắc ×1.3, bị khắc ×0.75, tương sinh bonus nhỏ); linh căn nhân vật quyết định tư chất.
 - **Phẩm cấp linh căn** (đã chốt, đã làm ở GĐ1): trục chất lượng, server tung một lần khi tạo nhân vật: Hạ phẩm 50%, Trung phẩm 30%, Thượng phẩm 13%, Địa 5%, Thiên 2%; thưởng tu vi -10/0/+10/+25/+50%, điểm tiềm năng khởi đầu +0/1/2/4/6. Số liệu ở `shared/src/progression-data.ts` (`ROOT_GRADES`).
-  - **Cập nhật 2026-10-18 (hai trục, xem `docs/STATUS.md` mục "Linh căn nhiều hệ"):** phẩm cấp nay thưởng tu vi **-10/+5/+15/+30/+50%** và cộng **sát thương theo hệ của mình 0/+5/+10/+20/+30%** (điểm khởi đầu và tỉ lệ tung giữ nguyên). **Số hệ** (đơn 20%, song 48%, tam 25%, tứ 5%, ngũ 2%) chỉ đổi tốc độ tu vi (+10/0/-15/-30/-40%), không đổi sát thương; nhiều hệ thì dùng được kỹ năng cơ bản của mọi hệ mình có. Hai thưởng tu vi cộng với nhau (ngũ linh căn Thiên phẩm: -40% + 50% = +10%).
+  - **Cập nhật 2026-10-18 (hai trục, xem `docs/PHASE2.md` mục "Ghi chú triển khai (2c): linh căn nhiều hệ"):** phẩm cấp nay thưởng tu vi **-10/+5/+15/+30/+50%** và cộng **sát thương theo hệ của mình 0/+5/+10/+20/+30%** (điểm khởi đầu và tỉ lệ tung giữ nguyên). **Số hệ** (đơn 20%, song 48%, tam 25%, tứ 5%, ngũ 2%) chỉ đổi tốc độ tu vi (+10/0/-15/-30/-40%), không đổi sát thương; nhiều hệ thì **chọn hệ** khi gán kỹ năng tấn công vào phím tắt (cập nhật: mỗi cảnh giới mọi người có đúng 2 kỹ năng linh căn, xem `docs/PHASE2.md` mục "Ghi chú triển khai (2c): kỹ năng có cảnh giới, phẩm cấp, thuần thục"; phần thưởng sát thương theo phẩm cấp nay thuộc sức mạnh kỹ năng). Hai thưởng tu vi cộng với nhau (ngũ linh căn Thiên phẩm: -40% + 50% = +10%).
   - **Không cho đổi linh căn ở GĐ1.** Sau này chỉ đổi qua vật phẩm hiếm trong game (ghi sổ cái, không bán trực tiếp bằng tiền nạp), làm ở giai đoạn khác.
   - **Trục số hệ** (đơn/song/tam/tứ/ngũ linh căn, linh căn biến dị Lôi/Băng/Phong) làm ở **GĐ2**, cùng lúc ngũ hành đầy đủ vào chiến đấu; thiết kế bảng sát thương ngũ hành hiện tại phải mở rộng được cho hệ này. **Đã làm ở 2c (số hệ 1-5); biến dị Lôi/Băng/Phong chưa.**
-- **Thể chất** (yêu cầu của người dùng, 2026-10-17; dữ liệu đã làm, hiệu ứng làm ở 2c): trục thứ hai bên cạnh linh căn. Đa số nhân vật là **Phàm Thể** (khoảng 93%); số ít sinh ra đã có thể chất đặc biệt (Tiên Thiên Kiếm Thể, Lôi Thể, Thủy Linh Thể, Trọng Đồng, Tiên Cốt, Thánh Thể…, tỉ lệ thấp, tung một lần khi tạo nhân vật). Mỗi thể chất có **thang cấp bậc riêng, dài ngắn khác nhau** (ví dụ Thánh Thể → Đại Thánh Thể → Tiên Thể; Phàm Thể chỉ một cấp) và cấp cao càng hiếm. Mỗi thể chất có buff riêng, giống ngũ hành linh căn: Thủy Linh Thể tăng sát thương và độ thuần thục kỹ năng hệ Thủy, Kiếm Thể tăng cho kỹ năng kiếm… (mỗi cấp cộng thêm một lượng bằng cấp 1). Có thể nhận được thêm qua **vật phẩm đặc biệt** (làm sau, ghi sổ cái/vật phẩm như đổi linh căn: không bán trực tiếp bằng tiền nạp). Danh mục (tên, cấp, tỉ lệ, hiệu ứng theo chỉ số và đối tượng) là **dữ liệu trong D1** để admin chỉnh sau này (`docs/STATUS.md` mục "Thể chất: thiết kế dữ liệu"; bản mặc định/seed ở `shared/src/constitutions.ts`).
+- **Thể chất** (yêu cầu của người dùng, 2026-10-17; dữ liệu đã làm, hiệu ứng làm ở 2c): trục thứ hai bên cạnh linh căn. Đa số nhân vật là **Phàm Thể** (khoảng 93%); số ít sinh ra đã có thể chất đặc biệt (Tiên Thiên Kiếm Thể, Lôi Thể, Thủy Linh Thể, Trọng Đồng, Tiên Cốt, Thánh Thể…, tỉ lệ thấp, tung một lần khi tạo nhân vật). Mỗi thể chất có **thang cấp bậc riêng, dài ngắn khác nhau** (ví dụ Thánh Thể → Đại Thánh Thể → Tiên Thể; Phàm Thể chỉ một cấp) và cấp cao càng hiếm. Mỗi thể chất có buff riêng, giống ngũ hành linh căn: Thủy Linh Thể tăng sát thương và độ thuần thục kỹ năng hệ Thủy, Kiếm Thể tăng cho kỹ năng kiếm… (mỗi cấp cộng thêm một lượng bằng cấp 1). Có thể nhận được thêm qua **vật phẩm đặc biệt** (làm sau, ghi sổ cái/vật phẩm như đổi linh căn: không bán trực tiếp bằng tiền nạp). Danh mục (tên, cấp, tỉ lệ, hiệu ứng theo chỉ số và đối tượng) là **dữ liệu trong D1** để admin chỉnh sau này (`docs/PHASE2.md` mục "Hệ thống thể chất"; bản mặc định/seed ở `shared/src/constitutions.ts`).
 - **Đột phá cảnh giới** (đã chốt cho GĐ1): tiến độ **dừng ở tầng 9** của mỗi cảnh giới, EXP bị chặn ở mức đầy, phần dư bị bỏ. Cơ chế đột phá (tỉ lệ thất bại, đan dược) làm ở GĐ2.
 - **Vùng quái** (đã chốt, xem `docs/PHASE1.md` mục 1d+): bản đồ có cảnh giới; quái theo cụm cố định theo bậc (1, 4, 7 và nhiều hơn khi mở rộng), tên hiện bậc và loại (thường / hiếm hai hạng / boss); nhịp lên cấp là số quái cùng bậc cần giết tăng theo cấp (Luyện Khí 1 khoảng 30, Luyện Khí 5 khoảng 50, Trúc Cơ 2 khoảng 100); săn ở bản đồ cảnh giới cao hơn không cho nhiều EXP hơn mức tối đa ở bản đồ đúng cảnh giới. Boss: cực hiếm, một con mỗi bản đồ, thưởng chia theo đóng góp (70% sát thương + 30% kết liễu), tiền theo tỉ lệ, đồ ngẫu nhiên có trọng số, dưới 10% không được chia; làm sau 1e.
 - **Tự đánh trả** (đã làm cho quái ở GĐ1): đứng im, chưa có mục tiêu mà bị đánh thì tự đánh lại; đang đi thì không. Áp dụng cùng quy tắc cho PvP ở GĐ2.
@@ -119,9 +59,42 @@ Khung chat có 5 thẻ hiển thị, mỗi kênh một màu để phân biệt �
 | Bản đồ | Người chơi cùng bản đồ và cùng kênh (phòng) | Như chat cũ, qua socket game |
 | Truyền âm | Chat riêng giữa hai người theo đạo hiệu | Qua `ChatHub`, tra người nhận trong các socket chat đang mở. Offline thì báo lỗi, chưa gửi qua hòm thư. Danh sách chặn: chưa làm |
 | Hệ thống | Tử vong, nhặt tiền/đồ, lên tầng, thông báo boss, kết quả giao dịch… | Client tự dựng dòng từ sự kiện sẵn có: xanh ngọc (như cũ) cho thông tin (nhặt tiền/đồ, nhận tu vi; chỉ ở thẻ Hệ thống, không hiện ở thẻ Tất cả), đỏ cho điều quan trọng (tử vong, chuyển bản đồ, boss xuất hiện, bị tấn công, thông báo admin; chỉ hiện ở thẻ Tất cả và Hệ thống; lỗi từ chối thao tác chỉ hiện ở thẻ đang dùng lúc đó; có nút xóa toàn bộ chat). Tài khoản admin còn gửi được thông báo hệ thống tới toàn bộ người online qua `ChatHub` (kênh gửi "Hệ thống"). Thông báo boss do server sau này cần một đường server riêng |
-Giao thức: tin `chat` mang `channel` (`world | map | whisper`), thiếu thì coi là `map`; bản sao truyền âm của người gửi mang `toName`. Mỗi thẻ có đếm tin chưa đọc; lịch sử chỉ giữ ở client. Chi tiết vận hành và giới hạn: `docs/STATUS.md`.
+Giao thức: tin `chat` mang `channel` (`world | map | whisper`), thiếu thì coi là `map`; bản sao truyền âm của người gửi mang `toName`. Mỗi thẻ có đếm tin chưa đọc; lịch sử chỉ giữ ở client. Chi tiết vận hành và giới hạn: `docs/PHASE2.md` mục 2g.
+
+## 9b. Thay đổi tổng quan so với kế hoạch gốc (cập nhật 2026-10-18)
+Chi tiết kỹ thuật và giá trị nằm ở `docs/PHASE2.md`; đây chỉ là các điểm khác hoặc bổ sung so với các mục phía trên.
+- **Túi đồ:** mỗi tab **8×8** ô (không phải 8×16), mở thêm tab bằng **Linh Thạch** (giá mặc định 1000, chỉnh được ở màn admin qua bảng cài đặt game `game_settings`), tối đa 10 tab. Đồ rơi khi túi đầy vào hòm thư 30 phút.
+- **Kỹ năng không còn "mở theo tầng":** mỗi cảnh giới nhân vật được cấp **2 kỹ năng linh căn** (1 tấn công + 1 ngẫu nhiên: tấn công, hồi máu, buff hoặc bị động), tung một lần và lưu. Kỹ năng không gắn hệ: nhân vật nhiều hệ chọn hệ khi gán phím tắt. Có 4 nguồn kỹ năng (cửa sổ 4 tab): linh căn, pháp bảo, tông môn (chưa làm), học được (bí tịch, sau này NPC).
+- **Cảnh giới, phẩm cấp, thuần thục:** kỹ năng có cảnh giới và phẩm cấp (kỹ năng linh căn dùng phẩm cấp linh căn), cảnh giới/phẩm cấp cao thì mạnh hơn. Kỹ năng linh căn, tông môn, học được có **cấp thuần thục** nhập môn → tiểu thành → đại thành → viên mãn (→ thần thông cho phẩm cấp cao), tăng bằng cách dùng hoặc bằng vật phẩm Ngộ Đạo Đan. Phần thưởng sát thương theo phẩm cấp linh căn (mục 9) nay nằm trong sức mạnh kỹ năng, chỉ đòn thường còn áp riêng.
+- **Pháp bảo có kỹ năng:** pháp bảo thường (mỗi ô một kỹ năng tấn công theo hệ), bản mệnh (kỹ năng đặc biệt mạnh hơn), phi hành (dịch chuyển tức thời, buff né tránh). Sức mạnh theo cảnh giới và bậc của món. Tốc độ di chuyển của pháp bảo phi hành vẫn chưa nối vào gameplay.
+- **Giao diện:** thanh buff dưới thanh HP/MP (kỹ năng buff và đan hồi dần, kèm thời gian còn lại); cửa sổ trang bị 2 tab (trang bị / pháp bảo).
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
+
+### Danh sách giai đoạn và hạng mục
+Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm ở file giai đoạn tương ứng; trạng thái làm đến đâu ở `docs/STATUS.md`).
+- **Giai đoạn 0**: Lát cắt rủi ro nhất (xương sống kỹ thuật)
+- **Giai đoạn 1**: MVP chơi được (`docs/PHASE1.md`)
+  - 1a. Tài khoản và nhân vật
+  - 1b. Thế giới và trò chuyện
+  - 1c. Chỉ số, cảnh giới, tiềm năng
+  - 1d. Quái và chiến đấu realtime (kèm 1d+: Vùng quái, bậc, quái hiếm)
+  - 1e. Kinh tế khung xương
+  - 1f. Kiểm thử tải và hoàn thiện
+- **Giai đoạn 2**: Chiều sâu nhân vật (`docs/PHASE2.md`)
+  - 2a. Vật phẩm và túi đồ
+  - 2b. Trang bị và độ bền
+  - 2c. Kỹ năng, MP và ngũ hành đầy đủ
+  - 2d. Chủ tu/phụ tu và đột phá
+  - 2e. NPC thương nhân và nhiệm vụ
+  - 2f. PvP, sát khí và vệ binh
+  - 2g. Chat nhiều chế độ
+  - 2h. Bảng xếp hạng và boss
+  - 2i. Màn admin quản lý thể chất
+- **Giai đoạn 3**: Kinh tế và xã hội (chưa chia hạng mục)
+- **Giai đoạn 4**: Hoàn thiện và vận hành (chưa chia hạng mục)
+
+Giai đoạn 3, 4 và các giai đoạn sau sẽ có file `docs/PHASE3.md`, `docs/PHASE4.md`... khi bắt đầu làm.
 
 ### Giai đoạn 0: Lát cắt rủi ro nhất (xương sống kỹ thuật)
 Làm: `git init`, monorepo, Worker + DO + D1 migration deploy lên Cloudflare, map isometric mẫu, tap/click để di chuyển, **người chơi thứ hai hiển thị**.

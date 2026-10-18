@@ -6,6 +6,8 @@ import {
   constitutionTierName,
   deriveStats,
   equipmentBonus,
+  passiveTotals,
+  withPassives,
   expToNext,
   getConstitution,
   getRealm,
@@ -23,6 +25,8 @@ import { registerWindow } from "./window-manager";
 
 export interface CharacterPanel {
   update(sheet: CharacterSheet): void;
+  /** The skills the character was given and their mastery: passives add to the derived stats shown. */
+  setSkills(ids: readonly string[], states: Readonly<Record<string, { lv: number }>>): void;
   /** The worn gear, whose stats are part of the derived stats shown. */
   setEquipped(items: EquippedItem[]): void;
 }
@@ -51,6 +55,8 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
   let sheet: CharacterSheet | null = null;
   let pending: Partial<Record<StatKey, number>> = {};
   let worn: EquippedItem[] = [];
+  let skillIds: readonly string[] = [];
+  let skillStates: Readonly<Record<string, { lv: number }>> = {};
 
   const pendingTotal = () => Object.values(pending).reduce((a, b) => a + (b ?? 0), 0);
 
@@ -132,7 +138,7 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
     for (const def of STAT_DEFS) preview[def.key] += pending[def.key] ?? 0;
     // Gear counts as the server counts it: requirements are judged against the saved stats, not the unconfirmed clicks.
     const gear = equipmentBonus(worn, wearerOfSheet(s));
-    const d = deriveStats(preview, s.realm, s.stage, s.rootGrade, gear, s.roots.length);
+    const d = withPassives(deriveStats(preview, s.realm, s.stage, s.rootGrade, gear, s.roots.length), passiveTotals(skillIds, skillStates, s.rootGrade));
     const derived = el("div", "cp-derived");
     const lines: [string, string][] = [
       [vi.character.derived.maxHp, String(d.maxHp)],
@@ -164,6 +170,11 @@ export function initCharacterPanel(sendAllocate: (points: Partial<BaseStats>) =>
   });
 
   return {
+    setSkills(ids, states) {
+      skillIds = ids;
+      skillStates = states;
+      render();
+    },
     setEquipped(items) {
       worn = items;
       render();

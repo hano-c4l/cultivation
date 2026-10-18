@@ -5,6 +5,13 @@ import {
   REGEN_PER_S,
   getItemDef,
   getSkill,
+  type SkillDef,
+  type SkillContext,
+  type SkillStateView,
+  type EquippedItem,
+  effectiveSkill,
+  gearSkillInfo,
+  skillGrade,
   refineLevelOf,
   TILE_H,
   TILE_W,
@@ -34,6 +41,7 @@ import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
 import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
+import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
@@ -131,6 +139,12 @@ export class GameScene extends Phaser.Scene {
   private inventory!: InventoryUi;
   private equipment!: EquipmentUi;
   private hotbar!: HotbarUi;
+  private buffs!: BuffsUi;
+  /** Mastery of the skills that have it, and the worn gear: what the numbers a skill is shown with depend on. */
+  private skillStates: SkillStateView = {};
+  private worn: EquippedItem[] = [];
+  /** The teleport skill waiting for a point on the map; the next click gives it (Esc cancels). */
+  private aiming: SkillDef | null = null;
   private skillsUi!: SkillsUi;
   /** The skills last announced, to report a new one. */
   private knownSkills: string[] | null = null;
@@ -165,11 +179,18 @@ export class GameScene extends Phaser.Scene {
     this.vitals = initVitals();
     this.hotbar = initHotbar({
       send: (msg) => this.net.send(msg),
+      aim: (skill) => this.beginAim(skill),
+      mpCostOf: (skill) => effectiveSkill(skill, this.skillContext(skill)).mpCost,
       getTarget: () => this.targetId,
       getMp: () => this.vitals.getMp(),
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
-    this.skillsUi = initSkills((value, label) => this.hotbar.beginAssign(value, label));
+    this.buffs = initBuffs();
+    this.skillsUi = initSkills({
+      beginAssign: (value, label) => this.hotbar.beginAssign(value, label),
+      boost: (skill) => this.net.send({ t: "skill_boost", skill }),
+      pillCount: () => this.inventory.list().filter((i) => getItemDef(i.type)?.masteryPills !== undefined).reduce((n, i) => n + i.qty, 0),
+    });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
     this.charPanel = initCharacterPanel((points) => this.net.send({ t: "allocate", points }));
@@ -179,6 +200,9 @@ export class GameScene extends Phaser.Scene {
     camera.centerOn(center.x, center.y);
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && this.aiming) this.endAim();
+    });
 
     // Channel picks which Durable Object (and so which Cloudflare data centre) serves us; override with ?ch=N.
     // The map is chosen by the server from the character's saved position.
@@ -297,6 +321,22 @@ export class GameScene extends Phaser.Scene {
     this.drawMap();
   }
 
+  /** The realm, grade and mastery level a skill works at for this character (the same inputs the server uses). */
+  private skillContext(skill: SkillDef): SkillContext {
+    const gear = skill.source === "gear" ? gearSkillInfo(this.worn).find((g) => g.id === skill.id) : undefined;
+    return { realm: gear ? gear.realm : skill.realm, ...(gear ? { tier: gear.tier } : {}), grade: skillGrade(skill, this.selfSheet?.rootGrade ?? 0, gear?.grade), level: skill.source === "gear" ? 0 : (this.skillStates[skill.id]?.lv ?? 0) };
+  }
+
+  private beginAim(skill: SkillDef): void {
+    this.aiming = skill;
+    this.hotbar.setAimNote(vi.skills.aim(skill.nameVi, skill.range));
+  }
+
+  private endAim(): void {
+    this.aiming = null;
+    this.hotbar.setAimNote(null);
+  }
+
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.transferring) return;
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -304,6 +344,19 @@ export class GameScene extends Phaser.Scene {
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
     const tx = Math.round(t.x * 100) / 100;
     const ty = Math.round(t.y * 100) / 100;
+    if (this.aiming) {
+      // This click picks the teleport destination instead of walking. A point out of reach keeps the aim so the player can retry.
+      const skill = this.aiming;
+      const self = this.actors.get(this.selfId);
+      const here = self ? currentPos(self, performance.now()) : null;
+      if (here && Math.hypot(tx - here.x, ty - here.y) > skill.range) {
+        this.chat.system(vi.skills.errors.range!, "error");
+        return;
+      }
+      this.endAim();
+      this.net.send({ t: "cast", skill: skill.id, x: tx, y: ty });
+      return;
+    }
     const picked = this.pickMonster(world.x, world.y);
     if (picked) {
       const nowMs = performance.now();
@@ -344,6 +397,7 @@ export class GameScene extends Phaser.Scene {
     switch (msg.t) {
       case "welcome":
         this.selfId = msg.self;
+        this.endAim();
         this.colo = msg.colo;
         this.transferring = false;
         this.portalSentAt = 0;
@@ -367,10 +421,16 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.setEquipped(msg.equipped);
         this.inventory.setMail(msg.mail);
         this.knownSkills = msg.skills;
+        this.skillStates = msg.skillStates;
+        this.worn = msg.equipped;
+        this.skillsUi.setStates(msg.skillStates);
+        this.charPanel.setSkills(msg.skills, msg.skillStates);
+        this.skillsUi.setEquipped(msg.equipped);
         this.skillsUi.setSkills(msg.skills);
         this.hotbar.setSkills(msg.skills);
         this.hotbar.setSlots(msg.hotbar);
         this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, MP_REGEN_PER_S);
+        this.buffs.set(msg.effects);
         for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
         this.refreshHud();
         break;
@@ -433,10 +493,11 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(vi.chat.transferTo(vi.maps[msg.map] ?? msg.map), "important");
         break;
       case "inv":
-        if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items });
+        if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items, tabPrice: msg.tabPrice });
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
         this.equipment.refresh();
         this.hotbar.refresh();
+        this.skillsUi.refresh(); // the pill count
         break;
       case "eq": {
         // The pháp bảo bản mệnh reaching a new training level is worth a line.
@@ -449,14 +510,18 @@ export class GameScene extends Phaser.Scene {
         this.equipment.setEquipped(msg.items);
         this.inventory.setEquipped(msg.items);
         this.charPanel.setEquipped(msg.items);
+        this.worn = msg.items;
+        this.skillsUi.setEquipped(msg.items); // gear skills take the realm and grade of the piece
+        this.hotbar.refresh();
         break;
       }
       case "skills": {
         // A new skill (a stage-up unlocked it, or a book taught it) is worth a line.
         if (this.knownSkills) {
-          for (const id of msg.ids.filter((s) => !this.knownSkills!.includes(s))) this.chat.system((getSkill(id)?.unlock ? vi.skills.unlocked : vi.skills.learned)(getSkill(id)?.nameVi ?? id), "important");
+          for (const id of msg.ids.filter((s) => !this.knownSkills!.includes(s))) this.chat.system((getSkill(id)?.source === "root" ? vi.skills.rootGranted : getSkill(id)?.source === "gear" ? vi.skills.gearGranted : vi.skills.learned)(getSkill(id)?.nameVi ?? id), "important");
         }
         this.knownSkills = msg.ids;
+        this.charPanel.setSkills(msg.ids, this.skillStates);
         this.skillsUi.setSkills(msg.ids);
         this.hotbar.setSkills(msg.ids);
         break;
@@ -464,6 +529,15 @@ export class GameScene extends Phaser.Scene {
       case "hotbar":
         this.hotbar.setSlots(msg.slots);
         break;
+      case "skill_state": {
+        this.skillStates[msg.id] = { lv: msg.lv, xp: msg.xp };
+        if (msg.up) this.charPanel.setSkills(this.knownSkills ?? [], this.skillStates); // a passive may be stronger now
+        this.skillsUi.setState(msg.id, msg.lv, msg.xp);
+        const def = getSkill(msg.id);
+        if (msg.up && def) this.chat.system(vi.skills.levelUp(def.nameVi, vi.skills.levels[msg.lv] ?? ""), "important");
+        this.hotbar.refresh(); // a level changes MP cost and cooldown
+        break;
+      }
       case "mp":
         this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, msg.perSec);
         break;
@@ -472,6 +546,9 @@ export class GameScene extends Phaser.Scene {
         break;
       case "cast_error":
         this.chat.system(vi.skills.errors[msg.reason] ?? vi.skills.errors.unknown!, "error");
+        break;
+      case "effects":
+        this.buffs.set(msg.list);
         break;
       case "buff":
         this.chat.system(vi.skills.buffOn(getSkill(msg.skill)?.nameVi ?? msg.skill, Math.round(msg.ms / 1000)));

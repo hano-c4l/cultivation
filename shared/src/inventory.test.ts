@@ -7,11 +7,11 @@ const newId = () => `id${++n}`;
 const item = (type: string, tab: number, cell: number, qty: number, id = newId()): BagItem => ({ id, type, tab, cell, qty });
 
 describe("bag layout", () => {
-  it("is 8 x 16 cells per tab and positions are validated against the tab count", () => {
-    expect(BAG_COLS * BAG_ROWS).toBe(128);
-    expect(BAG_CELLS_PER_TAB).toBe(128);
-    expect(inBounds({ tab: 0, cell: 127 }, 1)).toBe(true);
-    expect(inBounds({ tab: 0, cell: 128 }, 1)).toBe(false);
+  it("is 8 x 8 cells per tab and positions are validated against the tab count", () => {
+    expect(BAG_COLS * BAG_ROWS).toBe(64);
+    expect(BAG_CELLS_PER_TAB).toBe(64);
+    expect(inBounds({ tab: 0, cell: 63 }, 1)).toBe(true);
+    expect(inBounds({ tab: 0, cell: 64 }, 1)).toBe(false);
     expect(inBounds({ tab: 1, cell: 0 }, 1)).toBe(false);
     expect(inBounds({ tab: 1, cell: 0 }, 2)).toBe(true);
     expect(inBounds({ tab: -1, cell: 0 }, 2)).toBe(false);
@@ -127,7 +127,7 @@ describe("planRemove", () => {
 
 describe("bagUsage", () => {
   it("counts used cells against the tabs owned", () => {
-    expect(bagUsage([item("linh_thao", 0, 0, 1)], 2)).toEqual({ used: 1, total: 256 });
+    expect(bagUsage([item("linh_thao", 0, 0, 1)], 2)).toEqual({ used: 1, total: 128 });
   });
 });
 
@@ -155,10 +155,10 @@ describe("items and loot", () => {
   it("rollLoot is deterministic under an injected RNG and respects chance and quantity bounds", () => {
     expect(rollLoot("normal", () => 0.99)).toEqual([]); // every chance misses
     const all = rollLoot("rare2", () => 0); // every chance hits, lowest quantity
-    expect(all.map((d) => d.item).sort()).toEqual(["hoi_huyet_dan", "linh_thao", "yeu_dan"]);
+    expect(all.map((d) => d.item).sort()).toEqual(["duong_huyet_dan", "hoi_huyet_dan", "linh_thao", "ngo_dao_dan", "yeu_dan"]);
     expect(all.find((d) => d.item === "linh_thao")!.qty).toBe(2);
     const high = rollLoot("rare2", () => 0.0001);
-    expect(high.length).toBe(3);
+    expect(high.length).toBe(5);
     // qty roll just under 1 reaches the maximum: use a sequence (chance 0, qty 0.999...) per entry.
     let k = 0;
     const seq = () => (k++ % 2 === 0 ? 0 : 0.9999);
@@ -237,9 +237,9 @@ describe("planSort", () => {
 
   it("never loses quantity or shares a cell, also across tabs", () => {
     const bag: BagItem[] = [];
-    for (let i = 0; i < 200; i++) bag.push(item(i % 3 === 0 ? "linh_thao" : i % 3 === 1 ? "thu_cot" : "yeu_dan", i < 128 ? 0 : 1, i % 128, 1 + (i % 7), `r${i}`));
+    for (let i = 0; i < 200; i++) bag.push(item(i % 3 === 0 ? "linh_thao" : i % 3 === 1 ? "thu_cot" : "yeu_dan", Math.floor(i / 64), i % 64, 1 + (i % 7), `r${i}`));
     const total = bag.reduce((s, i) => s + i.qty, 0);
-    const ops = planSort(bag, 2, "rarity")!;
+    const ops = planSort(bag, 4, "rarity")!;
     const after = applyOps(bag, ops);
     expect(after.reduce((s, i) => s + i.qty, 0)).toBe(total);
     expect(after.every((i) => i.qty >= 1 && i.qty <= 99)).toBe(true);

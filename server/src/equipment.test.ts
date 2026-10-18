@@ -132,11 +132,11 @@ describe("durability", () => {
 
     // Fill the bag, wear another piece at 1 durability, then die: it must be mailed without an expiry.
     const other = await wear(RING, 1);
-    for (let i = 0; i < 127; i++) {
+    for (let i = 0; i < 63; i++) {
       raw.prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, created_at) VALUES (?, ?, 'linh_thao', 1, 0, ?, 0)").run(`fill-${i}`, A, i + 1);
     }
     bag = await loadBag(db, A);
-    expect(bag.items.length).toBe(128);
+    expect(bag.items.length).toBe(64);
     const p2 = planDeathWear(st(bag), bag.tabs, wearer, newId);
     expect(p2.ops.map((o) => o.op)).toEqual(["setdur", "mailequip"]);
     expect(await commit(p2.ops, { grantKey: "death:3" })).toBe("ok");

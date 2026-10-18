@@ -275,7 +275,7 @@ export async function commitBagOps(
   if (statements.length === 0) return "ok";
   try {
     const results = await db.batch(statements);
-    // Logged so `wrangler tail` shows the real D1 write cost of a bag change (docs/STATUS.md, bag notes).
+    // Logged so `wrangler tail` shows the real D1 write cost of a bag change (docs/PHASE2.md, 2a notes).
     console.log("bag rows_written", opts.grantKey ? "loot" : "command", results.reduce((n, r) => n + (r.meta?.rows_written ?? 0), 0));
     return "ok";
   } catch (err) {
@@ -430,4 +430,16 @@ export function mailViews(entries: readonly MailEntry[], now = Date.now()): Mail
   return entries
     .filter((m) => m.item !== null)
     .map((m) => ({ id: m.id, subject: m.subject, item: m.item, expiresInMs: m.expiresAt === null ? null : Math.max(0, m.expiresAt - now) }));
+}
+
+/**
+ * The statements that add one bag tab, to run in the same batch as the payment. A statement that changes zero rows does
+ * not roll a batch back, so the check is a guard that fails loudly (inv_guard.ok is NOT NULL) when the character no longer
+ * has exactly `expectedTabs` tabs; the payment then rolls back with it.
+ */
+export function addBagTabStatements(db: D1Database, characterId: string, expectedTabs: number): D1PreparedStatement[] {
+  return [
+    db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM characters WHERE id = ? AND bag_tabs = ?)").bind(characterId, expectedTabs),
+    db.prepare("UPDATE characters SET bag_tabs = bag_tabs + 1 WHERE id = ? AND bag_tabs = ?").bind(characterId, expectedTabs),
+  ];
 }

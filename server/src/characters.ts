@@ -1,5 +1,8 @@
 import {
+  REALMS,
   STAT_DEFS,
+  getSkill,
+  rollRealmSkills,
   parseRoots,
   type Gender,
   applyExp,
@@ -49,10 +52,50 @@ export function getCharacterById(db: D1Database, id: string): Promise<CharacterR
   return db.prepare(`SELECT ${COLUMNS} FROM characters WHERE id = ?`).bind(id).first<CharacterRow>();
 }
 
-/** Skills learned from bí tịch (the basic ones are not stored). */
-export async function loadLearnedSkills(db: D1Database, characterId: string): Promise<string[]> {
-  const { results } = await db.prepare("SELECT skill_id FROM character_skills WHERE character_id = ?").bind(characterId).all<{ skill_id: string }>();
-  return results.map((r) => r.skill_id);
+/** One skill a character was given (see migration 0016): root skills of each realm and skills learned from a bí tịch. */
+export interface SkillRow {
+  skill_id: string;
+  source: "root" | "learned" | "sect";
+  realm: number;
+  level: number;
+  mastery: number;
+}
+
+export async function loadSkillRows(db: D1Database, characterId: string): Promise<SkillRow[]> {
+  const { results } = await db
+    .prepare("SELECT skill_id, source, realm, level, mastery FROM character_skills WHERE character_id = ? ORDER BY learned_at, skill_id")
+    .bind(characterId)
+    .all<SkillRow>();
+  return results.filter((r) => getSkill(r.skill_id) !== undefined);
+}
+
+/**
+ * Gives a character the two root skills of every realm up to `realm` that it does not have yet (a realm with two rows is
+ * done; one more roll is only made for a realm that has fewer). The picks are stored, so they never change afterwards.
+ * `INSERT OR IGNORE` keeps a repeated call harmless. Returns the rows after the change.
+ */
+export async function ensureRootSkills(db: D1Database, characterId: string, realm: number, rows: SkillRow[], rand: () => number = Math.random): Promise<SkillRow[]> {
+  const inserts: D1PreparedStatement[] = [];
+  const now = Date.now();
+  for (let r = 0; r <= Math.min(realm, REALMS.length - 1); r++) {
+    if (rows.filter((x) => x.source === "root" && x.realm === r).length >= 2) continue;
+    const have = new Set(rows.map((x) => x.skill_id));
+    for (const id of rollRealmSkills(r, rand)) {
+      if (have.has(id)) continue;
+      inserts.push(db.prepare("INSERT OR IGNORE INTO character_skills (character_id, skill_id, learned_at, source, realm) VALUES (?, ?, ?, 'root', ?)").bind(characterId, id, now, r));
+    }
+  }
+  if (inserts.length === 0) return rows;
+  await db.batch(inserts);
+  return loadSkillRows(db, characterId);
+}
+
+/** Writes the mastery of the given skills (absolute values, one row write each). */
+export async function saveSkillMastery(db: D1Database, characterId: string, list: ReadonlyArray<{ id: string; lv: number; xp: number }>): Promise<void> {
+  if (list.length === 0) return;
+  const results = await db.batch(list.map((m) => db.prepare("UPDATE character_skills SET level = ?, mastery = ? WHERE character_id = ? AND skill_id = ?").bind(m.lv, m.xp, characterId, m.id)));
+  // Logged so `wrangler tail` shows the real D1 write cost of a mastery flush (docs/PHASE2.md, 2c).
+  console.log("skill mastery rows_written", list.length, results.reduce((n, r) => n + (r.meta?.rows_written ?? 0), 0));
 }
 
 /** Writes the whole hotbar (one D1 row write); the room has already validated every slot. */

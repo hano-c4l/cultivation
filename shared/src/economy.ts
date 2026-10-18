@@ -14,7 +14,7 @@ export const EMPTY_WALLET: Readonly<Wallet> = { linh_thach: 0, cong_hien: 0, tie
 export const MAX_LEDGER_AMOUNT = 1_000_000_000;
 
 /**
- * Linh Thạch drops from monsters. Placeholder game-design values (listed as "giá trị tạm" in docs/STATUS.md).
+ * Linh Thạch drops from monsters. Placeholder game-design values (listed as "giá trị tạm" in docs/PHASE1.md).
  * A zero drop writes nothing, so the chance also controls the D1 write rate.
  */
 export const DROP_CHANCE = { normal: 0.3, rare1: 1, rare2: 1 } as const;
