@@ -29,7 +29,8 @@ describe("skill unlocks", () => {
     for (const s of SKILLS) {
       expect(s.mpCost, s.id).toBeGreaterThan(0);
       expect(s.cooldownMs, s.id).toBeGreaterThanOrEqual(1000);
-      expect(s.power, s.id).toBeGreaterThan(0);
+      if (s.kind !== "teleport") expect(s.power, s.id).toBeGreaterThan(0);
+      if (s.kind === "teleport") expect(s.range, s.id).toBeGreaterThan(0);
       if (s.kind === "attack") expect(s.range, s.id).toBeGreaterThan(0);
       if (s.kind === "buff") expect(s.buff, s.id).toBeDefined();
     }

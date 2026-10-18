@@ -31,6 +31,7 @@ import {
   rollRank,
   topContributor,
   findSmoothPath,
+  isStandable,
   getMonsterDef,
   lineClear,
   nearestStandablePoint,
@@ -73,6 +74,8 @@ export interface ProfileSeed {
   weapon?: string | null;
   /** Skills learned from bí tịch (the basic ones are worked out from root, realm and stage). */
   learned?: readonly string[];
+  /** Skills granted by the pháp bảo worn right now (gearSkillIds); the room refreshes them whenever the gear changes. */
+  gearSkills?: readonly string[];
   /** What the character resonates with (gear of that element or weapon family gives more), and their constitution's effects. */
   affinity?: GearAffinity;
   effects?: readonly ConstitutionEffect[];
@@ -116,7 +119,7 @@ export interface PlayerProfile extends ProfileSeed {
   /** Skill ready times (ms), by skill id. Memory only: leaving the room resets them (known gap). */
   cooldowns: Map<string, number>;
   /** A skill to use as soon as it can (walking into range first); cleared by moving, targeting or a failure. */
-  pendingCast: { skill: string; target: string | null } | null;
+  pendingCast: { skill: string; target: string | null; dest?: Vec2 } | null;
   buffs: ActiveBuff[];
   /** Potions that heal over time (memory only; what is left is paid out when the player leaves). */
   hots: ActiveHot[];
@@ -174,7 +177,9 @@ export type SimEvent =
   /** MP changed (spent, or settled when hit); the client regenerates it from the snapshot. */
   | { t: "mp"; playerId: string; mp: number; maxMp: number; regenInMs: number }
   | { t: "cast_ok"; playerId: string; skill: string; cdMs: number }
-  | { t: "cast_fail"; playerId: string; skill: string; reason: "mp" | "cooldown" | "no_target" | "weapon" | "unknown" }
+  | { t: "cast_fail"; playerId: string; skill: string; reason: "mp" | "cooldown" | "no_target" | "weapon" | "unknown" | "range" | "blocked" }
+  /** A teleport went off: the room moves the player to `to` (it owns the player's position). */
+  | { t: "teleport"; playerId: string; to: Vec2 }
   | { t: "buff"; playerId: string; skill: string; ms: number }
   /** The running effects changed (a buff or a timed potion started or ended): the full list for the buff bar. */
   | { t: "effects"; playerId: string; list: EffectView[] }
@@ -437,17 +442,18 @@ export class CombatSim {
   }
 
   /** Gear changed (worn, taken off, worn out): re-derive combat stats, keeping the HP ratio. */
-  updateGear(id: string, gear: EquipStats, weapon?: string | null): void {
+  updateGear(id: string, gear: EquipStats, weapon?: string | null, gearSkills?: readonly string[]): void {
     const p = this.players.get(id);
     if (!p) return;
     p.gear = gear;
+    if (gearSkills !== undefined) p.gearSkills = gearSkills;
     if (weapon !== undefined) p.weapon = weapon;
     this.recompute(p, false);
   }
 
   /** The skills this character can use now: unlocked basic ones plus learned books. */
   skillsOf(p: PlayerProfile): string[] {
-    return availableSkills(p.roots ?? [p.element], p.realm, p.stage, p.learned ?? []);
+    return availableSkills(p.roots ?? [p.element], p.realm, p.stage, p.learned ?? [], p.gearSkills ?? []);
   }
 
   /** A book was learned. */
@@ -478,7 +484,7 @@ export class CombatSim {
    * Asks to use a skill: checked now (so a refusal is immediate) and again when it goes off. An attack walks into range
    * of its target first (the player's chase does that); heals and buffs go off on the next tick.
    */
-  queueCast(playerId: string, skillId: string, targetId: string | null, now: number): { ok: true } | { ok: false; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" } {
+  queueCast(playerId: string, skillId: string, targetId: string | null, now: number, dest?: Vec2): { ok: true } | { ok: false; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" } {
     const p = this.players.get(playerId);
     const skill = getSkill(skillId);
     if (!p || p.dead || !skill || !this.skillsOf(p).includes(skillId)) return { ok: false, reason: "unknown" };
@@ -493,7 +499,8 @@ export class CombatSim {
       p.targetId = target;
       p.lastRepathAt = Number.NEGATIVE_INFINITY;
     }
-    p.pendingCast = { skill: skillId, target };
+    if (skill.kind === "teleport" && !dest) return { ok: false, reason: "no_target" };
+    p.pendingCast = { skill: skillId, target, ...(skill.kind === "teleport" && dest ? { dest } : {}) };
     return { ok: true };
   }
 
@@ -737,7 +744,7 @@ export class CombatSim {
       p.pendingCast = null;
       return false;
     }
-    const fail = (reason: "mp" | "cooldown" | "no_target" | "weapon" | "unknown") => {
+    const fail = (reason: "mp" | "cooldown" | "no_target" | "weapon" | "unknown" | "range" | "blocked") => {
       p.pendingCast = null;
       events.push({ t: "cast_fail", playerId: p.id, skill: skill.id, reason });
       return true;
@@ -745,6 +752,14 @@ export class CombatSim {
     if (skill.weapon !== undefined && p.weapon !== skill.weapon) return fail("weapon");
     if (now < (p.cooldowns.get(skill.id) ?? 0)) return fail("cooldown");
     if (this.currentMp(p, now) < skill.mpCost) return fail("mp");
+    // A teleport is checked again at the moment it goes off, from where the player really stands: close enough, a standable
+    // spot, and reachable on foot (so nobody can land inside a sealed area).
+    if (skill.kind === "teleport") {
+      const dest = pending.dest;
+      if (!dest) return fail("no_target");
+      if (dist(pos, dest) > skill.range + 0.5) return fail("range");
+      if (!isStandable(this.map, dest[0], dest[1]) || !findSmoothPath(this.map, pos, dest)) return fail("blocked");
+    }
     let m: Monster | undefined;
     let mpos: Vec2 | undefined;
     if (skill.kind === "attack") {
@@ -759,7 +774,10 @@ export class CombatSim {
     p.cooldowns.set(skill.id, now + skill.cooldownMs);
     p.pendingCast = null;
     events.push(this.mpEvent(p, now), { t: "cast_ok", playerId: p.id, skill: skill.id, cdMs: skill.cooldownMs });
-    if (skill.kind === "heal") {
+    if (skill.kind === "teleport" && pending.dest) {
+      p.targetId = null;
+      events.push({ t: "teleport", playerId: p.id, to: pending.dest });
+    } else if (skill.kind === "heal") {
       p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(p.maxHp * skill.power)));
       events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
     } else if (skill.kind === "buff" && skill.buff) {

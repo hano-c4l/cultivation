@@ -1,4 +1,4 @@
-import { HOTBAR_SLOTS, getItemDef, getSkill, type ClientMessage } from "@game/shared";
+import { HOTBAR_SLOTS, getItemDef, getSkill, type ClientMessage, type SkillDef } from "@game/shared";
 import { vi } from "./locales/vi";
 
 export interface HotbarUi {
@@ -11,6 +11,8 @@ export interface HotbarUi {
   beginAssign(value: string, label: string): void;
   /** The bag changed: potion counts on the bar may have too. */
   refresh(): void;
+  /** Shows (or with null hides) a line above the bar; used while the player is choosing where to teleport. */
+  setAimNote(text: string | null): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -26,7 +28,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
  * (skills window, bag), then tap a slot", which also works on a touch screen. The server decides everything; the bar only
  * shows cooldowns it was told about and dims what MP cannot pay.
  */
-export function initHotbar(deps: { send: (msg: ClientMessage) => void; getTarget: () => string | null; getMp: () => number; countOf: (type: string) => number }): HotbarUi {
+export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (skill: SkillDef) => void; getTarget: () => string | null; getMp: () => number; countOf: (type: string) => number }): HotbarUi {
   const root = el("div");
   root.id = "hotbar";
   root.hidden = true;
@@ -91,7 +93,9 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; getTarget
     }
     const v = slots[i] ?? "";
     const target = deps.getTarget();
-    if (v.startsWith("s:")) deps.send(target ? { t: "cast", skill: v.slice(2), target } : { t: "cast", skill: v.slice(2) });
+    const chosen = v.startsWith("s:") ? getSkill(v.slice(2)) : undefined;
+    if (chosen?.kind === "teleport") deps.aim(chosen); // needs a point: the next map click gives it
+    else if (v.startsWith("s:")) deps.send(target ? { t: "cast", skill: v.slice(2), target } : { t: "cast", skill: v.slice(2) });
     else if (v.startsWith("i:")) deps.send({ t: "use_type", type: v.slice(2) });
   }
 
@@ -129,5 +133,10 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; getTarget
       render();
     },
     refresh: render,
+    setAimNote(text) {
+      if (pending) return; // the assigning note owns the line meanwhile
+      note.textContent = text ?? "";
+      note.hidden = text === null;
+    },
   };
 }

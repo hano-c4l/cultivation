@@ -24,6 +24,7 @@ import {
   REGEN_DELAY_MS,
   type ConstitutionCatalog,
   availableSkills,
+  gearSkillIds,
   canLearn,
   getSkill,
   isSkillId,
@@ -200,6 +201,7 @@ function seedOf(row: CharacterRow, bag: BagState | undefined, learned: readonly 
     vitals: parseVitals(row.vitals),
     gear: bag ? equipmentBonus(bag.equipped, wearerOfRow(row, catalog)) : undefined,
     weapon: bag ? weaponFamily(bag.equipped) : null,
+    gearSkills: bag ? gearSkillIds(bag.equipped) : [],
     learned,
     gender: row.gender,
     id: row.id,
@@ -419,7 +421,7 @@ export class MapRoom extends DurableObject<Env> {
         mail: mailViews(mailNow),
         constitutions,
         equipped: bagNow.equipped,
-        skills: profile && sim ? sim.skillsOf(profile) : availableSkills(parseRoots(row.roots, row.spiritual_root), row.realm, row.stage, learned),
+        skills: profile && sim ? sim.skillsOf(profile) : availableSkills(parseRoots(row.roots, row.spiritual_root), row.realm, row.stage, learned, gearSkillIds(bagNow.equipped)),
         hotbar,
         cd: profile && sim ? sim.cooldownsLeft(profile, Date.now()) : Object.fromEntries(Object.entries(away.cooldowns).map(([k, t]) => [k, t - Date.now()])),
         mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
@@ -958,6 +960,11 @@ export class MapRoom extends DurableObject<Env> {
         later.push(this.handleDeath(entry.ws, entry.state, profile));
         return;
       }
+      case "teleport": {
+        const entry = sockets.get(ev.playerId);
+        if (entry) this.teleport(entry.ws, entry.state, ev.to, now);
+        return;
+      }
       case "path_request": {
         const entry = sockets.get(ev.playerId);
         if (entry) this.chase(entry.ws, entry.state, ev.to, now);
@@ -1123,9 +1130,20 @@ export class MapRoom extends DurableObject<Env> {
   /** Worn gear changed (or wore down): the combat stats follow, in a combat map. In town the next join recomputes them. */
   private applyGear(id: string, bag: BagState, direct?: WebSocket): void {
     const p = this.sim?.getPlayer(id);
-    if (!p || !this.sim) return;
-    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity }), weaponFamily(bag.equipped));
+    if (!p || !this.sim) {
+      // In town there is no profile, but the skills that pháp bảo grant still follow what is worn.
+      void (async () => {
+        const who = await this.casterOf(id);
+        if (who) this.sendToCharacter(id, { t: "skills", ids: availableSkills(who.roots, who.realm, who.stage, await this.getLearned(id), who.gear) }, direct);
+      })().catch((err) => console.error("skills refresh failed", id, err));
+      return;
+    }
+    const before = this.sim.skillsOf(p).join(",");
+    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity }), weaponFamily(bag.equipped), gearSkillIds(bag.equipped));
     this.sendToCharacter(id, { t: "hp", hp: p.hp, maxHp: p.maxHp }, direct);
+    // Pháp bảo grant skills while worn: the list changes when one is put on, taken off or breaks.
+    const skills = this.sim.skillsOf(p);
+    if (skills.join(",") !== before) this.sendToCharacter(id, { t: "skills", ids: skills }, direct);
   }
 
   /** Who is wearing: the live profile when there is one, otherwise the saved row. */
@@ -1398,11 +1416,12 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** Who is casting: the live profile in a combat map, otherwise the saved row. */
-  private async casterOf(id: string): Promise<{ roots: CharacterRow["spiritual_root"][]; realm: number; stage: number } | null> {
+  private async casterOf(id: string): Promise<{ roots: CharacterRow["spiritual_root"][]; realm: number; stage: number; gear: string[] } | null> {
+    const gear = gearSkillIds((await this.getBag(id)).equipped);
     const p = this.sim?.getPlayer(id);
-    if (p) return { roots: [...(p.roots ?? [p.element])], realm: p.realm, stage: p.stage };
+    if (p) return { roots: [...(p.roots ?? [p.element])], realm: p.realm, stage: p.stage, gear };
     const row = await getCharacterById(this.env.DB, id);
-    return row ? { roots: parseRoots(row.roots, row.spiritual_root), realm: row.realm, stage: row.stage } : null;
+    return row ? { roots: parseRoots(row.roots, row.spiritual_root), realm: row.realm, stage: row.stage, gear } : null;
   }
 
   /** Uses a skill. Memory only: a cast costs no D1 write. Casting needs the fight simulation, so it only works in combat maps. */
@@ -1421,7 +1440,8 @@ export class MapRoom extends DurableObject<Env> {
     const profile = this.sim?.getPlayer(state.id);
     if (!this.sim || !profile) return;
     if (profile.dead) return void this.send(ws, { t: "cast_error", skill: msg.skill, reason: "dead" });
-    const r = this.sim.queueCast(state.id, msg.skill, msg.target ?? null, now);
+    const dest: Vec2 | undefined = msg.x !== undefined && msg.y !== undefined ? [msg.x, msg.y] : undefined;
+    const r = this.sim.queueCast(state.id, msg.skill, msg.target ?? null, now, dest);
     if (!r.ok) this.send(ws, { t: "cast_error", skill: msg.skill, reason: r.reason });
   }
 
@@ -1437,7 +1457,7 @@ export class MapRoom extends DurableObject<Env> {
     if (slot < 0 || slot >= HOTBAR_SLOTS) return resend();
     if (v.startsWith("s:")) {
       const who = await this.casterOf(id);
-      const known = who ? availableSkills(who.roots, who.realm, who.stage, await this.getLearned(id)) : [];
+      const known = who ? availableSkills(who.roots, who.realm, who.stage, await this.getLearned(id), who.gear) : [];
       if (!isSkillId(v.slice(2)) || !known.includes(v.slice(2))) return resend();
     } else if (v.startsWith("i:")) {
       if (getItemDef(v.slice(2))?.healFraction === undefined) return resend();
@@ -1478,7 +1498,7 @@ export class MapRoom extends DurableObject<Env> {
     const who = await this.casterOf(id);
     if (!skill || !who) return this.resync(ws, id, "invalid");
     const learned = await this.getLearned(id);
-    if (availableSkills(who.roots, who.realm, who.stage, learned).includes(skillId)) return this.send(ws, { t: "inv_error", reason: "known" });
+    if (availableSkills(who.roots, who.realm, who.stage, learned, who.gear).includes(skillId)) return this.send(ws, { t: "inv_error", reason: "known" });
     if (!canLearn(skill, who.realm, who.stage)) return this.send(ws, { t: "inv_error", reason: "level_low" });
     const res = await this.mutateBag(id, (bag) => {
       const ops = planRemove(bag.items, bag.tabs, { tab, cell }, 1);
@@ -1492,7 +1512,7 @@ export class MapRoom extends DurableObject<Env> {
     this.learnedSkills.set(id, [...learned, skillId]);
     this.sim?.addLearned(id, skillId);
     this.sendBagDelta(id, res.before, res.after);
-    this.sendToCharacter(id, { t: "skills", ids: availableSkills(who.roots, who.realm, who.stage, [...learned, skillId]) });
+    this.sendToCharacter(id, { t: "skills", ids: availableSkills(who.roots, who.realm, who.stage, [...learned, skillId], who.gear) });
   }
 
   /** Consumes one potion and heals. The potion is committed first; HP only changes after the write succeeded. */
@@ -1609,6 +1629,19 @@ export class MapRoom extends DurableObject<Env> {
     this.send(ws, { t: "died", expLost });
     const [sx, sy] = getMap("town").spawn;
     await this.handoff(ws, state, "town", sx + 0.5, sy + 0.5, true);
+  }
+
+  /** A teleport skill went off: the player stands at `to` from now on, and everyone (the player included) gets that as a new track. */
+  private teleport(ws: WebSocket, state: PlayerState, to: Vec2, now: number): void {
+    state.path = [to];
+    state.startedAt = now;
+    state.dirty = true;
+    state.moveBudget = MOVE_BUDGET_CAP;
+    state.moveBudgetAt = now;
+    ws.serializeAttachment(state);
+    const snap = this.snapshot(state);
+    this.broadcast({ t: "path", player: snap }, ws);
+    this.send(ws, { t: "path", player: snap });
   }
 
   /** The server walks a player toward their target; the new path goes to everyone, including the player. */

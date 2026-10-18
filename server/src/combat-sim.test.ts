@@ -797,3 +797,61 @@ describe("effects on the buff bar and potions that work over time", () => {
     expect(p.stats.dodgeRate).toBe(60);
   });
 });
+
+describe("skills from worn pháp bảo and teleport", () => {
+  const sim = () => new CombatSim(getMap("forest"), "forest", noCrit, 0);
+  const at = (v: Vec2) => new Map<string, Vec2>([["p1", v]]);
+  const spawn = (): Vec2 => [getMap("forest").spawn[0] + 0.5, getMap("forest").spawn[1] + 0.5];
+
+  it("a gear skill is usable only while the piece is worn", () => {
+    const s = sim();
+    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_phong_than"] }));
+    expect(s.skillsOf(p)).toContain("pt_phong_than");
+    expect(s.queueCast("p1", "pt_phong_than", null, 0)).toEqual({ ok: true });
+    s.updateGear("p1", p.gear ?? { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0 }, undefined, []);
+    expect(s.skillsOf(p)).not.toContain("pt_phong_than");
+    expect(s.queueCast("p1", "pt_phong_than", null, 100)).toEqual({ ok: false, reason: "unknown" });
+  });
+
+  it("the dodge buff raises the dodge chance and shows on the buff bar", () => {
+    const s = sim();
+    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_phong_than"] }));
+    const before = p.stats.dodgeRate;
+    s.queueCast("p1", "pt_phong_than", null, 0);
+    const events = s.tick(0, at(spawn()));
+    expect(p.stats.dodgeRate).toBeCloseTo(before + 25);
+    expect(events).toContainEqual({ t: "effects", playerId: "p1", list: [{ id: "s:pt_phong_than", ms: 12_000 }] });
+  });
+
+  it("a teleport emits where to move, pays and starts the cooldown", () => {
+    const s = sim();
+    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_thuan_di"] }));
+    const from = spawn();
+    const near = nearestStandablePoint(getMap("forest"), from[0] + 4, from[1]) ?? from;
+    p.targetId = "m1";
+    const mpBefore = s.currentMp(p, 0);
+    expect(s.queueCast("p1", "pt_thuan_di", null, 0, near)).toEqual({ ok: true });
+    const events = s.tick(0, at(from));
+    expect(events).toContainEqual({ t: "teleport", playerId: "p1", to: near });
+    expect(events.some((e) => e.t === "cast_ok")).toBe(true);
+    expect(s.currentMp(p, 0)).toBe(mpBefore - 30);
+    expect(p.targetId).toBeNull();
+    expect(s.queueCast("p1", "pt_thuan_di", null, 1000, near)).toEqual({ ok: false, reason: "cooldown" });
+  });
+
+  it("a teleport needs a point, and a point too far or not standable is refused without paying", () => {
+    const s = sim();
+    const p = s.addPlayer(seed("p1", { gearSkills: ["pt_thuan_di"] }));
+    const from = spawn();
+    expect(s.queueCast("p1", "pt_thuan_di", null, 0)).toEqual({ ok: false, reason: "no_target" });
+    s.queueCast("p1", "pt_thuan_di", null, 0, [from[0] + 30, from[1]]);
+    const far = s.tick(0, at(from));
+    expect(far).toContainEqual({ t: "cast_fail", playerId: "p1", skill: "pt_thuan_di", reason: "range" });
+    s.queueCast("p1", "pt_thuan_di", null, 100, [-5, -5]);
+    const wall = s.tick(100, at(from));
+    expect(wall.some((e) => e.t === "cast_fail" && (e.reason === "range" || e.reason === "blocked"))).toBe(true);
+    expect(wall.some((e) => e.t === "teleport")).toBe(false);
+    expect(s.currentMp(p, 100)).toBe(p.maxMp); // nothing was paid
+    expect(p.cooldowns.has("pt_thuan_di")).toBe(false);
+  });
+});

@@ -11,7 +11,9 @@ import type { MonsterRank } from "./monsters";
  * roots (all the character's elements), the common ones for everyone) and are never stored; BOOK skills are learned from a bí tịch item and stored in
  * `character_skills`. Learning from NPCs and sects comes later.
  */
-export type SkillKind = "attack" | "heal" | "buff";
+export type SkillKind = "attack" | "heal" | "buff" | "teleport";
+/** Worn pieces that grant skills while they are on (and not broken): ordinary pháp bảo, the bonded one, the flight one. */
+export type GearSkillSource = "charm" | "bonded" | "flight";
 /** What a buff raises. attack/defense: fraction of the stat; dodge: `power` is a fraction of 100, added as percentage points of dodge chance. */
 export type BuffStat = "attack" | "defense" | "dodge";
 
@@ -38,6 +40,8 @@ export interface SkillDef {
   unlock: { realm: number; stage: number; root?: SpiritualRoot } | null;
   /** Book skills: the level needed to learn it from the bí tịch. */
   learn?: { realm: number; stage: number };
+  /** Granted by a worn pháp bảo of this kind instead of by level or a book (with `unlock: null`; never learned). */
+  gear?: GearSkillSource;
 }
 
 const ELEMENT_NAMES: Record<SpiritualRoot, string> = { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ" };
@@ -51,8 +55,30 @@ function elementSkills(root: SpiritualRoot): SkillDef[] {
   ];
 }
 
+/**
+ * Skills that come with worn pháp bảo. Ordinary pháp bảo give one attack of their own element. The pháp bảo bản mệnh gives
+ * stronger ones (a heavy strike of its element, a guard and a heal), and the pháp bảo phi hành gives movement skills: a short
+ * teleport and a buff to dodge chance. All numbers are placeholders (docs/STATUS.md, "giá trị tạm").
+ */
+function gearSkills(): SkillDef[] {
+  const out: SkillDef[] = [];
+  for (const root of SPIRITUAL_ROOTS) {
+    const n = ELEMENT_NAMES[root];
+    out.push({ id: `pb_${root}`, nameVi: `Pháp Bảo ${n} Quang`, descVi: `Pháp bảo hệ ${n} phóng ra một đạo quang chấn thương mục tiêu. Cần đeo pháp bảo hệ ${n}.`, kind: "attack", element: root, mpCost: 16, cooldownMs: 8000, range: 5, power: 2.8, unlock: null, gear: "charm" });
+    out.push({ id: `bm_${root}`, nameVi: `Bản Mệnh ${n} Kích`, descVi: `Tuyệt chiêu của pháp bảo bản mệnh hệ ${n}, mạnh hơn mọi pháp bảo thường. Cần đeo pháp bảo bản mệnh hệ ${n}.`, kind: "attack", element: root, mpCost: 40, cooldownMs: 15_000, range: 7, power: 5.5, unlock: null, gear: "bonded" });
+  }
+  out.push(
+    { id: "bm_ho_the", nameVi: "Bản Mệnh Hộ Thể", descVi: "Pháp bảo bản mệnh bao bọc chủ nhân: tăng 50% phòng thủ trong 12 giây.", kind: "buff", element: null, mpCost: 30, cooldownMs: 45_000, range: 0, power: 0.5, buff: { stat: "defense", durationMs: 12_000 }, unlock: null, gear: "bonded" },
+    { id: "bm_hoi_sinh", nameVi: "Bản Mệnh Hồi Sinh", descVi: "Pháp bảo bản mệnh truyền linh khí cho chủ nhân, hồi 60% sinh lực.", kind: "heal", element: null, mpCost: 35, cooldownMs: 60_000, range: 0, power: 0.6, unlock: null, gear: "bonded" },
+    { id: "pt_thuan_di", nameVi: "Thuấn Di", descVi: "Dịch chuyển tức thời tới một vị trí trong tầm 9 ô. Cần pháp bảo phi hành; chỉ dùng được ngoài thành.", kind: "teleport", element: null, mpCost: 30, cooldownMs: 25_000, range: 9, power: 0, unlock: null, gear: "flight" },
+    { id: "pt_phong_than", nameVi: "Phong Thân Quyết", descVi: "Thân nhẹ như gió: tăng 25% tỉ lệ né tránh trong 12 giây. Cần pháp bảo phi hành.", kind: "buff", element: null, mpCost: 25, cooldownMs: 40_000, range: 0, power: 0.25, buff: { stat: "dodge", durationMs: 12_000 }, unlock: null, gear: "flight" },
+  );
+  return out;
+}
+
 export const SKILLS: readonly SkillDef[] = [
   ...SPIRITUAL_ROOTS.flatMap(elementSkills),
+  ...gearSkills(),
   { id: "hoi_khi", nameVi: "Hồi Khí Quyết", descVi: "Vận khí chữa thương, hồi 30% sinh lực.", kind: "heal", element: null, mpCost: 15, cooldownMs: 8000, range: 0, power: 0.3, unlock: { realm: 0, stage: 1 } },
   { id: "linh_thuan", nameVi: "Linh Thuẫn", descVi: "Tăng 30% phòng thủ trong 15 giây.", kind: "buff", element: null, mpCost: 12, cooldownMs: 30_000, range: 0, power: 0.3, buff: { stat: "defense", durationMs: 15_000 }, unlock: { realm: 0, stage: 3 } },
   { id: "cuong_than", nameVi: "Cuồng Thần Thuật", descVi: "Tăng 25% công kích trong 15 giây, học từ bí tịch.", kind: "buff", element: null, mpCost: 20, cooldownMs: 30_000, range: 0, power: 0.25, buff: { stat: "attack", durationMs: 15_000 }, unlock: null, learn: { realm: 0, stage: 5 } },
@@ -70,7 +96,7 @@ export function isSkillId(v: unknown): v is string {
 }
 
 /** Skills a book can teach. */
-export const BOOK_SKILLS: readonly SkillDef[] = SKILLS.filter((s) => s.unlock === null);
+export const BOOK_SKILLS: readonly SkillDef[] = SKILLS.filter((s) => s.unlock === null && s.gear === undefined);
 
 /** The item id of the bí tịch that teaches a skill. */
 export function bookItemId(skillId: string): string {
@@ -85,10 +111,11 @@ export function isBasicUnlocked(skill: SkillDef, roots: readonly SpiritualRoot[]
   return levelIndex(realm, stage) >= levelIndex(u.realm, u.stage);
 }
 
-/** Every skill the character can use: the unlocked basic ones plus the learned (book) ones, in list order. */
-export function availableSkills(roots: readonly SpiritualRoot[], realm: number, stage: number, learned: Iterable<string>): string[] {
+/** Every skill the character can use: the unlocked basic ones, the learned (book) ones and those granted by worn pháp bảo (`gear`), in list order. */
+export function availableSkills(roots: readonly SpiritualRoot[], realm: number, stage: number, learned: Iterable<string>, gear: Iterable<string> = []): string[] {
   const books = new Set(learned);
-  return SKILLS.filter((s) => (s.unlock ? isBasicUnlocked(s, roots, realm, stage) : books.has(s.id))).map((s) => s.id);
+  const worn = new Set(gear);
+  return SKILLS.filter((s) => (s.unlock ? isBasicUnlocked(s, roots, realm, stage) : s.gear ? worn.has(s.id) : books.has(s.id))).map((s) => s.id);
 }
 
 /** Whether a character may learn this skill from its book (level only; the server also checks it is not known yet). */

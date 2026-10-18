@@ -69,7 +69,7 @@ export type ClientMessage =
   /** Repair one worn piece, or all of them, for Linh Thạch. */
   | { t: "eq_repair"; slot: EquipSlot | "all" }
   /** Use a skill. `target` is the monster to hit (attack skills; omitted: the current target). Heals and buffs need none. */
-  | { t: "cast"; skill: string; target?: string }
+  | { t: "cast"; skill: string; target?: string; x?: number; y?: number }
   /** Set one hotbar slot: "" (empty), "s:<skill id>" or "i:<item type>". One slot per message, one D1 write. */
   | { t: "hotbar_set"; slot: number; v: string }
   /** Use the first stack of an item type in the bag (hotbar potion slots); the server picks the stack, the client never names an item id. */
@@ -159,7 +159,7 @@ export type ServerMessage =
   | { t: "mp"; mp: number; maxMp: number; regenInMs: number; perSec: number }
   /** A skill went off; its cooldown runs for `cdMs`. */
   | { t: "cast_ok"; skill: string; cdMs: number }
-  | { t: "cast_error"; skill: string; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" | "town" | "dead" }
+  | { t: "cast_error"; skill: string; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" | "town" | "dead" | "range" | "blocked" }
   /** Every effect running on the character right now (full list; sent whenever one starts or ends). */
   | { t: "effects"; list: EffectView[] }
   /** A buff started on the character and lasts `ms`. */
@@ -250,6 +250,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         : null;
     case "cast":
       if (typeof m.skill !== "string" || !/^[a-z0-9_]{1,32}$/.test(m.skill)) return null;
+      if (m.x !== undefined || m.y !== undefined) return isCoord(m.x) && isCoord(m.y) ? { t: "cast", skill: m.skill, x: m.x, y: m.y } : null; // a teleport names a point
       if (m.target === undefined) return { t: "cast", skill: m.skill };
       return isMonsterId(m.target) ? { t: "cast", skill: m.skill, target: m.target } : null;
     case "hotbar_set":
