@@ -88,7 +88,7 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
   /** The realm, grade and level a skill works at for this character. */
   function contextOf(s: SkillDef): SkillContext {
     const gear = s.source === "gear" ? gearSkillInfo(worn).find((g) => g.id === s.id) : undefined;
-    return { realm: gear ? gear.realm : s.realm, grade: skillGrade(s, sheet?.rootGrade ?? 0, gear?.grade), level: s.source === "gear" ? 0 : (states[s.id]?.lv ?? 0) };
+    return { realm: gear ? gear.realm : s.realm, ...(gear ? { tier: gear.tier } : {}), grade: skillGrade(s, sheet?.rootGrade ?? 0, gear?.grade), level: s.source === "gear" ? 0 : (states[s.id]?.lv ?? 0) };
   }
 
   function elementsOf(): SpiritualRoot[] {
@@ -103,7 +103,8 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
     const info = el("div", "sk-info");
     const title = el("b");
     if (s.element) title.append(elementDot(s.element)); // a skill bound to an element shows it; a flexible one is given one on the hotbar
-    title.append(s.nameVi, el("span", "sk-tag", REALMS[ctx.realm]?.shortVi ?? ""));
+    // A gear skill carries the piece's realm and bậc ("LK4"), so pieces of one kind can be told apart.
+    title.append(s.nameVi, el("span", "sk-tag", `${REALMS[ctx.realm]?.shortVi ?? ""}${s.source === "gear" ? (ctx.tier ?? 1) : ""}`));
     const meta: string[] = [vi.skills.grades[ctx.grade] ?? ""];
     if (s.source !== "gear") meta.push(vi.skills.levels[ctx.level] ?? "");
     const weapon = s.weapon ? ` · ${vi.skills.weapon(vi.equip.weaponTypes[s.weapon] ?? s.weapon)}` : "";

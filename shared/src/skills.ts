@@ -129,7 +129,11 @@ function gearSkills(): SkillDef[] {
   const out: SkillDef[] = [];
   for (const root of SPIRITUAL_ROOTS) {
     const n = ELEMENT_NAMES[root];
-    out.push({ id: `pb_${root}`, nameVi: `Pháp Bảo ${n} Quang`, descVi: `Pháp bảo hệ ${n} phóng ra một đạo quang chấn thương mục tiêu. Cần đeo pháp bảo hệ ${n}.`, kind: "attack", source: "gear", element: root, realm: 0, mpCost: 16, cooldownMs: 8000, range: 5, power: 2.8, gear: "charm" });
+    // One skill for each of the four pháp bảo slots (a piece in each slot gives its own, at that piece's strength), so two
+    // pieces of the same element both show and cool down on their own.
+    for (let n = 1; n <= 4; n++) {
+      out.push({ id: `pb_${root}_${n}`, nameVi: `Pháp Bảo ${ELEMENT_NAMES[root]} Quang`, descVi: `Pháp bảo ở ô ${n} hệ ${ELEMENT_NAMES[root]} phóng ra một đạo quang chấn thương mục tiêu. Cần đeo pháp bảo hệ ${ELEMENT_NAMES[root]} ở ô ${n}.`, kind: "attack", source: "gear", element: root, realm: 0, mpCost: 16, cooldownMs: 8000, range: 5, power: 2.8, gear: "charm" });
+    }
     out.push({ id: `bm_${root}`, nameVi: `Bản Mệnh ${n} Kích`, descVi: `Tuyệt chiêu của pháp bảo bản mệnh hệ ${n}, mạnh hơn mọi pháp bảo thường. Cần đeo pháp bảo bản mệnh hệ ${n}.`, kind: "attack", source: "gear", element: root, realm: 0, mpCost: 40, cooldownMs: 15_000, range: 7, power: 5.5, gear: "bonded" });
   }
   out.push(
@@ -210,6 +214,8 @@ export const MASTERY_PILL_POINTS = 100;
 export interface SkillContext {
   /** The realm the skill is used at (a piece's for gear skills, the skill's own otherwise). */
   realm: number;
+  /** Bậc 1..9 within the realm (gear skills: the piece's). Each bậc adds a tenth of a realm's worth of strength; absent counts as bậc 1. */
+  tier?: number;
   /** Grade on the root-grade scale 0..4. */
   grade: number;
   level: number;
@@ -229,14 +235,16 @@ export function effectiveSkill(def: SkillDef, ctx: SkillContext): EffectiveSkill
   const level = Math.max(0, Math.min(ctx.level, maxSkillLevel(ctx.grade)));
   const grade = 1 + getRootGrade(ctx.grade).elementDamagePct / 100;
   const lv = SKILL_LEVEL_POWER[level] ?? 1;
+  // A realm and the bậc inside it make one scale: realm 0 bậc 4 sits between realm 0 bậc 1 and realm 1 bậc 1.
+  const realm = ctx.realm + Math.max(0, (ctx.tier ?? 1) - 1) / 10;
   let power = def.power;
-  if (def.kind === "attack") power = def.power * (1 + 0.5 * ctx.realm) * grade * lv;
-  else if (def.kind === "heal") power = Math.min(0.9, def.power * (1 + 0.1 * ctx.realm) * grade * lv);
+  if (def.kind === "attack") power = def.power * (1 + 0.5 * realm) * grade * lv;
+  else if (def.kind === "heal") power = Math.min(0.9, def.power * (1 + 0.1 * realm) * grade * lv);
   else if (def.kind === "buff" || def.kind === "passive") {
     const rate = def.buff?.stat === "dodge" || def.passive?.stat === "dodge" || def.passive?.stat === "crit";
-    power = Math.min(rate ? 0.5 : 1.5, def.power * (1 + 0.2 * ctx.realm) * grade * lv);
+    power = Math.min(rate ? 0.5 : 1.5, def.power * (1 + 0.2 * realm) * grade * lv);
   }
-  return { power, mpCost: Math.round(def.mpCost * (1 + 0.5 * ctx.realm)), cooldownMs: Math.round(def.cooldownMs * (SKILL_LEVEL_COOLDOWN[level] ?? 1)) };
+  return { power, mpCost: Math.round(def.mpCost * (1 + 0.5 * realm)), cooldownMs: Math.round(def.cooldownMs * (SKILL_LEVEL_COOLDOWN[level] ?? 1)) };
 }
 
 /** What a character's passive skills add all the time: fractions of attack and defense, percentage points of dodge and crit. */

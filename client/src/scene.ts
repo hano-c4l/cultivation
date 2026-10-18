@@ -324,7 +324,7 @@ export class GameScene extends Phaser.Scene {
   /** The realm, grade and mastery level a skill works at for this character (the same inputs the server uses). */
   private skillContext(skill: SkillDef): SkillContext {
     const gear = skill.source === "gear" ? gearSkillInfo(this.worn).find((g) => g.id === skill.id) : undefined;
-    return { realm: gear ? gear.realm : skill.realm, grade: skillGrade(skill, this.selfSheet?.rootGrade ?? 0, gear?.grade), level: skill.source === "gear" ? 0 : (this.skillStates[skill.id]?.lv ?? 0) };
+    return { realm: gear ? gear.realm : skill.realm, ...(gear ? { tier: gear.tier } : {}), grade: skillGrade(skill, this.selfSheet?.rootGrade ?? 0, gear?.grade), level: skill.source === "gear" ? 0 : (this.skillStates[skill.id]?.lv ?? 0) };
   }
 
   private beginAim(skill: SkillDef): void {

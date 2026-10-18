@@ -33,6 +33,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
+/** The slots of the pháp bảo tab: the bonded one, the flight one and the four ordinary pháp bảo. */
+const ARTIFACT_SLOTS: ReadonlySet<EquipSlot> = new Set<EquipSlot>(["bonded", "flight", "charm1", "charm2", "charm3", "charm4"]);
+
 /**
  * Equipment overlay (button or the E key): one row per slot. A worn piece can be taken off or repaired; any slot can
  * open a chooser with the bag pieces that fit it. The server decides everything (who may wear what, the price), the
@@ -50,6 +53,8 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
 
   let sheet: CharacterSheet | null = null;
   let worn: EquippedItem[] = [];
+  /** Two tabs: ordinary gear, and the pháp bảo (the bonded one, the flight one and the four others). */
+  let tab: "gear" | "artifact" = "gear";
   let choosing: EquipSlot | null = null;
   /** The worn piece whose details are open. */
   let inspecting: EquipSlot | null = null;
@@ -122,7 +127,20 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
     const parts = (Object.keys(bonus) as Array<keyof typeof bonus>).filter((k) => bonus[k] > 0).map((k) => statText(k, bonus[k]));
     panel.append(el("div", "muted", `${vi.equip.bonusTitle}: ${parts.length > 0 ? parts.join(", ") : vi.equip.noBonus}`));
 
-    for (const slot of EQUIP_SLOTS) {
+    const tabs = el("div", "eq-tabs");
+    for (const id of ["gear", "artifact"] as const) {
+      const b = el("button", id === tab ? "active" : undefined, vi.equip.tabs[id]);
+      b.onclick = () => {
+        tab = id;
+        choosing = null;
+        inspecting = null;
+        render();
+      };
+      tabs.append(b);
+    }
+    panel.append(tabs);
+
+    for (const slot of EQUIP_SLOTS.filter((s) => ARTIFACT_SLOTS.has(s) === (tab === "artifact"))) {
       const piece = worn.find((e) => e.slot === slot);
       const row = el("div", piece ? `eq-row rar-${getItemDef(piece.type)?.rarity ?? "common"}` : "eq-row");
       row.append(el("span", "eq-slot", vi.equip.slots[slot]));

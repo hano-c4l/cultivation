@@ -222,7 +222,7 @@ export function skillContextOf(seed: Pick<ProfileSeed, "rootGrade" | "gearSkills
   const gear = def.source === "gear" ? seed.gearSkills?.find((g) => g.id === def.id) : undefined;
   const grade = skillGrade(def, seed.rootGrade, gear?.grade);
   const lv = def.source === "gear" ? 0 : ((seed.masteries ?? seed.skillState)?.[def.id]?.lv ?? 0);
-  return { realm: gear ? gear.realm : def.realm, grade, level: lv };
+  return { realm: gear ? gear.realm : def.realm, ...(gear ? { tier: gear.tier } : {}), grade, level: lv };
 }
 
 function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; masteries?: Readonly<Record<string, { lv: number; xp: number }>> }, stage = seed.stage): { stats: Combatant; maxHp: number; maxMp: number; expBonus: number } {
