@@ -73,7 +73,7 @@ Con số cố định (có thể chỉnh trước khi bắt đầu, sau đó kh�
   - Trợ lý **không đăng nhập hay tạo tài khoản trên preview/production**; kiểm tra ở đó chỉ-đọc (`/api/health`, các API cần đăng nhập phải 401, các cổng `dev` phải 404, WebSocket không cookie bị từ chối). Việc cần đăng nhập thật do người dùng tự thử; trợ lý nêu rõ danh sách cần thử.
   - Trước khi báo "xong" và trước khi chốt thiết kế lớn, tham khảo advisor (xem `CLAUDE.md`). Số liệu và rủi ro giới hạn gói Free phải báo cho người dùng (xem `docs/TECHNICAL.md` mục 2a).
   - Báo cáo cuối mỗi việc: nói rõ **đã kiểm gì, chưa kiểm gì**, giá trị tạm đã dùng và việc người dùng cần thử.
-  - **Khi người dùng nói "cập nhật docs" hoặc "cập nhật status"**: cập nhật **đúng file, đúng vị trí** theo bản đồ tài liệu ở `CLAUDE.md` (mục "Tài liệu"), không dồn mọi thứ vào `docs/STATUS.md`. `PLAN.md`: thay đổi tổng quan so với kế hoạch; `TECHNICAL.md`: hạ tầng, kiến trúc, môi trường, cách chạy và kiểm thử, bẫy; `PHASE1.md`/`PHASE2.md`: chi tiết, quyết định, tồn đọng của từng giai đoạn; `STATUS.md`: chỉ giai đoạn nào xong, đang làm, cần làm tiếp (và phần nào của giai đoạn đang làm dở).
+  - **Khi người dùng nói "cập nhật docs" hoặc "cập nhật status"**: cập nhật **đúng file, đúng vị trí** theo bản đồ tài liệu ở `CLAUDE.md` (mục "Docs and how to update them"), không dồn mọi thứ vào `docs/STATUS.md`. `PLAN.md`: thay đổi tổng quan so với kế hoạch; `TECHNICAL.md`: hạ tầng, kiến trúc, môi trường, cách chạy và kiểm thử, bẫy; `PHASExx.md` (từng giai đoạn): chi tiết, quyết định, tồn đọng của từng giai đoạn; `STATUS.md`: chỉ giai đoạn nào xong, đang làm, cần làm tiếp (và phần nào của giai đoạn đang làm dở).
 
 
 ## Môi trường và nơi chạy
