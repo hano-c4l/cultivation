@@ -31,6 +31,12 @@ import {
   monsterStats,
   rollRank,
   rollMonsterElement,
+  NO_PATHS,
+  pathExpFactor,
+  pathBonuses,
+  pathSkillDamagePct,
+  skillContextFor,
+  type PathState,
   SPIRITUAL_ROOTS,
   topContributor,
   findSmoothPath,
@@ -72,6 +78,8 @@ export interface ProfileSeed {
   potentialPoints: number;
   /** The main element (the one a skill without an element, and the grade bonus, go by). */
   element: Element;
+  /** The hướng tu the character has taken up (shared/src/paths.ts); absent: none. */
+  paths?: PathState;
   /** All the elements, main one first; absent: just `element`. More elements give more skills, and the plain attack and the hits it takes go by all of them (elementOutcome). */
   roots?: readonly Element[];
   base: BaseStats;
@@ -221,11 +229,13 @@ function lastPoint(path: Vec2[]): Vec2 {
 }
 
 /** The skill's realm, grade and mastery level for this character: what effectiveSkill needs. */
-export function skillContextOf(seed: Pick<ProfileSeed, "rootGrade" | "gearSkills"> & { masteries?: Readonly<Record<string, { lv: number }>>; skillState?: Readonly<Record<string, { lv: number }>> }, def: SkillDef): SkillContext {
+export function skillContextOf(
+  seed: Pick<ProfileSeed, "rootGrade" | "gearSkills"> & { realm?: number; paths?: PathState; masteries?: Readonly<Record<string, { lv: number }>>; skillState?: Readonly<Record<string, { lv: number }>> },
+  def: SkillDef,
+): SkillContext {
   const gear = def.source === "gear" ? seed.gearSkills?.find((g) => g.id === def.id) : undefined;
-  const grade = skillGrade(def, seed.rootGrade, gear?.grade);
   const lv = def.source === "gear" ? 0 : ((seed.masteries ?? seed.skillState)?.[def.id]?.lv ?? 0);
-  return { realm: gear ? gear.realm : def.realm, ...(gear ? { tier: gear.tier } : {}), grade, level: lv };
+  return skillContextFor(def, { rootGrade: seed.rootGrade, realm: seed.realm ?? def.realm, level: lv, ...(seed.paths ? { paths: seed.paths } : {}), ...(gear ? { gear } : {}) });
 }
 
 function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; masteries?: Readonly<Record<string, { lv: number; xp: number }>> }, stage = seed.stage): { stats: Combatant; maxHp: number; maxMp: number; expBonus: number } {
@@ -246,11 +256,17 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
   defense = Math.floor(defense + d.defense * passive.defensePct);
   dodge += passive.dodgePoints;
   crit += passive.critPoints;
+  // The hướng tu add percent to attack, defense and maximum MP (the same sums the character panel shows) and slow the EXP gained.
+  const paths = seed.paths ?? NO_PATHS;
+  const pb = pathBonuses(paths);
+  attack = Math.floor(attack * (1 + pb.attackPct / 100));
+  defense = Math.floor(defense * (1 + pb.defensePct / 100));
   return {
     stats: { attack, defense, critRate: Math.min(RATE_CAP, crit), dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element, roots: seed.roots ?? [seed.element] },
     maxHp: d.maxHp,
-    maxMp: d.maxMp,
-    expBonus: d.expBonus,
+    maxMp: Math.floor(d.maxMp * (1 + pb.maxMpPct / 100)),
+    // The EXP gained is multiplied by 1 / (1 + k * phu tu): folded into the bonus percentage the kill reward takes.
+    expBonus: paths.subs.length === 0 ? d.expBonus : ((1 + d.expBonus / 100) * pathExpFactor(paths) - 1) * 100,
   };
 }
 
@@ -502,11 +518,28 @@ export class CombatSim {
     return availableSkills(p.granted ?? [], (p.gearSkills ?? []).map((g) => g.id));
   }
 
+  /** The character took up a hướng tu: its bonuses and skill strengths follow at once. */
+  setPaths(id: string, paths: PathState): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.paths = paths;
+    this.recompute(p, false);
+  }
+
   /** A skill was granted (a book was read, or a realm gave its root skills). */
   addGranted(id: string, skill: string): void {
     const p = this.players.get(id);
     if (p && !(p.granted ?? []).includes(skill)) p.granted = [...(p.granted ?? []), skill];
     if (p) this.recompute(p, false); // a passive takes effect at once
+  }
+
+  /** Skills were taken away (a hướng tu was dropped). */
+  removeGranted(id: string, skills: readonly string[]): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.granted = (p.granted ?? []).filter((s) => !skills.includes(s));
+    for (const s of skills) p.cooldowns.delete(s);
+    this.recompute(p, false);
   }
 
   /** Sets the mastery of a skill (a Ngộ Đạo Đan was used); the passives follow the new level. */
@@ -897,7 +930,7 @@ export class CombatSim {
     const element = skill ? (skillElement ?? skill.element ?? p.element) : p.element;
     // A skill's grade is already in its power (effectiveSkill), so only the plain attack takes the root grade's damage share here.
     const gradePct = !skill && roots.includes(element) ? getRootGrade(p.rootGrade).elementDamagePct : 0;
-    const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent : 0;
+    const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent + pathSkillDamagePct(p.paths ?? NO_PATHS, skill, p.weapon ?? null) : 0;
     const power = skill ? skillPower : 1;
     const attacker = { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100))), element, roots: skill ? undefined : roots };
     const hit = computeDamage(attacker, m.combatant, this.rand);

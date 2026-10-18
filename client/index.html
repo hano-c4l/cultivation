@@ -126,7 +126,8 @@
       #bag-panel button:disabled { opacity: 0.45; cursor: default; }
       #bag-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
       #bag-panel .bag-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-      #bag-panel .bag-head b { flex: 1; font-size: 15px; } #bag-panel .bag-used { opacity: 0.7; } #bag-panel .bag-head button { padding: 2px 8px; } #bag-panel .bag-head .bag-sort { padding: 4px 8px; font-size: 12px; }
+      #bag-panel .bag-head b { flex: 1; font-size: 15px; } #bag-panel .bag-used { opacity: 0.7; } #bag-panel .bag-head button { padding: 2px 8px; } #bag-panel .bag-head .bag-sort-mode { padding: 3px 4px; border-radius: 6px; border: 1px solid #3a4560; background: #10141c; color: inherit; font: inherit; font-size: 12px; max-width: 96px; }
+      #bag-panel .bag-head .bag-sort { padding: 4px 8px; font-size: 12px; }
       #bag-panel .bag-tabs { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
       #bag-panel .bag-tabs button { padding: 3px 8px; background: #3a4560; color: #e8e4d8; } #bag-panel .bag-tabs button.active { background: #d6a94b; color: #1b1405; }
       /* The whole 8x8 tab is shown; only the panel scrolls, and only when the window is too short for it. */
@@ -187,6 +188,11 @@
       .cp-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; } .cp-name { flex: 1; } .cp-val { min-width: 32px; text-align: center; }
       .cp-changed { color: #6fcf97; font-weight: 600; } .cp-confirm { width: 100%; margin: 8px 0; padding: 8px 12px; }
       .cp-bt { margin: 8px 0; padding: 8px; border-radius: 8px; background: rgba(214, 169, 75, 0.1); border: 1px solid #5a4a22; } .cp-bt:empty { display: none; }
+      .cp-path[hidden] { display: none; }
+      .cp-path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; font-size: 13px; color: #ffd54a; }
+      .cp-path-btn { padding: 4px 10px !important; min-height: 28px !important; } .cp-path-add { background: #3a4560 !important; color: #e8e4d8 !important; }
+      .cp-select { flex: 1; min-width: 0; padding: 4px 6px; border-radius: 6px; border: 1px solid #3a4560; background: #10141c; color: inherit; font: inherit; }
+      .cp-pathbox[hidden] { display: none; }
       .cp-rate-pills { color: #ffd54a; font-weight: 600; } .cp-rate-over { color: #ff6b6b; font-weight: 600; }
       .cp-bt-line { margin: 3px 0; font-size: 13px; } .cp-bt-warn { margin: 6px 0; font-size: 12px; color: #ff8a80; }
       .cp-derived { border-top: 1px solid #3a4560; padding-top: 6px; font-size: 13px; color: #c9d1e3; }

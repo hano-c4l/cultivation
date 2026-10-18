@@ -1,6 +1,24 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   BREAKTHROUGH_FAIL_EXP_LOSS,
+  NO_PATHS,
+  PATHS,
+  allPathSkills,
+  afterDrop,
+  afterSwap,
+  checkPathChoice,
+  pathDropCost,
+  pathLevel,
+  pathLevelReady,
+  pathSwapCost,
+  nextPathSlot,
+  parsePaths,
+  pathBonuses,
+  withPaths,
+  pathCost,
+  type PathError,
+  type PathId,
+  type PathState,
   DEFAULT_CONSTITUTION,
   getBreakthrough,
   breakthroughPoints,
@@ -103,6 +121,7 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
+import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
 import { filterChat } from "./chat";
 import {
@@ -235,6 +254,7 @@ function seedOf(row: CharacterRow, bag: BagState | undefined, skills: readonly S
     granted: (skills ?? []).map((r) => r.skill_id),
     skillState: stateOfRows(skills ?? []),
     gender: row.gender,
+    paths: parsePaths(row.paths),
     id: row.id,
     name: row.name,
     potentialPoints: row.potential_points,
@@ -266,6 +286,7 @@ function sheetOf(p: PlayerProfile): CharacterSheet {
     constitution: p.constitution,
     constitutionTier: p.constitutionTier,
     gender: p.gender,
+    paths: p.paths ?? NO_PATHS,
     realm: p.realm,
     stage: p.stage,
     exp: p.exp,
@@ -450,7 +471,7 @@ export class MapRoom extends DurableObject<Env> {
       const sim = this.sim;
       const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow, skills ?? [], constitutions))) : undefined;
       if (sim) this.startTick();
-      const derived = deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row, constitutions)), parseRoots(row.roots, row.spiritual_root).length);
+      const derived = withPaths(deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row, constitutions)), parseRoots(row.roots, row.spiritual_root).length), parsePaths(row.paths));
       const maxHp = profile?.maxHp ?? derived.maxHp;
       // In town there is no profile: what the character left the fight with still counts (and keeps regenerating from now on).
       const storedVitals = parseVitals(row.vitals);
@@ -558,6 +579,13 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleBreakthroughStart(ws, state, msg.pills);
       case "bt_cancel":
         return this.interruptBreakthrough(state.id, "cancel");
+      case "path_claim":
+        return this.handlePathClaim(ws, state, msg.path);
+      case "path_choose":
+        return this.handlePathChoose(ws, state, msg.path);
+      case "path_swap":
+      case "path_drop":
+        return this.handlePathChange(ws, state, msg.t === "path_swap" ? "swap" : "drop", msg.path);
     }
   }
 
@@ -1548,8 +1576,8 @@ export class MapRoom extends DurableObject<Env> {
     dirty.add(skill);
     this.skillDirty.set(id, dirty);
     this.sendToCharacter(id, { t: "skill_state", id: skill, lv, xp, ...(up ? { up: true } : {}) });
-    // A new level is worth writing at once; plain points wait for the debounced save.
-    return up ? this.flushSkills(id) : this.ensureSaveAlarm(now);
+    // A new level is worth writing at once; plain points wait for the debounced save. A path skill reaching its top level may take its path up a level.
+    return up ? this.flushSkills(id).then(() => this.checkPathLevelUp(id)) : this.ensureSaveAlarm(now);
   }
 
   /** Tells the client its MP (after a change of max MP the client's extrapolation would otherwise use the old maximum). */
@@ -1636,6 +1664,9 @@ export class MapRoom extends DurableObject<Env> {
     }
     const next = [...current];
     next[slot] = v;
+    // A skill is on the bar once: putting it in another slot moves it there (the slot it left becomes empty).
+    const moved = parseSkillSlot(v);
+    if (moved) next.forEach((x, i) => (i !== slot && parseSkillSlot(x)?.id === moved.id ? (next[i] = "") : undefined));
     try {
       await saveHotbar(this.env.DB, id, next);
       this.hotbars.set(id, next);
@@ -1661,8 +1692,12 @@ export class MapRoom extends DurableObject<Env> {
       const rows = await this.getSkillRows(id);
       const row = rows.find((r) => r.skill_id === skillId);
       if (!def || !row || def.source === "gear") return this.send(ws, { t: "inv_error", reason: "no_skill" });
-      const rootGrade = this.sim?.getPlayer(id)?.rootGrade ?? (await getCharacterById(this.env.DB, id))?.root_grade ?? 0;
-      const next = addMastery(row.level, row.mastery, MASTERY_PILL_POINTS, skillGrade(def, rootGrade));
+      const profileNow = this.sim?.getPlayer(id);
+      const charRow = profileNow ? null : await getCharacterById(this.env.DB, id);
+      const rootGrade = profileNow?.rootGrade ?? charRow?.root_grade ?? 0;
+      // The hướng tu (Đan tu) add percent to the points of a Ngộ Đạo Đan.
+      const points = Math.round(MASTERY_PILL_POINTS * (1 + pathBonuses(profileNow?.paths ?? parsePaths(charRow?.paths)).masteryPct / 100));
+      const next = addMastery(row.level, row.mastery, points, skillGrade(def, rootGrade));
       if (next.level === row.level && next.mastery === row.mastery) return this.send(ws, { t: "inv_error", reason: "not_needed" }); // already at the top
       const hasPill = (await this.getBag(id)).items.some((i) => getItemDef(i.type)?.masteryPills !== undefined);
       if (!hasPill) return this.send(ws, { t: "inv_error", reason: "no_pill" });
@@ -1683,6 +1718,7 @@ export class MapRoom extends DurableObject<Env> {
       this.sim?.setMastery(id, skillId, next.level, next.mastery);
       this.sendBagDelta(id, res.before, res.after);
       this.sendToCharacter(id, { t: "skill_state", id: skillId, lv: next.level, xp: next.mastery, ...(next.up ? { up: true } : {}) });
+      if (next.up) await this.checkPathLevelUp(id);
     });
   }
 
@@ -1739,6 +1775,8 @@ export class MapRoom extends DurableObject<Env> {
     if (!profile || profile.dead || profile.hp >= profile.maxHp) return this.send(ws, { t: "inv_error", reason: "not_needed" });
     if (now < profile.potionReadyAt) return this.send(ws, { t: "inv_error", reason: "cooldown" });
     profile.potionReadyAt = now + POTION_COOLDOWN_MS;
+    // The hướng tu (Đan tu) make healing pills heal more.
+    const healBoost = 1 + pathBonuses(profile.paths ?? NO_PATHS).potionHealPct / 100;
     const res = await this.mutateBag(id, (b) => {
       const ops = planRemove(b.items, b.tabs, { tab, cell }, 1);
       return ops ? { ops } : null;
@@ -1748,12 +1786,12 @@ export class MapRoom extends DurableObject<Env> {
     const over = getItemDef(item.type)?.healOverMs;
     if (over !== undefined) {
       // Heals a little every second; the effect shows on the buff bar until it has all landed.
-      const events = this.sim?.startHot(id, item.type, heal, over, Date.now());
+      const events = this.sim?.startHot(id, item.type, heal * healBoost, over, Date.now());
       if (events) for (const ev of events) if (ev.t === "effects") this.sendToCharacter(id, { t: "effects", list: ev.list });
       this.startTick();
       return;
     }
-    const hp = this.sim?.heal(id, heal);
+    const hp = this.sim?.heal(id, heal * healBoost);
     const p = this.sim?.getPlayer(id);
     if (hp !== null && hp !== undefined && p) this.sendToCharacter(id, { t: "hp", hp, maxHp: p.maxHp });
   }
@@ -1997,10 +2035,213 @@ export class MapRoom extends DurableObject<Env> {
       this.sendMp(ws, profile, Date.now());
       this.applyGear(id, bag, ws); // the realm changed what the worn gear and its skills are worth
     } else {
-      const derived = deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bag.equipped, wearerOfRow(row)), parseRoots(row.roots, row.spiritual_root).length);
+      const derived = withPaths(deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bag.equipped, wearerOfRow(row)), parseRoots(row.roots, row.spiritual_root).length), parsePaths(row.paths));
       this.send(ws, { t: "hp", hp: derived.maxHp, maxHp: derived.maxHp });
     }
     this.send(ws, { t: "bt_end", ok: true, reason: "timeout", points, realm: toRealm });
+  }
+
+
+  // ---- Hướng tu (cultivation paths), docs/PHASE2.md 2d-B ----
+
+  private pathError(ws: WebSocket, reason: PathError): void {
+    this.send(ws, { t: "path_error", reason });
+  }
+
+  /**
+   * A placeholder for the NPC quest that will hand out path items: a Trúc Cơ character may take each path's item once. The grant
+   * key is stored (item_grants) so it cannot be repeated, and the quest can reuse it. A full bag refuses it.
+   */
+  private handlePathClaim(ws: WebSocket, state: PlayerState, path: PathId): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.pathError(ws, "busy");
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      const row = await getCharacterById(this.env.DB, id);
+      if (!row) return;
+      const realm = this.sim?.getPlayer(id)?.realm ?? row.realm;
+      const err = checkPathChoice(parsePaths(row.paths), path, realm);
+      if (err === "level") return this.pathError(ws, "level");
+      const res = await this.mutateBag(
+        id,
+        (bag) => {
+          const ops = planAdd(bag.items, bag.tabs, PATHS[path].item, 1, () => crypto.randomUUID());
+          return ops ? { ops } : null;
+        },
+        `path_item:${id}:${path}`,
+      );
+      if (!res.ok) return this.pathError(ws, res.reason === "duplicate" ? "claimed" : res.reason === "invalid" ? "bag_full" : "busy");
+      this.sendBagDelta(id, res.before, res.after);
+      this.send(ws, { t: "path_claimed", path });
+    });
+  }
+
+  /**
+   * Takes up a hướng tu: the item leaves the bag (and for a phụ tu the Linh Thạch is paid) together with the new path and its two
+   * skills in ONE batch. The first path is the chủ tu. Swapping and dropping are handlePathChange.
+   */
+  private handlePathChoose(ws: WebSocket, state: PlayerState, path: PathId): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.pathError(ws, "busy");
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, () => this.choosePath(ws, id, path));
+  }
+
+  private async choosePath(ws: WebSocket, id: string, path: PathId): Promise<void> {
+    const here = ws.deserializeAttachment() as PlayerState | null;
+    if (!here || here.transferring || here.bt) return this.pathError(ws, "busy");
+    const profile = this.sim?.getPlayer(id);
+    if (profile?.dead) return this.pathError(ws, "busy");
+    const row = await getCharacterById(this.env.DB, id);
+    if (!row) return;
+    const before = parsePaths(row.paths);
+    const err = checkPathChoice(before, path, profile?.realm ?? row.realm);
+    if (err) return this.pathError(ws, err);
+    const slot = nextPathSlot(before, path);
+    if (slot === null) return this.pathError(ws, "full");
+    const bag = await this.getBag(id);
+    const ops = planTakePills(bag.items, PATHS[path].item, 1);
+    if (!ops) return this.pathError(ws, "no_item");
+    const after: PathState = slot === 0 ? { main: path, subs: [] } : { main: before.main, subs: [...before.subs, path] };
+    let result;
+    try {
+      result = await commitPathChoice(this.env.DB, id, path, slot, before, after, ops, pathCost(before));
+    } catch (err2) {
+      console.error("path choice failed", id, err2);
+      this.bags.delete(id);
+      return this.pathError(ws, "busy");
+    }
+    if (result.status === "insufficient") return this.pathError(ws, "funds");
+    if (result.status === "duplicate") return this.pathError(ws, "have");
+    if (result.status === "stale") {
+      this.bags.delete(id);
+      return this.pathError(ws, "busy");
+    }
+    // Committed: the bag, the wallet, the skills and the stats follow.
+    const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
+    const bagAfterChoice: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+    this.bags.set(id, bagAfterChoice);
+    this.sendBagDelta(id, bag, bagAfterChoice);
+    if (result.balance !== null) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: result.balance });
+    const rows = await this.getSkillRows(id);
+    for (const skill of PATHS[path].levels[0]?.skills ?? []) {
+      if (!rows.some((r) => r.skill_id === skill)) rows.push({ skill_id: skill, source: "path", realm: 1, level: 0, mastery: 0 });
+      this.sim?.addGranted(id, skill);
+      this.sendToCharacter(id, { t: "skill_state", id: skill, lv: 0, xp: 0 });
+    }
+    this.sim?.setPaths(id, after);
+    const fresh = await getCharacterById(this.env.DB, id);
+    const live = this.sim?.getPlayer(id);
+    if (fresh) this.send(ws, { t: "stats", character: live ? sheetOf(live) : toCharacterSheet(fresh) });
+    const gear = (await this.getBag(id)).equipped;
+    this.send(ws, { t: "skills", ids: live && this.sim ? this.sim.skillsOf(live) : availableSkills(rows.map((r) => r.skill_id), gearSkillIds(gear)) });
+    if (live) {
+      this.send(ws, { t: "hp", hp: live.hp, maxHp: live.maxHp });
+      this.sendMp(ws, live, Date.now());
+    }
+  }
+
+
+  /**
+   * Swaps the chủ tu with a phụ tu, or drops a path. Both cost Linh Thạch by the levels of the paths, paid in the same batch that
+   * rewrites the rows (see rearrangeStatements). A dropped path takes its skills with it, off the hotbar too.
+   */
+  private handlePathChange(ws: WebSocket, state: PlayerState, kind: "swap" | "drop", path: PathId): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.pathError(ws, "busy");
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, () => this.changePath(ws, id, kind, path));
+  }
+
+  private async changePath(ws: WebSocket, id: string, kind: "swap" | "drop", path: PathId): Promise<void> {
+    const here = ws.deserializeAttachment() as PlayerState | null;
+    if (!here || here.transferring || here.bt) return this.pathError(ws, "busy");
+    const row = await getCharacterById(this.env.DB, id);
+    if (!row) return;
+    const before = parsePaths(row.paths);
+    const after = kind === "swap" ? afterSwap(before, path) : afterDrop(before, path);
+    if (!after) return this.pathError(ws, "no_path");
+    const cost = kind === "swap" ? pathSwapCost(before, path) : pathDropCost(before, path);
+    const removed = kind === "drop" ? allPathSkills(path) : [];
+    let hotbar: string[] | undefined;
+    if (removed.length > 0) {
+      const current = await this.getHotbar(id);
+      const cleaned = current.map((slot) => (removed.includes(parseSkillSlot(slot)?.id ?? "") ? "" : slot));
+      if (cleaned.some((slot, i) => slot !== current[i])) hotbar = cleaned;
+    }
+    const now = Date.now();
+    let result;
+    try {
+      result = await commitPathBatch(this.env.DB, id, rearrangeStatements(this.env.DB, id, before, after, { ...(kind === "drop" ? { dropped: path } : {}), ...(hotbar ? { hotbar } : {}), now }), cost, `path_${kind}:${id}:${path}:${now}`, `path_${kind}`);
+    } catch (err) {
+      console.error("path change failed", id, err);
+      return this.pathError(ws, "busy");
+    }
+    if (result.status === "insufficient") return this.pathError(ws, "funds");
+    if (result.status !== "ok") return this.pathError(ws, "busy");
+    if (result.balance !== null) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: result.balance });
+    const rows = await this.getSkillRows(id);
+    if (removed.length > 0) {
+      for (let i = rows.length - 1; i >= 0; i--) if (removed.includes(rows[i]!.skill_id)) rows.splice(i, 1);
+      this.sim?.removeGranted(id, removed);
+    }
+    if (hotbar) {
+      this.hotbars.set(id, hotbar);
+      this.sendToCharacter(id, { t: "hotbar", slots: hotbar });
+    }
+    this.sim?.setPaths(id, after);
+    await this.announcePaths(ws, id, rows);
+  }
+
+  /** After the paths changed: the sheet, the skills and the vitals (maximum MP follows a Thuật tu coming or going). */
+  private async announcePaths(ws: WebSocket, id: string, rows: SkillRow[]): Promise<void> {
+    const fresh = await getCharacterById(this.env.DB, id);
+    const live = this.sim?.getPlayer(id);
+    if (fresh) this.send(ws, { t: "stats", character: live ? sheetOf(live) : toCharacterSheet(fresh) });
+    const gear = (await this.getBag(id)).equipped;
+    this.send(ws, { t: "skills", ids: live && this.sim ? this.sim.skillsOf(live) : availableSkills(rows.map((r) => r.skill_id), gearSkillIds(gear)) });
+    if (live) {
+      this.send(ws, { t: "hp", hp: live.hp, maxHp: live.maxHp });
+      this.sendMp(ws, live, Date.now());
+    }
+  }
+
+  /**
+   * A path goes up a level when both of the skills of its level have reached the top mastery level: the level is written with the
+   * two skills of the next one in one batch (guarded on the level it was at). Called when a path skill gains a mastery level.
+   */
+  private async checkPathLevelUp(id: string): Promise<void> {
+    const sock = this.socketOf(id);
+    if (!sock) return;
+    const rows = await this.getSkillRows(id);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const row = await getCharacterById(this.env.DB, id);
+      if (!row) return;
+      const before = parsePaths(row.paths);
+      const masteryOf = (skill: string) => rows.find((r) => r.skill_id === skill)?.level;
+      const ready = [before.main, ...before.subs].find((p): p is PathId => !!p && pathLevelReady(p, pathLevel(before, p), masteryOf));
+      if (!ready) return;
+      const from = pathLevel(before, ready);
+      const after: PathState = { ...before, levels: { ...before.levels, [ready]: from + 1 } };
+      const result = await commitPathBatch(this.env.DB, id, levelUpStatements(this.env.DB, id, ready, from, before, after, Date.now()), 0, `path_level:${id}:${ready}:${from}`).catch((err) => {
+        console.error("path level-up failed", id, err);
+        return null;
+      });
+      if (!result || result.status !== "ok") return;
+      for (const skill of PATHS[ready].levels[from + 1]?.skills ?? []) {
+        if (!rows.some((r) => r.skill_id === skill)) rows.push({ skill_id: skill, source: "path", realm: 1, level: 0, mastery: 0 });
+        this.sim?.addGranted(id, skill);
+        this.sendToCharacter(id, { t: "skill_state", id: skill, lv: 0, xp: 0 });
+      }
+      this.sim?.setPaths(id, after);
+      await this.announcePaths(sock.ws, id, rows);
+    }
   }
 
   /** A marker left in D1 by a room that was lost: counts as a failed breakthrough. Returns the EXP lost. */

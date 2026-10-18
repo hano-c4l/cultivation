@@ -7,6 +7,11 @@ import {
   getSkill,
   type SkillDef,
   type SkillContext,
+  skillContextFor,
+  PATHS,
+  pathLevel,
+  pathLevelName,
+  type PathId,
   type SpiritualRoot,
   type SkillStateView,
   type EquippedItem,
@@ -209,6 +214,10 @@ export class GameScene extends Phaser.Scene {
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
       startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
       cancelBreakthrough: () => this.net.send({ t: "bt_cancel" }),
+      choosePath: (path) => this.net.send({ t: "path_choose", path }),
+      swapPath: (path) => this.net.send({ t: "path_swap", path }),
+      dropPath: (path) => this.net.send({ t: "path_drop", path }),
+      claimPath: (path) => this.net.send({ t: "path_claim", path }),
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
 
@@ -341,7 +350,8 @@ export class GameScene extends Phaser.Scene {
   /** The realm, grade and mastery level a skill works at for this character (the same inputs the server uses). */
   private skillContext(skill: SkillDef): SkillContext {
     const gear = skill.source === "gear" ? gearSkillInfo(this.worn).find((g) => g.id === skill.id) : undefined;
-    return { realm: gear ? gear.realm : skill.realm, ...(gear ? { tier: gear.tier } : {}), grade: skillGrade(skill, this.selfSheet?.rootGrade ?? 0, gear?.grade), level: skill.source === "gear" ? 0 : (this.skillStates[skill.id]?.lv ?? 0) };
+    const sheet = this.selfSheet;
+    return skillContextFor(skill, { rootGrade: sheet?.rootGrade ?? 0, realm: sheet?.realm ?? 0, level: this.skillStates[skill.id]?.lv ?? 0, ...(sheet ? { paths: sheet.paths } : {}), ...(gear ? { gear } : {}) });
   }
 
   private beginAim(skill: SkillDef): void {
@@ -489,6 +499,18 @@ export class GameScene extends Phaser.Scene {
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
         const c = msg.character;
+        // A hướng tu was taken (the sheet carries the paths): say which, and whether it is the chủ tu.
+        if (before && JSON.stringify(before.paths) !== JSON.stringify(c.paths)) {
+          const had = [before.paths.main, ...before.paths.subs].filter((p): p is PathId => !!p);
+          const has = [c.paths.main, ...c.paths.subs].filter((p): p is PathId => !!p);
+          const taken = has.find((p) => !had.includes(p));
+          const lost = had.find((p) => !has.includes(p));
+          const leveled = has.find((p) => pathLevel(c.paths, p) > pathLevel(before.paths, p));
+          if (taken) this.chat.system(vi.paths.chosen(PATHS[taken].nameVi, taken === c.paths.main), "important");
+          else if (lost) this.chat.system(vi.paths.dropped(PATHS[lost].nameVi), "important");
+          else if (leveled) this.chat.system(vi.paths.leveled(PATHS[leveled].nameVi, pathLevelName(c.paths, leveled)), "important");
+          else if (c.paths.main && c.paths.main !== before.paths.main) this.chat.system(vi.paths.swapped(PATHS[c.paths.main].nameVi), "important");
+        }
         if (before && (c.realm > before.realm || (c.realm === before.realm && c.stage > before.stage))) {
           this.chat.system(vi.chat.levelUp(REALMS[c.realm]?.nameVi ?? "", c.stage));
         } else if (before && c.realm === before.realm && c.stage === before.stage && c.exp > before.exp) {
@@ -625,6 +647,12 @@ export class GameScene extends Phaser.Scene {
         else this.chat.system((vi.breakthrough.failed[msg.reason] ?? vi.breakthrough.failed.timeout!) + (msg.expLost ? vi.breakthrough.lost(msg.expLost) : ""), "important");
         break;
       }
+      case "path_error":
+        this.chat.system(vi.paths.errors[msg.reason] ?? vi.paths.errors.invalid!, "error");
+        break;
+      case "path_claimed":
+        this.chat.system(vi.paths.claimed(PATHS[msg.path].itemNameVi), "important");
+        break;
       case "bt_error":
         this.chat.system(vi.breakthrough.errors[msg.reason] ?? vi.breakthrough.errors.invalid!, "error");
         break;
@@ -748,7 +776,8 @@ export class GameScene extends Phaser.Scene {
   /** "Sói Rừng · Bậc 4" plus the class tag for rare monsters. */
   private monsterName(kind: string, tier: number, rank: MonsterRank): string {
     const tag = RANKS[rank].tagVi;
-    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${vi.combat.tier(tier)}${tag ? ` · ${tag}` : ""}`;
+    // The bậc shows as the realm tag and the bậc ("TC2"), like on gear.
+    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[this.map.realm ?? 0]?.shortVi ?? ""}${tier}${tag ? ` · ${tag}` : ""}`;
   }
 
   /** Rare monsters have their own colours; normal ones are coloured by how their bậc compares to the player's level. */

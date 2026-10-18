@@ -16,6 +16,7 @@ export * from "./vitals";
 export * from "./progression-data";
 export * from "./progression";
 export * from "./breakthrough";
+export * from "./paths";
 export * from "./constitutions";
 export * from "./economy";
 export * from "./settings";

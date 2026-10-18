@@ -203,6 +203,18 @@ describe("planSort", () => {
   };
   const order = (bag: BagItem[]) => [...bag].sort((a, b) => a.tab - b.tab || a.cell - b.cell).map((i) => i.type);
 
+  it("orders by realm: equipment of a higher realm or bậc first, then breakthrough pills, then everything without a realm", () => {
+    const bag = [
+      item("thu_cot", 0, 0, 1),
+      item("eq.weapon.u.0.2.1", 0, 1, 1), // Luyện Khí bậc 2
+      item("eq.weapon.u.1.1.1", 0, 2, 1), // Trúc Cơ bậc 1
+      item("eq.weapon.u.0.9.1", 0, 3, 1), // Luyện Khí bậc 9
+      item("bt_pill_1", 0, 4, 1), // leads to Trúc Cơ
+    ];
+    expect(order(sorted(bag, "realm"))).toEqual(["eq.weapon.u.1.1.1", "bt_pill_1", "eq.weapon.u.0.9.1", "eq.weapon.u.0.2.1", "thu_cot"]);
+    expect(SORT_MODES).toContain("realm");
+  });
+
   it("merges split stacks and packs everything from the first cell", () => {
     const bag = [item("linh_thao", 0, 5, 40, "a"), item("linh_thao", 0, 9, 70, "b"), item("thu_cot", 0, 20, 3, "c")];
     const after = sorted(bag, "name");

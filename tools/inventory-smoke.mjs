@@ -248,23 +248,25 @@ check("the reconnected bag keeps the same set of items as before the writes", b.
   msgs = await after(t, () => t.send({ t: "inv_split", tab: 0, cell: bigCell, qty: 79 }));
   check("splitting off the whole stack is refused and the bag is resent", msgs.some((m) => m.t === "inv_error" && m.reason === "invalid") && sum("linh_thao") === 100);
 
-  // Three sorts are allowed in a row (one per mode), at least a second apart; the fourth within a minute is refused.
+  // One sort is allowed per 15 seconds: a second one inside the window is refused and changes nothing.
   // No slow database check in between: each wrangler call takes seconds and would eat into the window.
   const wait = (ms) => sleep(ms);
   await wait(300);
   const sort1 = await after(t, () => t.send({ t: "inv_sort", mode: "rarity" }), 300);
-  const tooSoon = await after(t, () => t.send({ t: "inv_sort", mode: "name" }), 300); // 0.3 s after the first: inside the 1 s gap
-  await wait(700);
+  const tooSoon = await after(t, () => t.send({ t: "inv_sort", mode: "name" }), 300); // 0.3 s after the first: inside the 15 s window
+  const afterRarity = rows3();
+  await wait(15_500);
   const sort2 = await after(t, () => t.send({ t: "inv_sort", mode: "name" }), 1250);
   const afterName = rows3();
+  const sort4 = await after(t, () => t.send({ t: "inv_sort", mode: "rarity" }), 500); // right after the second: refused
+  await wait(15_500);
   const sort3 = await after(t, () => t.send({ t: "inv_sort", mode: "grade" }), 1250);
-  const sort4 = await after(t, () => t.send({ t: "inv_sort", mode: "rarity" }), 500);
 
   check("sorting by rarity merges the split stacks (79 + 20 + 1 -> 99 + 1), nothing lost", sort1.some((m) => m.t === "inv" && m.removed.length >= 1) && sum("linh_thao") === 100 && sum("thu_cot") === 5 && sum("yeu_dan") === 1);
-  check("a sort inside the 1 second gap is refused", tooSoon.some((m) => m.t === "inv_error" && m.reason === "wait") && !tooSoon.some((m) => m.t === "inv"));
+  check("a second sort inside the 15 second window is refused and changes nothing", tooSoon.some((m) => m.t === "inv_error" && m.reason === "wait") && !tooSoon.some((m) => m.t === "inv") && afterRarity[0].type === "yeu_dan");
   check("sorting by name puts Linh Thảo first and packs from the first cell", afterName[0].type === "linh_thao" && afterName.map((r) => r.cell).join() === afterName.map((_, i) => i).join() && sort2.some((m) => m.t === "inv"), JSON.stringify(afterName.map((r) => r.type)));
-  check("sorting by grade puts the Trung phẩm item first", rows3()[0].type === "yeu_dan" && sort3.some((m) => m.t === "inv"));
-  check("a fourth sort within a minute is refused and changes nothing", sort4.some((m) => m.t === "inv_error" && m.reason === "wait") && !sort4.some((m) => m.t === "inv") && rows3()[0].type === "yeu_dan");
+  check("a sort right after another is refused and changes nothing", sort4.some((m) => m.t === "inv_error" && m.reason === "wait") && !sort4.some((m) => m.t === "inv") && afterName[0].type === "linh_thao");
+  check("after the window a sort by grade puts the Trung phẩm item first", rows3()[0].type === "yeu_dan" && sort3.some((m) => m.t === "inv"));
   check("all four stacks survived the sorts", rows3().length === 4 && sum("linh_thao") === 100);
   // The layout survives a reconnect.
   const rejoin = await connect(reg3.cookie);
