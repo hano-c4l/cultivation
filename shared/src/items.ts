@@ -107,6 +107,16 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     healFraction: 0.4,
     healOverMs: 5000,
   },
+  dai_hoi_huyet_dan: {
+    id: "dai_hoi_huyet_dan",
+    nameVi: "Đại Hồi Huyết Đan",
+    descVi: "Đan dược hồi 80% sinh lực khi dùng.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "uncommon",
+    grade: 2,
+    healFraction: 0.8,
+  },
   ngo_dao_dan: {
     id: "ngo_dao_dan",
     nameVi: "Ngộ Đạo Đan",

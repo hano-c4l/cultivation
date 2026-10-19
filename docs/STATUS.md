@@ -1,25 +1,28 @@
 # Trạng thái dự án
 
-Cập nhật: 2026-10-18 (2d-A làm xong ở local). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
+Cập nhật: 2026-10-19 (2d đã lên production; 2e-A ở nhánh `features_npc-quests`, chưa lên preview). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
 
 ## Đã xong
 - **Giai đoạn 0** (xương sống kỹ thuật) và **giai đoạn 1** (MVP: tài khoản, thế giới, chat, chỉ số/cảnh giới, quái và chiến đấu, kinh tế khung xương). Riêng 1f (đo tải thật 50 client trên Cloudflare) **hoãn theo quyết định của người dùng**.
-- **Giai đoạn 2, các phần đã xong:** 2g chat nhiều kênh · 2a vật phẩm, túi đồ 8×8, hòm thư, mua tab, cài đặt game chỉnh ở admin · 2b trang bị, độ bền, giới tính, pháp bảo bản mệnh/phi hành (cửa sổ 2 tab) · 2c kỹ năng (2 kỹ năng linh căn mỗi cảnh giới, cảnh giới/phẩm cấp/thuần thục, 4 tab, kỹ năng pháp bảo, thanh buff, đan hồi dần), MP, thanh phím tắt, bí tịch, linh căn 1-5 hệ, giữ HP/MP/hồi chiêu khi tải lại · hệ thống thể chất (dữ liệu, hiển thị, `skill_damage`).
+- **Giai đoạn 2, các phần đã xong (đều đã ở production):** 2g chat nhiều kênh · 2a vật phẩm, túi đồ 8×8, hòm thư, mua tab, cài đặt game chỉnh ở admin · 2b trang bị, độ bền, giới tính, pháp bảo bản mệnh/phi hành · 2c kỹ năng, MP, thanh phím tắt, bí tịch, linh căn 1-5 hệ, thuần thục · hệ thống thể chất · **2d đột phá cảnh giới (2d-A) và hướng tu chủ tu/phụ tu (2d-B)**.
 
 ## Đang chạy ở đâu
-- **Production** (`main`): D1 đã áp dụng migration `0001`-`0016` (kiểm bằng `wrangler d1 migrations list DB --remote`, 2026-10-18); chưa có `0017` và `0018`, tức chưa có đột phá và hướng tu.
-- **Preview** (`preview`): D1 đến `0018`; code có thêm đột phá (2d-A), hướng tu có cấp, đổi chủ tu và bỏ hướng (2d-B), bố cục HUD mới, hệ của quái và luật ngũ hành mới, phím tắt kéo thả, màu cảnh giới, sắp xếp túi theo cảnh giới. Khi lên production cần chạy `0017` rồi `0018`, mỗi lần một bước riêng, trước khi deploy worker.
+- **Production** (`main`): D1 đã áp dụng migration `0001`-`0018` (kiểm bằng `wrangler d1 migrations list DB --remote`, 2026-10-19: không còn gì để áp dụng); code gồm cả 2d.
+- **Preview** (`preview`): cùng code và D1 như production (đến `0018`).
+- **Chưa lên preview/production:** 2e-A (nhánh `features_npc-quests`), cần migration `0019` trước khi deploy worker.
 
 ## Đang làm dở
-- **2d** (đột phá và hướng tu): **cả 2d-A và 2d-B đã ở preview**, chưa lên production. Việc chờ: người dùng thử trên preview rồi quyết định lên production; điều tra việc preview thỉnh thoảng bị "reload" lúc để im (chờ người dùng trả lời 3 câu hỏi để biết nguyên nhân).
+- **2e** (NPC thương nhân và nhiệm vụ): **2e-A (NPC trong thành và thương nhân mua/bán) đã làm xong ở nhánh `features_npc-quests`**, đã chạy test, smoke và thử tay trong trình duyệt ở local; chờ PR vào `preview` và người dùng thử. **2e-B (hệ thống nhiệm vụ, chuỗi tân thủ, NPC nhiệm vụ nhận vật phẩm hướng tu, nhiệm vụ đột phá một lần) chưa bắt đầu.**
+- Điều tra việc preview thỉnh thoảng bị "reload" lúc để im: chờ người dùng trả lời 3 câu hỏi (không chặn 2e).
 
 ## Làm tiếp
-1. **2d**: sau khi người dùng thử ổn trên preview thì lên production (migration `0017` và `0018` trước, mỗi lần một bước riêng). Còn lại của 2d: nhận vật phẩm hướng tu qua NPC (2e) và cấp hướng tu ảnh hưởng chỉ số. Admin chỉnh màu giao diện (chỗ lưu `UiTheme`) và kéo thả phím tắt trên màn cảm ứng: chưa làm (người dùng chưa yêu cầu cái sau).
-2. **2e** NPC thương nhân và nhiệm vụ → **2f** PvP, sát khí, vệ binh (và area-of-interest) → **2i** màn admin thể chất → **2h** bảng xếp hạng và boss.
-3. Việc nhỏ tồn đọng (chi tiết ở `docs/PHASE2.md`, mục "Việc nhỏ đang chờ quyết định hoặc chưa làm"): tốc độ pháp bảo phi hành vào di chuyển, biến dị Lôi/Băng/Phong, kỹ năng tông môn và học từ NPC, tiền tệ trong thư, nhận thể chất qua vật phẩm, tung lại số hệ cho nhân vật có sẵn.
+1. **2e-A**: PR vào `preview` (chạy migration `0019` trước, riêng một bước), người dùng thử, rồi lên production.
+2. **2e-B**: nhiệm vụ (migration `0020`): bảng tiến độ, đếm giết quái, nhận thưởng đúng một lần, chuỗi tân thủ, NPC nhiệm vụ cấp vật phẩm hướng tu (nút nhận tạm chỉ còn hiện với admin), nhiệm vụ đột phá một lần. Còn lại của 2d: cấp hướng tu ảnh hưởng chỉ số.
+3. **2f** PvP, sát khí, vệ binh (và area-of-interest) → **2i** màn admin thể chất → **2h** bảng xếp hạng và boss.
+4. Việc nhỏ tồn đọng (chi tiết ở `docs/PHASE2.md`, mục "Việc nhỏ đang chờ quyết định hoặc chưa làm"): tốc độ pháp bảo phi hành vào di chuyển, biến dị Lôi/Băng/Phong, kỹ năng tông môn và học từ NPC, tiền tệ trong thư, nhận thể chất qua vật phẩm, tung lại số hệ cho nhân vật có sẵn, admin chỉnh màu giao diện và giá/giới hạn của thương nhân.
 
 ## Vấn đề tồn đọng cần để ý
 - Đo tải thật trên Cloudflare chưa làm; chỉ nâng Workers Paid khi gặp dấu hiệu ở `docs/TECHNICAL.md` (mục "Giới hạn gói Free").
-- Rất nhiều con số cân bằng đang là **giá trị tạm** (rơi đồ, kỹ năng, thuần thục...), được liệt kê ở mục tương ứng trong PHASE1.md/PHASE2.md.
+- Rất nhiều con số cân bằng đang là **giá trị tạm** (rơi đồ, kỹ năng, thuần thục, giá và giới hạn của thương nhân...), được liệt kê ở mục tương ứng trong PHASE1.md/PHASE2.md.
 - `tools/refine-smoke.mjs` thỉnh thoảng báo lệch vài EXP giữa pháp bảo bản mệnh và nhân vật; chưa rõ nguyên nhân.
-- Chưa có: PvP, area-of-interest, cửa hàng NPC và nhiệm vụ, boss, màn admin thể chất, kỹ năng tông môn.
+- Chưa có: PvP, area-of-interest, nhiệm vụ, boss, màn admin thể chất, kỹ năng tông môn.

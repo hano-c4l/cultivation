@@ -28,6 +28,18 @@ export interface Portal {
   toY: number;
 }
 
+/** A non-player character standing at a fixed spot. Names and talk live in the client locale. */
+export interface NpcSpot {
+  id: string;
+  kind: "merchant";
+  /** Position in tile units (continuous). */
+  x: number;
+  y: number;
+}
+
+/** How close (tiles) a player must be for the server to accept a command to an NPC. */
+export const NPC_INTERACT_RADIUS = 3;
+
 export interface MapData {
   id: MapId;
   /** Size in tiles. */
@@ -41,6 +53,7 @@ export interface MapData {
   /** Cultivation realm the map is meant for (index into REALMS); null for the safe town. Monsters scale from it. */
   realm: number | null;
   portals: Portal[];
+  npcs: NpcSpot[];
 }
 
 /** Distance (tiles) within which the server accepts a portal activation. */
@@ -211,6 +224,7 @@ function buildTown(): MapData {
   for (const [x, y] of [[18.5, 18.5], [21.5, 18.5], [18.5, 21.5], [21.5, 21.5]] as const) g.disc(x, y, 0.45, false); // pillars
   g.rect(10, 10, 16.5, 10.3, false); // thin fence, not tile aligned
   g.rect(33, 20, 33.3, 28.5, false); // thin fence, not tile aligned
+  g.disc(23.5, 17.5, 0.4, false); // the merchant's stall: nobody stands on the NPC
   g.wall();
   g.rect(18, 33, 23, 39, true); // lane to the south gate
   return {
@@ -222,6 +236,7 @@ function buildTown(): MapData {
     safe: true,
     realm: null,
     portals: [{ x: 20, y: 38, toMap: "forest", toX: 20, toY: 3 }],
+    npcs: [{ id: "merchant", kind: "merchant", x: 23.5, y: 17.5 }],
   };
 }
 
@@ -245,6 +260,7 @@ function buildForest(): MapData {
       { x: 20, y: 1, toMap: "town", toX: 20, toY: 36 },
       { x: 46, y: 24, toMap: "cave", toX: 3, toY: 20 },
     ],
+    npcs: [],
   };
 }
 
@@ -263,6 +279,7 @@ function buildCave(): MapData {
     safe: false,
     realm: 1,
     portals: [{ x: 1, y: 20, toMap: "forest", toX: 44, toY: 24 }],
+    npcs: [],
   };
 }
 
@@ -270,6 +287,11 @@ const MAPS: Record<MapId, MapData> = { town: buildTown(), forest: buildForest(),
 
 export function getMap(id: MapId): MapData {
   return MAPS[id];
+}
+
+/** The NPC with this id when it is within NPC_INTERACT_RADIUS of a continuous position. */
+export function npcNear(map: MapData, id: string, x: number, y: number): NpcSpot | undefined {
+  return map.npcs.find((n) => n.id === id && Math.hypot(x - n.x, y - n.y) <= NPC_INTERACT_RADIUS);
 }
 
 /** The portal whose tile is within PORTAL_RADIUS of a continuous position, if any. */

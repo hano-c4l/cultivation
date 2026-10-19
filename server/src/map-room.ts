@@ -121,6 +121,8 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
+import { findOffer, npcNear, sellPrice, type Gender } from "@game/shared";
+import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
 import { filterChat } from "./chat";
@@ -565,6 +567,10 @@ export class MapRoom extends DurableObject<Env> {
       case "eq_unequip":
       case "eq_repair":
         return this.handleEquipment(ws, state, msg);
+      case "npc_open":
+      case "shop_buy":
+      case "shop_sell":
+        return this.handleShop(ws, state, msg);
       case "cast":
         return this.handleCast(ws, state, msg);
       case "hotbar_set":
@@ -1457,6 +1463,97 @@ export class MapRoom extends DurableObject<Env> {
     } catch (err) {
       // A failed guard means the cached tab count was stale (nothing was charged): reload and let the player look again.
       if (!String(err).includes("inv_guard")) console.error("bag tab purchase failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+  }
+
+  /**
+   * The merchant: open the shop, buy, sell. Each trade is ONE D1 batch (the Linh Thạch entry plus the bag cells, and for a
+   * limited offer the daily counter), so money and goods never part ways. Same queue and rate limit as the other bag commands.
+   */
+  private handleShop(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "npc_open" | "shop_buy" | "shop_sell" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    const npcId = msg.npc;
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    if (!npcNear(getMap(state.mapId), npcId, here.x, here.y)) return this.send(ws, { t: "inv_error", reason: "far" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      const wearer = await this.wearerOf(id);
+      if (!wearer) return;
+      const sendStock = async () => this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, await getPurchased(this.env.DB, id, Date.now())) });
+      if (msg.t === "npc_open") return sendStock();
+      if (msg.t === "shop_buy") return this.shopBuy(ws, id, wearer.gender, msg.offer, msg.qty, sendStock);
+      return this.shopSell(ws, id, msg.tab, msg.cell, msg.qty);
+    });
+  }
+
+  private async shopBuy(ws: WebSocket, id: string, gender: Gender, offerId: string, qty: number, sendStock: () => Promise<void>): Promise<void> {
+    const offer = findOffer(gender, offerId);
+    const def = offer ? getItemDef(offer.item) : undefined;
+    if (!offer || !def || (def.maxStack === 1 && qty !== 1)) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    const now = Date.now();
+    if (offer.dailyLimit !== undefined) {
+      const bought = (await getPurchased(this.env.DB, id, now))[offer.id] ?? 0;
+      if (bought + qty > offer.dailyLimit) {
+        this.send(ws, { t: "inv_error", reason: "sold_out" });
+        return sendStock();
+      }
+    }
+    const bag = await this.getBag(id);
+    const max = equipmentInfo(offer.item)?.maxDurability;
+    const ops = planAdd(bag.items, bag.tabs, offer.item, qty, () => crypto.randomUUID(), max != null ? { dur: max, max } : undefined);
+    if (!ops) return this.resync(ws, id, "full");
+    const total = offer.price * qty;
+    const extra = [
+      ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now)),
+      ...(offer.dailyLimit !== undefined ? limitStatements(this.env.DB, id, offer.id, qty, offer.dailyLimit, now) : []),
+    ];
+    try {
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -total, reason: "shop_buy", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
+      if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+      if (r.status !== "applied") return this.resync(ws, id, "busy");
+      const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
+      const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+      this.bags.set(id, after);
+      this.sendBagDelta(id, bag, after);
+      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+      this.sendToCharacter(id, { t: "shop_ok", op: "buy", item: offer.item, qty, total });
+      await sendStock();
+    } catch (err) {
+      // A failed guard means the cached bag (or the day's counter) was stale: nothing was charged, look again.
+      if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("shop purchase failed", id, err);
+      this.bags.delete(id);
+      await sendStock();
+      return this.resync(ws, id, "busy");
+    }
+  }
+
+  private async shopSell(ws: WebSocket, id: string, tab: number, cell: number, qty: number): Promise<void> {
+    const bag = await this.getBag(id);
+    const item = bag.items.find((i) => i.tab === tab && i.cell === cell);
+    if (!item) return this.resync(ws, id, "invalid");
+    const unit = sellPrice(item.type, item.dur, item.max);
+    if (unit <= 0) return this.send(ws, { t: "inv_error", reason: "unsellable" });
+    const ops = planRemove(bag.items, bag.tabs, { tab, cell }, qty);
+    if (!ops) return this.resync(ws, id, "invalid");
+    const total = unit * qty;
+    const extra = ops.flatMap((op) => opStatements(this.env.DB, id, op, Date.now()));
+    try {
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: total, reason: "shop_sell", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
+      if (r.status !== "applied") return this.resync(ws, id, "busy");
+      const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
+      const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+      this.bags.set(id, after);
+      this.sendBagDelta(id, bag, after);
+      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance, gained: total });
+      this.sendToCharacter(id, { t: "shop_ok", op: "sell", item: item.type, qty, total });
+    } catch (err) {
+      // The guard on the stack failed (the cache was stale): nothing was paid out.
+      if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("shop sale failed", id, err);
       this.bags.delete(id);
       return this.resync(ws, id, "busy");
     }
