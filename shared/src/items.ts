@@ -1,4 +1,5 @@
 import { BREAKTHROUGHS } from "./breakthrough";
+import type { MapId } from "./map";
 import { PATH_IDS, PATHS } from "./paths";
 import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
@@ -39,6 +40,8 @@ export interface ItemDef {
   teaches?: string;
   /** Breakthrough pills: the realm the pill leads to. Used from the breakthrough panel, not from the bag. */
   breakthroughTo?: number;
+  /** Teleport talismans: using one (outside that map) takes the character to the map's spawn. Bought from the merchant of that town. */
+  teleportTo?: MapId;
   /** Path items: the hướng tu it takes up. Spent from the path section of the character window, not from the bag. */
   pathItem?: string;
 }
@@ -106,6 +109,26 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     grade: 1,
     healFraction: 0.4,
     healOverMs: 5000,
+  },
+  dai_hoi_huyet_dan: {
+    id: "dai_hoi_huyet_dan",
+    nameVi: "Đại Hồi Huyết Đan",
+    descVi: "Đan dược hồi 80% sinh lực khi dùng.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "uncommon",
+    grade: 2,
+    healFraction: 0.8,
+  },
+  ttp_town: {
+    id: "ttp_town",
+    nameVi: "Truyền Tống Phù · Thanh Vân Thành",
+    descVi: "Dùng để lập tức trở về Thanh Vân Thành. Chỉ bán ở thương nhân của thành, không rơi từ quái.",
+    category: "consumable",
+    maxStack: 20,
+    rarity: "uncommon",
+    grade: 2,
+    teleportTo: "town",
   },
   ngo_dao_dan: {
     id: "ngo_dao_dan",
@@ -200,6 +223,9 @@ export function rollLoot(rank: MonsterRank, rand: () => number): LootDrop[] {
   }
   return out;
 }
+
+/** How long a teleport talisman must be channelled. Moving, attacking or being hit breaks it and the talisman is kept. */
+export const TALISMAN_CAST_MS = 5_000;
 
 /** Minimum time between two potions, per player. Each use is a D1 write. */
 export const POTION_COOLDOWN_MS = 3_000;

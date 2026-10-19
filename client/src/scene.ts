@@ -47,6 +47,8 @@ import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
 import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
+import { initShop, type ShopUi } from "./shop-ui";
+import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
@@ -150,6 +152,7 @@ export class GameScene extends Phaser.Scene {
   private chat!: ChatUi;
   private inventory!: InventoryUi;
   private equipment!: EquipmentUi;
+  private shop!: ShopUi;
   private hotbar!: HotbarUi;
   private buffs!: BuffsUi;
   /** Mastery of the skills that have it, and the worn gear: what the numbers a skill is shown with depend on. */
@@ -210,6 +213,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
+    this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
       startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
@@ -327,6 +331,19 @@ export class GameScene extends Phaser.Scene {
         .setDepth(0.6);
       this.mapObjects.push(glow, label);
     }
+
+    for (const npc of this.map.npcs) {
+      const p = toScreen(npc.x, npc.y);
+      // Placeholder figure (a robe and a head) standing on the NPC's spot, like the other placeholder art.
+      const body = this.add.graphics().setDepth(p.y + 1);
+      body.fillStyle(0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
+      body.fillStyle(0xf2d6b0, 1).fillCircle(p.x, p.y - 36, 7);
+      const label = this.add
+        .text(p.x, p.y - 48, vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#ffe08a", stroke: "#000000", strokeThickness: 3 })
+        .setOrigin(0.5, 1)
+        .setDepth(p.y + 2);
+      this.mapObjects.push(body, label);
+    }
   }
 
   /** Isometric diamond whose top vertex is at (x, y); `scale` 1 is a full tile. */
@@ -344,6 +361,7 @@ export class GameScene extends Phaser.Scene {
   private switchMap(mapId: string): void {
     if (!isMapId(mapId) || this.map.id === mapId) return;
     this.map = getMap(mapId);
+    this.shop.close();
     this.drawMap();
   }
 
@@ -392,6 +410,15 @@ export class GameScene extends Phaser.Scene {
       this.net.send({ t: "cast", skill: skill.id, x: tx, y: ty });
       return;
     }
+    // The figure stands up from its spot, so a click on its body lands on a ground tile behind it: test the drawn box too.
+    const npc = this.map.npcs.find((n) => {
+      const p = toScreen(n.x, n.y);
+      return Math.hypot(tx - n.x, ty - n.y) <= 1 || (Math.abs(world.x - p.x) <= 18 && world.y >= p.y - 52 && world.y <= p.y + 10);
+    });
+    if (npc) {
+      this.talkTo(npc);
+      return;
+    }
     const picked = this.pickMonster(world.x, world.y);
     if (picked) {
       const nowMs = performance.now();
@@ -403,12 +430,36 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.targetId = null;
+    this.sendWalk(tx, ty);
+  }
+
+  /** Clicking an NPC opens its window when close enough; otherwise the character walks over and the player clicks again. */
+  private talkTo(npc: NpcSpot): void {
+    const self = this.actors.get(this.selfId);
+    if (!self) return;
+    const here = currentPos(self, performance.now());
+    if (Math.hypot(here.x - npc.x, here.y - npc.y) <= NPC_INTERACT_RADIUS - 0.4) {
+      this.shop.open(npc.id, this.map.id);
+      return;
+    }
+    this.chat.system(vi.shop.tooFar, "error");
+    // Walk to the standable spot nearest the NPC on the player's side.
+    const dx = here.x - npc.x;
+    const dy = here.y - npc.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const spot = nearestStandablePoint(this.map, npc.x + (dx / len) * 1.5, npc.y + (dy / len) * 1.5, 2);
+    if (spot) this.sendWalk(Math.round(spot[0] * 100) / 100, Math.round(spot[1] * 100) / 100);
+  }
+
+  /** Walks to a point: predicts the path locally and tells the server. */
+  private sendWalk(tx: number, ty: number): void {
     // Client-side throttle matches the server's, so a dropped click never desyncs the prediction.
     const now = performance.now();
     if (now - this.lastMoveSentAt < MIN_MOVE_INTERVAL_MS + 20) return;
     const from = this.predictSelfMove(tx, ty);
     if (!from) return;
     this.lastMoveSentAt = now;
+    this.shop.close(); // walking away from the merchant closes the window
     this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
     const c = toScreen(tx, ty);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
@@ -435,6 +486,7 @@ export class GameScene extends Phaser.Scene {
         this.endAim();
         this.colo = msg.colo;
         this.transferring = false;
+        this.hotbar.setAimNote(null); // a channel never survives a (re)connect
         this.portalSentAt = 0;
         this.switchMap(msg.map);
         this.clearActors();
@@ -445,6 +497,7 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.breakthroughEnded();
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
+        this.shop.setSheet(msg.character);
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
@@ -495,6 +548,7 @@ export class GameScene extends Phaser.Scene {
         const before = this.selfSheet;
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
+        this.shop.setSheet(msg.character);
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
@@ -506,10 +560,10 @@ export class GameScene extends Phaser.Scene {
           const taken = has.find((p) => !had.includes(p));
           const lost = had.find((p) => !has.includes(p));
           const leveled = has.find((p) => pathLevel(c.paths, p) > pathLevel(before.paths, p));
-          if (taken) this.chat.system(vi.paths.chosen(PATHS[taken].nameVi, taken === c.paths.main), "important");
-          else if (lost) this.chat.system(vi.paths.dropped(PATHS[lost].nameVi), "important");
-          else if (leveled) this.chat.system(vi.paths.leveled(PATHS[leveled].nameVi, pathLevelName(c.paths, leveled)), "important");
-          else if (c.paths.main && c.paths.main !== before.paths.main) this.chat.system(vi.paths.swapped(PATHS[c.paths.main].nameVi), "important");
+          if (taken) this.chat.system(vi.paths.chosen(PATHS[taken].nameVi, taken === c.paths.main));
+          else if (lost) this.chat.system(vi.paths.dropped(PATHS[lost].nameVi));
+          else if (leveled) this.chat.system(vi.paths.leveled(PATHS[leveled].nameVi, pathLevelName(c.paths, leveled)));
+          else if (c.paths.main && c.paths.main !== before.paths.main) this.chat.system(vi.paths.swapped(PATHS[c.paths.main].nameVi));
         }
         if (before && (c.realm > before.realm || (c.realm === before.realm && c.stage > before.stage))) {
           this.chat.system(vi.chat.levelUp(REALMS[c.realm]?.nameVi ?? "", c.stage));
@@ -539,14 +593,16 @@ export class GameScene extends Phaser.Scene {
       case "transfer":
         // The server closes the socket right after; Net reconnects and the welcome brings the new map.
         this.transferring = true;
+        this.hotbar.setAimNote(null); // a talisman channel that completed ends here
         this.hud.textContent = vi.transferring;
-        this.chat.system(vi.chat.transferTo(vi.maps[msg.map] ?? msg.map), "important");
+        this.chat.system(vi.chat.transferTo(vi.maps[msg.map] ?? msg.map));
         break;
       case "inv":
         if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items, tabPrice: msg.tabPrice });
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
         this.charPanel.refresh();
         this.equipment.refresh();
+        this.shop.refresh();
         this.hotbar.refresh();
         this.skillsUi.refresh(); // the pill count
         break;
@@ -569,7 +625,7 @@ export class GameScene extends Phaser.Scene {
       case "skills": {
         // A new skill (a stage-up unlocked it, or a book taught it) is worth a line.
         if (this.knownSkills) {
-          for (const id of msg.ids.filter((s) => !this.knownSkills!.includes(s))) this.chat.system((getSkill(id)?.source === "root" ? vi.skills.rootGranted : getSkill(id)?.source === "gear" ? vi.skills.gearGranted : vi.skills.learned)(getSkill(id)?.nameVi ?? id), "important");
+          for (const id of msg.ids.filter((s) => !this.knownSkills!.includes(s))) this.chat.system((getSkill(id)?.source === "root" ? vi.skills.rootGranted : getSkill(id)?.source === "gear" ? vi.skills.gearGranted : vi.skills.learned)(getSkill(id)?.nameVi ?? id));
         }
         this.knownSkills = msg.ids;
         this.charPanel.setSkills(msg.ids, this.skillStates);
@@ -585,7 +641,7 @@ export class GameScene extends Phaser.Scene {
         if (msg.up) this.charPanel.setSkills(this.knownSkills ?? [], this.skillStates); // a passive may be stronger now
         this.skillsUi.setState(msg.id, msg.lv, msg.xp);
         const def = getSkill(msg.id);
-        if (msg.up && def) this.chat.system(vi.skills.levelUp(def.nameVi, vi.skills.levels[msg.lv] ?? ""), "important");
+        if (msg.up && def) this.chat.system(vi.skills.levelUp(def.nameVi, vi.skills.levels[msg.lv] ?? ""));
         this.hotbar.refresh(); // a level changes MP cost and cooldown
         break;
       }
@@ -607,12 +663,12 @@ export class GameScene extends Phaser.Scene {
       case "eq_removed":
         for (const it of msg.items) {
           const name = getItemDef(it.type)?.nameVi ?? it.type;
-          this.chat.system((vi.equip.removed[it.reason] ?? vi.equip.removed.slot!)(name), "important");
-          if (it.mailed) this.chat.system(vi.equip.removedMailed, "important");
+          this.chat.system((vi.equip.removed[it.reason] ?? vi.equip.removed.slot!)(name));
+          if (it.mailed) this.chat.system(vi.equip.removedMailed);
         }
         break;
       case "eq_worn":
-        this.chat.system(vi.equip.wornDown, "important");
+        this.chat.system(vi.equip.wornDown);
         break;
       case "repaired":
         this.chat.system(vi.equip.repaired(msg.cost));
@@ -627,6 +683,39 @@ export class GameScene extends Phaser.Scene {
           else this.chat.system(vi.inventory.picked(name, it.qty));
         }
         break;
+      case "shop":
+        this.shop.setStock(msg.npc, msg.left);
+        break;
+      case "shop_ok": {
+        const name = getItemDef(msg.item)?.nameVi ?? msg.item;
+        const text = msg.op === "buy" ? vi.shop.bought(name, msg.qty, msg.total) : vi.shop.sold(name, msg.qty, msg.total);
+        this.chat.system(text);
+        this.shop.notify(text);
+        break;
+      }
+      case "tp": {
+        // The note above the hotbar counts down the channel; the server ends it (tp_end or the transfer).
+        const name = getItemDef(msg.item)?.nameVi ?? msg.item;
+        this.chat.system(vi.shop.channel(name, Math.round(msg.ms / 1000)));
+        this.hotbar.setAimNote(vi.shop.channel(name, Math.round(msg.ms / 1000)));
+        break;
+      }
+      case "tp_end": {
+        this.hotbar.setAimNote(null);
+        if (msg.ok) break;
+        // Not an alarming (red) line: the player still sees why it stopped, on the note above the hotbar for a moment.
+        const why = vi.shop.channelBroken[msg.reason ?? "other"] ?? vi.shop.channelBroken.other!;
+        this.chat.system(why);
+        this.hotbar.setAimNote(why);
+        setTimeout(() => this.hotbar.setAimNote(null), 3000);
+        break;
+      }
+      case "shop_sold": {
+        const text = vi.shop.soldMany(msg.count, msg.total);
+        this.chat.system(text);
+        this.shop.notify(text);
+        break;
+      }
       case "inv_error":
         // A sort refused for being too frequent locks the button with a countdown and is reported once, in the system tab.
         if (msg.reason === "wait") {
@@ -651,7 +740,7 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(vi.paths.errors[msg.reason] ?? vi.paths.errors.invalid!, "error");
         break;
       case "path_claimed":
-        this.chat.system(vi.paths.claimed(PATHS[msg.path].itemNameVi), "important");
+        this.chat.system(vi.paths.claimed(PATHS[msg.path].itemNameVi));
         break;
       case "bt_error":
         this.chat.system(vi.breakthrough.errors[msg.reason] ?? vi.breakthrough.errors.invalid!, "error");

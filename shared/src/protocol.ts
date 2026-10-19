@@ -2,6 +2,7 @@ import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
 import type { BreakthroughEnd, BreakthroughError } from "./breakthrough";
+import { MAX_SHOP_QTY, SHOP_SELL_MANY_MAX } from "./shop";
 import { isPathId, type PathError, type PathId } from "./paths";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
@@ -92,7 +93,15 @@ export type ClientMessage =
   /** Make a phụ tu the chủ tu (the old chủ tu takes its place); costs Linh Thạch by the levels. */
   | { t: "path_swap"; path: PathId }
   /** Drop a path (its skills go with it); costs Linh Thạch by its level, double for the chủ tu. */
-  | { t: "path_drop"; path: PathId };
+  | { t: "path_drop"; path: PathId }
+  /** Talk to an NPC (the server checks the distance); a merchant answers with its stock left. */
+  | { t: "npc_open"; npc: string }
+  /** Buy `qty` of one of the merchant's offers (named by id, priced by the server). */
+  | { t: "shop_buy"; npc: string; offer: string; qty: number }
+  /** Sell `qty` from the stack at (tab, cell) to the merchant. */
+  | { t: "shop_sell"; npc: string; tab: number; cell: number; qty: number }
+  /** Sell whole stacks from several cells in one go (all or nothing). At most SHOP_SELL_MANY_MAX cells, so the message stays small. */
+  | { t: "shop_sell_many"; npc: string; cells: BagPos[] };
 
 /** One running effect on the character for the buff bar: id is "s:<skill>" (a buff skill) or "i:<item type>" (a potion that works over time); `ms` is the time left. */
 export interface EffectView {
@@ -175,7 +184,17 @@ export type ServerMessage =
   | { t: "loot"; items: Array<{ type: string; qty: number; mailed: boolean }> }
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
-  | { t: "inv_error"; reason: "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
+  /** The merchant's stock for today: units this character can still buy of each offer that has a daily limit. */
+  | { t: "shop"; npc: string; left: Record<string, number> }
+  /** A trade went through: `total` Linh Thạch paid (buy) or received (sell). */
+  | { t: "shop_ok"; op: "buy" | "sell"; item: string; qty: number; total: number }
+  /** A multi-item sale went through: `count` stacks sold for `total` Linh Thạch. */
+  | { t: "shop_sold"; count: number; total: number }
+  /** A teleport talisman is being channelled for `ms`; the talisman is only used up when it completes. */
+  | { t: "tp"; ms: number; item: string }
+  /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
+  | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "other" }
+  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -222,6 +241,10 @@ function parseBagPos(v: unknown): BagPos | null {
   if (typeof v !== "object" || v === null) return null;
   const p = v as Record<string, unknown>;
   return isInt(p.tab) && isInt(p.cell) && cellOk(p.tab, p.cell) ? { tab: p.tab, cell: p.cell } : null;
+}
+
+function isNpcId(v: unknown): v is string {
+  return typeof v === "string" && /^[a-z0-9_]{1,24}$/.test(v);
 }
 
 /** A finite coordinate in a sane range; the server still validates it against the map. */
@@ -324,6 +347,26 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isEquipSlot(m.slot) ? { t: "eq_unequip", slot: m.slot } : null;
     case "eq_repair":
       return m.slot === "all" || isEquipSlot(m.slot) ? { t: "eq_repair", slot: m.slot as EquipSlot | "all" } : null;
+    case "npc_open":
+      return isNpcId(m.npc) ? { t: "npc_open", npc: m.npc } : null;
+    case "shop_buy":
+      return isNpcId(m.npc) && typeof m.offer === "string" && /^[a-z0-9_.]{1,60}$/.test(m.offer) && isInt(m.qty) && m.qty >= 1 && m.qty <= MAX_SHOP_QTY
+        ? { t: "shop_buy", npc: m.npc, offer: m.offer, qty: m.qty }
+        : null;
+    case "shop_sell":
+      return isNpcId(m.npc) && isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999
+        ? { t: "shop_sell", npc: m.npc, tab: m.tab, cell: m.cell, qty: m.qty }
+        : null;
+    case "shop_sell_many": {
+      if (!isNpcId(m.npc) || !Array.isArray(m.cells) || m.cells.length < 1 || m.cells.length > SHOP_SELL_MANY_MAX) return null;
+      const cells: BagPos[] = [];
+      for (const c of m.cells) {
+        const pos = parseBagPos(c);
+        if (!pos || cells.some((o) => o.tab === pos.tab && o.cell === pos.cell)) return null;
+        cells.push(pos);
+      }
+      return { t: "shop_sell_many", npc: m.npc, cells };
+    }
     case "mail_claim":
       return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:
