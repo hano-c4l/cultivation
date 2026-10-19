@@ -69,6 +69,8 @@ export interface CharacterPanelDeps {
   dropPath: (path: PathId) => void;
   /** Take the item of a hướng tu (a placeholder for the NPC quest). */
   claimPath: (path: PathId) => void;
+  /** The account is an admin: only then is the temporary "claim path item" button shown (the server refuses it for everyone else). */
+  isAdmin: boolean;
   /** How many of an item type the bag holds. */
   countOf: (type: string) => number;
 }
@@ -331,6 +333,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       const gives = (Object.keys(def.bonus) as Array<keyof typeof def.bonus>).filter((k) => def.bonus[k] > 0).map((k) => vi.paths.bonusLines[k]?.(def.bonus[k] * (isMain ? 1 : PATH_SUB_FACTOR)) ?? "");
       box.append(el("div", "cp-bt-line", `${vi.paths.bonus} ${gives.join("; ")}`));
       box.append(el("div", "cp-bt-line", vi.paths.need(def.itemNameVi, have)));
+      if (have === 0 && !deps.isAdmin) box.append(el("div", "cp-bt-line", vi.paths.whereToGet));
       const cost = pathCost(s.paths);
       if (cost > 0) box.append(el("div", "cp-bt-line", vi.paths.cost(cost)));
       box.append(el("div", "cp-bt-warn", `${isMain ? vi.paths.mainNote : vi.paths.subNote} ${vi.paths.final}`));
@@ -338,7 +341,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       claim.onclick = () => deps.claimPath(pick);
       const confirm = el("button", "cp-confirm", vi.paths.confirm);
       confirm.onclick = () => deps.choosePath(pick);
-      box.append(claim, confirm);
+      box.append(...(deps.isAdmin ? [claim] : []), confirm);
     }
     return box;
   }

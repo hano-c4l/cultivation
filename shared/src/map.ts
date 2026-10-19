@@ -31,7 +31,8 @@ export interface Portal {
 /** A non-player character standing at a fixed spot. Names and talk live in the client locale. */
 export interface NpcSpot {
   id: string;
-  kind: "merchant";
+  /** What the NPC does: sells and buys (merchant) or gives quests (quest). */
+  kind: "merchant" | "quest";
   /** Position in tile units (continuous). */
   x: number;
   y: number;
@@ -225,6 +226,8 @@ function buildTown(): MapData {
   g.rect(10, 10, 16.5, 10.3, false); // thin fence, not tile aligned
   g.rect(33, 20, 33.3, 28.5, false); // thin fence, not tile aligned
   g.disc(23.5, 17.5, 0.4, false); // the merchant's stall: nobody stands on the NPC
+  g.disc(16.5, 17.5, 0.4, false); // the quest giver
+  for (const x of [22.5, 25.5, 28.5]) g.disc(x, 24.5, 0.4, false); // the three hướng tu masters
   g.wall();
   g.rect(18, 33, 23, 39, true); // lane to the south gate
   return {
@@ -236,7 +239,13 @@ function buildTown(): MapData {
     safe: true,
     realm: null,
     portals: [{ x: 20, y: 38, toMap: "forest", toX: 20, toY: 3 }],
-    npcs: [{ id: "merchant", kind: "merchant", x: 23.5, y: 17.5 }],
+    npcs: [
+      { id: "merchant", kind: "merchant", x: 23.5, y: 17.5 },
+      { id: "elder", kind: "quest", x: 16.5, y: 17.5 },
+      { id: "path_kiem", kind: "quest", x: 22.5, y: 24.5 },
+      { id: "path_thuat", kind: "quest", x: 25.5, y: 24.5 },
+      { id: "path_dan", kind: "quest", x: 28.5, y: 24.5 },
+    ],
   };
 }
 
@@ -284,6 +293,9 @@ function buildCave(): MapData {
 }
 
 const MAPS: Record<MapId, MapData> = { town: buildTown(), forest: buildForest(), cave: buildCave() };
+
+/** Every NPC id on any map (quests name their giver and talk targets from this set). */
+export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(Object.values(MAPS).flatMap((m) => m.npcs.map((n) => n.id)));
 
 export function getMap(id: MapId): MapData {
   return MAPS[id];

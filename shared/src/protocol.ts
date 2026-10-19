@@ -3,6 +3,7 @@ import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
 import type { BreakthroughEnd, BreakthroughError } from "./breakthrough";
 import { MAX_SHOP_QTY, SHOP_SELL_MANY_MAX } from "./shop";
+import type { QuestDef, QuestProgressView } from "./quests";
 import { isPathId, type PathError, type PathId } from "./paths";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
@@ -101,7 +102,11 @@ export type ClientMessage =
   /** Sell `qty` from the stack at (tab, cell) to the merchant. */
   | { t: "shop_sell"; npc: string; tab: number; cell: number; qty: number }
   /** Sell whole stacks from several cells in one go (all or nothing). At most SHOP_SELL_MANY_MAX cells, so the message stays small. */
-  | { t: "shop_sell_many"; npc: string; cells: BagPos[] };
+  | { t: "shop_sell_many"; npc: string; cells: BagPos[] }
+  /** Take a quest from its giver (the server checks the distance, that it is available and that nothing is in the way). */
+  | { t: "quest_accept"; npc: string; quest: string }
+  /** Hand a quest in: the objective is checked, then the reward and the closing of the quest commit in one batch. */
+  | { t: "quest_turn_in"; npc: string; quest: string };
 
 /** One running effect on the character for the buff bar: id is "s:<skill>" (a buff skill) or "i:<item type>" (a potion that works over time); `ms` is the time left. */
 export interface EffectView {
@@ -190,6 +195,15 @@ export type ServerMessage =
   | { t: "shop_ok"; op: "buy" | "sell"; item: string; qty: number; total: number }
   /** A multi-item sale went through: `count` stacks sold for `total` Linh Thạch. */
   | { t: "shop_sold"; count: number; total: number }
+  /** The quests a giver has (all enabled ones plus any the character is on) and the character's progress on them. */
+  | { t: "quests"; npc: string; defs: QuestDef[]; states: Record<string, QuestProgressView> }
+  /** The quests the character is on, for the tracker: sent on joining and after a quest is accepted or handed in. */
+  | { t: "quest_active"; defs: QuestDef[]; states: Record<string, QuestProgressView> }
+  /** Progress of an active quest changed (a kill, or talking to the NPC). */
+  | { t: "quest_progress"; quest: string; progress: number }
+  /** A quest was handed in: the reward is already in the bag and the wallet. */
+  | { t: "quest_done"; quest: string }
+  | { t: "quest_error"; reason: "level" | "claimed" | "far" | "locked" | "not_active" | "not_ready" | "full" | "busy" | "invalid" | "already" | "rate" }
   /** A teleport talisman is being channelled for `ms`; the talisman is only used up when it completes. */
   | { t: "tp"; ms: number; item: string }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
@@ -367,6 +381,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       }
       return { t: "shop_sell_many", npc: m.npc, cells };
     }
+    case "quest_accept":
+    case "quest_turn_in":
+      return isNpcId(m.npc) && typeof m.quest === "string" && /^[a-z0-9_]{1,40}$/.test(m.quest) ? { t: m.t, npc: m.npc, quest: m.quest } : null;
     case "mail_claim":
       return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:
