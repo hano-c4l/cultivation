@@ -121,7 +121,7 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
-import { findOffer, npcNear, sellPrice, type Gender } from "@game/shared";
+import { TALISMAN_CAST_MS, findOffer, npcNear, sellPrice, type Gender } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -191,6 +191,8 @@ interface PlayerState {
   moveBudgetAt?: number;
   /** A paid breakthrough in progress (kept here so it survives the object sleeping; the alarm ends it). */
   bt?: ActiveBreakthrough;
+  /** A teleport talisman being channelled: when it completes, which talisman and where it leads. Any move, attack or hit breaks it. */
+  tp?: { endsAt: number; item: string; to: MapId };
 }
 
 /** What a running breakthrough needs to be finished later: when it started (the D1 marker), when it ends, and the chance fixed at the start. */
@@ -570,6 +572,7 @@ export class MapRoom extends DurableObject<Env> {
       case "npc_open":
       case "shop_buy":
       case "shop_sell":
+      case "shop_sell_many":
         return this.handleShop(ws, state, msg);
       case "cast":
         return this.handleCast(ws, state, msg);
@@ -599,6 +602,10 @@ export class MapRoom extends DurableObject<Env> {
     // Walking away ends a breakthrough (it fails). The move itself goes on with a fresh copy of the state.
     if (state.bt) {
       await this.interruptBreakthrough(state.id, "moved");
+      state = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+    }
+    if (state.tp) {
+      await this.interruptTalisman(state.id, "moved");
       state = (ws.deserializeAttachment() as PlayerState | null) ?? state;
     }
     const map = getMap(state.mapId);
@@ -647,7 +654,7 @@ export class MapRoom extends DurableObject<Env> {
    * Map handoff: save at the destination (together with any unwritten progression), detach, release the lock, then
    * tell the client to reconnect. Used by portals and by death (back to town).
    */
-  private async handoff(ws: WebSocket, state: PlayerState, toMap: MapId, x: number, y: number, closeOnFail = false): Promise<void> {
+  private async handoff(ws: WebSocket, state: PlayerState, toMap: MapId, x: number, y: number, closeOnFail = false, before: readonly D1PreparedStatement[] = []): Promise<boolean> {
     // A breakthrough cannot go through a portal or a death: it fails first, so the row is settled before the move is saved.
     if (state.bt) {
       await this.failBreakthroughOnExit(ws, state, closeOnFail ? "died" : "moved");
@@ -659,7 +666,7 @@ export class MapRoom extends DurableObject<Env> {
     ws.serializeAttachment(state);
     const progress = this.sim?.beginFlush(state.id) ?? undefined;
     try {
-      await saveCharacterPosition(this.env.DB, state.id, toMap, x, y, progress, this.vitalsJson(state.id));
+      await saveCharacterPosition(this.env.DB, state.id, toMap, x, y, progress, this.vitalsJson(state.id), before);
     } catch (err) {
       console.error("handoff save failed", state.id, err);
       if (progress) this.sim?.endFlush(state.id, progress, false);
@@ -673,7 +680,7 @@ export class MapRoom extends DurableObject<Env> {
           // Already closed.
         }
       }
-      return;
+      return false;
     }
     if (progress) this.sim?.endFlush(state.id, progress, true);
     ws.serializeAttachment(null);
@@ -687,6 +694,7 @@ export class MapRoom extends DurableObject<Env> {
     } catch {
       // Already closed.
     }
+    return true;
   }
 
   private handleChat(ws: WebSocket, state: PlayerState, text: string): void {
@@ -731,6 +739,17 @@ export class MapRoom extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets()) {
       let state = ws.deserializeAttachment() as PlayerState | null;
       if (!state) continue;
+      if (state.tp && !state.transferring) {
+        if (Date.now() >= state.tp.endsAt - 50) {
+          await this.finishTalisman(ws, state.id);
+          // A completed talisman has handed the character off (the attachment is gone): its old state must not be saved over the new position.
+          const after = ws.deserializeAttachment() as PlayerState | null;
+          if (!after) continue;
+          state = after;
+        } else {
+          nextBreakthroughAt = Math.min(nextBreakthroughAt ?? Infinity, state.tp.endsAt);
+        }
+      }
       if (state.bt && !state.transferring) {
         if (Date.now() >= state.bt.endsAt - 50) {
           await this.finishBreakthrough(ws, state.id, state.bt, "timeout");
@@ -1027,6 +1046,7 @@ export class MapRoom extends DurableObject<Env> {
         // Anything that attacks a character in the middle of a breakthrough (hit or miss) breaks it.
         const target = sockets.get(ev.to);
         if (target?.state.bt) later.push(this.interruptBreakthrough(ev.to, "hit"));
+        if (target?.state.tp) later.push(this.interruptTalisman(ev.to, "hit"));
         return;
       }
       case "hp": {
@@ -1472,7 +1492,7 @@ export class MapRoom extends DurableObject<Env> {
    * The merchant: open the shop, buy, sell. Each trade is ONE D1 batch (the Linh Thạch entry plus the bag cells, and for a
    * limited offer the daily counter), so money and goods never part ways. Same queue and rate limit as the other bag commands.
    */
-  private handleShop(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "npc_open" | "shop_buy" | "shop_sell" }>): void {
+  private handleShop(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "npc_open" | "shop_buy" | "shop_sell" | "shop_sell_many" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     const npcId = msg.npc;
@@ -1484,15 +1504,16 @@ export class MapRoom extends DurableObject<Env> {
     void this.bagTask(id, async () => {
       const wearer = await this.wearerOf(id);
       if (!wearer) return;
-      const sendStock = async () => this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, await getPurchased(this.env.DB, id, Date.now())) });
+      const sendStock = async () => this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, state.mapId, await getPurchased(this.env.DB, id, Date.now())) });
       if (msg.t === "npc_open") return sendStock();
-      if (msg.t === "shop_buy") return this.shopBuy(ws, id, wearer.gender, msg.offer, msg.qty, sendStock);
+      if (msg.t === "shop_buy") return this.shopBuy(ws, id, wearer.gender, state.mapId, msg.offer, msg.qty, sendStock);
+      if (msg.t === "shop_sell_many") return this.shopSellMany(ws, id, msg.cells);
       return this.shopSell(ws, id, msg.tab, msg.cell, msg.qty);
     });
   }
 
-  private async shopBuy(ws: WebSocket, id: string, gender: Gender, offerId: string, qty: number, sendStock: () => Promise<void>): Promise<void> {
-    const offer = findOffer(gender, offerId);
+  private async shopBuy(ws: WebSocket, id: string, gender: Gender, mapId: string, offerId: string, qty: number, sendStock: () => Promise<void>): Promise<void> {
+    const offer = findOffer(gender, mapId, offerId);
     const def = offer ? getItemDef(offer.item) : undefined;
     if (!offer || !def || (def.maxStack === 1 && qty !== 1)) return this.send(ws, { t: "inv_error", reason: "invalid" });
     const now = Date.now();
@@ -1554,6 +1575,38 @@ export class MapRoom extends DurableObject<Env> {
     } catch (err) {
       // The guard on the stack failed (the cache was stale): nothing was paid out.
       if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("shop sale failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+  }
+
+  /** Sells whole stacks from several cells in ONE batch: one credit, every removal guarded. Anything wrong with any cell refuses them all. */
+  private async shopSellMany(ws: WebSocket, id: string, cells: Array<{ tab: number; cell: number }>): Promise<void> {
+    const bag = await this.getBag(id);
+    let total = 0;
+    const ops: BagOp[] = [];
+    for (const pos of cells) {
+      const item = bag.items.find((i) => i.tab === pos.tab && i.cell === pos.cell);
+      if (!item) return this.resync(ws, id, "invalid");
+      const unit = sellPrice(item.type, item.dur, item.max);
+      if (unit <= 0) return this.send(ws, { t: "inv_error", reason: "unsellable" });
+      const one = planRemove(bag.items, bag.tabs, pos);
+      if (!one) return this.resync(ws, id, "invalid");
+      ops.push(...one);
+      total += unit * item.qty;
+    }
+    const extra = ops.flatMap((op) => opStatements(this.env.DB, id, op, Date.now()));
+    try {
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: total, reason: "shop_sell", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
+      if (r.status !== "applied") return this.resync(ws, id, "busy");
+      const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
+      const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+      this.bags.set(id, after);
+      this.sendBagDelta(id, bag, after);
+      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance, gained: total });
+      this.sendToCharacter(id, { t: "shop_sold", count: cells.length, total });
+    } catch (err) {
+      if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("shop bulk sale failed", id, err);
       this.bags.delete(id);
       return this.resync(ws, id, "busy");
     }
@@ -1707,6 +1760,7 @@ export class MapRoom extends DurableObject<Env> {
       return;
     }
     if (state.bt) await this.interruptBreakthrough(state.id, "moved");
+    if (state.tp) await this.interruptTalisman(state.id, "moved");
     const profile = this.sim?.getPlayer(state.id);
     if (!this.sim || !profile) return;
     if (profile.dead) return void this.send(ws, { t: "cast_error", skill: msg.skill, reason: "dead" });
@@ -1757,7 +1811,8 @@ export class MapRoom extends DurableObject<Env> {
       // Only an attack with a free element carries one, and it must be one of the character's own.
       if (slotSkill.element && !(def.flex && who?.roots.includes(slotSkill.element))) return resend();
     } else if (v.startsWith("i:")) {
-      if (getItemDef(v.slice(2))?.healFraction === undefined) return resend();
+      const slotItem = getItemDef(v.slice(2));
+      if (slotItem?.healFraction === undefined && slotItem?.teleportTo === undefined) return resend(); // potions and talismans can be put on the bar
     }
     const next = [...current];
     next[slot] = v;
@@ -1865,6 +1920,8 @@ export class MapRoom extends DurableObject<Env> {
     const bag = await this.getBag(id);
     const item = itemAt(bag.items, { tab, cell });
     if (item && getItemDef(item.type)?.teaches) return this.learnBook(ws, id, tab, cell, getItemDef(item.type)!.teaches!);
+    const teleport = item ? getItemDef(item.type)?.teleportTo : undefined;
+    if (item && teleport) return this.useTalisman(ws, id, tab, cell, teleport);
     const heal = item ? getItemDef(item.type)?.healFraction : undefined;
     if (!item || heal === undefined) return this.resync(ws, id, "invalid");
     const profile = this.sim?.getPlayer(id);
@@ -1891,6 +1948,83 @@ export class MapRoom extends DurableObject<Env> {
     const hp = this.sim?.heal(id, heal * healBoost);
     const p = this.sim?.getPlayer(id);
     if (hp !== null && hp !== undefined && p) this.sendToCharacter(id, { t: "hp", hp, maxHp: p.maxHp });
+  }
+
+  /**
+   * A teleport talisman starts a channel of TALISMAN_CAST_MS: nothing is spent yet. Moving, attacking, casting or being hit
+   * breaks it and the talisman stays in the bag; when the time is up the alarm completes it (finishTalisman), which spends
+   * the talisman and moves the character like a portal does. It cannot start during a breakthrough or another channel.
+   */
+  private async useTalisman(ws: WebSocket, id: string, tab: number, cell: number, to: MapId): Promise<void> {
+    const state = ws.deserializeAttachment() as PlayerState | null;
+    if (!state || state.transferring) return;
+    if (state.bt) return this.send(ws, { t: "inv_error", reason: "breaking" });
+    if (state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
+    // Channelling means standing still: a walk that is still going (one `move` keeps the path running) would carry on
+    // with no further message to break the channel.
+    if (this.isMoving(state)) return this.send(ws, { t: "inv_error", reason: "moving" });
+    const dead = this.sim?.getPlayer(id)?.dead === true;
+    if (state.mapId === to || dead) return this.send(ws, { t: "inv_error", reason: "not_needed" });
+    const item = itemAt((await this.getBag(id)).items, { tab, cell });
+    if (!item) return this.resync(ws, id, "invalid");
+    const endsAt = Date.now() + TALISMAN_CAST_MS;
+    this.patchState(ws, (s) => {
+      s.tp = { endsAt, item: item.type, to };
+    });
+    this.sim?.clearTarget(id); // channelling is standing still: it drops the attack target like a breakthrough does
+    this.send(ws, { t: "tp", ms: TALISMAN_CAST_MS, item: item.type });
+    await this.scheduleAlarmAt(endsAt);
+  }
+
+  /** Breaks a talisman channel (nothing was spent). Does nothing when none is running. */
+  private async interruptTalisman(id: string, reason: "moved" | "hit" | "dead" | "other"): Promise<void> {
+    const sock = this.socketOf(id);
+    if (!sock?.state.tp || sock.state.transferring) return;
+    this.patchState(sock.ws, (s) => {
+      delete s.tp;
+    });
+    this.send(sock.ws, { t: "tp_end", ok: false, reason });
+  }
+
+  /**
+   * The channel ran its time: the talisman is spent in the SAME batch that saves the new position (handoff's `before`), so it
+   * is never lost without the teleport. If anything is off (no talisman left, the bag changed under the plan, a D1 error) the
+   * batch rolls back, nothing is spent and the character stays.
+   */
+  private async finishTalisman(ws: WebSocket, id: string): Promise<void> {
+    const tp = (ws.deserializeAttachment() as PlayerState | null)?.tp;
+    if (!tp) return;
+    this.patchState(ws, (s) => {
+      delete s.tp;
+    });
+    if (this.sim?.getPlayer(id)?.dead === true) return void this.send(ws, { t: "tp_end", ok: false, reason: "dead" });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let ops: BagOp[] | null = null;
+      await this.bagTask(id, async () => {
+        const b = await this.getBag(id);
+        const have = b.items.find((i) => i.type === tp.item);
+        ops = have ? planRemove(b.items, b.tabs, { tab: have.tab, cell: have.cell }, 1) : null;
+      });
+      if (!ops) return void this.send(ws, { t: "tp_end", ok: false, reason: "no_item" });
+      // The socket may have changed meanwhile (a duplicate login evicted it, a breakthrough began): act only on what it holds now.
+      const fresh = ws.deserializeAttachment() as PlayerState | null;
+      if (!fresh || fresh.id !== id || fresh.transferring || fresh.bt || fresh.tp || this.isMoving(fresh)) return;
+      const spawn = getMap(tp.to).spawn;
+      const before = (ops as BagOp[]).flatMap((op) => opStatements(this.env.DB, id, op, Date.now()));
+      if (await this.handoff(ws, fresh, tp.to, spawn[0] + 0.5, spawn[1] + 0.5, false, before)) return; // the socket is closed: the client sees the transfer
+      this.bags.delete(id); // nothing was written: reload the bag and try once more (a stale cache is the usual reason)
+      const again = ws.deserializeAttachment() as PlayerState | null;
+      if (!again || again.transferring) return;
+    }
+    this.send(ws, { t: "tp_end", ok: false, reason: "other" });
+  }
+
+  /** True while the character's walk has not reached its last point. */
+  private isMoving(state: PlayerState): boolean {
+    const last = state.path[state.path.length - 1];
+    if (!last) return false;
+    const now = positionAlongPath(state.path, Date.now() - state.startedAt, state.speed);
+    return Math.hypot(now.x - last[0], now.y - last[1]) > 0.05;
   }
 
   private async claimMail(ws: WebSocket, id: string, mailId: string): Promise<void> {
@@ -2006,7 +2140,12 @@ export class MapRoom extends DurableObject<Env> {
 
   private async startBreakthrough(ws: WebSocket, id: string, pills: number): Promise<void> {
     const here = ws.deserializeAttachment() as PlayerState | null;
+    if (here?.tp) {
+      await this.interruptTalisman(here.id, "other");
+    }
     if (!here || here.transferring || here.bt) return this.btError(ws, "busy");
+    // A walk that is still going would carry on with no further message to break the breakthrough: stand still first.
+    if (this.isMoving(here)) return this.btError(ws, "moving");
     if (!getMap(here.mapId).safe) await this.wake(here.mapId);
     const profile = this.sim?.getPlayer(id);
     if (profile?.dead) return this.btError(ws, "dead");
@@ -2405,6 +2544,7 @@ export class MapRoom extends DurableObject<Env> {
     const now = Date.now();
     if (profile.dead || now - profile.lastAttackMsgAt < ATTACK_MIN_GAP_MS) return;
     if (state.bt) await this.interruptBreakthrough(state.id, "moved");
+    if (state.tp) await this.interruptTalisman(state.id, "moved");
     profile.lastAttackMsgAt = now;
     sim.setTarget(state.id, monsterId);
   }

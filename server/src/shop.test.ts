@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { applyBag, findOffer, planAdd, planRemove, sellPrice, shopDay } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyCurrencyDelta } from "./economy";
+import { saveCharacterPosition } from "./characters";
 import { commitBagOps, loadBag, opStatements } from "./inventory";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { makeDb } from "./test-db";
@@ -26,7 +27,7 @@ const count = (type: string) => (raw.prepare("SELECT COALESCE(SUM(qty), 0) AS q 
 
 /** Buys the way the room does: the debit, the bag cells and (for a limited offer) the counter in one batch. */
 async function buy(offerId: string, qty: number, now = NOW) {
-  const offer = findOffer("male", offerId)!;
+  const offer = findOffer("male", "town", offerId)!;
   const bag = await loadBag(db, A);
   const ops = planAdd(bag.items, bag.tabs, offer.item, qty, newId)!;
   const extra = [
@@ -56,8 +57,8 @@ describe("buying", () => {
     expect(await buy("ngo_dao_dan", 2)).toMatchObject({ status: "applied" });
     await expect(buy("ngo_dao_dan", 1)).rejects.toThrow(/inv_guard/);
     expect(count("ngo_dao_dan")).toBe(2);
-    expect(balance()).toBe(100_000 - 2 * findOffer("male", "ngo_dao_dan")!.price);
-    expect(stockLeft("male", await getPurchased(db, A, NOW))["ngo_dao_dan"]).toBe(0);
+    expect(balance()).toBe(100_000 - 2 * findOffer("male", "town", "ngo_dao_dan")!.price);
+    expect(stockLeft("male", "town", await getPurchased(db, A, NOW))["ngo_dao_dan"]).toBe(0);
   });
 
   it("the limit starts again the next day and the old day's row is swept", async () => {
@@ -104,5 +105,29 @@ describe("selling", () => {
     expect(balance()).toBe(0);
     expect(count("yeu_dan")).toBe(2);
     expect(applyBag({ items: bag.items, equipped: [] }, ops).items).toEqual([]);
+  });
+});
+
+describe("the talisman is spent with the move", () => {
+  const pos = () => raw.prepare("SELECT map_id, x, y FROM characters WHERE id = 'char-a'").get() as { map_id: string; x: number; y: number };
+
+  it("spends one talisman and saves the new position in one batch", async () => {
+    const bag0 = await loadBag(db, A);
+    expect(await commitBagOps(db, A, planAdd(bag0.items, bag0.tabs, "ttp_town", 2, newId)!)).toBe("ok");
+    const bag = await loadBag(db, A);
+    const before = planRemove(bag.items, bag.tabs, { tab: 0, cell: 0 }, 1)!.flatMap((op) => opStatements(db, A, op, NOW));
+    await saveCharacterPosition(db, A, "town", 20.5, 20.5, undefined, undefined, before);
+    expect(pos()).toMatchObject({ map_id: "town", x: 20.5, y: 20.5 });
+    expect(count("ttp_town")).toBe(1);
+  });
+
+  it("when the talisman is not there any more nothing is spent and the position is not written", async () => {
+    const bag0 = await loadBag(db, A);
+    expect(await commitBagOps(db, A, planAdd(bag0.items, bag0.tabs, "ttp_town", 1, newId)!)).toBe("ok");
+    const bag = await loadBag(db, A);
+    const before = planRemove(bag.items, bag.tabs, { tab: 0, cell: 0 }, 1)!.flatMap((op) => opStatements(db, A, op, NOW));
+    raw.exec("DELETE FROM item_instances WHERE owner_character_id = 'char-a'"); // dropped meanwhile
+    await expect(saveCharacterPosition(db, A, "town", 20.5, 20.5, undefined, undefined, before)).rejects.toThrow(/inv_guard/);
+    expect(pos()).toMatchObject({ x: 0, y: 0 });
   });
 });
