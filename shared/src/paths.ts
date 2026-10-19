@@ -234,7 +234,7 @@ export function pathCost(s: PathState): number {
   return s.main ? (SUB_PATH_COST[s.subs.length] ?? SUB_PATH_COST[SUB_PATH_COST.length] ?? 0) : 0;
 }
 
-export type PathError = "level" | "have" | "full" | "no_item" | "funds" | "busy" | "invalid" | "claimed" | "bag_full" | "no_path";
+export type PathError = "level" | "have" | "full" | "no_item" | "funds" | "busy" | "invalid" | "claimed" | "bag_full" | "no_path" | "admin";
 
 /** Whether a character of this realm with these paths may take `id` (the item and the Linh Thạch are checked apart). */
 export function checkPathChoice(s: PathState, id: PathId, realm: number): PathError | null {

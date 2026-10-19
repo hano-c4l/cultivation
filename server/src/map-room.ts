@@ -123,7 +123,7 @@ import {
 } from "@game/shared";
 import { TALISMAN_CAST_MS, findOffer, npcNear, sellPrice, type Gender } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
-import { acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, planTurnIn, saveQuestProgress } from "./quests";
+import { acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import { killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -166,6 +166,8 @@ import { getSetting } from "./settings";
 interface PlayerState {
   /** Character id. */
   id: string;
+  /** The account is an admin (set by the Worker when the socket opens; a role change counts from the next connection). */
+  admin?: boolean;
   name: string;
   /** Lock claim id of this connection, kept so the lock can be released after a wake-up. */
   claimId: string;
@@ -464,6 +466,7 @@ export class MapRoom extends DurableObject<Env> {
       const position = restorePosition(map, row.x, row.y);
       const state: PlayerState = {
         id: row.id,
+        admin: request.headers.get("x-char-admin") === "1",
         name: row.name,
         claimId,
         mapId,
@@ -1606,6 +1609,12 @@ export class MapRoom extends DurableObject<Env> {
     if (rows[def.id]) return this.send(ws, { t: "quest_error", reason: "already" });
     if (!def.enabled) return this.send(ws, { t: "quest_error", reason: "invalid" });
     if (questStatus(def, rows) === "locked") return this.send(ws, { t: "quest_error", reason: "locked" });
+    if (def.minRealm !== undefined) {
+      const realm = this.sim?.getPlayer(id)?.realm ?? (await getCharacterById(this.env.DB, id))?.realm ?? 0;
+      if (realm < def.minRealm) return this.send(ws, { t: "quest_error", reason: "level" });
+    }
+    // A path item that was already given (the old claim button) blocks the path quest: say so now, not after the materials were gathered.
+    if (def.path && (await pathItemGiven(this.env.DB, id, def.path))) return this.send(ws, { t: "quest_error", reason: "claimed" });
     try {
       await acceptQuest(this.env.DB, id, def.id, Date.now());
     } catch (err) {
@@ -1633,6 +1642,8 @@ export class MapRoom extends DurableObject<Env> {
     const o = def.objective;
     if ((o.kind === "kill" || o.kind === "talk") && mine.progress < objectiveTarget(o)) return this.send(ws, { t: "quest_error", reason: "not_ready" });
     if (o.kind === "reach" && (row.realm < o.realm || (row.realm === o.realm && row.stage < o.stage))) return this.send(ws, { t: "quest_error", reason: "not_ready" });
+    // A path item that was already given (the claim button, or a path quest not reopened) must not be given twice: refuse before taking any materials.
+    if (def.path && (await pathItemGiven(this.env.DB, id, def.path))) return this.send(ws, { t: "quest_error", reason: "claimed" });
     const bag = await this.getBag(id);
     const plan = planTurnIn(def, { items: bag.items, equipped: bag.equipped }, bag.tabs, row, () => crypto.randomUUID());
     if (!plan.ok) return this.send(ws, { t: "quest_error", reason: plan.reason });
@@ -2473,6 +2484,8 @@ export class MapRoom extends DurableObject<Env> {
    * key is stored (item_grants) so it cannot be repeated, and the quest can reuse it. A full bag refuses it.
    */
   private handlePathClaim(ws: WebSocket, state: PlayerState, path: PathId): void {
+    // The temporary claim button is for admins only now (players get the item from the path's NPC quest). Checked here, not just hidden.
+    if (!state.admin) return this.pathError(ws, "admin");
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.pathError(ws, "busy");
     state.lastInvAt = now;
@@ -2596,9 +2609,11 @@ export class MapRoom extends DurableObject<Env> {
       if (cleaned.some((slot, i) => slot !== current[i])) hotbar = cleaned;
     }
     const now = Date.now();
+    // Dropping a path also opens its quest again (progress row and one-time keys go in the same batch), so the item can be earned again.
+    const reopened = kind === "drop" ? (await getQuestCatalog(this.env.DB)).filter((q) => q.path === path) : [];
     let result;
     try {
-      result = await commitPathBatch(this.env.DB, id, rearrangeStatements(this.env.DB, id, before, after, { ...(kind === "drop" ? { dropped: path } : {}), ...(hotbar ? { hotbar } : {}), now }), cost, `path_${kind}:${id}:${path}:${now}`, `path_${kind}`);
+      result = await commitPathBatch(this.env.DB, id, rearrangeStatements(this.env.DB, id, before, after, { ...(kind === "drop" ? { dropped: path } : {}), ...(hotbar ? { hotbar } : {}), ...(reopened.length > 0 ? { extra: resetQuestStatements(this.env.DB, id, reopened) } : {}), now }), cost, `path_${kind}:${id}:${path}:${now}`, `path_${kind}`);
     } catch (err) {
       console.error("path change failed", id, err);
       return this.pathError(ws, "busy");
@@ -2606,6 +2621,11 @@ export class MapRoom extends DurableObject<Env> {
     if (result.status === "insufficient") return this.pathError(ws, "funds");
     if (result.status !== "ok") return this.pathError(ws, "busy");
     if (result.balance !== null) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: result.balance });
+    if (reopened.length > 0) {
+      const mine = await this.getQuestRows(id);
+      for (const q of reopened) delete mine[q.id];
+      await this.sendQuestActive(id).catch((err) => console.error("quest list failed", id, err));
+    }
     const rows = await this.getSkillRows(id);
     if (removed.length > 0) {
       for (let i = rows.length - 1; i >= 0; i--) if (removed.includes(rows[i]!.skill_id)) rows.splice(i, 1);

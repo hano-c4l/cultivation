@@ -67,6 +67,8 @@ const reg = await post("/api/register", { email: `pa-${run}@example.test`, passw
 const created = await post("/api/character", { name: `Tu${run.slice(-5)}`, gender: "male" }, reg.cookie);
 check("character created", created.status === 201);
 const id = created.data.character.id;
+// The temporary "claim path item" button is admin-only on the server since the path quests (2e-B): this smoke uses it, so its account is an admin.
+sql(`UPDATE accounts SET role='admin' WHERE email='pa-${run}@example.test'`);
 let ledgerN = 0;
 const fund = (amount) => {
   sql(`INSERT OR IGNORE INTO currency_balances (character_id, currency, balance) VALUES ('${id}', 'linh_thach', 0)`);

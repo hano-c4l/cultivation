@@ -203,7 +203,7 @@ export type ServerMessage =
   | { t: "quest_progress"; quest: string; progress: number }
   /** A quest was handed in: the reward is already in the bag and the wallet. */
   | { t: "quest_done"; quest: string }
-  | { t: "quest_error"; reason: "far" | "locked" | "not_active" | "not_ready" | "full" | "busy" | "invalid" | "already" | "rate" }
+  | { t: "quest_error"; reason: "level" | "claimed" | "far" | "locked" | "not_active" | "not_ready" | "full" | "busy" | "invalid" | "already" | "rate" }
   /** A teleport talisman is being channelled for `ms`; the talisman is only used up when it completes. */
   | { t: "tp"; ms: number; item: string }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */

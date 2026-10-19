@@ -35,6 +35,7 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
   const headers = new Headers(request.headers);
   headers.set("x-char-id", character.id);
   headers.set("x-room", room);
+  headers.set("x-char-admin", session.role === "admin" ? "1" : "0");
   // One Durable Object per map channel; hint APAC for lower latency in Vietnam.
   const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
   return stub.fetch(new Request(request, { headers }));

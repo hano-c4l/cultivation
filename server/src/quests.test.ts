@@ -1,8 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
-import { DEFAULT_QUESTS, planAdd, type QuestDef } from "@game/shared";
+import { DEFAULT_QUESTS, EXTRA_QUESTS, SEED_QUESTS, planAdd, type QuestDef } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { commitBagOps, loadBag } from "./inventory";
-import { acceptQuest, commitTurnIn, getQuestCatalog, loadQuestCatalog, loadQuestProgress, planConsume, planTurnIn, resetQuestCache, saveQuestProgress } from "./quests";
+import { acceptQuest, commitTurnIn, getQuestCatalog, loadQuestCatalog, loadQuestProgress, pathItemKey, planConsume, planTurnIn, resetQuestCache, resetQuestStatements, saveQuestProgress } from "./quests";
 import { makeDb } from "./test-db";
 
 const A = "char-a";
@@ -11,7 +11,7 @@ let db: D1Database;
 let raw: DatabaseSync;
 let n = 0;
 const newId = () => `q-${++n}`;
-const def = (id: string) => DEFAULT_QUESTS.find((q) => q.id === id) as QuestDef;
+const def = (id: string) => SEED_QUESTS.find((q) => q.id === id) as QuestDef;
 
 beforeEach(() => {
   ({ db, raw } = makeDb());
@@ -41,7 +41,8 @@ async function turnIn(q: QuestDef, counted: boolean) {
 describe("the catalogue", () => {
   it("is seeded with the default chain, valid, and later edits are kept", async () => {
     const first = await loadQuestCatalog(db);
-    expect(first.defs.map((d) => d.id)).toEqual(DEFAULT_QUESTS.map((d) => d.id));
+    expect(first.defs.map((d) => d.id).sort()).toEqual(SEED_QUESTS.map((d) => d.id).sort());
+    expect(DEFAULT_QUESTS.length + EXTRA_QUESTS.length).toBe(SEED_QUESTS.length);
     raw.exec("UPDATE quests SET enabled = 0 WHERE id = 'newbie_3'");
     raw.exec("UPDATE quests SET def = json_set(def, '$.rewards.linhThach', 777) WHERE id = 'newbie_2'");
     resetQuestCache();
@@ -185,5 +186,71 @@ describe("planConsume", () => {
     const ops = planConsume({ items: bag.items, equipped: [] }, bag.tabs, "linh_thao", 100);
     expect(ops).not.toBeNull();
     expect(planConsume({ items: bag.items, equipped: [] }, bag.tabs, "linh_thao", 105)).toBeNull();
+  });
+});
+
+describe("path quests", () => {
+  const kiem = () => def("path_kiem");
+  const give2 = async () => {
+    await give("linh_thao", 10);
+    await give("thu_cot", 5);
+  };
+
+  it("take every material, give the path item and spend the path's one-time key", async () => {
+    await acceptQuest(db, A, kiem().id, NOW);
+    await give("linh_thao", 10);
+    expect(((await turnIn(kiem(), false)) as { ok: boolean }).ok).toBe(false); // the Thú Cốt is missing
+    expect(count("linh_thao")).toBe(10);
+    await give("thu_cot", 5);
+    const r = (await turnIn(kiem(), false)) as { result: { status: string } };
+    expect(r.result.status).toBe("done");
+    expect(count("path_item_kiem")).toBe(1);
+    expect(count("linh_thao") + count("thu_cot")).toBe(0);
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM item_grants WHERE key = ?").get(pathItemKey(A, "kiem"))).toEqual({ n: 1 });
+  });
+
+  it("a path item given before (the claim button) makes the hand-in fail whole: nothing is taken, nothing is given", async () => {
+    await acceptQuest(db, A, kiem().id, NOW);
+    await give2();
+    raw.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, 0)").run(pathItemKey(A, "kiem"));
+    const r = (await turnIn(kiem(), false)) as { result: { status: string } };
+    expect(r.result.status).toBe("duplicate");
+    expect(count("linh_thao")).toBe(10);
+    expect(count("thu_cot")).toBe(5);
+    expect(count("path_item_kiem")).toBe(0);
+    expect(questRow(kiem().id)?.state).toBe("active");
+  });
+
+  it("dropping the path opens the quest again and the item can be earned a second time", async () => {
+    await acceptQuest(db, A, kiem().id, NOW);
+    await give2();
+    expect(((await turnIn(kiem(), false)) as { result: { status: string } }).result.status).toBe("done");
+    // What dropping a path does to the item key (rearrangeStatements) and to its quest (resetQuestStatements).
+    await db.batch([db.prepare("DELETE FROM item_grants WHERE key = ?").bind(pathItemKey(A, "kiem")), ...resetQuestStatements(db, A, [kiem()])]);
+    expect(questRow(kiem().id)).toBeUndefined();
+    await acceptQuest(db, A, kiem().id, NOW + 1);
+    await give2();
+    expect(((await turnIn(kiem(), false)) as { result: { status: string } }).result.status).toBe("done");
+    expect(count("path_item_kiem")).toBe(2);
+  });
+
+  it("the breakthrough quest takes three kinds of materials and gives the pill, once", async () => {
+    const bt = def("breakthrough_1");
+    await acceptQuest(db, A, bt.id, NOW);
+    await give("linh_thao", 20);
+    await give("thu_cot", 10);
+    await give("yeu_dan", 2);
+    expect(((await turnIn(bt, false)) as { ok: boolean }).ok).toBe(false);
+    await give("yeu_dan", 1);
+    expect(((await turnIn(bt, false)) as { result: { status: string } }).result.status).toBe("done");
+    expect(count("bt_pill_1")).toBe(1);
+    expect(count("linh_thao") + count("thu_cot") + count("yeu_dan")).toBe(0);
+    // Handing in again (with the materials in hand once more) finds the key spent: no second pill, and the materials stay.
+    await give("linh_thao", 20);
+    await give("thu_cot", 10);
+    await give("yeu_dan", 3);
+    expect(((await turnIn(bt, false)) as { result: { status: string } }).result.status).toBe("duplicate");
+    expect(count("bt_pill_1")).toBe(1);
+    expect(count("linh_thao")).toBe(20);
   });
 });
