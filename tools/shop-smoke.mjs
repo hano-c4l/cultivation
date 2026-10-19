@@ -5,6 +5,8 @@
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
 import { execFileSync } from "node:child_process";
 
+const sql = (q) => execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", `"${q}"`], { stdio: "ignore", shell: true });
+
 const base = process.argv[2] ?? "ws://localhost:8787";
 const httpBase = base.replace(/^ws/, "http");
 const host = new URL(httpBase).host;
@@ -122,11 +124,26 @@ r = await after(c, { t: "shop_buy", npc: "merchant", offer: "dai_hoi_huyet_dan",
 check("buying the daily 20 Đại Hồi Huyết Đan costs 1200", r.some((m) => m.t === "shop_ok" && m.total === 1200) && balanceOf(c) === 750, `balance ${balanceOf(c)}`);
 r = await after(c, { t: "shop_buy", npc: "merchant", offer: "hoi_huyet_dan", qty: 99 });
 check("buying more than the money allows (990 > 750) is refused with no change", r.some((m) => m.t === "inv_error" && m.reason === "funds") && balanceOf(c) === 750 && countOf(c, "hoi_huyet_dan") === 5);
-r = await after(c, { t: "shop_buy", npc: "merchant", offer: "eq.hat.f.0.1.1", qty: 1 });
+r = await after(c, { t: "shop_buy", npc: "merchant", offer: "eq.hat.f.0.1.1.kim", qty: 1 });
 check("gear of the other style is not an offer for a male character", r.some((m) => m.t === "inv_error" && m.reason === "invalid"));
-r = await after(c, { t: "shop_buy", npc: "merchant", offer: "eq.hat.m.0.1.1", qty: 1 });
-const hat = bagOf(c).find((i) => i.type === "eq.hat.m.0.1.1");
-check("basic gear can be bought and arrives with full durability", r.some((m) => m.t === "shop_ok") && hat?.dur === 100 && hat?.max === 100);
+r = await after(c, { t: "shop_buy", npc: "merchant", offer: "eq.hat.m.0.1.1.hoa", qty: 1 });
+const hat = bagOf(c).find((i) => i.type === "eq.hat.m.0.1.1.hoa");
+check("basic gear can be bought with the element chosen, and arrives with full durability", r.some((m) => m.t === "shop_ok") && hat?.dur === 100 && hat?.max === 100);
+r = await after(c, { t: "shop_buy", npc: "merchant", offer: "eq.weapon.u.0.1.1.moc.kiem", qty: 1 });
+check("a weapon of a chosen element and family can be bought", r.some((m) => m.t === "shop_ok") && !!bagOf(c).find((i) => i.type === "eq.weapon.u.0.1.1.moc.kiem"));
+
+// --- books and the talisman ---
+await post("/api/admin/grant", { characterId: charId, currency: "linh_thach", amount: 15000, reason: "smoke", idempotencyKey: crypto.randomUUID() }, adminReg.cookie);
+await sleep(300);
+r = await after(c, { t: "shop_buy", npc: "merchant", offer: "bt_cuong_than", qty: 1 });
+check("a basic skill book can be bought", r.some((m) => m.t === "shop_ok") && countOf(c, "bt_cuong_than") === 1);
+r = await after(c, { t: "shop_buy", npc: "merchant", offer: "bt_cuong_than", qty: 1 });
+check("books have no daily limit (a second one is sold)", r.some((m) => m.t === "shop_ok") && countOf(c, "bt_cuong_than") === 2);
+r = await after(c, { t: "shop_buy", npc: "merchant", offer: "ttp_town", qty: 2 });
+check("the town's teleport talisman is sold here for 2000 each", r.some((m) => m.t === "shop_ok" && m.total === 4000) && countOf(c, "ttp_town") === 2);
+const scroll = bagOf(c).find((i) => i.type === "ttp_town");
+r = await after(c, { t: "inv_use", tab: scroll.tab, cell: scroll.cell });
+check("a talisman of the map you stand on is not used up", r.some((m) => m.t === "inv_error" && m.reason === "not_needed") && countOf(c, "ttp_town") === 2);
 
 // --- selling ---
 await fetch(`${httpBase}/api/dev/loot?room=${ROOM}&char=${charId}&item=bt_pill_1&qty=1`);
@@ -145,12 +162,59 @@ check("selling more than the stack holds changes nothing", r.some((m) => m.t ===
 r = await after(c, { t: "shop_sell", npc: "merchant", tab: 0, cell: 63, qty: 1 });
 check("selling from an empty cell is refused", r.some((m) => m.t === "inv_error" && m.reason === "invalid"));
 
+// --- selling several stacks in one go ---
+const pick = bagOf(c).filter((i) => ["hoi_huyet_dan", "dai_hoi_huyet_dan"].includes(i.type));
+const expected = pick.reduce((n, i) => n + (i.type === "hoi_huyet_dan" ? 1 : 9) * i.qty, 0);
+const walletBefore = balanceOf(c);
+r = await after(c, { t: "shop_sell_many", npc: "merchant", cells: [...pick.map((i) => ({ tab: i.tab, cell: i.cell })), { tab: scroll.tab, cell: scroll.cell }, { tab: pill?.tab ?? 0, cell: pill?.cell ?? 62 }] });
+check("a multi-sale that includes something unsellable (or empty) is refused whole", r.some((m) => m.t === "inv_error") && countOf(c, "hoi_huyet_dan") === 3 && balanceOf(c) === walletBefore);
+r = await after(c, { t: "shop_sell_many", npc: "merchant", cells: pick.map((i) => ({ tab: i.tab, cell: i.cell })) });
+check("selling the ticked stacks together pays once and clears them", r.some((m) => m.t === "shop_sold" && m.count === pick.length && m.total === expected) && countOf(c, "hoi_huyet_dan") === 0 && countOf(c, "dai_hoi_huyet_dan") === 0 && balanceOf(c) === walletBefore + expected, `expected ${expected}, balance ${balanceOf(c)} from ${walletBefore}`);
+r = await after(c, { t: "shop_sell_many", npc: "merchant", cells: pick.map((i) => ({ tab: i.tab, cell: i.cell })) });
+check("selling the same cells again changes nothing", r.some((m) => m.t === "inv_error") && balanceOf(c) === walletBefore + expected);
+
+// --- the talisman takes you home from the forest ---
+c.ws.close();
+await sleep(800);
+sql(`UPDATE characters SET map_id = 'forest', x = 20.5, y = 3.5 WHERE id = '${charId}'`);
+const f = await connect(reg.cookie);
+check("the character now stands in the forest", f.welcome.map === "forest");
+r = await after(f, { t: "hotbar_set", slot: 0, v: "i:ttp_town" });
+check("a talisman on the hotbar is not rejected", !r.some((m) => m.t === "hotbar" && m.slots?.[0] !== "i:ttp_town"), JSON.stringify(r.map((m) => m.t)));
+r = await after(f, { t: "use_type", type: "ttp_town" }, 600);
+check("using the talisman starts a 5 second channel and spends nothing yet", r.some((m) => m.t === "tp" && m.ms === 5000) && countOf(f, "ttp_town") === 2, JSON.stringify(r.map((m) => m.t)));
+r = await after(f, { t: "move", x: 21.5, y: 5.5, fx: 20.5, fy: 3.5, seq: 1 }, 600);
+check("moving breaks the channel and the talisman is kept", r.some((m) => m.t === "tp_end" && m.ok === false && m.reason === "moved") && countOf(f, "ttp_town") === 2, JSON.stringify(r.map((m) => m.t)));
+await sleep(5500);
+check("a broken channel does not complete later", !f.log.some((m) => m.t === "transfer"));
+f.send({ t: "move", x: 20.5, y: 6.5, fx: 21.5, fy: 5.5, seq: 2 });
+await sleep(200);
+r = await after(f, { t: "use_type", type: "ttp_town" }, 400);
+check("a talisman cannot be used while still walking", r.some((m) => m.t === "inv_error" && m.reason === "moving") && !r.some((m) => m.t === "tp"), JSON.stringify(r.map((m) => m.t)));
+await sleep(2500); // the walk ends
+r = await after(f, { t: "use_type", type: "ttp_town" }, 600);
+check("a second channel starts", r.some((m) => m.t === "tp"));
+await sleep(5800);
+check("left alone for 5 seconds the channel completes and transfers to town (the spent talisman is checked after reconnecting)", f.log.some((m) => m.t === "transfer" && m.map === "town"), JSON.stringify(f.log.slice(-6).map((m) => m.t)));
+f.ws.close();
+await sleep(800);
+c = await connect(reg.cookie);
+check("after the transfer the character is in town with one talisman left, and the hotbar still holds the talisman", c.welcome.map === "town" && countOf(c, "ttp_town") === 1 && c.welcome.hotbar[0] === "i:ttp_town", `map ${c.welcome.map} talismans ${countOf(c, "ttp_town")} hotbar0 ${c.welcome.hotbar[0]}`);
+
 // --- the state is real: it survives a reconnect ---
 c.ws.close();
 await sleep(800);
 c = await connect(reg.cookie);
-check("the bag and the wallet are the same after reconnecting", countOf(c, "hoi_huyet_dan") === 3 && countOf(c, "ngo_dao_dan") === 2 && c.welcome.wallet.linh_thach === before + 2, `wallet ${c.welcome.wallet.linh_thach}`);
+check("the bag and the wallet are the same after reconnecting", countOf(c, "ngo_dao_dan") === 2 && countOf(c, "ttp_town") === 1 && c.welcome.wallet.linh_thach === walletBefore + expected, `wallet ${c.welcome.wallet.linh_thach}`);
+// --- being hit breaks the channel, and the talisman is kept ---
 c.ws.close();
+await sleep(800);
+sql(`UPDATE characters SET map_id = 'forest', x = 20.5, y = 15.5 WHERE id = '${charId}'`);
+const h = await connect(reg.cookie);
+await after(h, { t: "use_type", type: "ttp_town" }, 300);
+const brokeByHit = await h.wait((m) => m.t === "tp_end", 20000, "tp_end by a hit").catch(() => null);
+check("a monster's attack breaks the channel and the talisman is kept", brokeByHit?.ok === false && (brokeByHit.reason === "hit" || brokeByHit.reason === "dead") && countOf(h, "ttp_town") === 1, JSON.stringify(brokeByHit));
+h.ws.close();
 
 console.log(failures === 0 ? "\nall shop checks passed" : `\n${failures} shop check(s) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

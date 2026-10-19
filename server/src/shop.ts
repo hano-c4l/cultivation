@@ -18,9 +18,9 @@ export async function getPurchased(db: D1Database, characterId: string, now: num
 }
 
 /** Units this character can still buy today, for each offer of a daily limit. */
-export function stockLeft(gender: Gender, bought: Readonly<Record<string, number>>): Record<string, number> {
+export function stockLeft(gender: Gender, mapId: string, bought: Readonly<Record<string, number>>): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const o of merchantOffers(gender)) if (o.dailyLimit !== undefined) out[o.id] = Math.max(0, o.dailyLimit - (bought[o.id] ?? 0));
+  for (const o of merchantOffers(gender, mapId)) if (o.dailyLimit !== undefined) out[o.id] = Math.max(0, o.dailyLimit - (bought[o.id] ?? 0));
   return out;
 }
 

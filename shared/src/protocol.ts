@@ -2,7 +2,7 @@ import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import type { Vec2 } from "./map";
 import { isMonsterId, type HitKind } from "./combat";
 import type { BreakthroughEnd, BreakthroughError } from "./breakthrough";
-import { MAX_SHOP_QTY } from "./shop";
+import { MAX_SHOP_QTY, SHOP_SELL_MANY_MAX } from "./shop";
 import { isPathId, type PathError, type PathId } from "./paths";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
@@ -99,7 +99,9 @@ export type ClientMessage =
   /** Buy `qty` of one of the merchant's offers (named by id, priced by the server). */
   | { t: "shop_buy"; npc: string; offer: string; qty: number }
   /** Sell `qty` from the stack at (tab, cell) to the merchant. */
-  | { t: "shop_sell"; npc: string; tab: number; cell: number; qty: number };
+  | { t: "shop_sell"; npc: string; tab: number; cell: number; qty: number }
+  /** Sell whole stacks from several cells in one go (all or nothing). At most SHOP_SELL_MANY_MAX cells, so the message stays small. */
+  | { t: "shop_sell_many"; npc: string; cells: BagPos[] };
 
 /** One running effect on the character for the buff bar: id is "s:<skill>" (a buff skill) or "i:<item type>" (a potion that works over time); `ms` is the time left. */
 export interface EffectView {
@@ -186,7 +188,13 @@ export type ServerMessage =
   | { t: "shop"; npc: string; left: Record<string, number> }
   /** A trade went through: `total` Linh Thạch paid (buy) or received (sell). */
   | { t: "shop_ok"; op: "buy" | "sell"; item: string; qty: number; total: number }
-  | { t: "inv_error"; reason: "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
+  /** A multi-item sale went through: `count` stacks sold for `total` Linh Thạch. */
+  | { t: "shop_sold"; count: number; total: number }
+  /** A teleport talisman is being channelled for `ms`; the talisman is only used up when it completes. */
+  | { t: "tp"; ms: number; item: string }
+  /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
+  | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "other" }
+  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -349,6 +357,16 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isNpcId(m.npc) && isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999
         ? { t: "shop_sell", npc: m.npc, tab: m.tab, cell: m.cell, qty: m.qty }
         : null;
+    case "shop_sell_many": {
+      if (!isNpcId(m.npc) || !Array.isArray(m.cells) || m.cells.length < 1 || m.cells.length > SHOP_SELL_MANY_MAX) return null;
+      const cells: BagPos[] = [];
+      for (const c of m.cells) {
+        const pos = parseBagPos(c);
+        if (!pos || cells.some((o) => o.tab === pos.tab && o.cell === pos.cell)) return null;
+        cells.push(pos);
+      }
+      return { t: "shop_sell_many", npc: m.npc, cells };
+    }
     case "mail_claim":
       return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:

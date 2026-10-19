@@ -130,23 +130,21 @@ export async function saveCharacterPosition(
   progress?: ProgressWrite,
   /** HP/MP/cooldowns/buffs JSON (same row, no extra write); null clears it (fresh: full HP and MP); undefined leaves it as it is. */
   vitals?: string | null,
+  /** Statements that must commit together with the move (they run first in one batch: if one throws, the position is not written either). */
+  before: readonly D1PreparedStatement[] = [],
 ): Promise<void> {
   const vitalsSql = vitals === undefined ? "" : ", vitals = ?";
   const vitalsArg = vitals === undefined ? [] : [vitals];
-  if (!progress) {
-    await db
-      .prepare(`UPDATE characters SET map_id = ?, x = ?, y = ?${vitalsSql}, updated_at = ? WHERE id = ?`)
-      .bind(mapId, x, y, ...vitalsArg, Date.now(), id)
-      .run();
-    return;
-  }
-  await db
-    .prepare(
-      `UPDATE characters SET map_id = ?, x = ?, y = ?, stage = CASE WHEN realm = ? THEN ? ELSE stage END, exp = CASE WHEN realm = ? THEN ? ELSE exp END, ` +
-        `potential_points = potential_points + ?${vitalsSql}, updated_at = ? WHERE id = ?`,
-    )
-    .bind(mapId, x, y, progress.realm, progress.stage, progress.realm, progress.exp, progress.addPoints, ...vitalsArg, Date.now(), id)
-    .run();
+  const update = !progress
+    ? db.prepare(`UPDATE characters SET map_id = ?, x = ?, y = ?${vitalsSql}, updated_at = ? WHERE id = ?`).bind(mapId, x, y, ...vitalsArg, Date.now(), id)
+    : db
+        .prepare(
+          `UPDATE characters SET map_id = ?, x = ?, y = ?, stage = CASE WHEN realm = ? THEN ? ELSE stage END, exp = CASE WHEN realm = ? THEN ? ELSE exp END, ` +
+            `potential_points = potential_points + ?${vitalsSql}, updated_at = ? WHERE id = ?`,
+        )
+        .bind(mapId, x, y, progress.realm, progress.stage, progress.realm, progress.exp, progress.addPoints, ...vitalsArg, Date.now(), id);
+  if (before.length === 0) await update.run();
+  else await db.batch([...before, update]);
 }
 
 /** Writes only EXP, stage and points (no position), for flushes while the character stays in the room. */
