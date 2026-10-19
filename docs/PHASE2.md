@@ -218,7 +218,7 @@ Chi tiết kiến trúc và vận hành: mục "Ghi chú triển khai, vận hà
 - **Chưa làm / để sau:** đan từ **boss (2h)**, mua ở chợ (GĐ3; **thương nhân NPC ở 2e không bán đan đột phá**, người dùng chốt 2026-10-19), **nhiệm vụ đột phá làm một lần (2e)**; đan Kim Đan→Nguyên Anh hiện chưa có nguồn (chưa có bản đồ Kim Đan); thông báo đột phá cho người khác; đột phá không bị ngắt bởi mất kết nối ngắn (hiện mất kết nối là thất bại, khá nặng với lần 10 phút của Kim Đan).
 - **Để người dùng thử trên preview** (không thể cày tới Luyện Khí 9 và chờ đan rơi 0,4%): cần một lệnh `wrangler d1 execute DB --remote --env preview` do người dùng duyệt để đặt tầng 9 + EXP đầy cho nhân vật thử và gửi một đan vào hòm thư; Linh Thạch cộng qua trang admin (không bao giờ chèn tay dòng sổ cái, xem PHASE1 mục 1e).
 
-## 2e. NPC thương nhân và nhiệm vụ (`features_npc-quests`) — chia hai PR: 2e-A (NPC và thương nhân) ĐÃ LÀM ở local, 2e-B (nhiệm vụ) chưa làm
+## 2e. NPC thương nhân và nhiệm vụ (`features_npc-quests`) — chia hai PR: 2e-A (NPC và thương nhân, kèm đợt chỉnh sửa sau lần thử đầu) ĐÃ LÀM và đã ở production (2026-10-19, migration `0019` chạy trước), 2e-B (nhiệm vụ) chưa làm
 - NPC trong thành (tile NPC trên bản đồ), cửa hàng mua/bán (giá cố định, ghi sổ cái, atomic).
 - Hệ thống nhiệm vụ theo chuỗi: điều kiện (giết quái, nhặt đồ, nói chuyện), phần thưởng (EXP, Linh Thạch, Cống Hiến, đồ), lưu tiến độ.
 - Chuỗi nhiệm vụ tân thủ.
