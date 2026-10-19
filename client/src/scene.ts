@@ -47,6 +47,8 @@ import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
 import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
+import { initShop, type ShopUi } from "./shop-ui";
+import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
@@ -150,6 +152,7 @@ export class GameScene extends Phaser.Scene {
   private chat!: ChatUi;
   private inventory!: InventoryUi;
   private equipment!: EquipmentUi;
+  private shop!: ShopUi;
   private hotbar!: HotbarUi;
   private buffs!: BuffsUi;
   /** Mastery of the skills that have it, and the worn gear: what the numbers a skill is shown with depend on. */
@@ -210,6 +213,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
+    this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
       startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
@@ -327,6 +331,19 @@ export class GameScene extends Phaser.Scene {
         .setDepth(0.6);
       this.mapObjects.push(glow, label);
     }
+
+    for (const npc of this.map.npcs) {
+      const p = toScreen(npc.x, npc.y);
+      // Placeholder figure (a robe and a head) standing on the NPC's spot, like the other placeholder art.
+      const body = this.add.graphics().setDepth(p.y + 1);
+      body.fillStyle(0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
+      body.fillStyle(0xf2d6b0, 1).fillCircle(p.x, p.y - 36, 7);
+      const label = this.add
+        .text(p.x, p.y - 48, vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#ffe08a", stroke: "#000000", strokeThickness: 3 })
+        .setOrigin(0.5, 1)
+        .setDepth(p.y + 2);
+      this.mapObjects.push(body, label);
+    }
   }
 
   /** Isometric diamond whose top vertex is at (x, y); `scale` 1 is a full tile. */
@@ -344,6 +361,7 @@ export class GameScene extends Phaser.Scene {
   private switchMap(mapId: string): void {
     if (!isMapId(mapId) || this.map.id === mapId) return;
     this.map = getMap(mapId);
+    this.shop.close();
     this.drawMap();
   }
 
@@ -392,6 +410,11 @@ export class GameScene extends Phaser.Scene {
       this.net.send({ t: "cast", skill: skill.id, x: tx, y: ty });
       return;
     }
+    const npc = this.map.npcs.find((n) => Math.hypot(tx - n.x, ty - n.y) <= 1);
+    if (npc) {
+      this.talkTo(npc);
+      return;
+    }
     const picked = this.pickMonster(world.x, world.y);
     if (picked) {
       const nowMs = performance.now();
@@ -403,6 +426,29 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.targetId = null;
+    this.sendWalk(tx, ty);
+  }
+
+  /** Clicking an NPC opens its window when close enough; otherwise the character walks over and the player clicks again. */
+  private talkTo(npc: NpcSpot): void {
+    const self = this.actors.get(this.selfId);
+    if (!self) return;
+    const here = currentPos(self, performance.now());
+    if (Math.hypot(here.x - npc.x, here.y - npc.y) <= NPC_INTERACT_RADIUS - 0.4) {
+      this.shop.open(npc.id);
+      return;
+    }
+    this.chat.system(vi.shop.tooFar, "error");
+    // Walk to the standable spot nearest the NPC on the player's side.
+    const dx = here.x - npc.x;
+    const dy = here.y - npc.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const spot = nearestStandablePoint(this.map, npc.x + (dx / len) * 1.5, npc.y + (dy / len) * 1.5, 2);
+    if (spot) this.sendWalk(Math.round(spot[0] * 100) / 100, Math.round(spot[1] * 100) / 100);
+  }
+
+  /** Walks to a point: predicts the path locally and tells the server. */
+  private sendWalk(tx: number, ty: number): void {
     // Client-side throttle matches the server's, so a dropped click never desyncs the prediction.
     const now = performance.now();
     if (now - this.lastMoveSentAt < MIN_MOVE_INTERVAL_MS + 20) return;
@@ -445,6 +491,7 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.breakthroughEnded();
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
+        this.shop.setSheet(msg.character);
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
@@ -495,6 +542,7 @@ export class GameScene extends Phaser.Scene {
         const before = this.selfSheet;
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
+        this.shop.setSheet(msg.character);
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
@@ -547,6 +595,7 @@ export class GameScene extends Phaser.Scene {
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
         this.charPanel.refresh();
         this.equipment.refresh();
+        this.shop.refresh();
         this.hotbar.refresh();
         this.skillsUi.refresh(); // the pill count
         break;
@@ -627,6 +676,14 @@ export class GameScene extends Phaser.Scene {
           else this.chat.system(vi.inventory.picked(name, it.qty));
         }
         break;
+      case "shop":
+        this.shop.setStock(msg.npc, msg.left);
+        break;
+      case "shop_ok": {
+        const name = getItemDef(msg.item)?.nameVi ?? msg.item;
+        this.chat.system(msg.op === "buy" ? vi.shop.bought(name, msg.qty, msg.total) : vi.shop.sold(name, msg.qty, msg.total));
+        break;
+      }
       case "inv_error":
         // A sort refused for being too frequent locks the button with a countdown and is reported once, in the system tab.
         if (msg.reason === "wait") {
