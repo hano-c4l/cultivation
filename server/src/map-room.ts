@@ -123,6 +123,8 @@ import {
 } from "@game/shared";
 import { TALISMAN_CAST_MS, findOffer, npcNear, sellPrice, type Gender } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
+import { acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, planTurnIn, saveQuestProgress } from "./quests";
+import { killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
 import { filterChat } from "./chat";
@@ -325,6 +327,9 @@ export class MapRoom extends DurableObject<Env> {
   private skillRows = new Map<string, SkillRow[]>();
   /** Skills whose mastery changed since the last write, per character (written with the next save). */
   private skillDirty = new Map<string, Set<string>>();
+  /** Quest progress of the characters in the room (loaded lazily from D1; absolute values are written back) and which quests changed. */
+  private questRows = new Map<string, Record<string, QuestProgressView>>();
+  private questDirty = new Map<string, Set<string>>();
   private hotbars = new Map<string, string[]>();
   /** Per character: the vitals as last written to D1 (without the timestamp), so an unchanged state is not written again. */
   private vitalKeys = new Map<string, string>();
@@ -506,6 +511,7 @@ export class MapRoom extends DurableObject<Env> {
         effects: profile && sim ? sim.effectsOf(profile, Date.now()) : away.buffs.filter((b) => b.until > Date.now() && getSkill(b.skill) !== undefined).map((b) => ({ id: `s:${b.skill}`, ms: b.until - Date.now() })),
       });
       if (staleLoss !== null) this.send(server, { t: "bt_end", ok: false, reason: "left", expLost: staleLoss });
+      void this.sendQuestActive(row.id).catch((err) => console.error("quest list failed", row.id, err));
       if (removedAtJoin.length > 0) this.send(server, { t: "eq_removed", items: removedAtJoin.map((r) => ({ type: r.item.type, reason: r.reason, mailed: r.mailed })) });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
       return new Response(null, { status: 101, webSocket: client });
@@ -574,6 +580,9 @@ export class MapRoom extends DurableObject<Env> {
       case "shop_sell":
       case "shop_sell_many":
         return this.handleShop(ws, state, msg);
+      case "quest_accept":
+      case "quest_turn_in":
+        return this.handleQuest(ws, state, msg);
       case "cast":
         return this.handleCast(ws, state, msg);
       case "hotbar_set":
@@ -760,6 +769,7 @@ export class MapRoom extends DurableObject<Env> {
       }
       await this.flushRefine(state.id);
       await this.flushSkills(state.id);
+      await this.flushQuests(state.id);
       const profile = this.sim?.getPlayer(state.id);
       if (!state.dirty && !profile?.expDirty && !profile?.pendingPoints) continue;
       state.dirty = false;
@@ -983,6 +993,8 @@ export class MapRoom extends DurableObject<Env> {
     this.hotbars.clear();
     this.skillRows.clear();
     this.skillDirty.clear();
+    this.questRows.clear();
+    this.questDirty.clear();
     this.vitalKeys.clear();
     return true;
   }
@@ -1105,6 +1117,11 @@ export class MapRoom extends DurableObject<Env> {
       case "loot":
         this.enqueueLoot(ev.playerId, ev.drops);
         return;
+      case "kill": {
+        const mapId = sockets.get(ev.playerId)?.state.mapId;
+        if (mapId) later.push(this.noteKill(ev.playerId, mapId, ev.rare).catch((err) => console.error("quest kill failed", ev.playerId, err)));
+        return;
+      }
       case "player_dead": {
         const entry = sockets.get(ev.playerId);
         const profile = this.sim?.getPlayer(ev.playerId);
@@ -1179,10 +1196,13 @@ export class MapRoom extends DurableObject<Env> {
   private async settleBag(id: string): Promise<void> {
     await (this.bagQueues.get(id) ?? Promise.resolve());
     await this.flushSkills(id); // the mastery of its skills is written before the lock is released too
+    await this.flushQuests(id); // and so is the progress of its quests (kills counted in this room)
     await this.flushRefine(id); // the artifact's EXP is written before the lock is released
     this.bags.delete(id);
     this.skillRows.delete(id);
     this.skillDirty.delete(id);
+    this.questRows.delete(id);
+    this.questDirty.delete(id);
     this.hotbars.delete(id);
     this.vitalKeys.delete(id);
   }
@@ -1488,6 +1508,163 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  /** Progress of a character's quests, from the room's copy or (after a sleep, or the first time) from D1. Never replaced by an empty copy. */
+  private async getQuestRows(id: string): Promise<Record<string, QuestProgressView>> {
+    let rows = this.questRows.get(id);
+    if (!rows) {
+      rows = await loadQuestProgress(this.env.DB, id);
+      this.questRows.set(id, rows);
+    }
+    return rows;
+  }
+
+  /** Writes the quest progress changed since the last write (absolute values). A failed write keeps the quests dirty. */
+  private async flushQuests(id: string): Promise<void> {
+    const dirty = this.questDirty.get(id);
+    if (!dirty || dirty.size === 0) return;
+    const rows = this.questRows.get(id) ?? {};
+    const list = [...dirty].filter((q) => rows[q]?.state === "active").map((q) => ({ id: q, progress: rows[q]!.progress }));
+    this.questDirty.delete(id);
+    try {
+      await saveQuestProgress(this.env.DB, id, list);
+    } catch (err) {
+      console.error("quest progress save failed", id, err);
+      const again = this.questDirty.get(id) ?? new Set<string>();
+      for (const q of list) again.add(q.id);
+      this.questDirty.set(id, again);
+    }
+  }
+
+  /** A kill the character gets credit for: every active quest it counts for gains one (up to its target). Written with the next save. */
+  private async noteKill(id: string, mapId: string, rare: boolean): Promise<void> {
+    const [defs, rows] = await Promise.all([getQuestCatalog(this.env.DB), this.getQuestRows(id)]);
+    let touched = false;
+    for (const def of defs) {
+      const mine = rows[def.id];
+      if (!mine || mine.state !== "active" || !killCounts(def.objective, mapId, rare) || mine.progress >= objectiveTarget(def.objective)) continue;
+      mine.progress += 1;
+      const dirty = this.questDirty.get(id) ?? new Set<string>();
+      dirty.add(def.id);
+      this.questDirty.set(id, dirty);
+      this.sendToCharacter(id, { t: "quest_progress", quest: def.id, progress: mine.progress });
+      touched = true;
+    }
+    if (touched) await this.ensureSaveAlarm(Date.now());
+  }
+
+  /** Opening an NPC completes the talk objective of an active quest that names it. Written at once (the town room may sleep right after). */
+  private async noteTalk(id: string, npcId: string): Promise<void> {
+    const [defs, rows] = await Promise.all([getQuestCatalog(this.env.DB), this.getQuestRows(id)]);
+    const done: string[] = [];
+    for (const def of defs) {
+      const mine = rows[def.id];
+      if (mine?.state === "active" && def.objective.kind === "talk" && def.objective.npc === npcId && mine.progress < 1) {
+        mine.progress = 1;
+        done.push(def.id);
+      }
+    }
+    if (done.length === 0) return;
+    await saveQuestProgress(this.env.DB, id, done.map((q) => ({ id: q, progress: 1 })));
+    for (const q of done) this.sendToCharacter(id, { t: "quest_progress", quest: q, progress: 1 });
+  }
+
+  /** What an NPC offers: its quests (enabled ones, plus any the character is already on) and the character's progress. */
+  private async sendQuests(ws: WebSocket, id: string, npcId: string): Promise<void> {
+    const [defs, rows] = await Promise.all([getQuestCatalog(this.env.DB), this.getQuestRows(id)]);
+    const mine = defs.filter((d) => d.giver === npcId && (d.enabled || rows[d.id]));
+    this.send(ws, { t: "quests", npc: npcId, defs: mine, states: rows });
+  }
+
+  /** The quests the character is on, for the tracker. */
+  private async sendQuestActive(id: string): Promise<void> {
+    const [defs, rows] = await Promise.all([getQuestCatalog(this.env.DB), this.getQuestRows(id)]);
+    const active = defs.filter((d) => rows[d.id]?.state === "active");
+    this.sendToCharacter(id, { t: "quest_active", defs: active, states: Object.fromEntries(active.map((d) => [d.id, rows[d.id]!])) });
+  }
+
+  /** Accept and hand in quests. Same queue and rate limit as the bag commands, and the giver must be within reach. */
+  private handleQuest(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "quest_accept" | "quest_turn_in" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "quest_error", reason: "rate" });
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "quest") return this.send(ws, { t: "quest_error", reason: "far" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      const defs = await getQuestCatalog(this.env.DB);
+      const def = defs.find((d) => d.id === msg.quest && d.giver === msg.npc);
+      if (!def) return this.send(ws, { t: "quest_error", reason: "invalid" });
+      if (msg.t === "quest_accept") return this.questAccept(ws, id, def);
+      return this.questTurnIn(ws, id, def);
+    });
+  }
+
+  private async questAccept(ws: WebSocket, id: string, def: QuestDef): Promise<void> {
+    const rows = await this.getQuestRows(id);
+    if (rows[def.id]) return this.send(ws, { t: "quest_error", reason: "already" });
+    if (!def.enabled) return this.send(ws, { t: "quest_error", reason: "invalid" });
+    if (questStatus(def, rows) === "locked") return this.send(ws, { t: "quest_error", reason: "locked" });
+    try {
+      await acceptQuest(this.env.DB, id, def.id, Date.now());
+    } catch (err) {
+      // The primary key says it was taken meanwhile (another socket, a retry): reload and show what is there.
+      if (!String(err).includes("character_quests")) console.error("quest accept failed", id, err);
+      this.questRows.delete(id);
+      return this.send(ws, { t: "quest_error", reason: String(err).includes("character_quests") ? "already" : "busy" });
+    }
+    rows[def.id] = { state: "active", progress: 0 };
+    await this.sendQuests(ws, id, def.giver);
+    await this.sendQuestActive(id);
+  }
+
+  /**
+   * Hands a quest in. The objective is checked against the room's copy and D1 (progress is flushed first), then the reward
+   * and the closing of the quest commit in ONE batch (commitTurnIn): a repeat finds the grant key spent and changes nothing.
+   */
+  private async questTurnIn(ws: WebSocket, id: string, def: QuestDef): Promise<void> {
+    const rows = await this.getQuestRows(id);
+    const mine = rows[def.id];
+    if (!mine || mine.state !== "active") return this.send(ws, { t: "quest_error", reason: "not_active" });
+    await this.flushQuests(id);
+    const row = await getCharacterById(this.env.DB, id);
+    if (!row) return;
+    const o = def.objective;
+    if ((o.kind === "kill" || o.kind === "talk") && mine.progress < objectiveTarget(o)) return this.send(ws, { t: "quest_error", reason: "not_ready" });
+    if (o.kind === "reach" && (row.realm < o.realm || (row.realm === o.realm && row.stage < o.stage))) return this.send(ws, { t: "quest_error", reason: "not_ready" });
+    const bag = await this.getBag(id);
+    const plan = planTurnIn(def, { items: bag.items, equipped: bag.equipped }, bag.tabs, row, () => crypto.randomUUID());
+    if (!plan.ok) return this.send(ws, { t: "quest_error", reason: plan.reason });
+    try {
+      const r = await commitTurnIn(this.env.DB, id, def, plan, o.kind === "kill" || o.kind === "talk", Date.now());
+      if (r.status === "duplicate") {
+        this.questRows.delete(id);
+        return this.send(ws, { t: "quest_error", reason: "already" });
+      }
+      if (r.status === "stale") {
+        this.bags.delete(id);
+        this.questRows.delete(id);
+        return this.send(ws, { t: "quest_error", reason: "busy" });
+      }
+      const next = applyBag({ items: bag.items, equipped: bag.equipped }, plan.ops);
+      const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+      this.bags.set(id, after);
+      this.sendBagDelta(id, bag, after);
+      if (r.balance !== null) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance, gained: def.rewards.linhThach });
+      if (plan.exp) this.sendToCharacter(id, { t: "stats", character: toCharacterSheet({ ...row, stage: plan.exp.to.stage, exp: plan.exp.to.exp, potential_points: row.potential_points + plan.exp.to.points }) });
+      rows[def.id] = { state: "done", progress: mine.progress };
+      this.sendToCharacter(id, { t: "quest_done", quest: def.id });
+      await this.sendQuests(ws, id, def.giver);
+      await this.sendQuestActive(id);
+    } catch (err) {
+      console.error("quest turn-in failed", id, def.id, err);
+      this.bags.delete(id);
+      this.questRows.delete(id);
+      this.send(ws, { t: "quest_error", reason: "busy" });
+    }
+  }
+
   /**
    * The merchant: open the shop, buy, sell. Each trade is ONE D1 batch (the Linh Thạch entry plus the bag cells, and for a
    * limited offer the daily counter), so money and goods never part ways. Same queue and rate limit as the other bag commands.
@@ -1497,11 +1674,18 @@ export class MapRoom extends DurableObject<Env> {
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     const npcId = msg.npc;
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-    if (!npcNear(getMap(state.mapId), npcId, here.x, here.y)) return this.send(ws, { t: "inv_error", reason: "far" });
+    const spot = npcNear(getMap(state.mapId), npcId, here.x, here.y);
+    if (!spot) return this.send(ws, { t: "inv_error", reason: "far" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
     void this.bagTask(id, async () => {
+      if (msg.t === "npc_open") {
+        // Opening any NPC counts as talking to it (a talk quest may be waiting for that).
+        await this.noteTalk(id, npcId).catch((err) => console.error("quest talk failed", id, err));
+        if (spot.kind === "quest") return this.sendQuests(ws, id, npcId);
+      }
+      if (spot.kind !== "merchant") return;
       const wearer = await this.wearerOf(id);
       if (!wearer) return;
       const sendStock = async () => this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, state.mapId, await getPurchased(this.env.DB, id, Date.now())) });

@@ -48,6 +48,7 @@ import { setCatalog } from "./constitution-store";
 import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initShop, type ShopUi } from "./shop-ui";
+import { initQuests, type QuestUi } from "./quest-ui";
 import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
@@ -153,6 +154,7 @@ export class GameScene extends Phaser.Scene {
   private inventory!: InventoryUi;
   private equipment!: EquipmentUi;
   private shop!: ShopUi;
+  private quests!: QuestUi;
   private hotbar!: HotbarUi;
   private buffs!: BuffsUi;
   /** Mastery of the skills that have it, and the worn gear: what the numbers a skill is shown with depend on. */
@@ -214,6 +216,7 @@ export class GameScene extends Phaser.Scene {
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
+    this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list());
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
       startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
@@ -273,6 +276,11 @@ export class GameScene extends Phaser.Scene {
     });
     // The chat socket needs no round-trip timing, only a keep-alive, so it pings far less often.
     this.time.addEvent({ delay: 30_000, loop: true, callback: () => this.chatNet.sendPing() });
+  }
+
+  /** Title of a quest the client has heard of (the quest list of an NPC or the tracker), else its id. */
+  private questTitle(id: string): string {
+    return this.quests.titleOf(id) ?? id;
   }
 
   /** (Re)draws the current map's tiles and portals, destroying whatever was drawn for the previous map. */
@@ -336,7 +344,7 @@ export class GameScene extends Phaser.Scene {
       const p = toScreen(npc.x, npc.y);
       // Placeholder figure (a robe and a head) standing on the NPC's spot, like the other placeholder art.
       const body = this.add.graphics().setDepth(p.y + 1);
-      body.fillStyle(0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
+      body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
       body.fillStyle(0xf2d6b0, 1).fillCircle(p.x, p.y - 36, 7);
       const label = this.add
         .text(p.x, p.y - 48, vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#ffe08a", stroke: "#000000", strokeThickness: 3 })
@@ -362,6 +370,7 @@ export class GameScene extends Phaser.Scene {
     if (!isMapId(mapId) || this.map.id === mapId) return;
     this.map = getMap(mapId);
     this.shop.close();
+    this.quests.close();
     this.drawMap();
   }
 
@@ -439,7 +448,11 @@ export class GameScene extends Phaser.Scene {
     if (!self) return;
     const here = currentPos(self, performance.now());
     if (Math.hypot(here.x - npc.x, here.y - npc.y) <= NPC_INTERACT_RADIUS - 0.4) {
-      this.shop.open(npc.id, this.map.id);
+      // One NPC window at a time (both would otherwise open on the same spot).
+      this.shop.close();
+      this.quests.close();
+      if (npc.kind === "quest") this.quests.open(npc.id);
+      else this.shop.open(npc.id, this.map.id);
       return;
     }
     this.chat.system(vi.shop.tooFar, "error");
@@ -459,7 +472,8 @@ export class GameScene extends Phaser.Scene {
     const from = this.predictSelfMove(tx, ty);
     if (!from) return;
     this.lastMoveSentAt = now;
-    this.shop.close(); // walking away from the merchant closes the window
+    this.shop.close(); // walking away from an NPC closes its window
+    this.quests.close();
     this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
     const c = toScreen(tx, ty);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
@@ -498,6 +512,7 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
         this.shop.setSheet(msg.character);
+        this.quests.setSheet(msg.character);
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
@@ -603,6 +618,7 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.refresh();
         this.equipment.refresh();
         this.shop.refresh();
+        this.quests.refresh();
         this.hotbar.refresh();
         this.skillsUi.refresh(); // the pill count
         break;
@@ -693,6 +709,24 @@ export class GameScene extends Phaser.Scene {
         this.shop.notify(text);
         break;
       }
+      case "quests":
+        this.quests.setQuests(msg.npc, msg.defs, msg.states);
+        break;
+      case "quest_active":
+        this.quests.setActive(msg.defs, msg.states);
+        break;
+      case "quest_progress": {
+        this.quests.progress(msg.quest, msg.progress);
+        break;
+      }
+      case "quest_done":
+        this.chat.system(vi.quests.done(this.questTitle(msg.quest)));
+        this.quests.notify(vi.quests.done(this.questTitle(msg.quest)));
+        break;
+      case "quest_error":
+        this.chat.system(vi.quests.errors[msg.reason] ?? vi.quests.errors.invalid!, "error");
+        this.quests.notify(vi.quests.errors[msg.reason] ?? vi.quests.errors.invalid!);
+        break;
       case "tp": {
         // The note above the hotbar counts down the channel; the server ends it (tp_end or the transfer).
         const name = getItemDef(msg.item)?.nameVi ?? msg.item;
