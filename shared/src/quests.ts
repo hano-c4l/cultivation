@@ -1,4 +1,6 @@
+import { BREAKTHROUGHS } from "./breakthrough";
 import { isItemId } from "./items";
+import { PATHS, isPathId, type PathId } from "./paths";
 import { REALMS, STAGES_PER_REALM } from "./progression-data";
 
 /**
@@ -12,8 +14,8 @@ export type QuestObjective =
   | { kind: "talk"; npc: string }
   /** Kill `count` monsters after accepting; `map` limits it to one map, `rare` to rare monsters (Tinh Anh, Đại Yêu). */
   | { kind: "kill"; count: number; map?: string; rare?: boolean }
-  /** Hand over `qty` of an item at turn-in. */
-  | { kind: "collect"; item: string; qty: number }
+  /** Hand over `qty` of an item at turn-in, and of every item in `also` (all of them are taken). */
+  | { kind: "collect"; item: string; qty: number; also?: Array<{ item: string; qty: number }> }
   /** Be at least this realm and stage at turn-in. */
   | { kind: "reach"; realm: number; stage: number };
 
@@ -39,6 +41,14 @@ export interface QuestDef {
   enabled: boolean;
   /** The quest that must be finished first, or null. */
   requires: string | null;
+  /** The character must have reached this realm (index into REALMS) to take the quest. */
+  minRealm?: number;
+  /**
+   * A hướng tu quest: its reward is that path's item, so it shares the one-time key of the path item
+   * (`path_item:<character>:<path>`), and it opens again when the character drops the path (the item can then be had again).
+   * It must not pay Linh Thạch (the reward key doubles as a ledger key and the ledger is append-only).
+   */
+  path?: PathId;
   objective: QuestObjective;
   rewards: QuestRewards;
 }
@@ -53,6 +63,11 @@ export interface QuestProgressView {
 }
 
 /** How much progress the objective needs: the kill count, the item quantity, or 1 for a talk and a level. */
+/** Every item a collect objective asks for, with its quantity (the main one first). */
+export function collectItems(o: Extract<QuestObjective, { kind: "collect" }>): Array<{ item: string; qty: number }> {
+  return [{ item: o.item, qty: o.qty }, ...(o.also ?? [])];
+}
+
 export function objectiveTarget(o: QuestObjective): number {
   return o.kind === "kill" ? o.count : o.kind === "collect" ? o.qty : 1;
 }
@@ -110,10 +125,16 @@ export function validateQuests(list: readonly QuestDef[], npcs: ReadonlySet<stri
     const o = q.objective;
     if (o.kind === "talk" && !npcs.has(o.npc)) problems.push(`${at}: talk target ${o.npc} is not an NPC`);
     else if (o.kind === "kill" && (!POSITIVE_INT(o.count) || o.count > 9999)) problems.push(`${at}: bad kill count`);
-    else if (o.kind === "collect" && (!isItemId(o.item) || !POSITIVE_INT(o.qty) || o.qty > 9999)) problems.push(`${at}: bad collect item or quantity`);
+    else if (o.kind === "collect" && !collectItems(o).every((c) => isItemId(c.item) && POSITIVE_INT(c.qty) && c.qty <= 9999)) problems.push(`${at}: bad collect item or quantity`);
     else if (o.kind === "reach" && !(Number.isInteger(o.realm) && o.realm >= 0 && o.realm < REALMS.length && Number.isInteger(o.stage) && o.stage >= 1 && o.stage <= STAGES_PER_REALM))
       problems.push(`${at}: bad realm or stage`);
     else if (!["talk", "kill", "collect", "reach"].includes(o.kind)) problems.push(`${at}: unknown objective`);
+    if (q.minRealm !== undefined && !(Number.isInteger(q.minRealm) && q.minRealm >= 0 && q.minRealm < REALMS.length)) problems.push(`${at}: bad minimum realm`);
+    if (q.path !== undefined) {
+      if (!isPathId(q.path)) problems.push(`${at}: unknown path ${String(q.path)}`);
+      else if (!(q.rewards.items ?? []).some((it) => it.item === PATHS[q.path as PathId].item)) problems.push(`${at}: a path quest must reward the path item`);
+      if (q.rewards.linhThach) problems.push(`${at}: a path quest cannot pay Linh Thạch`);
+    }
     const r = q.rewards;
     if (r.linhThach !== undefined && !POSITIVE_INT(r.linhThach)) problems.push(`${at}: bad Linh Thạch reward`);
     if (r.exp !== undefined && !POSITIVE_INT(r.exp)) problems.push(`${at}: bad EXP reward`);
@@ -192,3 +213,41 @@ export const DEFAULT_QUESTS: readonly QuestDef[] = [
     rewards: { linhThach: 1000, exp: 3000, items: [{ item: "ngo_dao_dan", qty: 1 }] },
   }),
 ];
+
+/** One quest per hướng tu, given by that path's own NPC: from Trúc Cơ, hand in materials and receive the path item. Reopens when the path is dropped. */
+const pathQuest = (path: PathId, seq: number, giver: string, titleVi: string, descVi: string): QuestDef => ({
+  id: `path_${path}`,
+  chain: "path",
+  seq,
+  giver,
+  titleVi,
+  descVi,
+  enabled: true,
+  requires: null,
+  minRealm: 1,
+  path,
+  objective: { kind: "collect", item: "linh_thao", qty: 10, also: [{ item: "thu_cot", qty: 5 }] },
+  rewards: { items: [{ item: PATHS[path].item, qty: 1 }] },
+});
+
+/** The hướng tu quests and the one-time breakthrough quest (placeholder values, like the newbie chain). */
+export const EXTRA_QUESTS: readonly QuestDef[] = [
+  pathQuest("kiem", 1, "path_kiem", "Nhập môn Kiếm tu", "Muốn bước vào con đường kiếm, hãy mang đến 10 Linh Thảo và 5 Thú Cốt làm lễ vật. Ta sẽ trao Kiếm Tu Lệnh."),
+  pathQuest("thuat", 2, "path_thuat", "Nhập môn Thuật tu", "Thuật pháp cần nguyên liệu để luyện bùa chú. Mang đến 10 Linh Thảo và 5 Thú Cốt, ta sẽ trao Thuật Tu Lệnh."),
+  pathQuest("dan", 3, "path_dan", "Nhập môn Đan tu", "Luyện đan khởi đầu từ dược liệu. Mang đến 10 Linh Thảo và 5 Thú Cốt, ta sẽ trao Đan Tu Lệnh."),
+  {
+    id: "breakthrough_1",
+    chain: "breakthrough",
+    seq: 1,
+    giver: "elder",
+    titleVi: "Đan Đột Phá Trúc Cơ",
+    descVi: "Đột phá lên Trúc Cơ cần Đan Đột Phá. Mang đến 20 Linh Thảo, 10 Thú Cốt và 3 Yêu Đan, ta sẽ luyện cho con một viên. Chỉ làm được một lần.",
+    enabled: true,
+    requires: "newbie_6",
+    objective: { kind: "collect", item: "linh_thao", qty: 20, also: [{ item: "thu_cot", qty: 10 }, { item: "yeu_dan", qty: 3 }] },
+    rewards: { items: [{ item: BREAKTHROUGHS[0]?.pill ?? "", qty: 1 }] },
+  },
+];
+
+/** Everything the server seeds into an empty catalogue, in order. */
+export const SEED_QUESTS: readonly QuestDef[] = [...DEFAULT_QUESTS, ...EXTRA_QUESTS];

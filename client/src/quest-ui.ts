@@ -1,5 +1,6 @@
 import {
   REALMS,
+  collectItems,
   getItemDef,
   objectiveTarget,
   questStatus,
@@ -49,7 +50,7 @@ export function objectiveText(o: QuestObjective): string {
     case "kill":
       return vi.quests.objective.kill(o.count, o.map ? (vi.maps[o.map] ?? o.map) : null, o.rare === true);
     case "collect":
-      return vi.quests.objective.collect(o.qty, nameOf(o.item));
+      return vi.quests.objective.collect(collectItems(o).map((c) => `${c.qty} ${nameOf(c.item)}`).join(", "));
     case "reach":
       return vi.quests.objective.reach(REALMS[o.realm]?.nameVi ?? "", o.stage);
   }
@@ -95,7 +96,10 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     const mine = states[def.id];
     if (o.kind === "kill") return { text: `${Math.min(mine?.progress ?? 0, o.count)}/${o.count}`, ready: (mine?.progress ?? 0) >= o.count };
     if (o.kind === "talk") return { text: (mine?.progress ?? 0) >= 1 ? vi.quests.talked : vi.quests.notTalked, ready: (mine?.progress ?? 0) >= 1 };
-    if (o.kind === "collect") return { text: `${Math.min(have(o.item), o.qty)}/${o.qty}`, ready: have(o.item) >= o.qty };
+    if (o.kind === "collect") {
+      const parts = collectItems(o);
+      return { text: parts.map((c) => `${Math.min(have(c.item), c.qty)}/${c.qty}`).join(" · "), ready: parts.every((c) => have(c.item) >= c.qty) };
+    }
     const atLeast = !!sheet && (sheet.realm > o.realm || (sheet.realm === o.realm && sheet.stage >= o.stage));
     return { text: sheet ? `${REALMS[sheet.realm]?.nameVi ?? ""} ${sheet.stage}` : "", ready: atLeast };
   }
@@ -137,6 +141,12 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
       } else if (status === "available") {
         const take = el("button", "eq-small", vi.quests.accept);
         take.onclick = () => send({ t: "quest_accept", npc, quest: def.id });
+        // Below the realm the quest asks for: say so and do not offer the button (the server refuses it anyway).
+        const tooLow = def.minRealm !== undefined && !!sheet && sheet.realm < def.minRealm;
+        if (tooLow) {
+          take.disabled = true;
+          card.append(el("div", "muted", vi.quests.needRealm(REALMS[def.minRealm ?? 0]?.nameVi ?? "")));
+        }
         card.append(take);
       } else {
         const m = measure(def);

@@ -1,6 +1,7 @@
 import {
-  DEFAULT_QUESTS,
   MAPS_NPC_IDS,
+  SEED_QUESTS,
+  collectItems,
   applyBag,
   applyExp,
   objectiveTarget,
@@ -33,7 +34,7 @@ let seeded = false;
 export async function loadQuestCatalog(db: D1Database): Promise<{ defs: QuestDef[]; version: number }> {
   if (!seeded) {
     await db.batch(
-      DEFAULT_QUESTS.map((q) =>
+      SEED_QUESTS.map((q) =>
         db.prepare("INSERT OR IGNORE INTO quests (id, chain, seq, enabled, def, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(q.id, q.chain, q.seq, q.enabled ? 1 : 0, JSON.stringify(q), Date.now()),
       ),
     );
@@ -131,10 +132,12 @@ export function planTurnIn(def: QuestDef, bag: BagContents, tabs: number, charac
   let state = bag;
   const ops: BagOp[] = [];
   if (def.objective.kind === "collect") {
-    const out = planConsume(state, tabs, def.objective.item, def.objective.qty);
-    if (!out) return { ok: false, reason: "not_ready" };
-    ops.push(...out);
-    state = applyBag(state, out);
+    for (const c of collectItems(def.objective)) {
+      const out = planConsume(state, tabs, c.item, c.qty);
+      if (!out) return { ok: false, reason: "not_ready" };
+      ops.push(...out);
+      state = applyBag(state, out);
+    }
   }
   for (const r of def.rewards.items ?? []) {
     const add = planAdd(state.items, tabs, r.item, r.qty, newId, undefined);
@@ -153,6 +156,22 @@ export function planTurnIn(def: QuestDef, bag: BagContents, tabs: number, charac
 
 /** The target progress a counted objective must have reached at turn-in. */
 export const requiredProgress = (def: QuestDef): number => objectiveTarget(def.objective);
+
+/** The grant key of a path item (shared with the claim button and cleared when the path is dropped). */
+export const pathItemKey = (characterId: string, path: string): string => `path_item:${characterId}:${path}`;
+
+/** Whether the path item of this character was already given (the quest then cannot be handed in). */
+export async function pathItemGiven(db: D1Database, characterId: string, path: string): Promise<boolean> {
+  return (await db.prepare("SELECT 1 AS ok FROM item_grants WHERE key = ?").bind(pathItemKey(characterId, path)).first<{ ok: number }>()) !== null;
+}
+
+/** Opens the path quests of a dropped path again: the progress rows and the one-time reward keys go (no ledger entry exists for them). */
+export function resetQuestStatements(db: D1Database, characterId: string, quests: readonly QuestDef[]): D1PreparedStatement[] {
+  return quests.flatMap((q) => [
+    db.prepare("DELETE FROM character_quests WHERE character_id = ? AND quest_id = ?").bind(characterId, q.id),
+    db.prepare("DELETE FROM item_grants WHERE key = ?").bind(questGrantKey(characterId, q.id)),
+  ]);
+}
 
 export type TurnInResult = { status: "done"; balance: number | null } | { status: "duplicate" } | { status: "stale" };
 
@@ -173,6 +192,9 @@ export async function commitTurnIn(
   const needed = counted ? requiredProgress(def) : 0;
   const statements: D1PreparedStatement[] = [
     db.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, ?)").bind(key, now),
+    // A path quest shares the one-time key of the path item: a path item already had (the old claim button, an earlier run
+    // that was not reset) makes the whole batch fail instead of handing out a second one.
+    ...(def.path ? [db.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, ?)").bind(pathItemKey(characterId, def.path), now)] : []),
     // The quest must still be active (and, for a counted objective, have the progress the room saw).
     db
       .prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM character_quests WHERE character_id = ? AND quest_id = ? AND state = 'active' AND progress >= ?)")

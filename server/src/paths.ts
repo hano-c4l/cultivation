@@ -36,7 +36,7 @@ export function rearrangeStatements(
   characterId: string,
   before: PathState,
   after: PathState,
-  opts: { dropped?: PathId; hotbar?: readonly string[]; now: number },
+  opts: { dropped?: PathId; hotbar?: readonly string[]; extra?: readonly D1PreparedStatement[]; now: number },
 ): D1PreparedStatement[] {
   const out = [
     guardPaths(db, characterId, before),
@@ -50,6 +50,7 @@ export function rearrangeStatements(
     out.push(db.prepare("DELETE FROM item_grants WHERE key = ?").bind(`path_item:${characterId}:${opts.dropped}`));
   }
   if (opts.hotbar) out.push(db.prepare("UPDATE characters SET hotbar = ? WHERE id = ?").bind(JSON.stringify(opts.hotbar), characterId));
+  out.push(...(opts.extra ?? []));
   return out;
 }
 

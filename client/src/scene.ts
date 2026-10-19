@@ -225,6 +225,7 @@ export class GameScene extends Phaser.Scene {
       swapPath: (path) => this.net.send({ t: "path_swap", path }),
       dropPath: (path) => this.net.send({ t: "path_drop", path }),
       claimPath: (path) => this.net.send({ t: "path_claim", path }),
+      isAdmin: this.registry.get("isAdmin") === true,
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
 

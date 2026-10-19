@@ -227,6 +227,7 @@ function buildTown(): MapData {
   g.rect(33, 20, 33.3, 28.5, false); // thin fence, not tile aligned
   g.disc(23.5, 17.5, 0.4, false); // the merchant's stall: nobody stands on the NPC
   g.disc(16.5, 17.5, 0.4, false); // the quest giver
+  for (const x of [22.5, 25.5, 28.5]) g.disc(x, 24.5, 0.4, false); // the three hướng tu masters
   g.wall();
   g.rect(18, 33, 23, 39, true); // lane to the south gate
   return {
@@ -241,6 +242,9 @@ function buildTown(): MapData {
     npcs: [
       { id: "merchant", kind: "merchant", x: 23.5, y: 17.5 },
       { id: "elder", kind: "quest", x: 16.5, y: 17.5 },
+      { id: "path_kiem", kind: "quest", x: 22.5, y: 24.5 },
+      { id: "path_thuat", kind: "quest", x: 25.5, y: 24.5 },
+      { id: "path_dan", kind: "quest", x: 28.5, y: 24.5 },
     ],
   };
 }
