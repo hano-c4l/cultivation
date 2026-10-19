@@ -195,6 +195,8 @@ export type SimEvent =
   | { t: "hp"; playerId: string; hp: number; maxHp: number }
   /** EXP changed after a kill; `stagesGained > 0` means points changed and the room must persist right away. */
   | { t: "progress"; playerId: string; stagesGained: number }
+  /** A monster died and `playerId` (who takes its reward) gets the credit: quests count it. `rare` is any rank above normal. */
+  | { t: "kill"; playerId: string; rare: boolean }
   /** The kill's EXP, which the pháp bảo bản mệnh of the winner also receives (its own stream, no effect on the character's EXP). */
   | { t: "refine"; playerId: string; gain: number }
   /** MP changed (spent, or settled when hit); the client regenerates it from the snapshot. */
@@ -961,6 +963,7 @@ export class CombatSim {
         : this.players.get(topContributor(m.damage, m.maxHp, p.id, (id) => !!this.players.get(id) && !this.players.get(id)!.dead) ?? p.id) ?? p;
     const { stagesGained, gain } = this.reward(winner, m);
     events.push({ t: "progress", playerId: winner.id, stagesGained });
+    events.push({ t: "kill", playerId: winner.id, rare: m.rank !== "normal" });
     events.push({ t: "refine", playerId: winner.id, gain });
     const drop = rollLinhThachDrop(levelIndex(this.realm, m.tier), m.rank, this.rand(), this.rand());
     if (drop > 0) events.push({ t: "drop", playerId: winner.id, amount: drop });

@@ -88,6 +88,20 @@
       #bag-btn { position: fixed; right: 12px; top: 172px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #bag-btn.alert { color: #ff5252; font-weight: 600; }
+      #quest-panel[hidden], #quest-tracker[hidden] { display: none; }
+      #quest-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
+        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
+        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #quest-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
+      #quest-panel button:disabled { opacity: 0.45; cursor: default; }
+      #quest-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #quest-panel .eq-head b { flex: 1; font-size: 15px; }
+      #quest-panel .muted { opacity: 0.65; font-size: 12px; margin-top: 4px; }
+      #quest-panel .quest-card { border: 1px solid #3a4560; border-radius: 6px; padding: 6px 8px; margin-top: 6px; } #quest-panel .quest-card.locked { opacity: 0.55; } #quest-panel .quest-card.active { border-color: #d6a94b; }
+      #quest-panel .quest-title { font-weight: 700; color: #ffe08a; } #quest-panel .quest-line { margin-top: 3px; } #quest-panel .quest-card button { margin-top: 6px; }
+      #quest-panel .shop-flash { margin: 4px 0; padding: 5px 8px; border-radius: 6px; background: rgba(60, 160, 110, 0.25); color: #9be8c0; }
+      #quest-tracker { position: fixed; left: 10px; top: 160px; max-width: min(280px, calc(100vw - 20px)); padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.5); color: #e8e4d8;
+        font: 12px/1.35 "Be Vietnam Pro", system-ui, sans-serif; z-index: 4; pointer-events: none; }
+      #quest-tracker .qt-line.ready { color: #9be8c0; } #quest-tracker b { color: #ffe08a; }
       #shop-panel[hidden] { display: none; }
       #shop-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
         overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
