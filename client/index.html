@@ -114,15 +114,16 @@
       #quest-panel .quest-card { border: 1px solid #3a4560; border-radius: 6px; padding: 6px 8px; margin-top: 6px; } #quest-panel .quest-card.locked { opacity: 0.55; } #quest-panel .quest-card.active { border-color: #d6a94b; }
       #quest-panel .quest-title { font-weight: 700; color: #ffe08a; } #quest-panel .quest-line { margin-top: 3px; } #quest-panel .quest-card button { margin-top: 6px; }
       #quest-panel .shop-flash { margin: 4px 0; padding: 5px 8px; border-radius: 6px; background: rgba(60, 160, 110, 0.25); color: #9be8c0; }
-      #quest-tracker { position: fixed; left: 10px; top: 160px; max-width: min(280px, calc(100vw - 20px)); padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.5); color: #e8e4d8;
+      #quest-tracker { margin-top: 6px; max-width: 100%; box-sizing: border-box; padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.5); color: #e8e4d8;
         font: 12px/1.35 "Be Vietnam Pro", system-ui, sans-serif; z-index: 4; pointer-events: none; }
       #quest-tracker .qt-line { display: flex; align-items: flex-start; gap: 6px; } #quest-tracker .qt-text { flex: 1; }
       #quest-tracker .qt-x { pointer-events: auto; border: 0; background: transparent; color: #e8e4d8; opacity: 0.6; font-size: 16px; line-height: 1; padding: 0 2px; cursor: pointer; } #quest-tracker .qt-x:hover { opacity: 1; color: #ff8a80; }
       #quest-tracker .qt-line.ready { color: #9be8c0; } #quest-tracker b { color: #ffe08a; }
-      #pk-box { position: fixed; right: 12px; top: 252px; width: 84px; text-align: center; z-index: 5; }
-      #pk-btn { width: 100%; padding: 6px 8px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
-      #pk-btn.on { background: #8a5a2b; color: #fff; font-weight: 600; } #pk-btn.slaughter { background: #b3261e; color: #fff; font-weight: 600; } #pk-btn.safe { opacity: 0.6; }
-      #pk-box .pk-scores { margin-top: 3px; font: 11px/1.3 "Be Vietnam Pro", system-ui, sans-serif; color: #ffd0cc; text-shadow: 0 0 3px #000; }
+      #pk-row[hidden] { display: none; }
+      #pk-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; pointer-events: auto; }
+      #pk-row .pk-scores { flex: 1; min-width: 0; font: 11px/1.3 "Be Vietnam Pro", system-ui, sans-serif; color: #ffd0cc; text-shadow: 0 0 3px #000; }
+      #pk-btn { flex: none; padding: 2px 7px; min-height: 22px; border-radius: 6px; border: 0; background: rgba(0, 0, 0, 0.3); color: #b9b4a6; font: 700 12px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+      #pk-btn.on { background: #000; color: #c68642; } #pk-btn.slaughter { background: #b3261e; color: #fff; } #pk-btn.safe { opacity: 0.6; }
       #shop-panel[hidden] { display: none; }
       #shop-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
         overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
@@ -290,7 +291,7 @@
       @media (max-width: 1200px) {
         #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout { padding: 4px 8px; font-size: 12px; }
         #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
-        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #pk-box { top: 288px !important; }
+        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; }
       }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;
@@ -303,7 +304,7 @@
     <div id="game"></div>
     <div id="auth" hidden></div>
     <div id="hud">Đang tải…</div>
-    <div id="vitals-wrap"><div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div></div><div id="buffs" hidden></div></div>
+    <div id="vitals-wrap"><div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div></div><div id="pk-row"></div><div id="buffs" hidden></div></div>
     <div id="topbar"><div id="wallet" hidden></div><button id="logout" hidden></button></div>
     <div id="chat" hidden>
       <div id="chat-tabs"></div>

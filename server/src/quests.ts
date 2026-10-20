@@ -6,6 +6,8 @@ import {
   applyBag,
   applyExp,
   objectiveTarget,
+  SHOP_RESET_OFFSET_MS,
+  shopDay,
   planAdd,
   planRemove,
   questGrantKey,
@@ -84,17 +86,28 @@ export function resetQuestCache(): void {
 
 export async function loadQuestProgress(db: D1Database, characterId: string): Promise<Record<string, QuestProgressView>> {
   const { results } = await db
-    .prepare("SELECT quest_id, state, progress, accepted_at FROM character_quests WHERE character_id = ?")
+    .prepare("SELECT quest_id, state, progress, accepted_at, done_at FROM character_quests WHERE character_id = ?")
     .bind(characterId)
-    .all<{ quest_id: string; state: "active" | "done"; progress: number; accepted_at: number }>();
+    .all<{ quest_id: string; state: "active" | "done"; progress: number; accepted_at: number; done_at: number | null }>();
   const out: Record<string, QuestProgressView> = {};
-  for (const r of results) out[r.quest_id] = { state: r.state, progress: r.progress, at: r.accepted_at };
+  for (const r of results) out[r.quest_id] = { state: r.state, progress: r.progress, at: r.accepted_at, ...(r.done_at !== null ? { done: r.done_at } : {}) };
   return out;
 }
 
 /** Takes a quest. The primary key throws when the character already has it (active or done). */
-export async function acceptQuest(db: D1Database, characterId: string, questId: string, now: number): Promise<void> {
-  await db.prepare("INSERT INTO character_quests (character_id, quest_id, state, progress, accepted_at) VALUES (?, ?, 'active', 0, ?)").bind(characterId, questId, now).run();
+export async function acceptQuest(db: D1Database, characterId: string, questId: string, now: number, daily = false): Promise<void> {
+  const insert = db.prepare("INSERT INTO character_quests (character_id, quest_id, state, progress, accepted_at) VALUES (?, ?, 'active', 0, ?)").bind(characterId, questId, now);
+  if (!daily) return void (await insert.run());
+  // A daily quest handed in on an earlier day is taken again: its finished row goes first (a row finished today, or one still active, stays and the insert fails).
+  await db.batch([
+    db.prepare("DELETE FROM character_quests WHERE character_id = ? AND quest_id = ? AND state = 'done' AND done_at < ?").bind(characterId, questId, shopDayStart(now)),
+    insert,
+  ]);
+}
+
+/** The first millisecond of the Vietnam day that contains `now` (00:00 UTC+7). */
+export function shopDayStart(now: number): number {
+  return shopDay(now) * 86_400_000 - SHOP_RESET_OFFSET_MS;
 }
 
 /** Gives up an active quest: its row goes, so the character is as if it never took it (a finished quest is never touched). True when a row was removed. */
@@ -180,7 +193,7 @@ export function resetQuestStatements(db: D1Database, characterId: string, quests
   ]);
 }
 
-export type TurnInResult = { status: "done"; balance: number | null } | { status: "duplicate" } | { status: "stale" };
+export type TurnInResult = { status: "done"; balance: number | null; congHien: number | null } | { status: "duplicate" } | { status: "stale" };
 
 /**
  * Commits the hand-in: grant key, guards, item and EXP changes, the closing of the quest and the Linh Thạch, in one batch.
@@ -195,7 +208,8 @@ export async function commitTurnIn(
   counted: boolean,
   now: number,
 ): Promise<TurnInResult> {
-  const key = questGrantKey(characterId, def.id);
+  // A daily quest's one-time key carries the day, so the next day's hand-in is a new grant.
+  const key = questGrantKey(characterId, def.id, def.repeat ? shopDay(now) : undefined);
   const needed = counted ? requiredProgress(def) : 0;
   const statements: D1PreparedStatement[] = [
     db.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, ?)").bind(key, now),
@@ -220,14 +234,31 @@ export async function commitTurnIn(
   statements.push(db.prepare("UPDATE character_quests SET state = 'done', done_at = ? WHERE character_id = ? AND quest_id = ? AND state = 'active'").bind(now, characterId, def.id));
   try {
     const linh = def.rewards.linhThach ?? 0;
-    if (linh > 0) {
-      // The ledger entry shares the key, so the two one-time guards agree; it goes through applyCurrencyDelta with everything else as `extra`.
-      const r = await applyCurrencyDelta(db, { characterId, currency: "linh_thach", delta: linh, reason: "quest", actor: "system", idempotencyKey: key }, statements);
+    const cong = def.rewards.congHien ?? 0;
+    // The first currency in the reward goes through applyCurrencyDelta (its ledger entry shares the key, so the two one-time guards
+    // agree) and the other one rides in the same batch as plain statements under its own key.
+    const second = (currency: "linh_thach" | "cong_hien", delta: number, ledgerKey: string) => [
+      db.prepare("INSERT INTO currency_ledger (character_id, currency, delta, reason, actor, idempotency_key, created_at) VALUES (?, ?, ?, 'quest', 'system', ?, ?)").bind(characterId, currency, delta, ledgerKey, now),
+      db.prepare("INSERT OR IGNORE INTO currency_balances (character_id, currency, balance) VALUES (?, ?, 0)").bind(characterId, currency),
+      db.prepare("UPDATE currency_balances SET balance = balance + ? WHERE character_id = ? AND currency = ?").bind(delta, characterId, currency),
+    ];
+    if (linh > 0 || cong > 0) {
+      const mainCurrency = linh > 0 ? "linh_thach" : "cong_hien";
+      const r = await applyCurrencyDelta(
+        db,
+        { characterId, currency: mainCurrency, delta: linh > 0 ? linh : cong, reason: "quest", actor: "system", idempotencyKey: key },
+        linh > 0 && cong > 0 ? [...statements, ...second("cong_hien", cong, `${key}:cong_hien`)] : statements,
+      );
       if (r.status === "duplicate") return { status: "duplicate" };
-      return { status: "done", balance: r.status === "applied" ? r.balance : null };
+      const balance = r.status === "applied" ? r.balance : null;
+      if (linh > 0 && cong > 0) {
+        const row = await db.prepare("SELECT balance FROM currency_balances WHERE character_id = ? AND currency = 'cong_hien'").bind(characterId).first<{ balance: number }>();
+        return { status: "done", balance, congHien: row?.balance ?? null };
+      }
+      return linh > 0 ? { status: "done", balance, congHien: null } : { status: "done", balance: null, congHien: balance };
     }
     await db.batch(statements);
-    return { status: "done", balance: null };
+    return { status: "done", balance: null, congHien: null };
   } catch (err) {
     const msg = String(err);
     if (msg.includes("item_grants")) return { status: "duplicate" };

@@ -88,6 +88,8 @@ export type ClientMessage =
   | { t: "skill_boost"; skill: string }
   /** Start a breakthrough with this many pills (the pills and the Linh Thạch are paid now). Moving, fighting or being hit before it ends makes it fail. */
   | { t: "bt_start"; pills: number }
+  /** GM only: take the breakthrough pill for the realm to break out of (as many times as wanted). */
+  | { t: "bt_claim" }
   /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
   | { t: "bt_cancel" }
   /** Take a path item (a placeholder for the NPC quest): one per path per character. */
@@ -216,7 +218,7 @@ export type ServerMessage =
   /** A kill ended the quarrel with this player: forget that they attacked you (the grey name). */
   | { t: "pk_clear"; id: string }
   /** The quests a giver has (all enabled ones plus any the character is on) and the character's progress on them. */
-  | { t: "quests"; npc: string; defs: QuestDef[]; states: Record<string, QuestProgressView> }
+  | { t: "quests"; npc: string; defs: QuestDef[]; states: Record<string, QuestProgressView>; need?: number }
   /** Every quest the character has taken (active and done) with its progress: sent on joining and after a quest is accepted, handed in or given up. */
   | { t: "quest_active"; defs: QuestDef[]; states: Record<string, QuestProgressView> }
   /** Progress of an active quest changed (a kill, or talking to the NPC). */
@@ -261,6 +263,7 @@ export type ServerMessage =
   | { t: "path_error"; reason: PathError }
   /** A path item was handed out. */
   | { t: "path_claimed"; path: PathId }
+  | { t: "bt_claimed"; item: string }
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
@@ -360,6 +363,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isInt(m.a) && isInt(m.b) && m.a >= 0 && m.b >= 0 && m.a < HOTBAR_SLOTS && m.b < HOTBAR_SLOTS && m.a !== m.b ? { t: "hotbar_swap", a: m.a, b: m.b } : null;
     case "use_type":
       return typeof m.type === "string" && /^[a-z0-9_.]{1,60}$/.test(m.type) ? { t: "use_type", type: m.type } : null;
+    case "bt_claim":
+      return { t: "bt_claim" };
     case "bt_start":
       return isInt(m.pills) && m.pills >= 1 && m.pills <= 9 ? { t: "bt_start", pills: m.pills } : null;
     case "bt_cancel":

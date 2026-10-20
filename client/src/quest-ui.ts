@@ -21,7 +21,7 @@ export interface QuestUi {
   close(): void;
   setSheet(sheet: CharacterSheet): void;
   /** The quests of a giver and the character's progress on every quest. */
-  setQuests(npc: string, defs: QuestDef[], states: Record<string, QuestProgressView>): void;
+  setQuests(npc: string, defs: QuestDef[], states: Record<string, QuestProgressView>, need?: number): void;
   /** Every quest the character has taken (active and done) with its progress: the quest window and the tracker. */
   setActive(defs: QuestDef[], states: Record<string, QuestProgressView>): void;
   progress(quest: string, progress: number): void;
@@ -61,6 +61,7 @@ export function objectiveText(o: QuestObjective): string {
 export function rewardText(r: QuestRewards): string {
   const parts: string[] = [];
   if (r.linhThach) parts.push(vi.quests.rewardLinh(r.linhThach));
+  if (r.congHien) parts.push(vi.quests.rewardCong(r.congHien));
   if (r.exp) parts.push(vi.quests.rewardExp(r.exp));
   for (const it of r.items ?? []) parts.push(`${nameOf(it.item)} × ${it.qty}`);
   return parts.length > 0 ? parts.join(", ") : vi.quests.noReward;
@@ -71,7 +72,7 @@ export function rewardText(r: QuestRewards): string {
  * quests as locked, available, active (with progress and a hand-in button once the objective is met) or done. The server
  * decides everything; the readiness shown here only mirrors the objective so the button is not offered too early.
  */
-export function initQuests(send: (msg: ClientMessage) => void, getBag: () => BagItem[]): QuestUi {
+export function initQuests(send: (msg: ClientMessage) => void, getBag: () => BagItem[], onReady: (title: string) => void = () => undefined): QuestUi {
   const panel = el("div");
   panel.id = "quest-panel";
   panel.hidden = true;
@@ -85,13 +86,19 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
   const log = el("div");
   log.id = "quest-log";
   log.hidden = true;
-  document.body.append(panel, tracker, toggle, log);
+  // The tracker lives under the buffs in the left column (inside #vitals-wrap), so it never overlaps the HP/MP box, the PK row or the buffs.
+  document.getElementById("vitals-wrap")!.append(tracker);
+  document.body.append(panel, toggle, log);
   registerWindow("quest-log", log, 4);
   registerWindow("quests", panel, 5);
 
   let npc = "";
   let sheet: CharacterSheet | null = null;
   let defs: QuestDef[] = [];
+  /** The window was just opened and the NPC has not answered yet (so the quests of the previous NPC are not shown). */
+  let loading = false;
+  /** The realm the NPC says is needed before it offers anything (a hướng tu master below Trúc Cơ). */
+  let needRealm: number | undefined;
   let states: Record<string, QuestProgressView> = {};
   let active: QuestDef[] = [];
   let flash = "";
@@ -100,6 +107,9 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
   let tracked: string[] = [];
   let trackedLoaded = false;
   let seen = new Set<string>();
+  /** Quests already announced as ready to hand in (so each is said once); `armed` is false until the first list arrives, which is only the join. */
+  let announced = new Set<string>();
+  let armed = false;
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
   const have = (type: string) => getBag().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0);
@@ -118,10 +128,10 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     return { text: sheet ? `${REALMS[sheet.realm]?.nameVi ?? ""} ${sheet.stage}` : "", ready: atLeast };
   }
 
-  const storageKey = "cultivation.quest-tracked";
+  const storageKey = () => `cultivation.quest-tracked.${sheet?.id ?? ""}`; // per character, in this browser
   function loadTracked(): string[] | null {
     try {
-      const raw = localStorage.getItem(storageKey);
+      const raw = localStorage.getItem(storageKey());
       const list = raw ? (JSON.parse(raw) as unknown) : null;
       return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string").slice(0, MAX_TRACKED) : null;
     } catch {
@@ -130,7 +140,7 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
   }
   function saveTracked(): void {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(tracked));
+      localStorage.setItem(storageKey(), JSON.stringify(tracked));
     } catch {
       // storage unavailable: the choice just lasts until the page is reloaded
     }
@@ -152,6 +162,14 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     }
     for (const id of [...seen]) if (!act.includes(id)) seen.delete(id);
     saveTracked();
+  }
+
+  /** Says once, when an active quest becomes ready to hand in; a quest that stops being ready (or is gone) can be announced again later. */
+  function checkReady(): void {
+    const now = new Set<string>();
+    for (const def of activeDefs()) if (measure(def).ready) now.add(def.id);
+    if (armed) for (const def of activeDefs()) if (now.has(def.id) && !announced.has(def.id)) onReady(def.titleVi);
+    announced = now;
   }
 
   function giveUp(def: QuestDef): void {
@@ -196,7 +214,7 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
       for (const def of list) {
         const m = measure(def);
         const card = el("div", "quest-card active");
-        card.append(el("div", "quest-title", def.titleVi), el("div", "muted", def.descVi), el("div", "quest-line", `${vi.quests.goal} ${objectiveText(def.objective)}`));
+        card.append(el("div", "quest-title", def.repeat ? `${def.titleVi} ${vi.quests.daily}` : def.titleVi), el("div", "muted", def.descVi), el("div", "quest-line", `${vi.quests.goal} ${objectiveText(def.objective)}`));
         card.append(el("div", "quest-line", `${vi.quests.progress} ${m.text}${m.ready ? " ✓" : ""}`), el("div", "quest-line", `${vi.quests.reward} ${rewardText(def.rewards)}`));
         card.append(el("div", "muted", vi.quests.turnInAt(vi.npcs[def.giver] ?? def.giver)));
         const row = el("div", "quest-actions");
@@ -211,7 +229,7 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
       if (list.length === 0) log.append(el("div", "muted", vi.quests.noneDone));
       for (const def of list) {
         const card = el("div", "quest-card done");
-        card.append(el("div", "quest-title", def.titleVi), el("div", "quest-line", `${vi.quests.reward} ${rewardText(def.rewards)}`));
+        card.append(el("div", "quest-title", def.repeat ? `${def.titleVi} ${vi.quests.daily}` : def.titleVi), el("div", "quest-line", `${vi.quests.reward} ${rewardText(def.rewards)}`));
         log.append(card);
       }
     }
@@ -246,11 +264,12 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     panel.append(head);
     if (flash) panel.append(el("div", "shop-flash", flash));
     // The server sends only what can be taken or is being done, the ones already taken first in the order they were taken.
-    if (defs.length === 0) panel.append(el("div", "muted", vi.quests.none));
+    if (loading) panel.append(el("div", "muted", vi.quests.loading));
+    else if (defs.length === 0) panel.append(el("div", "muted", needRealm !== undefined ? vi.quests.needPathRealm(REALMS[needRealm]?.nameVi ?? "") : vi.quests.none));
     for (const def of defs) {
       const status = questStatus(def, states);
       const card = el("div", `quest-card ${status}`);
-      card.append(el("div", "quest-title", def.titleVi), el("div", "muted", def.descVi), el("div", "quest-line", `${vi.quests.goal} ${objectiveText(def.objective)}`));
+      card.append(el("div", "quest-title", def.repeat ? `${def.titleVi} ${vi.quests.daily}` : def.titleVi), el("div", "muted", def.descVi), el("div", "quest-line", `${vi.quests.goal} ${objectiveText(def.objective)}`));
       card.append(el("div", "quest-line", `${vi.quests.reward} ${rewardText(def.rewards)}`));
       if (status === "locked") {
         const need = defs.find((d) => d.id === def.requires);
@@ -288,6 +307,9 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
   const ui: QuestUi = {
     open(id) {
       npc = id;
+      defs = [];
+      loading = true;
+      needRealm = undefined;
       flash = "";
       panel.hidden = false;
       send({ t: "npc_open", npc: id });
@@ -298,10 +320,13 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     },
     setSheet(s) {
       sheet = s;
+      checkReady();
       render();
     },
-    setQuests(id, d, s) {
+    setQuests(id, d, s, need) {
       if (id !== npc) return;
+      loading = false;
+      needRealm = need;
       defs = d;
       states = s;
       syncTracked();
@@ -312,14 +337,20 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
       states = s;
       toggle.hidden = false;
       syncTracked();
+      checkReady();
+      armed = true;
       render();
     },
     progress(quest, progress) {
       const mine = states[quest];
       if (mine) mine.progress = progress;
+      checkReady();
       render();
     },
-    refresh: render,
+    refresh() {
+      checkReady();
+      render();
+    },
     notify(text) {
       flash = text;
       clearTimeout(flashTimer);

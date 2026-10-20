@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { DEFAULT_QUESTS, EXTRA_QUESTS, SEED_QUESTS, planAdd, questStatus, type QuestDef } from "@game/shared";
+import { DAILY_QUESTS, DEFAULT_QUESTS, EXTRA_QUESTS, SEED_QUESTS, planAdd, questStatus, type QuestDef } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { commitBagOps, loadBag } from "./inventory";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestCatalog, loadQuestProgress, pathItemKey, planConsume, planTurnIn, resetQuestCache, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -43,7 +43,7 @@ describe("the catalogue", () => {
   it("is seeded with the default chain, valid, and later edits are kept", async () => {
     const first = await loadQuestCatalog(db);
     expect(first.defs.map((d) => d.id).sort()).toEqual(SEED_QUESTS.map((d) => d.id).sort());
-    expect(DEFAULT_QUESTS.length + EXTRA_QUESTS.length).toBe(SEED_QUESTS.length);
+    expect(DEFAULT_QUESTS.length + EXTRA_QUESTS.length + DAILY_QUESTS.length).toBe(SEED_QUESTS.length);
     raw.exec("UPDATE quests SET enabled = 0 WHERE id = 'newbie_3'");
     raw.exec("UPDATE quests SET def = json_set(def, '$.rewards.linhThach', 777) WHERE id = 'newbie_2'");
     resetQuestCache();
@@ -311,5 +311,68 @@ describe("path quests", () => {
     expect(((await turnIn(bt, false)) as { result: { status: string } }).result.status).toBe("duplicate");
     expect(count("bt_pill_1")).toBe(1);
     expect(count("linh_thao")).toBe(20);
+  });
+
+  it("the stored daily quests after migration 0024 are the ones in the seed", () => {
+    const sql = readFileSync(new URL("../migrations/0024_daily_quests.sql", import.meta.url), "utf8");
+    for (const q of DAILY_QUESTS) {
+      const line = sql.split(String.fromCharCode(10)).find((x) => x.includes(`{"id":"${q.id}"`));
+      expect(line, q.id).toBeDefined();
+      expect(JSON.parse(line!.slice(line!.indexOf("'{") + 1, line!.lastIndexOf("}'") + 1))).toEqual(JSON.parse(JSON.stringify(q)));
+    }
+    expect(sql).toMatch(/UPDATE config_versions SET version = version \+ 1/);
+  });
+});
+
+describe("Cống Hiến and daily quests", () => {
+  const wallet = (cur: string) => (raw.prepare("SELECT balance FROM currency_balances WHERE character_id = ? AND currency = ?").get(A, cur) as { balance: number } | undefined)?.balance ?? 0;
+  const DAY = 86_400_000;
+  const T0 = 20_000 * DAY + 3 * 3_600_000; // 10:00 Vietnam time on some day
+
+  it("a quest pays Linh Thạch and Cống Hiến together, each with its own ledger key", async () => {
+    const d = def("daily_herb");
+    await acceptQuest(db, A, d.id, T0, true);
+    await give("linh_thao", 10);
+    const bag = await loadBag(db, A);
+    const plan = planTurnIn(d, { items: bag.items, equipped: bag.equipped }, bag.tabs, character(), newId);
+    if (!plan.ok) throw new Error("plan");
+    const r = await commitTurnIn(db, A, d, plan, false, T0);
+    expect(r).toMatchObject({ status: "done", balance: 100, congHien: 8 });
+    expect(wallet("linh_thach")).toBe(100);
+    expect(wallet("cong_hien")).toBe(8);
+    expect((raw.prepare("SELECT COUNT(*) AS n FROM currency_ledger WHERE character_id = ? AND reason = 'quest'").get(A) as { n: number }).n).toBe(2);
+  });
+
+  it("a Cống Hiến-only reward works too", async () => {
+    const q: QuestDef = { ...def("daily_herb"), id: "cong_only", rewards: { congHien: 5 } };
+    raw.prepare("INSERT INTO character_quests (character_id, quest_id, state, progress, accepted_at) VALUES (?, 'cong_only', 'active', 0, 1)").run(A);
+    await give("linh_thao", 10);
+    const bag = await loadBag(db, A);
+    const plan = planTurnIn(q, { items: bag.items, equipped: bag.equipped }, bag.tabs, character(), newId);
+    if (!plan.ok) throw new Error("plan");
+    const r = await commitTurnIn(db, A, q, plan, false, T0);
+    expect(r).toMatchObject({ status: "done", balance: null, congHien: 5 });
+    expect(wallet("cong_hien")).toBe(5);
+  });
+
+  it("a daily quest is open again the next Vietnam day, and its reward is one-time per day", async () => {
+    const d = def("daily_herb");
+    raw.prepare("INSERT INTO character_quests (character_id, quest_id, state, progress, accepted_at, done_at) VALUES (?, 'newbie_3', 'done', 1, 0, 0)").run(A);
+    const finish = async (now: number) => {
+      await acceptQuest(db, A, d.id, now, true);
+      await give("linh_thao", 10);
+      const bag = await loadBag(db, A);
+      const plan = planTurnIn(d, { items: bag.items, equipped: bag.equipped }, bag.tabs, character(), newId);
+      if (!plan.ok) throw new Error("plan");
+      return commitTurnIn(db, A, d, plan, false, now);
+    };
+    expect((await finish(T0)).status).toBe("done");
+    const rows = await loadQuestProgress(db, A);
+    expect(questStatus(d, rows, T0 + 3_600_000)).toBe("done"); // later the same day
+    expect(questStatus(d, rows, T0 + DAY)).toBe("available"); // the next day
+    await expect(acceptQuest(db, A, d.id, T0 + 3_600_000, true)).rejects.toThrow(); // the same day: the finished row stays, so the insert fails
+    expect((await finish(T0 + DAY)).status).toBe("done");
+    expect(wallet("cong_hien")).toBe(16);
+    expect(count("linh_thao")).toBe(0);
   });
 });

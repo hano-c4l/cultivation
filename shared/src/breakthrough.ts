@@ -47,7 +47,7 @@ export function getBreakthrough(fromRealm: number): BreakthroughDef | undefined 
 }
 
 /** Why a breakthrough did not start or did not finish. */
-export type BreakthroughError = "not_ready" | "max_realm" | "pills" | "no_pill" | "funds" | "busy" | "moving" | "dead" | "invalid";
+export type BreakthroughError = "not_ready" | "max_realm" | "pills" | "no_pill" | "funds" | "busy" | "moving" | "dead" | "invalid" | "admin" | "full";
 export type BreakthroughEnd = "timeout" | "hit" | "moved" | "cancel" | "left" | "died";
 
 export interface BreakthroughReady {

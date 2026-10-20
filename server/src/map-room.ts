@@ -622,6 +622,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleBreakthroughStart(ws, state, msg.pills);
       case "bt_cancel":
         return this.interruptBreakthrough(state.id, "cancel");
+      case "bt_claim":
+        return this.handleBreakthroughClaim(ws, state);
       case "path_claim":
         return this.handlePathClaim(ws, state, msg.path);
       case "path_choose":
@@ -1606,17 +1608,27 @@ export class MapRoom extends DurableObject<Env> {
   /** What an NPC offers: its quests (enabled ones, plus any the character is already on) and the character's progress. */
   private async sendQuests(ws: WebSocket, id: string, npcId: string): Promise<void> {
     const [defs, rows] = await Promise.all([getQuestCatalog(this.env.DB), this.getQuestRows(id)]);
-    const owned = await this.ownedPaths(id);
-    // Only what can be taken or is being done: no finished quests, no locked ones, and no path quest for a path the character already has.
+    const row = await getCharacterById(this.env.DB, id);
+    const p = parsePaths(row?.paths);
+    const owned = new Set<string>([...(p.main ? [p.main] : []), ...p.subs]);
+    const realm = this.sim?.getPlayer(id)?.realm ?? row?.realm ?? 0;
+    // Only what can be taken or is being done: no finished quests, no locked ones, no path quest for a path the character already has,
+    // and no path quest below the realm it needs (the NPC then says which realm that is).
+    let need: number | undefined;
     const offered = (d: QuestDef) => {
       const status = questStatus(d, rows);
       if (status === "active") return true;
-      return status === "available" && d.enabled && !(d.path && owned.has(d.path));
+      if (status !== "available" || !d.enabled || (d.path && owned.has(d.path))) return false;
+      if (d.path && d.minRealm !== undefined && realm < d.minRealm) {
+        need = Math.max(need ?? 0, d.minRealm);
+        return false;
+      }
+      return true;
     };
     const mine = defs.filter((d) => d.giver === npcId && offered(d));
     // Quests already taken come first in the order they were taken, then the ones that can be taken in catalogue order.
-    mine.sort((a, b) => (rows[a.id] ? 0 : 1) - (rows[b.id] ? 0 : 1) || (rows[a.id]?.at ?? 0) - (rows[b.id]?.at ?? 0));
-    this.send(ws, { t: "quests", npc: npcId, defs: mine, states: rows });
+    mine.sort((a, b) => (rows[a.id] ? 0 : 1) - (rows[b.id] ? 0 : 1) || (rows[a.id]?.at ?? 0) - (rows[b.id]?.at ?? 0) || Number(a.chain === "daily") - Number(b.chain === "daily"));
+    this.send(ws, { t: "quests", npc: npcId, defs: mine, states: rows, ...(need !== undefined && mine.length === 0 ? { need } : {}) });
   }
 
   /** Every quest the character has taken (active and done), for the quest window and the tracker. */
@@ -1677,7 +1689,9 @@ export class MapRoom extends DurableObject<Env> {
 
   private async questAccept(ws: WebSocket, id: string, def: QuestDef): Promise<void> {
     const rows = await this.getQuestRows(id);
-    if (rows[def.id]) return this.send(ws, { t: "quest_error", reason: "already" });
+    const now = Date.now();
+    // A daily quest finished on an earlier day is open again (questStatus knows); anything else the character has is "already".
+    if (rows[def.id] && questStatus(def, rows, now) !== "available") return this.send(ws, { t: "quest_error", reason: "already" });
     if (!def.enabled) return this.send(ws, { t: "quest_error", reason: "invalid" });
     if (questStatus(def, rows) === "locked") return this.send(ws, { t: "quest_error", reason: "locked" });
     if (def.minRealm !== undefined) {
@@ -1688,14 +1702,14 @@ export class MapRoom extends DurableObject<Env> {
     if (def.path && (await this.ownedPaths(id)).has(def.path)) return this.send(ws, { t: "quest_error", reason: "owned" });
     if (givesPathItem(def) && def.path && (await pathItemGiven(this.env.DB, id, def.path))) return this.send(ws, { t: "quest_error", reason: "claimed" });
     try {
-      await acceptQuest(this.env.DB, id, def.id, Date.now());
+      await acceptQuest(this.env.DB, id, def.id, now, def.repeat === "daily");
     } catch (err) {
       // The primary key says it was taken meanwhile (another socket, a retry): reload and show what is there.
       if (!String(err).includes("character_quests")) console.error("quest accept failed", id, err);
       this.questRows.delete(id);
       return this.send(ws, { t: "quest_error", reason: String(err).includes("character_quests") ? "already" : "busy" });
     }
-    rows[def.id] = { state: "active", progress: 0 };
+    rows[def.id] = { state: "active", progress: 0, at: now };
     await this.sendQuests(ws, id, def.giver);
     await this.sendQuestActive(id);
   }
@@ -1735,8 +1749,9 @@ export class MapRoom extends DurableObject<Env> {
       this.bags.set(id, after);
       this.sendBagDelta(id, bag, after);
       if (r.balance !== null) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance, gained: def.rewards.linhThach });
+      if (r.congHien !== null) this.sendToCharacter(id, { t: "wallet", currency: "cong_hien", balance: r.congHien, gained: def.rewards.congHien });
       if (plan.exp) this.sendToCharacter(id, { t: "stats", character: toCharacterSheet({ ...row, stage: plan.exp.to.stage, exp: plan.exp.to.exp, potential_points: row.potential_points + plan.exp.to.points }) });
-      rows[def.id] = { state: "done", progress: mine.progress };
+      rows[def.id] = { state: "done", progress: mine.progress, at: mine.at, done: Date.now() };
       this.sendToCharacter(id, { t: "quest_done", quest: def.id });
       await this.sendQuests(ws, id, def.giver);
       await this.sendQuestActive(id);
@@ -2552,8 +2567,8 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /**
-   * A placeholder for the NPC quest that will hand out path items: a Trúc Cơ character may take each path's item once. The grant
-   * key is stored (item_grants) so it cannot be repeated, and the quest can reuse it. A full bag refuses it.
+   * GM button: an admin at Trúc Cơ or above may take a path item as many times as wanted (no grant key, so it neither limits the
+   * button nor blocks the NPC quest). A full bag refuses it.
    */
   private handlePathClaim(ws: WebSocket, state: PlayerState, path: PathId): void {
     // The temporary claim button is for admins only now (players get the item from the path's NPC quest). Checked here, not just hidden.
@@ -2575,11 +2590,33 @@ export class MapRoom extends DurableObject<Env> {
           const ops = planAdd(bag.items, bag.tabs, PATHS[path].item, 1, () => crypto.randomUUID());
           return ops ? { ops } : null;
         },
-        `path_item:${id}:${path}`,
       );
-      if (!res.ok) return this.pathError(ws, res.reason === "duplicate" ? "claimed" : res.reason === "invalid" ? "bag_full" : "busy");
+      if (!res.ok) return this.pathError(ws, res.reason === "invalid" ? "bag_full" : "busy");
       this.sendBagDelta(id, res.before, res.after);
       this.send(ws, { t: "path_claimed", path });
+    });
+  }
+
+  /** GM button: the breakthrough pill for the realm the character is in, as many times as wanted. Admin only (checked here). */
+  private handleBreakthroughClaim(ws: WebSocket, state: PlayerState): void {
+    if (!state.admin) return this.btError(ws, "admin");
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.btError(ws, "busy");
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      const row = await getCharacterById(this.env.DB, id);
+      if (!row) return;
+      const def = getBreakthrough(this.sim?.getPlayer(id)?.realm ?? row.realm);
+      if (!def) return this.btError(ws, "max_realm");
+      const res = await this.mutateBag(id, (bag) => {
+        const ops = planAdd(bag.items, bag.tabs, def.pill, 1, () => crypto.randomUUID());
+        return ops ? { ops } : null;
+      });
+      if (!res.ok) return this.btError(ws, res.reason === "invalid" ? "full" : "busy");
+      this.sendBagDelta(id, res.before, res.after);
+      this.send(ws, { t: "bt_claimed", item: def.pill });
     });
   }
 

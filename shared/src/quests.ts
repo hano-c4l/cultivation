@@ -2,6 +2,7 @@ import { BREAKTHROUGHS } from "./breakthrough";
 import { isItemId } from "./items";
 import { PATHS, isPathId, type PathId } from "./paths";
 import { REALMS, STAGES_PER_REALM } from "./progression-data";
+import { shopDay } from "./shop";
 
 /**
  * Quests (phase 2e-B). A quest is DATA: every field is a plain value so the whole catalogue can live in D1 and be edited
@@ -22,6 +23,8 @@ export type QuestObjective =
 export interface QuestRewards {
   /** Linh Thạch. */
   linhThach?: number;
+  /** Cống Hiến (the locked currency for sects). */
+  congHien?: number;
   /** Raw EXP, applied like EXP from a kill (stage-ups carry over; at stage 9 the bar overflows by at most 100% and the rest is lost). */
   exp?: number;
   items?: Array<{ item: string; qty: number }>;
@@ -50,6 +53,11 @@ export interface QuestDef {
    * as a ledger key and the ledger is append-only).
    */
   path?: PathId;
+  /**
+   * A daily quest: once handed in it can be taken again from 00:00 Vietnam time the next day, and its reward is one-time per day
+   * (the grant and ledger keys carry the day number).
+   */
+  repeat?: "daily";
   objective: QuestObjective;
   rewards: QuestRewards;
 }
@@ -61,6 +69,8 @@ export type QuestStatus = "locked" | "available" | "active" | "done";
 export interface QuestProgressView {
   state: QuestState;
   progress: number;
+  /** When a finished quest was handed in (ms): a daily quest handed in on an earlier day can be taken again. */
+  done?: number;
   /** When it was accepted (ms). Orders the lists by the order the quests were taken. */
   at?: number;
 }
@@ -85,10 +95,16 @@ export function killCounts(o: QuestObjective, mapId: string, rare: boolean): boo
   return o.kind === "kill" && (o.map === undefined || o.map === mapId) && (!o.rare || rare);
 }
 
+/** Whether a finished daily quest was handed in on an earlier (Vietnam) day than `now`, so it can be taken again. */
+export function isStaleDaily(def: QuestDef, mine: QuestProgressView, now: number): boolean {
+  return def.repeat === "daily" && mine.state === "done" && shopDay(mine.done ?? 0) < shopDay(now);
+}
+
 /** The status of a quest for a character, from its progress rows and the set of finished quests. */
-export function questStatus(def: QuestDef, progress: Readonly<Record<string, QuestProgressView>>): QuestStatus {
+export function questStatus(def: QuestDef, progress: Readonly<Record<string, QuestProgressView>>, now = Date.now()): QuestStatus {
   const mine = progress[def.id];
-  if (mine) return mine.state;
+  // A daily quest handed in on an earlier day is open again.
+  if (mine && !isStaleDaily(def, mine, now)) return mine.state;
   if (def.requires && progress[def.requires]?.state !== "done") return "locked";
   return "available";
 }
@@ -133,12 +149,14 @@ export function validateQuests(list: readonly QuestDef[], npcs: ReadonlySet<stri
       problems.push(`${at}: bad realm or stage`);
     else if (!["talk", "kill", "collect", "reach"].includes(o.kind)) problems.push(`${at}: unknown objective`);
     if (q.minRealm !== undefined && !(Number.isInteger(q.minRealm) && q.minRealm >= 0 && q.minRealm < REALMS.length)) problems.push(`${at}: bad minimum realm`);
+    if (q.repeat !== undefined && (q.repeat !== "daily" || q.path !== undefined)) problems.push(`${at}: bad repeat`);
     if (q.path !== undefined) {
       if (!isPathId(q.path)) problems.push(`${at}: unknown path ${String(q.path)}`);
-      if (q.rewards.linhThach) problems.push(`${at}: a path quest cannot pay Linh Thạch`);
+      if (q.rewards.linhThach || q.rewards.congHien) problems.push(`${at}: a path quest cannot pay Linh Thạch or Cống Hiến`);
     }
     const r = q.rewards;
     if (r.linhThach !== undefined && !POSITIVE_INT(r.linhThach)) problems.push(`${at}: bad Linh Thạch reward`);
+    if (r.congHien !== undefined && !POSITIVE_INT(r.congHien)) problems.push(`${at}: bad Cống Hiến reward`);
     if (r.exp !== undefined && !POSITIVE_INT(r.exp)) problems.push(`${at}: bad EXP reward`);
     for (const it of r.items ?? []) if (!isItemId(it.item) || !POSITIVE_INT(it.qty) || it.qty > 9999) problems.push(`${at}: bad reward item ${it.item}`);
     seen.add(q.id);
@@ -153,7 +171,7 @@ export function validateQuests(list: readonly QuestDef[], npcs: ReadonlySet<stri
 
 /** Whether the reward adds anything at all (a quest with an empty reward is allowed: the turn-in then only closes it). */
 export function hasRewards(r: QuestRewards): boolean {
-  return !!(r.linhThach || r.exp || (r.items && r.items.length > 0));
+  return !!(r.linhThach || r.congHien || r.exp || (r.items && r.items.length > 0));
 }
 
 /** Whether handing the quest in gives the path item (only the last step of a path's chain does). */
@@ -162,8 +180,8 @@ export function givesPathItem(def: QuestDef): boolean {
 }
 
 /** The grant key that makes a quest's reward one-time. It is also the idempotency key of its Linh Thạch entry. */
-export function questGrantKey(characterId: string, questId: string): string {
-  return `quest:${characterId}:${questId}`;
+export function questGrantKey(characterId: string, questId: string, day?: number): string {
+  return day === undefined ? `quest:${characterId}:${questId}` : `quest:${characterId}:${questId}:d${day}`;
 }
 
 const NEWBIE = (q: Omit<QuestDef, "chain" | "giver" | "enabled">): QuestDef => ({ ...q, chain: "newbie", giver: "elder", enabled: true });
@@ -270,5 +288,30 @@ export const EXTRA_QUESTS: readonly QuestDef[] = [
   },
 ];
 
+/**
+ * Daily quests of the Trưởng Lão (phase 2e-B PR3): they open after the first steps of the newbie chain and can be done once a day
+ * (Vietnam time). They pay Cống Hiến as well as Linh Thạch. Placeholder values.
+ */
+const daily = (id: string, seq: number, titleVi: string, descVi: string, requires: string, minRealm: number, objective: QuestObjective, rewards: QuestRewards): QuestDef => ({
+  id,
+  chain: "daily",
+  seq,
+  giver: "elder",
+  titleVi,
+  descVi,
+  enabled: true,
+  requires,
+  minRealm,
+  repeat: "daily",
+  objective,
+  rewards,
+});
+
+export const DAILY_QUESTS: readonly QuestDef[] = [
+  daily("daily_kill", 1, "Trừ yêu mỗi ngày", "Yêu thú ở Hắc Mộc Lâm không bao giờ hết. Mỗi ngày hạ 20 con để giữ an toàn cho thành.", "newbie_3", 0, { kind: "kill", count: 20, map: "forest" }, { linhThach: 150, congHien: 10, exp: 300 }),
+  daily("daily_herb", 2, "Dược liệu mỗi ngày", "Mỗi ngày mang cho ta 10 Linh Thảo để luyện đan cho đệ tử trong thành.", "newbie_3", 0, { kind: "collect", item: "linh_thao", qty: 10 }, { linhThach: 100, congHien: 8 }),
+  daily("daily_cave", 3, "Thám hiểm U Minh Động", "Từ Trúc Cơ trở đi, mỗi ngày hạ 20 con quái ở U Minh Động.", "newbie_6", 1, { kind: "kill", count: 20, map: "cave" }, { linhThach: 400, congHien: 20 }),
+];
+
 /** Everything the server seeds into an empty catalogue, in order. */
-export const SEED_QUESTS: readonly QuestDef[] = [...DEFAULT_QUESTS, ...EXTRA_QUESTS];
+export const SEED_QUESTS: readonly QuestDef[] = [...DEFAULT_QUESTS, ...EXTRA_QUESTS, ...DAILY_QUESTS];

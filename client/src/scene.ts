@@ -229,7 +229,7 @@ export class GameScene extends Phaser.Scene {
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
-    this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list());
+    this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
@@ -239,6 +239,7 @@ export class GameScene extends Phaser.Scene {
       swapPath: (path) => this.net.send({ t: "path_swap", path }),
       dropPath: (path) => this.net.send({ t: "path_drop", path }),
       claimPath: (path) => this.net.send({ t: "path_claim", path }),
+      claimBreakthroughPill: () => this.net.send({ t: "bt_claim" }),
       isAdmin: this.registry.get("isAdmin") === true,
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
@@ -557,6 +558,7 @@ export class GameScene extends Phaser.Scene {
         this.hotbar.setSkills(msg.skills);
         this.hotbar.setSlots(msg.hotbar);
         this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, MP_REGEN_PER_S);
+        this.hotbar.refresh(); // the slots were drawn before the MP was known (they dim what the MP cannot pay)
         this.buffs.set(msg.effects);
         for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
         this.refreshHud();
@@ -772,7 +774,7 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(vi.pk.errors[msg.reason] ?? vi.pk.errors.invalid!, "error");
         break;
       case "quests":
-        this.quests.setQuests(msg.npc, msg.defs, msg.states);
+        this.quests.setQuests(msg.npc, msg.defs, msg.states, msg.need);
         break;
       case "quest_active":
         this.quests.setActive(msg.defs, msg.states);
@@ -835,6 +837,9 @@ export class GameScene extends Phaser.Scene {
       case "path_error":
         this.chat.system(vi.paths.errors[msg.reason] ?? vi.paths.errors.invalid!, "error");
         break;
+      case "bt_claimed":
+        this.chat.system(vi.breakthrough.claimed(getItemDef(msg.item)?.nameVi ?? msg.item));
+        break;
       case "path_claimed":
         this.chat.system(vi.paths.claimed(PATHS[msg.path].itemNameVi));
         break;
@@ -881,7 +886,7 @@ export class GameScene extends Phaser.Scene {
         const label = this.add
           .text(0, 0, p.name, { fontFamily: FONT, fontSize: "13px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
           .setOrigin(0.5, 1);
-        const tag = this.add.text(0, 0, "· PK", { fontFamily: FONT, fontSize: "11px", fontStyle: "bold", color: "#c68642", stroke: "#000000", strokeThickness: 3 }).setOrigin(0, 1).setVisible(false);
+        const tag = this.add.text(0, 0, "PK", { fontFamily: FONT, fontSize: "11px", fontStyle: "bold", color: "#c68642", stroke: "#000000", strokeThickness: 3 }).setOrigin(0, 1).setVisible(false);
         actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, tag, pk: 0, sn: 0, snAt: 0 };
         this.actors.set(p.id, actor);
       }
@@ -1017,6 +1022,7 @@ export class GameScene extends Phaser.Scene {
   private recolorAll(): void {
     const now = performance.now();
     this.pk.tick();
+    this.hotbar.refresh(); // MP regenerates: slots it can pay for again stop being dim
     for (const a of this.actors.values()) this.recolorName(a, now);
   }
 

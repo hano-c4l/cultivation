@@ -95,12 +95,12 @@ check("without the item choosing is refused (no_item)", errorOf(r) === "no_item"
 r = await after(c, { t: "path_claim", path: "kiem" });
 check("the item is handed out", r.some((m) => m.t === "path_claimed" && m.path === "kiem") && r.some((m) => m.t === "inv"));
 r = await after(c, { t: "path_claim", path: "kiem" });
-check("only once per path (claimed)", errorOf(r) === "claimed");
+check("the GM button can be pressed again for another item", r.some((m) => m.t === "path_claimed" && m.path === "kiem") && errorOf(r) === undefined);
 
 r = await after(c, { t: "path_choose", path: "kiem" });
 const s1 = lastStats(c);
 check("the first path is the chủ tu", s1?.paths.main === "kiem" && s1.paths.subs.length === 0);
-check("the item was spent and the path skills arrived", sql(`SELECT COALESCE(SUM(qty), 0) AS q FROM item_instances WHERE owner_character_id = '${id}' AND item_type = 'path_item_kiem'`)[0].q === 0 && r.some((m) => m.t === "skills" && m.ids.includes("kt_kiem_khi") && m.ids.includes("kt_lien_hoan")));
+check("one item was spent (one left from the second claim) and the path skills arrived", sql(`SELECT COALESCE(SUM(qty), 0) AS q FROM item_instances WHERE owner_character_id = '${id}' AND item_type = 'path_item_kiem'`)[0].q === 1 && r.some((m) => m.t === "skills" && m.ids.includes("kt_kiem_khi") && m.ids.includes("kt_lien_hoan")));
 check("saved: row, text and skills", sql(`SELECT paths FROM characters WHERE id = '${id}'`)[0].paths === "kiem" && sql(`SELECT COUNT(*) AS n FROM character_skills WHERE character_id = '${id}' AND source = 'path'`)[0].n === 2);
 
 r = await after(c, { t: "path_claim", path: "dan" });
