@@ -118,8 +118,7 @@ check("a normal player cannot use the temporary claim button (the server refuses
 await walk(SPOT_DAN);
 r = await after(c, { t: "npc_open", npc: "path_dan" });
 const danList = r.find((m) => m.t === "quests");
-check("the đan master offers only the first đan step (the second is locked, so it is not listed)", danList?.defs.length === 1 && danList.defs[0].id === "path_dan_1", JSON.stringify(danList?.defs.map((d) => d.id)));
-check("the first đan step asks for herbs and pills", danList?.defs[0].objective.kind === "collect" && danList.defs[0].objective.item === "linh_thao" && danList.defs[0].objective.also[0].item === "hoi_huyet_dan");
+check("below Trúc Cơ the đan master offers nothing and says which realm is needed", danList?.defs.length === 0 && danList.need === 1, JSON.stringify(danList));
 r = await after(c, { t: "quest_accept", npc: "path_dan", quest: "path_dan_1" });
 check("below Trúc Cơ the quest cannot be taken", r.some((m) => m.t === "quest_error" && m.reason === "level") && !qrow("path_dan_1"));
 r = await after(c, { t: "quest_accept", npc: "path_dan", quest: "path_thuat" });
@@ -129,6 +128,8 @@ await sleep(800);
 sql(`UPDATE characters SET realm = 1, stage = 1, exp = 0 WHERE id = '${id}'`);
 c = await connect(reg.cookie);
 await walk(SPOT_DAN);
+r = await after(c, { t: "npc_open", npc: "path_dan" });
+check("at Trúc Cơ the master offers the first đan step (herbs and pills)", r.find((m) => m.t === "quests")?.defs.map((d) => d.id).join() === "path_dan_1" && r.find((m) => m.t === "quests").defs[0].objective.also[0].item === "hoi_huyet_dan");
 await after(c, { t: "quest_accept", npc: "path_dan", quest: "path_dan_1" });
 check("at Trúc Cơ the first step is taken", qrow("path_dan_1")?.state === "active");
 r = await after(c, { t: "quest_abandon", quest: "path_dan_1" });

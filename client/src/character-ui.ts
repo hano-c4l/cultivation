@@ -69,6 +69,8 @@ export interface CharacterPanelDeps {
   dropPath: (path: PathId) => void;
   /** Take the item of a hướng tu (a placeholder for the NPC quest). */
   claimPath: (path: PathId) => void;
+  /** GM only: take the breakthrough pill of the realm to break out of. */
+  claimBreakthroughPill: () => void;
   /** The account is an admin: only then is the temporary "claim path item" button shown (the server refuses it for everyone else). */
   isAdmin: boolean;
   /** How many of an item type the bag holds. */
@@ -403,6 +405,11 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       deps.startBreakthrough(chosenPills);
     };
     box.append(start);
+    if (deps.isAdmin) {
+      const gm = el("button", "cp-confirm", vi.breakthrough.claim);
+      gm.onclick = () => deps.claimBreakthroughPill();
+      box.append(gm);
+    }
     // Say why the button is off instead of leaving it grey.
     if (!ready.ok) box.append(el("div", "cp-bt-warn", vi.breakthrough.notReady));
     else if (have < chosenPills) box.append(el("div", "cp-bt-warn", vi.breakthrough.needPills(pillName, chosenPills, have)));

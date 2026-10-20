@@ -248,8 +248,9 @@ export const vi = {
     wornDown: "Trang bị bị hao mòn sau khi tử vong.",
   },
   pk: {
-    off: "PK: Tắt",
-    labels: ["PK: Tắt", "PK", "Đồ sát"] as readonly string[],
+    off: "PK",
+    labels: ["PK", "PK", "ĐS"] as readonly string[],
+    stateNames: ["Tắt", "PK", "Đồ sát"] as readonly string[],
     title: "Bấm để đổi chế độ. Tắt: không chủ động đánh người. PK: chỉ đánh người cũng đang PK hoặc Đồ sát. Đồ sát: đánh được tất cả. Ai đánh bạn thì bạn luôn đánh trả được. Dưới Luyện Khí tầng 5 không ai bị đánh và cũng không đánh được người.",
     safeTitle: "Trong thành không thể PvP.",
     scoresTitle: "Sát khí (thêm sát thương khi trên 200) · Sát nhân (đổi màu tên, giảm 5 mỗi phút online) · Anh hùng (thưởng linh lực và tỉ lệ rơi đồ từ 200)",
@@ -267,6 +268,8 @@ export const vi = {
     title: "Nhiệm vụ",
     none: "Hiện chưa có nhiệm vụ nào để nhận hay đang làm.",
     button: "Nhiệm vụ",
+    loading: "Đang tải...",
+    needPathRealm: (realm: string) => `Cần cảnh giới từ ${realm} trở lên để làm nhiệm vụ hướng tu.`,
     tabDoing: "Đang làm",
     tabDone: "Đã xong",
     noneDoing: "Bạn chưa nhận nhiệm vụ nào.",
@@ -290,6 +293,8 @@ export const vi = {
     doneList: (titles: string) => `Đã hoàn thành: ${titles}.`,
     rewardLinh: (n: number) => `${n} Linh Thạch`,
     rewardExp: (n: number) => `${n} tu vi`,
+    rewardCong: (n: number) => `${n} Cống Hiến`,
+    daily: "(hằng ngày)",
     objective: {
       talk: (npc: string) => `Nói chuyện với ${npc}`,
       kill: (n: number, map: string | null, rare: boolean) => `Hạ ${n} quái${rare ? " Tinh Anh hoặc Đại Yêu" : ""}${map ? ` ở ${map}` : ""}`,
@@ -408,6 +413,8 @@ export const vi = {
     } as Record<string, (n: number) => string>,
   },
   breakthrough: {
+    claim: "GM · Nhận vật phẩm đột phá",
+    claimed: (name: string) => `Đã nhận ${name}.`,
     notReady: "Cần đạt tầng 9 và đầy thanh tu vi để đột phá.",
     needPills: (name: string, need: number, have: number) => `Chưa đủ ${name}: cần ${need}, đang có ${have}. Đan này rơi từ quái ở bản đồ cùng cảnh giới của bạn (quái Tinh Anh, Đại Yêu dễ rơi hơn).`,
     title: "Đột phá",
@@ -443,6 +450,8 @@ export const vi = {
       moving: "Hãy đứng yên rồi mới bắt đầu đột phá.",
       dead: "Bạn đang tử vong.",
       invalid: "Thao tác không hợp lệ.",
+      admin: "Nút này chỉ dành cho admin.",
+      full: "Túi đồ đã đầy.",
     } as Record<string, string>,
   },
   character: {

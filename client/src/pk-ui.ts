@@ -27,13 +27,13 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
  * everything; this is only the button and the numbers.
  */
 export function initPk(send: (msg: ClientMessage) => void): PkUi {
-  const box = el("div");
-  box.id = "pk-box";
-  const button = el("button", undefined, vi.pk.off);
-  button.id = "pk-btn";
+  // Under the HP/MP box and above the buffs: the scores on the left, a small state button to their right.
+  const box = document.getElementById("pk-row")!;
   const scores = el("div", "pk-scores");
-  box.append(button, scores);
-  document.body.append(box);
+  const button = el("button", undefined, vi.pk.labels[0]);
+  button.id = "pk-btn";
+  box.replaceChildren(scores, button);
+  box.hidden = true; // shown once the server has told us the state (after joining)
 
   let mode: PkMode = 0;
   let chosen: PkMode = 0;
@@ -52,7 +52,9 @@ export function initPk(send: (msg: ClientMessage) => void): PkUi {
   return {
     set(next, satKhi, satNhan, hero) {
       mode = next;
+      box.hidden = false;
       button.textContent = vi.pk.labels[mode] ?? vi.pk.off;
+      button.dataset.state = vi.pk.stateNames[mode] ?? "";
       button.classList.toggle("on", mode === 1);
       button.classList.toggle("slaughter", mode === 2);
       have = { satKhi, satNhan, hero };
@@ -63,7 +65,7 @@ export function initPk(send: (msg: ClientMessage) => void): PkUi {
     mode: () => mode,
     chosen: () => chosen,
     setSafe(safe) {
-      button.title = safe ? vi.pk.safeTitle : vi.pk.title;
+      button.title = `${vi.pk.stateNames[mode] ?? ""} · ${safe ? vi.pk.safeTitle : vi.pk.title}`;
       button.classList.toggle("safe", safe);
     },
   };
