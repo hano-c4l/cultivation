@@ -119,6 +119,11 @@ export function expLostOnDeath(exp: number): number {
 }
 
 /** Valid monster instance id as sent by clients (m + digits). */
+/** A target of an attack or an attack skill: a monster ("m12") or, in PvP, another player (a character id, a UUID). */
+export function isCombatTargetId(value: unknown): value is string {
+  return isMonsterId(value) || (typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value));
+}
+
 export function isMonsterId(value: unknown): value is string {
   return typeof value === "string" && /^m\d{1,6}$/.test(value);
 }

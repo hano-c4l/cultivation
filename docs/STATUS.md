@@ -1,6 +1,6 @@
 # Trạng thái dự án
 
-Cập nhật: 2026-10-19 (2e thương nhân và nhiệm vụ đã lên production). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
+Cập nhật: 2026-10-20 (2e đã lên production; 2f PR1 PvP làm xong ở nhánh `features_pvp`). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
 
 ## Đã xong
 - **Giai đoạn 0** (xương sống kỹ thuật) và **giai đoạn 1** (MVP: tài khoản, thế giới, chat, chỉ số/cảnh giới, quái và chiến đấu, kinh tế khung xương). Riêng 1f (đo tải thật 50 client trên Cloudflare) **hoãn theo quyết định của người dùng**.
@@ -12,10 +12,12 @@ Cập nhật: 2026-10-19 (2e thương nhân và nhiệm vụ đã lên productio
 - Sau lần deploy này admin phải kết nối lại (socket cũ không có cờ admin) thì nút nhận vật phẩm hướng tu (tạm) mới dùng được. Production sẽ tự gieo 10 nhiệm vụ vào D1 ở lần đọc danh mục đầu tiên.
 
 ## Đang làm dở
-- Chưa có phần nào dở. Điều tra việc preview thỉnh thoảng bị "reload" lúc để im: chờ người dùng trả lời 3 câu hỏi.
+- **2f PvP, sát khí và vệ binh:** PR1 (công tắc PK, đánh người, bảo hộ tân thủ, ba loại điểm sát khí/sát nhân/anh hùng, tên màu; migration `0022`) đã làm xong ở nhánh `features_pvp`, chờ PR. **PR2 (rơi đồ vào hòm thư người giết, độ bền giảm mạnh theo màu, vệ binh ở cửa rừng và hang) chưa bắt đầu.**
+- Nhánh `features_path-quest-content` (ba nhiệm vụ hướng tu khác nhau theo hướng; migration `0021`, đã commit cục bộ, chưa PR) chờ PR; khi đưa lên môi trường nào thì `0021` chạy trước `0022`.
+- Điều tra việc preview thỉnh thoảng bị "reload" lúc để im: chờ người dùng trả lời 3 câu hỏi.
 
 ## Làm tiếp
-1. **2f** PvP, sát khí, vệ binh (và area-of-interest) → **2i** màn admin thể chất → **2h** bảng xếp hạng và boss. Còn lại của 2d: cấp hướng tu ảnh hưởng chỉ số. Còn lại của 2e: màn admin chỉnh nhiệm vụ (dữ liệu đã thiết kế sẵn cho việc này), thưởng Cống Hiến, nhiệm vụ lặp lại hằng ngày, thông báo khi nhiệm vụ đủ điều kiện trả.
+1. **2f PR1**: PR vào `preview` (chạy migration `0022` trước, riêng một bước, sau `0021` nếu nhánh nội dung nhiệm vụ lên trước), người dùng thử; rồi **2f PR2** (rơi đồ, vệ binh, và area-of-interest nếu muốn) → **2i** màn admin thể chất → **2h** bảng xếp hạng và boss. Còn lại của 2d: cấp hướng tu ảnh hưởng chỉ số. Các màn admin (chỉnh nhiệm vụ, thể chất, giá thương nhân...) **làm sau** theo người dùng. Còn lại của 2e: thưởng Cống Hiến, nhiệm vụ lặp lại hằng ngày, thông báo khi nhiệm vụ đủ điều kiện trả.
 2. Việc nhỏ tồn đọng (chi tiết ở `docs/PHASE2.md`, mục "Việc nhỏ đang chờ quyết định hoặc chưa làm"): tốc độ pháp bảo phi hành vào di chuyển, biến dị Lôi/Băng/Phong, kỹ năng tông môn và học từ NPC, tiền tệ trong thư, nhận thể chất qua vật phẩm, tung lại số hệ cho nhân vật có sẵn, admin chỉnh màu giao diện và giá/giới hạn của thương nhân, thang đo thật `rows_written` của thương nhân và nhiệm vụ trên Cloudflare, giao diện thương nhân và nhiệm vụ trên điện thoại chưa thử, đường tính quái hiếm của nhiệm vụ trong phòng mới có unit test.
 
 ## Vấn đề tồn đọng cần để ý

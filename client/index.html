@@ -102,6 +102,10 @@
       #quest-tracker { position: fixed; left: 10px; top: 160px; max-width: min(280px, calc(100vw - 20px)); padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.5); color: #e8e4d8;
         font: 12px/1.35 "Be Vietnam Pro", system-ui, sans-serif; z-index: 4; pointer-events: none; }
       #quest-tracker .qt-line.ready { color: #9be8c0; } #quest-tracker b { color: #ffe08a; }
+      #pk-box { position: fixed; right: 12px; top: 212px; width: 84px; text-align: center; z-index: 5; }
+      #pk-btn { width: 100%; padding: 6px 8px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+      #pk-btn.on { background: #b3261e; color: #fff; font-weight: 600; } #pk-btn.safe { opacity: 0.6; }
+      #pk-box .pk-scores { margin-top: 3px; font: 11px/1.3 "Be Vietnam Pro", system-ui, sans-serif; color: #ffd0cc; text-shadow: 0 0 3px #000; }
       #shop-panel[hidden] { display: none; }
       #shop-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
         overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
@@ -269,7 +273,7 @@
       @media (max-width: 1200px) {
         #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout { padding: 4px 8px; font-size: 12px; }
         #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
-        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; }
+        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #pk-box { top: 248px !important; }
       }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;

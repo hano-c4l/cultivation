@@ -37,6 +37,10 @@ export interface CharacterRow {
   bt_started_at: number | null;
   /** The hướng tu as "main:sub1:sub2" (migration 0018); empty: none. */
   paths: string;
+  /** PvP scores (migration 0022): sát khí, sát nhân (as of the last write; it falls while the character is online) and anh hùng. */
+  sat_khi: number;
+  sat_nhan: number;
+  anh_hung: number;
   stat_can_cot: number;
   stat_than_phap: number;
   stat_ngo_tinh: number;
@@ -46,7 +50,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, roots, bt_started_at, paths, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, roots, bt_started_at, paths, sat_khi, sat_nhan, anh_hung, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 export function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
@@ -229,4 +233,12 @@ export async function grantExp(db: D1Database, id: string, gain: number): Promis
     if (updated) return updated;
   }
   throw new Error("grantExp: too many concurrent updates");
+}
+
+/** Writes the three PvP scores as absolute values (the room is the only writer of a character it holds). */
+export async function savePkScores(db: D1Database, id: string, scores: { satKhi: number; satNhan: number; hero: number }): Promise<void> {
+  await db
+    .prepare("UPDATE characters SET sat_khi = ?, sat_nhan = ?, anh_hung = ? WHERE id = ?")
+    .bind(Math.max(0, Math.round(scores.satKhi)), Math.max(0, Math.round(scores.satNhan)), Math.max(0, Math.round(scores.hero)), id)
+    .run();
 }

@@ -1,6 +1,6 @@
 import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import type { Vec2 } from "./map";
-import { isMonsterId, type HitKind } from "./combat";
+import { isCombatTargetId, isMonsterId, type HitKind } from "./combat";
 import type { BreakthroughEnd, BreakthroughError } from "./breakthrough";
 import { MAX_SHOP_QTY, SHOP_SELL_MANY_MAX } from "./shop";
 import type { QuestDef, QuestProgressView } from "./quests";
@@ -54,8 +54,10 @@ export type ClientMessage =
   | { t: "chat"; channel: ChatChannel; text: string; to?: string }
   /** Spend potential points: stat key to points. One message per confirmation, one D1 write. */
   | { t: "allocate"; points: Partial<BaseStats> }
-  /** Target a monster: the server walks into range and auto-attacks until the target dies or the player moves. */
+  /** Target a monster (or, with the PK switch on, another player): the server walks into range and auto-attacks until the target dies or the player moves. */
   | { t: "attack"; id: string }
+  /** Turn the PK switch on or off. Off by default each time the player joins; only with it on can another player be attacked (never in a safe map). */
+  | { t: "pk_mode"; on: boolean }
   /** Bag commands name a cell, never an item id: the server resolves the item from its own copy of the bag. */
   | { t: "inv_use"; tab: number; cell: number }
   | { t: "inv_drop"; tab: number; cell: number; qty?: number }
@@ -153,6 +155,8 @@ export interface MonsterSnapshot {
 export interface PlayerSnapshot {
   id: string;
   name: string;
+  /** Sát nhân of the player when the snapshot was made (it falls 5 a minute while online; the client works the name colour out from it). */
+  sn?: number;
   /** Continuous waypoints in tile units (see Vec2). */
   path: Vec2[];
   ageMs: number;
@@ -178,7 +182,8 @@ export type ServerMessage =
   | { t: "mon"; monster: MonsterSnapshot }
   | { t: "mon_gone"; id: string }
   /** One attack landed (or missed). `hp` is the target's HP afterwards; `to` is a monster id or a character id. */
-  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string }
+  /** `ret`: a player answering a blow (not an attack of their own: it does not make them grey to the one they hit back). */
+  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; ret?: true }
   /** The receiving character's own HP changed (regeneration or damage). */
   | { t: "hp"; hp: number; maxHp: number }
   /** One of the receiving character's balances changed; `gained` is the amount just added, when it is a gain. */
@@ -195,6 +200,12 @@ export type ServerMessage =
   | { t: "shop_ok"; op: "buy" | "sell"; item: string; qty: number; total: number }
   /** A multi-item sale went through: `count` stacks sold for `total` Linh Thạch. */
   | { t: "shop_sold"; count: number; total: number }
+  /** Your own PvP state: the PK switch and the three scores (sát nhân as of now; it keeps falling 5 a minute while you are online). */
+  | { t: "pk"; on: boolean; satKhi: number; satNhan: number; hero: number }
+  /** A PvP command was refused: the PK switch is off, the map is safe, or someone is under the newbie protection. */
+  | { t: "pk_error"; reason: "off" | "safe" | "protected" | "invalid" }
+  /** The sát nhân of a player changed (a kill or a death): everyone in the room recolours the name. */
+  | { t: "pk_score"; id: string; sn: number }
   /** The quests a giver has (all enabled ones plus any the character is on) and the character's progress on them. */
   | { t: "quests"; npc: string; defs: QuestDef[]; states: Record<string, QuestProgressView> }
   /** The quests the character is on, for the tracker: sent on joining and after a quest is accepted or handed in. */
@@ -298,7 +309,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return points ? { t: "allocate", points } : null;
     }
     case "attack":
-      return isMonsterId(m.id) ? { t: "attack", id: m.id } : null;
+      return isCombatTargetId(m.id) ? { t: "attack", id: m.id } : null;
+    case "pk_mode":
+      return typeof m.on === "boolean" ? { t: "pk_mode", on: m.on } : null;
     case "inv_use":
       return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) ? { t: "inv_use", tab: m.tab, cell: m.cell } : null;
     case "inv_drop": {
@@ -326,11 +339,11 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         if (typeof m.el !== "string" || !(SPIRITUAL_ROOTS as readonly string[]).includes(m.el)) return null;
         const el = m.el as SpiritualRoot;
         if (m.target === undefined) return { t: "cast", skill: m.skill, el };
-        return isMonsterId(m.target) ? { t: "cast", skill: m.skill, target: m.target, el } : null;
+        return isCombatTargetId(m.target) ? { t: "cast", skill: m.skill, target: m.target, el } : null;
       }
       if (m.x !== undefined || m.y !== undefined) return isCoord(m.x) && isCoord(m.y) ? { t: "cast", skill: m.skill, x: m.x, y: m.y } : null; // a teleport names a point
       if (m.target === undefined) return { t: "cast", skill: m.skill };
-      return isMonsterId(m.target) ? { t: "cast", skill: m.skill, target: m.target } : null;
+      return isCombatTargetId(m.target) ? { t: "cast", skill: m.skill, target: m.target } : null;
     }
     case "hotbar_set":
       return isInt(m.slot) && m.slot >= 0 && m.slot < HOTBAR_SLOTS && typeof m.v === "string" && HOTBAR_SLOT_PATTERN.test(m.v) ? { t: "hotbar_set", slot: m.slot, v: m.v } : null;

@@ -65,6 +65,9 @@ import {
   type SkillContext,
   type SpiritualRoot,
   addMastery,
+  heroBonus,
+  isPkProtected,
+  satKhiDamagePct,
   passiveTotals,
   effectiveSkill,
   skillGrade,
@@ -105,6 +108,9 @@ export interface ProfileSeed {
   realm: number;
   stage: number;
   exp: number;
+  /** PvP scores that matter to combat: sát khí adds damage, the hero points add maximum MP and drop chance (shared/src/pk.ts). */
+  satKhi?: number;
+  hero?: number;
 }
 
 /**
@@ -128,6 +134,10 @@ export interface PlayerProfile extends ProfileSeed {
   inflightPoints: number;
   expDirty: boolean;
   dead: boolean;
+  /** The PK switch: only with it on can this player attack other players. Off at every join. */
+  pkOn: boolean;
+  /** The player that last hit this one while it stood still (it fights back at it even with the PK switch off). */
+  retaliateId: string | null;
   /** Earliest time the next potion may be used. */
   potionReadyAt: number;
   /**
@@ -191,7 +201,7 @@ interface Monster {
 export type SimEvent =
   | { t: "mon"; monster: MonsterSnapshot }
   | { t: "mon_gone"; id: string }
-  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string }
+  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; /** A player answering the player who hit them first. */ ret?: true }
   | { t: "hp"; playerId: string; hp: number; maxHp: number }
   /** EXP changed after a kill; `stagesGained > 0` means points changed and the room must persist right away. */
   | { t: "progress"; playerId: string; stagesGained: number }
@@ -214,7 +224,9 @@ export type SimEvent =
   | { t: "loot"; playerId: string; drops: LootDrop[] }
   /** A kill dropped Linh Thạch for this player; the room writes it to the ledger. */
   | { t: "drop"; playerId: string; amount: number }
-  | { t: "player_dead"; playerId: string }
+  | { t: "player_dead"; playerId: string; /** The player who landed the killing blow, when it was a player. */ by?: string }
+  /** A player killed another player: the room settles the scores (shared/src/pk.ts). */
+  | { t: "pvp_kill"; killerId: string; victimId: string }
   /** The server wants this player to walk to `to` (chasing their target). */
   | { t: "path_request"; playerId: string; to: Vec2 };
 
@@ -266,7 +278,7 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
   return {
     stats: { attack, defense, critRate: Math.min(RATE_CAP, crit), dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element, roots: seed.roots ?? [seed.element] },
     maxHp: d.maxHp,
-    maxMp: Math.floor(d.maxMp * (1 + pb.maxMpPct / 100)),
+    maxMp: Math.floor(d.maxMp * (1 + (pb.maxMpPct + heroBonus(seed.hero ?? 0).mpPct) / 100)),
     // The EXP gained is multiplied by 1 / (1 + k * phu tu): folded into the bonus percentage the kill reward takes.
     expBonus: paths.subs.length === 0 ? d.expBonus : ((1 + d.expBonus / 100) * pathExpFactor(paths) - 1) * 100,
   };
@@ -395,6 +407,8 @@ export class CombatSim {
       inflightPoints: 0,
       expDirty: false,
       dead: false,
+      pkOn: false,
+      retaliateId: null,
       potionReadyAt: 0,
       mp: d.maxMp,
       mpAt: 0,
@@ -619,7 +633,9 @@ export class CombatSim {
     if (skill.kind === "attack") {
       target = targetId ?? p.targetId;
       const m = target ? this.monsters.get(target) : undefined;
-      if (!target || !m || m.state === "dead") return { ok: false, reason: "no_target" };
+      const q = target ? this.players.get(target) : undefined;
+      const monsterOk = !!m && m.state !== "dead";
+      if (!target || (!monsterOk && !(q && this.pvpAllowed(p, q)))) return { ok: false, reason: "no_target" };
       p.targetId = target;
       p.lastRepathAt = Number.NEGATIVE_INFINITY;
     }
@@ -646,14 +662,50 @@ export class CombatSim {
     p.mp = fullHeal ? d.maxMp : Math.min(p.mp, d.maxMp);
   }
 
-  setTarget(playerId: string, monsterId: string): boolean {
+  /** Targets a monster, or (PvP) another player when the rules allow it (PK switch on, nobody under the newbie protection). */
+  setTarget(playerId: string, targetId: string): boolean {
     const p = this.players.get(playerId);
-    const m = this.monsters.get(monsterId);
-    if (!p || p.dead || !m || m.state === "dead") return false;
+    if (!p || p.dead) return false;
+    const q = this.players.get(targetId);
+    if (q) {
+      if (!this.pvpAllowed(p, q)) return false;
+    } else {
+      const m = this.monsters.get(targetId);
+      if (!m || m.state === "dead") return false;
+    }
     p.pendingCast = null; // a new target cancels a waiting skill
-    p.targetId = monsterId;
+    p.targetId = targetId;
     p.lastRepathAt = Number.NEGATIVE_INFINITY;
     return true;
+  }
+
+  /**
+   * Whether `p` may attack the player `q` now: both alive, not the same player, neither under the newbie protection (it works both
+   * ways), and the PK switch on (or `q` is the one that hit `p` while it stood still, which `p` may answer with the switch off).
+   * Safe maps never get here: they have no simulation.
+   */
+  pvpAllowed(p: PlayerProfile, q: PlayerProfile): boolean {
+    return !p.dead && !q.dead && p.id !== q.id && !isPkProtected(p.realm, p.stage) && !isPkProtected(q.realm, q.stage) && (p.pkOn || p.retaliateId === q.id);
+  }
+
+  /** The PK switch of a player. Turning it off drops a player target that is not a retaliation. */
+  setPkMode(id: string, on: boolean): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.pkOn = on;
+    if (!on && p.targetId && this.players.has(p.targetId) && p.retaliateId !== p.targetId) {
+      p.targetId = null;
+      p.pendingCast = null;
+    }
+  }
+
+  /** New sát khí and hero points of a player: the damage bonus and the maximum MP follow. */
+  setPk(id: string, scores: { satKhi: number; hero: number }): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    p.satKhi = scores.satKhi;
+    p.hero = scores.hero;
+    this.recompute(p, false);
   }
 
   clearTarget(playerId: string): void {
@@ -812,6 +864,8 @@ export class CombatSim {
       if (p.dead) continue;
       const pos = positions.get(p.id);
       if (!pos) continue;
+      // A retaliation lasts only while the player still has that attacker targeted.
+      if (p.retaliateId !== null && p.targetId !== p.retaliateId) p.retaliateId = null;
 
       if (p.hp < p.maxHp && now - p.lastHurtAt >= REGEN_DELAY_MS && now - p.lastRegenAt >= 1000) {
         p.lastRegenAt = now;
@@ -839,9 +893,14 @@ export class CombatSim {
         }
       }
       if (effectsChanged) events.push({ t: "effects", playerId: p.id, list: this.effectsOf(p, now) });
-      if (p.pendingCast && this.runCast(p, pos, now, events)) continue;
+      if (p.pendingCast && this.runCast(p, pos, now, events, positions)) continue;
 
       if (!p.targetId) continue;
+      const rival = this.players.get(p.targetId);
+      if (rival) {
+        this.tickPvpTarget(p, rival, pos, positions, now, events);
+        continue;
+      }
       const m = this.monsters.get(p.targetId);
       if (!m || m.state === "dead") {
         p.targetId = null;
@@ -860,11 +919,28 @@ export class CombatSim {
     }
   }
 
+  /** The player's target is another player: swing when in reach, walk towards them when not, drop the target when the rules no longer allow it. */
+  private tickPvpTarget(p: PlayerProfile, q: PlayerProfile, pos: Vec2, positions: ReadonlyMap<string, Vec2>, now: number, events: SimEvent[]): void {
+    const qpos = positions.get(q.id);
+    if (!qpos || !this.pvpAllowed(p, q)) {
+      p.targetId = null;
+      return;
+    }
+    const d = dist(pos, qpos);
+    if (d <= PLAYER_ATTACK_RANGE) {
+      if (now >= p.nextAttackAt) this.pvpAttack(p, q, qpos, now, events);
+    } else if (now - p.lastRepathAt >= REPATH_MS) {
+      p.lastRepathAt = now;
+      const k = d > 0 ? 1 / d : 0;
+      events.push({ t: "path_request", playerId: p.id, to: [qpos[0] + (pos[0] - qpos[0]) * k, qpos[1] + (pos[1] - qpos[1]) * k] });
+    }
+  }
+
   /**
    * Goes off with the queued skill when it can. Returns true when the skill was used or dropped (the player's turn is
    * over), false while the player is still walking into range.
    */
-  private runCast(p: PlayerProfile, pos: Vec2, now: number, events: SimEvent[]): boolean {
+  private runCast(p: PlayerProfile, pos: Vec2, now: number, events: SimEvent[], positions: ReadonlyMap<string, Vec2>): boolean {
     const pending = p.pendingCast;
     const skill = pending ? getSkill(pending.skill) : undefined;
     if (!pending || !skill) {
@@ -890,11 +966,20 @@ export class CombatSim {
     }
     let m: Monster | undefined;
     let mpos: Vec2 | undefined;
+    let q: PlayerProfile | undefined;
+    let qpos: Vec2 | undefined;
     if (skill.kind === "attack") {
-      m = pending.target ? this.monsters.get(pending.target) : undefined;
-      if (!m || m.state === "dead") return fail("no_target");
-      mpos = this.position(m, now);
-      if (dist(pos, mpos) > skill.range) return false; // still walking: the chase below brings the player closer
+      q = pending.target ? this.players.get(pending.target) : undefined;
+      if (q) {
+        qpos = positions.get(q.id);
+        if (!qpos || !this.pvpAllowed(p, q)) return fail("no_target");
+        if (dist(pos, qpos) > skill.range) return false;
+      } else {
+        m = pending.target ? this.monsters.get(pending.target) : undefined;
+        if (!m || m.state === "dead") return fail("no_target");
+        mpos = this.position(m, now);
+        if (dist(pos, mpos) > skill.range) return false; // still walking: the chase below brings the player closer
+      }
     }
     // The skill goes off: pay, start the cooldown, then its effect.
     this.settleMp(p, now);
@@ -915,6 +1000,9 @@ export class CombatSim {
       p.buffs = [...p.buffs.filter((b) => b.skill !== skill.id), { skill: skill.id, stat: skill.buff.stat, pct: eff.power, until: now + skill.buff.durationMs }];
       this.recompute(p, false);
       events.push({ t: "buff", playerId: p.id, skill: skill.id, ms: skill.buff.durationMs }, { t: "effects", playerId: p.id, list: this.effectsOf(p, now) });
+    } else if (q && qpos) {
+      const done = this.pvpAttack(p, q, qpos, now, events, skill, eff.power, pending.element);
+      if (done > 0) this.gainMastery(p, skill, events);
     } else if (m && mpos) {
       const done = this.playerAttack(p, m, mpos, now, events, skill, eff.power, pending.element);
       if (done > 0) this.gainMastery(p, skill, events);
@@ -922,8 +1010,11 @@ export class CombatSim {
     return true;
   }
 
-  private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): number {
-    p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
+  /**
+   * What a player hits with: the plain attack or one skill, in its element, with every damage share that applies (grade, constitution,
+   * hướng tu) and the sát khí bonus. Used for monsters and for other players alike.
+   */
+  private attackerFor(p: PlayerProfile, skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): Combatant {
     // A skill hits as the caster's own stats scaled by its power, in its own element; one without an element uses the caster's
     // MAIN element. The plain attack goes by ALL the caster's elements against the target's (elementOutcome: every pair scores +1, -1 or 0 and the sum decides); a skill has one element, so only its pairs count.
     // An attack in one of the caster's own elements gets the damage share of the root's grade (phẩm cấp).
@@ -934,7 +1025,14 @@ export class CombatSim {
     const gradePct = !skill && roots.includes(element) ? getRootGrade(p.rootGrade).elementDamagePct : 0;
     const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent + pathSkillDamagePct(p.paths ?? NO_PATHS, skill, p.weapon ?? null) : 0;
     const power = skill ? skillPower : 1;
-    const attacker = { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100))), element, roots: skill ? undefined : roots };
+    const skMult = 1 + satKhiDamagePct(p.satKhi ?? 0) / 100;
+    return { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100) * skMult)), element, roots: skill ? undefined : roots };
+  }
+
+
+  private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): number {
+    p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
+    const attacker = this.attackerFor(p, skill, skillPower, skillElement);
     const hit = computeDamage(attacker, m.combatant, this.rand);
     const applied = Math.min(m.hp, hit.damage);
     m.hp -= applied;
@@ -967,17 +1065,55 @@ export class CombatSim {
     events.push({ t: "refine", playerId: winner.id, gain });
     const drop = rollLinhThachDrop(levelIndex(this.realm, m.tier), m.rank, this.rand(), this.rand());
     if (drop > 0) events.push({ t: "drop", playerId: winner.id, amount: drop });
-    const loot = rollLoot(m.rank, this.rand);
+    // The hero points of the winner raise the chance of every item roll (the rolls themselves are drawn in the same order).
+    const dropMult = 1 + heroBonus(winner.hero ?? 0).dropPct / 100;
+    const loot = rollLoot(m.rank, this.rand, dropMult);
     // Drawn after every other roll of the kill, so the sequence of the older rolls does not change.
-    const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand);
+    const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand, dropMult);
     if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
-    const book = rollBookDrop(m.rank, this.rand); // two more rolls, after everything else
+    const book = rollBookDrop(m.rank, this.rand, dropMult); // two more rolls, after everything else
     if (book) loot.push({ item: book, qty: 1 });
-    const pill = rollPillDrop(this.realm, m.rank, this.rand); // one more roll, after everything else
+    const pill = rollPillDrop(this.realm, m.rank, this.rand, dropMult); // one more roll, after everything else
     if (pill) loot.push({ item: pill, qty: 1 });
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
+    return applied;
+  }
+
+
+  /**
+   * One blow at another player. The same hit event as a blow at a monster (so it also ends a breakthrough or a talisman channel), the same
+   * damage rules (defence, elements, critical, dodge) with the sát khí bonus. The victim, if it stands still with nothing targeted, fights
+   * back even with the PK switch off. Returns the damage dealt (for the mastery of a skill). A kill ends the target and tells the room
+   * (pvp_kill) so it settles the scores; the death itself goes through player_dead like a death to a monster.
+   */
+  private pvpAttack(p: PlayerProfile, q: PlayerProfile, qpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): number {
+    p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
+    const attacker = this.attackerFor(p, skill, skillPower, skillElement);
+    const hit = computeDamage(attacker, q.stats, this.rand);
+    const applied = Math.min(q.hp, hit.damage);
+    q.hp = Math.max(0, q.hp - hit.damage);
+    this.settleMp(q, now); // regeneration up to this hit is kept; it pauses from here
+    q.lastHurtAt = now;
+    events.push({ t: "hit", from: p.id, to: q.id, kind: hit.kind, damage: hit.damage, hp: q.hp, ...(skill ? { skill: skill.id } : {}), ...(p.retaliateId === q.id ? { ret: true as const } : {}) });
+    events.push({ t: "hp", playerId: q.id, hp: q.hp, maxHp: q.maxHp });
+    if (q.mp < q.maxMp) events.push(this.mpEvent(q, now));
+    if (q.hp > 0) {
+      if (q.targetId === null && !this.moving.has(q.id)) {
+        q.targetId = p.id;
+        q.retaliateId = p.id;
+        q.lastRepathAt = Number.NEGATIVE_INFINITY;
+      }
+      return applied;
+    }
+    q.dead = true;
+    q.targetId = null;
+    q.pendingCast = null;
+    p.targetId = null;
+    for (const other of this.players.values()) if (other.targetId === q.id) other.targetId = null;
+    events.push({ t: "player_dead", playerId: q.id, by: p.id });
+    events.push({ t: "pvp_kill", killerId: p.id, victimId: q.id });
     return applied;
   }
 
