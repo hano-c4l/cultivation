@@ -547,6 +547,8 @@ export class MapRoom extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets()) {
       const state = ws.deserializeAttachment() as PlayerState | null;
       if (!state || state.id !== characterId) continue;
+      // The same character connected elsewhere while this socket still looked open to the server (it never saw a close).
+      this.logSocketEnd("evicted", ws, { reason: "replaced by a newer connection" });
       await this.failBreakthroughOnExit(ws, state, "left");
       await this.flushPk(state);
       ws.serializeAttachment(null);
@@ -622,6 +624,10 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleBreakthroughStart(ws, state, msg.pills);
       case "bt_cancel":
         return this.interruptBreakthrough(state.id, "cancel");
+      case "conn_report":
+        // What the client saw when its previous socket ended (it only goes to the log; compare with the server's own `socket close` line).
+        console.log(`conn report char=${state.id} code=${msg.code} clean=${msg.clean} reason="${msg.reason}" downMs=${msg.downMs}`);
+        return;
       case "bt_claim":
         return this.handleBreakthroughClaim(ws, state);
       case "path_claim":
@@ -814,13 +820,27 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    this.logSocketEnd("close", ws, { code, reason });
     await this.handleLeave(ws);
     // 1005/1006 are reserved and cannot be sent in a close frame.
     ws.close(code >= 1000 && code !== 1005 && code !== 1006 && code !== 1015 ? code : 1000, reason);
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
+    this.logSocketEnd("error", ws, {});
     await this.handleLeave(ws);
+  }
+
+  /**
+   * Log line for every way a game socket ends or is replaced (for finding out why connections drop, e.g. mid-breakthrough):
+   * who, which room, whether a breakthrough was running, and the close code and reason when the runtime gave them.
+   */
+  private logSocketEnd(kind: "close" | "error" | "evicted", ws: WebSocket, info: { code?: number; reason?: string }): void {
+    const state = ws.deserializeAttachment() as PlayerState | null;
+    if (!state) return;
+    console.log(
+      `socket ${kind} char=${state.id} map=${state.mapId} code=${info.code ?? "-"} reason="${info.reason ?? ""}" bt=${state.bt ? `running(${Math.round((state.bt.endsAt - Date.now()) / 1000)}s left)` : "no"} transferring=${state.transferring === true}`,
+    );
   }
 
   private async handleLeave(ws: WebSocket): Promise<void> {
