@@ -246,6 +246,21 @@ export const vi = {
     removedMailed: "Túi đồ đầy, trang bị đã được gửi vào hòm thư (không hết hạn).",
     wornDown: "Trang bị bị hao mòn sau khi tử vong.",
   },
+  pk: {
+    on: "PK: Bật",
+    off: "PK: Tắt",
+    title: "Bật chế độ PK để có thể tấn công người chơi khác (bấm vào họ). Dưới Luyện Khí tầng 5 không ai bị đánh và cũng không đánh được người.",
+    safeTitle: "Trong thành không thể PvP.",
+    scoresTitle: "Sát khí (thêm sát thương khi trên 200) · Sát nhân (đổi màu tên, giảm 5 mỗi phút online) · Anh hùng (thưởng linh lực và tỉ lệ rơi đồ từ 200)",
+    scores: (sk: number, sn: number, ah: number) => `Sát khí ${sk} · Sát nhân ${sn} · Anh hùng ${ah}`,
+    changed: (sk: number, sn: number, ah: number) => `Điểm PvP: sát khí ${sk}, sát nhân ${sn}, anh hùng ${ah}.`,
+    errors: {
+      off: "Hãy bật chế độ PK trước khi tấn công người chơi khác.",
+      safe: "Trong thành không thể tấn công người chơi.",
+      protected: "Người dưới Luyện Khí tầng 5 được bảo hộ: không thể đánh họ và họ cũng không đánh được ai.",
+      invalid: "Mục tiêu không hợp lệ.",
+    } as Record<string, string>,
+  },
   npcs: { merchant: "Thương nhân", elder: "Trưởng Lão", path_kiem: "Kiếm Đạo Sư", path_thuat: "Thuật Đạo Sư", path_dan: "Đan Đạo Sư" } as Record<string, string>,
   quests: {
     title: "Nhiệm vụ",

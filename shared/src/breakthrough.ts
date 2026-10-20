@@ -141,11 +141,11 @@ export const PILL_DROP_CHANCE: Readonly<Record<number, Readonly<Record<MonsterRa
 };
 
 /** The pill dropped by one kill, or null. Draws exactly one number, after every other roll of the kill (so seeded sequences stay stable). */
-export function rollPillDrop(mapRealm: number, rank: MonsterRank, rand: () => number): string | null {
+export function rollPillDrop(mapRealm: number, rank: MonsterRank, rand: () => number, chanceMult = 1): string | null {
   const roll = rand();
   const def = getBreakthrough(mapRealm);
   const chance = PILL_DROP_CHANCE[mapRealm]?.[rank] ?? 0;
-  return def && roll < chance ? def.pill : null;
+  return def && roll < chance * chanceMult ? def.pill : null;
 }
 
 /** Whether an item type is a breakthrough pill, and for which realm it is meant (the realm it leads to). */
