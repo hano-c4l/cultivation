@@ -245,7 +245,9 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     }
     const named = (p: PathId) => `${PATHS[p].nameVi} (${pathLevelName(s.paths, p)})`;
     const subs = s.paths.subs.length > 0 ? s.paths.subs.map(named).join(", ") : vi.paths.none;
-    row.append(el("span", undefined, `${vi.paths.mainWord}: ${named(s.paths.main)} · ${vi.paths.subWord}: ${subs}`));
+    const lines = el("div", "cp-path-lines");
+    lines.append(el("div", undefined, `${vi.paths.mainWord}: ${named(s.paths.main)}`), el("div", undefined, `${vi.paths.subWord}: ${subs}`));
+    row.append(lines);
     if (nextPathSlot(s.paths, PATH_IDS.find((p) => p !== s.paths.main && !s.paths.subs.includes(p)) ?? "kiem") !== null) {
       const add = el("button", "cp-path-btn cp-path-add", vi.paths.addSub);
       add.onclick = () => {
@@ -401,6 +403,9 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       deps.startBreakthrough(chosenPills);
     };
     box.append(start);
+    // Say why the button is off instead of leaving it grey.
+    if (!ready.ok) box.append(el("div", "cp-bt-warn", vi.breakthrough.notReady));
+    else if (have < chosenPills) box.append(el("div", "cp-bt-warn", vi.breakthrough.needPills(pillName, chosenPills, have)));
     return box;
   }
 

@@ -44,9 +44,10 @@ export interface QuestDef {
   /** The character must have reached this realm (index into REALMS) to take the quest. */
   minRealm?: number;
   /**
-   * A hướng tu quest: its reward is that path's item, so it shares the one-time key of the path item
-   * (`path_item:<character>:<path>`), and it opens again when the character drops the path (the item can then be had again).
-   * It must not pay Linh Thạch (the reward key doubles as a ledger key and the ledger is append-only).
+   * A hướng tu quest (one step of that path's quest chain): the step that rewards the path item shares the one-time key of the
+   * path item (`path_item:<character>:<path>`); every step opens again when the character drops the path (the item can then be
+   * had again), and is not offered to a character that already has the path. It must not pay Linh Thạch (the reward key doubles
+   * as a ledger key and the ledger is append-only).
    */
   path?: PathId;
   objective: QuestObjective;
@@ -60,6 +61,8 @@ export type QuestStatus = "locked" | "available" | "active" | "done";
 export interface QuestProgressView {
   state: QuestState;
   progress: number;
+  /** When it was accepted (ms). Orders the lists by the order the quests were taken. */
+  at?: number;
 }
 
 /** How much progress the objective needs: the kill count, the item quantity, or 1 for a talk and a level. */
@@ -132,7 +135,6 @@ export function validateQuests(list: readonly QuestDef[], npcs: ReadonlySet<stri
     if (q.minRealm !== undefined && !(Number.isInteger(q.minRealm) && q.minRealm >= 0 && q.minRealm < REALMS.length)) problems.push(`${at}: bad minimum realm`);
     if (q.path !== undefined) {
       if (!isPathId(q.path)) problems.push(`${at}: unknown path ${String(q.path)}`);
-      else if (!(q.rewards.items ?? []).some((it) => it.item === PATHS[q.path as PathId].item)) problems.push(`${at}: a path quest must reward the path item`);
       if (q.rewards.linhThach) problems.push(`${at}: a path quest cannot pay Linh Thạch`);
     }
     const r = q.rewards;
@@ -141,12 +143,22 @@ export function validateQuests(list: readonly QuestDef[], npcs: ReadonlySet<stri
     for (const it of r.items ?? []) if (!isItemId(it.item) || !POSITIVE_INT(it.qty) || it.qty > 9999) problems.push(`${at}: bad reward item ${it.item}`);
     seen.add(q.id);
   }
+  // Every path that has quests must hand out its item in exactly one of them (the last step).
+  for (const id of new Set(list.flatMap((q) => (q.path && isPathId(q.path) ? [q.path] : [])))) {
+    const givers = list.filter((q) => q.path === id && givesPathItem(q)).length;
+    if (givers !== 1) problems.push(`path ${id}: exactly one quest must reward the path item (found ${givers})`);
+  }
   return problems;
 }
 
 /** Whether the reward adds anything at all (a quest with an empty reward is allowed: the turn-in then only closes it). */
 export function hasRewards(r: QuestRewards): boolean {
   return !!(r.linhThach || r.exp || (r.items && r.items.length > 0));
+}
+
+/** Whether handing the quest in gives the path item (only the last step of a path's chain does). */
+export function givesPathItem(def: QuestDef): boolean {
+  return !!def.path && (def.rewards.items ?? []).some((it) => it.item === PATHS[def.path as PathId].item);
 }
 
 /** The grant key that makes a quest's reward one-time. It is also the idempotency key of its Linh Thạch entry. */
@@ -215,30 +227,35 @@ export const DEFAULT_QUESTS: readonly QuestDef[] = [
 ];
 
 /**
- * One quest per hướng tu, given by that path's own NPC and different from the others: Kiếm tu proves itself in combat (kills),
- * Thuật tu brings spirit essence (Yêu Đan and herbs), Đan tu brings herbs and basic pills. From Trúc Cơ; the reward is the path
- * item. The quest reopens when the path is dropped.
+ * Two quests per hướng tu, given by that path's own NPC and done in order (the second needs the first). The paths differ from
+ * each other: Kiếm tu proves itself in combat (30 kills, then rare monsters in the cave), Thuật tu brings spirit essence and then
+ * hunts in the cave, Đan tu brings herbs and pills and then brews. From Trúc Cơ; the last step rewards the path item. Both steps
+ * open again when the path is dropped.
  */
-const pathQuest = (path: PathId, seq: number, giver: string, titleVi: string, descVi: string, objective: QuestObjective): QuestDef => ({
-  id: `path_${path}`,
+const pathQuest = (path: PathId, seq: number, step: 1 | 2, titleVi: string, descVi: string, objective: QuestObjective, rewards: QuestRewards): QuestDef => ({
+  id: step === 1 ? `path_${path}_1` : `path_${path}`,
   chain: "path",
   seq,
-  giver,
+  giver: `path_${path}`,
   titleVi,
   descVi,
   enabled: true,
-  requires: null,
+  requires: step === 1 ? null : `path_${path}_1`,
   minRealm: 1,
   path,
   objective,
-  rewards: { items: [{ item: PATHS[path].item, qty: 1 }] },
+  rewards,
 });
+const pathItem = (path: PathId): QuestRewards => ({ items: [{ item: PATHS[path].item, qty: 1 }] });
 
 /** The hướng tu quests and the one-time breakthrough quest (placeholder values, like the newbie chain). */
 export const EXTRA_QUESTS: readonly QuestDef[] = [
-  pathQuest("kiem", 1, "path_kiem", "Thử kiếm", "Kiếm tu lấy chiến đấu làm gốc. Hãy ra Hắc Mộc Lâm hạ 30 con quái để chứng tỏ kiếm tâm, rồi quay lại nhận Kiếm Tu Lệnh.", {kind: "kill", count: 30, map: "forest"}),
-  pathQuest("thuat", 2, "path_thuat", "Lễ vật Yêu Đan", "Thuật tu cần linh khí cô đọng để thi triển pháp thuật. Mang đến 4 Yêu Đan và 8 Linh Thảo, ta sẽ trao Thuật Tu Lệnh.", {kind: "collect", item: "yeu_dan", qty: 4, also: [{item: "linh_thao", qty: 8}]}),
-  pathQuest("dan", 3, "path_dan", "Dược liệu và đan thuốc", "Đan tu khởi đầu từ dược liệu và đan cơ bản. Mang đến 30 Linh Thảo và 5 Hồi Huyết Đan, ta sẽ trao Đan Tu Lệnh.", {kind: "collect", item: "linh_thao", qty: 30, also: [{item: "hoi_huyet_dan", qty: 5}]}),
+  pathQuest("kiem", 1, 1, "Thử kiếm", "Kiếm tu lấy chiến đấu làm gốc. Hãy ra Hắc Mộc Lâm hạ 30 con quái để chứng tỏ kiếm tâm, rồi quay lại báo cho ta.", { kind: "kill", count: 30, map: "forest" }, { items: [{ item: "dai_hoi_huyet_dan", qty: 2 }] }),
+  pathQuest("kiem", 2, 2, "Kiếm Tâm", "Kiếm tâm phải được tôi trong nguy hiểm. Vào U Minh Động hạ 3 quái Tinh Anh hoặc Đại Yêu, ta sẽ trao Kiếm Tu Lệnh.", { kind: "kill", count: 3, map: "cave", rare: true }, pathItem("kiem")),
+  pathQuest("thuat", 3, 1, "Lễ vật Yêu Đan", "Thuật tu cần linh khí cô đọng để thi triển pháp thuật. Mang đến 4 Yêu Đan và 8 Linh Thảo làm lễ vật.", { kind: "collect", item: "yeu_dan", qty: 4, also: [{ item: "linh_thao", qty: 8 }] }, { items: [{ item: "dai_hoi_huyet_dan", qty: 2 }] }),
+  pathQuest("thuat", 4, 2, "Dẫn linh nhập thể", "Muốn dẫn linh khí vào người phải quen với nơi linh khí nồng đậm. Vào U Minh Động hạ 50 con quái, ta sẽ trao Thuật Tu Lệnh.", { kind: "kill", count: 50, map: "cave" }, pathItem("thuat")),
+  pathQuest("dan", 5, 1, "Dược liệu và đan thuốc", "Đan tu khởi đầu từ dược liệu và đan cơ bản. Mang đến 30 Linh Thảo và 5 Hồi Huyết Đan.", { kind: "collect", item: "linh_thao", qty: 30, also: [{ item: "hoi_huyet_dan", qty: 5 }] }, { items: [{ item: "duong_huyet_dan", qty: 5 }] }),
+  pathQuest("dan", 6, 2, "Thử luyện đan", "Giờ hãy chuẩn bị nguyên liệu cho một mẻ đan thật sự: 10 Dưỡng Huyết Đan, 10 Thú Cốt và 2 Yêu Đan, ta sẽ trao Đan Tu Lệnh.", { kind: "collect", item: "duong_huyet_dan", qty: 10, also: [{ item: "thu_cot", qty: 10 }, { item: "yeu_dan", qty: 2 }] }, pathItem("dan")),
   {
     id: "breakthrough_1",
     chain: "breakthrough",

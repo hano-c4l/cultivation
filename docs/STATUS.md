@@ -1,6 +1,6 @@
 # Trạng thái dự án
 
-Cập nhật: 2026-10-20 (2e và 2f PR1 PvP đã lên production). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
+Cập nhật: 2026-10-20 (2e và 2f PR1 PvP đã lên production; nhánh `features_quest-pk-ui` đang chờ PR vào preview). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
 
 ## Đã xong
 - **Giai đoạn 0** (xương sống kỹ thuật) và **giai đoạn 1** (MVP: tài khoản, thế giới, chat, chỉ số/cảnh giới, quái và chiến đấu, kinh tế khung xương). Riêng 1f (đo tải thật 50 client trên Cloudflare) **hoãn theo quyết định của người dùng**.
@@ -9,10 +9,11 @@ Cập nhật: 2026-10-20 (2e và 2f PR1 PvP đã lên production). File này **c
 ## Đang chạy ở đâu
 - **Production** (`main`): D1 đã áp dụng migration `0001`-`0022` (kiểm bằng `wrangler d1 migrations list DB --remote`, 2026-10-20: không còn gì để áp dụng); code gồm cả 2e (thương nhân và nhiệm vụ, nhiệm vụ hướng tu khác nhau theo hướng) và 2f PR1 (PvP).
 - **Preview** (`preview`): cùng code và D1 như production (đến `0022`).
-- Admin phải kết nối lại sau mỗi lần deploy có thay đổi cờ admin (socket cũ không có cờ) thì nút nhận vật phẩm hướng tu (tạm) mới dùng được. Công tắc PK mặc định tắt mỗi lần vào phòng.
+- Admin phải kết nối lại sau mỗi lần deploy có thay đổi cờ admin (socket cũ không có cờ) thì nút nhận vật phẩm hướng tu (tạm) mới dùng được. PK mặc định Tắt khi mở trang (client gửi lại trạng thái đã chọn sau mỗi lần đổi bản đồ).
 
 ## Đang làm dở
 - **2f PvP, sát khí và vệ binh:** PR1 (công tắc PK, đánh người, bảo hộ tân thủ, ba loại điểm sát khí/sát nhân/anh hùng, tên màu; migration `0022`) xong và đã ở production. **PR2 (rơi đồ vào hòm thư người giết, độ bền giảm mạnh theo màu, vệ binh ở cửa rừng và hang) chưa bắt đầu**; chờ người dùng xác nhận vài mặc định của PR1 (xem `docs/PHASE2.md` mục 2f).
+- **Nhánh `features_quest-pk-ui` (chưa lên preview/production, migration `0023`):** cửa sổ Nhiệm vụ (2 tab, theo dõi tối đa 3, bỏ nhiệm vụ), Trưởng Lão chỉ hiện nhiệm vụ nhận được/đang làm theo thứ tự nhận, nhiệm vụ hướng tu hai bước (ẩn nếu đã có hướng), nhãn "GM · ", PK ba trạng thái giữ qua đổi bản đồ, tự vệ, nhãn "· PK", xuống hàng chủ tu/phụ tu. Chưa thử tay trên điện thoại và chưa thử giữ trạng thái PK qua cổng bản đồ trong trình duyệt.
 - Điều tra việc preview thỉnh thoảng bị "reload" lúc để im: chờ người dùng trả lời 3 câu hỏi.
 
 ## Làm tiếp

@@ -41,21 +41,21 @@ describe("who can be attacked", () => {
   it("not with the PK switch off, yes with it on", () => {
     const { sim } = pair();
     expect(sim.setTarget("a", "b")).toBe(false);
-    sim.setPkMode("a", true);
+    sim.setPkMode("a", 2);
     expect(sim.setTarget("a", "b")).toBe(true);
   });
 
   it("nobody under Luyện Khí tầng 5 can be attacked, and they cannot attack either", () => {
     const young = pair({ b: { stage: 4 } });
-    young.sim.setPkMode("a", true);
+    young.sim.setPkMode("a", 2);
     expect(young.sim.setTarget("a", "b")).toBe(false);
-    young.sim.setPkMode("b", true);
+    young.sim.setPkMode("b", 2);
     expect(young.sim.setTarget("b", "a")).toBe(false);
   });
 
   it("not yourself, not the dead", () => {
     const { sim, b } = pair();
-    sim.setPkMode("a", true);
+    sim.setPkMode("a", 2);
     expect(sim.setTarget("a", "a")).toBe(false);
     b.dead = true;
     expect(sim.setTarget("a", "b")).toBe(false);
@@ -63,9 +63,9 @@ describe("who can be attacked", () => {
 
   it("turning the switch off drops a player target", () => {
     const { sim, a } = pair();
-    sim.setPkMode("a", true);
+    sim.setPkMode("a", 2);
     sim.setTarget("a", "b");
-    sim.setPkMode("a", false);
+    sim.setPkMode("a", 0);
     expect(a.targetId).toBeNull();
   });
 });
@@ -73,7 +73,7 @@ describe("who can be attacked", () => {
 describe("fighting a player", () => {
   it("blows land as hit events on the victim, who fights back standing still even with the switch off", () => {
     const { sim, a, b } = pair();
-    sim.setPkMode("a", true);
+    sim.setPkMode("a", 2);
     sim.setTarget("a", "b");
     const events = run(sim, 0, 3000);
     const hits = events.filter((e) => e.t === "hit" && e.from === "a" && e.to === "b");
@@ -86,20 +86,66 @@ describe("fighting a player", () => {
 
   it("the retaliation ends with the target: the answering player cannot start a fight on their own", () => {
     const { sim, a, b } = pair();
-    sim.setPkMode("a", true);
+    sim.setPkMode("a", 2);
     sim.setTarget("a", "b");
     run(sim, 0, 1000);
     expect(b.retaliateId).toBe("a");
     sim.clearTarget("b");
     run(sim, 1100, 1300);
     expect(b.retaliateId).toBeNull();
+    // b (PK off) was hit by a, so b may still defend itself for a while; once a kill (or anything) ends the quarrel it cannot.
+    expect(sim.setTarget("b", "a")).toBe(true);
+    sim.clearQuarrel("a", "b");
     expect(sim.setTarget("b", "a")).toBe(false);
-    expect(a.pkOn).toBe(true);
+    expect(a.pkMode).toBe(2);
+  });
+
+  it("PK fights only PK or Đồ sát; Đồ sát fights anyone; a player with PK off can be hit by Đồ sát only", () => {
+    const { sim } = pair();
+    sim.setPkMode("a", 1);
+    expect(sim.setTarget("a", "b")).toBe(false); // b is off
+    sim.setPkMode("b", 1);
+    expect(sim.setTarget("a", "b")).toBe(true);
+    sim.setPkMode("b", 0);
+    sim.setPkMode("a", 2);
+    expect(sim.setTarget("a", "b")).toBe(true);
+    expect(sim.setTarget("b", "a")).toBe(false); // b is off and was not hit yet
+  });
+
+  it("a click back by hand is a defence: its blows are marked ret and the first striker stays the first striker", () => {
+    const { sim, b } = pair();
+    sim.setPkMode("a", 2);
+    sim.setTarget("a", "b");
+    b.targetId = "x";
+    const first = run(sim, 0, 1000);
+    expect(first.filter((e) => e.t === "hit" && e.from === "a").every((e) => !(e as { ret?: boolean }).ret)).toBe(true);
+    b.targetId = null;
+    expect(sim.setTarget("b", "a")).toBe(true);
+    const second = run(sim, 1100, 2500);
+    const mine = second.filter((e) => e.t === "hit" && e.from === "b");
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine.every((e) => (e as { ret?: boolean }).ret === true)).toBe(true);
+    // a keeps hitting b and is still not answering anyone.
+    expect(second.filter((e) => e.t === "hit" && e.from === "a").every((e) => !(e as { ret?: boolean }).ret)).toBe(true);
+  });
+
+  it("someone who hits you may be hit back by hand even with PK off, for 3 minutes", () => {
+    const { sim, b } = pair();
+    sim.setPkMode("a", 2);
+    sim.setTarget("a", "b");
+    b.targetId = "x"; // busy, so b does not answer on its own
+    run(sim, 0, 1000);
+    b.targetId = null;
+    expect(b.pkMode).toBe(0);
+    expect(sim.setTarget("b", "a")).toBe(true);
+    b.targetId = null;
+    run(sim, 1100, 1100 + 3 * 60_000 + 200);
+    expect(sim.setTarget("b", "a")).toBe(false);
   });
 
   it("a walking victim does not answer", () => {
     const { sim, b } = pair();
-    sim.setPkMode("a", true);
+    sim.setPkMode("a", 2);
     sim.setTarget("a", "b");
     const out: SimEvent[] = [];
     for (let t = 0; t <= 2000; t += 100) out.push(...sim.tick(t, positions, new Set(["b"])));
@@ -110,7 +156,7 @@ describe("fighting a player", () => {
   it("a kill is announced once, with who killed whom, and gives the killer nothing (no EXP, no drop)", () => {
     const { sim, a, b } = pair();
     b.hp = 1;
-    sim.setPkMode("a", true);
+    sim.setPkMode("a", 2);
     sim.setTarget("a", "b");
     const events = run(sim, 0, 2000);
     expect(events.filter((e) => e.t === "pvp_kill")).toEqual([{ t: "pvp_kill", killerId: "a", victimId: "b" }]);
@@ -125,7 +171,7 @@ describe("fighting a player", () => {
     const off = pair();
     expect(off.sim.queueCast("a", "chuong_0", "b", 0)).toEqual({ ok: false, reason: "no_target" });
     const { sim, b } = pair();
-    sim.setPkMode("a", true);
+    sim.setPkMode("a", 2);
     expect(sim.queueCast("a", "chuong_0", "b", 0)).toEqual({ ok: true });
     const events = run(sim, 0, 500);
     expect(events.some((e) => e.t === "cast_ok" && e.skill === "chuong_0")).toBe(true);
@@ -137,7 +183,7 @@ describe("fighting a player", () => {
 describe("what the scores do in a fight", () => {
   const firstHit = (satKhi: number) => {
     const { sim } = pair({ a: { satKhi } });
-    sim.setPkMode("a", true);
+    sim.setPkMode("a", 2);
     sim.setTarget("a", "b");
     const hit = run(sim, 0, 1000).find((e) => e.t === "hit" && e.from === "a" && e.to === "b");
     return hit && hit.t === "hit" ? hit.damage : 0;
