@@ -41,7 +41,7 @@ export function initPk(send: (msg: ClientMessage) => void): PkUi {
   let heardAt = performance.now();
   const draw = () => {
     const sn = Math.round(decayedSatNhan(have.satNhan, performance.now() - heardAt));
-    scores.textContent = have.satKhi + sn + have.hero > 0 ? vi.pk.scores(have.satKhi, sn, have.hero) : "";
+    scores.textContent = sn + have.hero > 0 ? vi.pk.scores(sn, have.hero) : "";
     scores.title = vi.pk.scoresTitle;
   };
   button.onclick = () => {

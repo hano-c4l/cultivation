@@ -92,6 +92,8 @@ export type ClientMessage =
   | { t: "bt_claim" }
   /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
   | { t: "bt_cancel" }
+  /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
+  | { t: "conn_report"; code: number; reason: string; clean: boolean; downMs: number }
   /** Take a path item (a placeholder for the NPC quest): one per path per character. */
   | { t: "path_claim"; path: PathId }
   /** Take up a hướng tu: the item (and for a phụ tu the Linh Thạch) is spent; the first is the chủ tu. */
@@ -369,6 +371,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isInt(m.pills) && m.pills >= 1 && m.pills <= 9 ? { t: "bt_start", pills: m.pills } : null;
     case "bt_cancel":
       return { t: "bt_cancel" };
+    case "conn_report":
+      return isInt(m.code) && typeof m.reason === "string" && typeof m.clean === "boolean" && isInt(m.downMs)
+        ? { t: "conn_report", code: m.code, reason: m.reason.slice(0, 80), clean: m.clean, downMs: Math.min(Math.max(m.downMs, 0), 86_400_000) }
+        : null;
     case "path_claim":
       return isPathId(m.path) ? { t: "path_claim", path: m.path } : null;
     case "path_choose":

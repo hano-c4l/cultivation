@@ -740,6 +740,7 @@ export class GameScene extends Phaser.Scene {
         this.pkSeen = true;
         this.lastPk = { satKhi: msg.satKhi, satNhan: msg.satNhan, hero: msg.hero };
         this.pk.set(msg.mode, msg.satKhi, msg.satNhan, msg.hero);
+        this.charPanel.setSatKhi(msg.satKhi);
         // A new room starts with the PK state off: say again which one the player chose, so it survives a change of map.
         if (isFirstPk && this.pk.chosen() !== msg.mode) this.net.send({ t: "pk_mode", mode: this.pk.chosen() });
         const self = this.actors.get(this.selfId);

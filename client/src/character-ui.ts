@@ -10,6 +10,7 @@ import {
   pathDropCost,
   pathLevelName,
   pathSwapCost,
+  satKhiDamagePct,
   withPaths,
   type PathId,
   breakthroughRateParts,
@@ -47,6 +48,8 @@ export interface CharacterPanel {
   setSkills(ids: readonly string[], states: Readonly<Record<string, { lv: number }>>): void;
   /** The worn gear, whose stats are part of the derived stats shown. */
   setEquipped(items: EquippedItem[]): void;
+  /** Sát khí of the character (it adds damage above 200); shown under the item-drop bonus. */
+  setSatKhi(value: number): void;
   /** The bag changed (the breakthrough pills on offer are counted from it). */
   refresh(): void;
   /** A breakthrough started: `ms` from now until it ends. */
@@ -102,6 +105,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
   let sheet: CharacterSheet | null = null;
   let pending: Partial<Record<StatKey, number>> = {};
   let worn: EquippedItem[] = [];
+  let satKhi = 0;
   let skillIds: readonly string[] = [];
   let skillStates: Readonly<Record<string, { lv: number }>> = {};
   /** The running breakthrough (client clock), and how many pills the player has chosen to use. */
@@ -217,6 +221,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       [vi.character.derived.dodgeRate, `${d.dodgeRate}%`],
       [vi.character.derived.expBonus, `${d.expBonus >= 0 ? "+" : ""}${d.expBonus}%`],
       [vi.character.derived.dropBonus, `+${d.dropBonus}%`],
+      [vi.character.derived.satKhi, `${satKhi}${satKhiDamagePct(satKhi) > 0 ? ` (+${Math.round(satKhiDamagePct(satKhi) * 10) / 10}% sát thương)` : ""}`],
     ];
     for (const [name, value] of lines) {
       const row = el("div", "cp-row");
@@ -451,6 +456,11 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     setEquipped(items) {
       worn = items;
       render();
+    },
+    setSatKhi(value) {
+      if (value === satKhi) return;
+      satKhi = value;
+      if (!running) render();
     },
     refresh() {
       if (!running) render();

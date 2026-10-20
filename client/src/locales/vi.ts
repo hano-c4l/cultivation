@@ -253,8 +253,8 @@ export const vi = {
     stateNames: ["Tắt", "PK", "Đồ sát"] as readonly string[],
     title: "Bấm để đổi chế độ. Tắt: không chủ động đánh người. PK: chỉ đánh người cũng đang PK hoặc Đồ sát. Đồ sát: đánh được tất cả. Ai đánh bạn thì bạn luôn đánh trả được. Dưới Luyện Khí tầng 5 không ai bị đánh và cũng không đánh được người.",
     safeTitle: "Trong thành không thể PvP.",
-    scoresTitle: "Sát khí (thêm sát thương khi trên 200) · Sát nhân (đổi màu tên, giảm 5 mỗi phút online) · Anh hùng (thưởng linh lực và tỉ lệ rơi đồ từ 200)",
-    scores: (sk: number, sn: number, ah: number) => `Sát khí ${sk} · Sát nhân ${sn} · Anh hùng ${ah}`,
+    scoresTitle: "Sát nhân (đổi màu tên, giảm 5 mỗi phút online) · Anh hùng (thưởng linh lực và tỉ lệ rơi đồ từ 200)",
+    scores: (sn: number, ah: number) => `Sát nhân ${sn} · Anh hùng ${ah}`,
     changed: (sk: number, sn: number, ah: number) => `Điểm PvP: sát khí ${sk}, sát nhân ${sn}, anh hùng ${ah}.`,
     errors: {
       off: "Chế độ PK của bạn đang tắt, hoặc người đó không ở chế độ PK/Đồ sát: hãy chuyển sang PK hoặc Đồ sát (Đồ sát đánh được tất cả).",
@@ -476,6 +476,7 @@ export const vi = {
       dodgeRate: "Né tránh",
       expBonus: "Thưởng tu vi",
       dropBonus: "Thưởng rơi đồ",
+      satKhi: "Sát khí",
     },
   },
   roots: { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ" } as Record<string, string>,

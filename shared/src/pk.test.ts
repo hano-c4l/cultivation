@@ -125,6 +125,10 @@ describe("PvP messages", () => {
     expect([0, 1, 2].map((t) => canStartPvp(1, t as 0 | 1 | 2))).toEqual([false, true, true]);
     expect([0, 1, 2].map((t) => canStartPvp(2, t as 0 | 1 | 2))).toEqual([true, true, true]);
   });
+  it("a connection report carries the close code, reason and downtime", () => {
+    expect(parseClientMessage(`{"t":"conn_report","code":1006,"reason":"","clean":false,"downMs":1500}`)).toEqual({ t: "conn_report", code: 1006, reason: "", clean: false, downMs: 1500 });
+    expect(parseClientMessage(`{"t":"conn_report","code":"x","reason":"","clean":false,"downMs":1}`)).toBeNull();
+  });
   it("giving up a quest names a quest id", () => {
     expect(parseClientMessage(`{"t":"quest_abandon","quest":"newbie_2"}`)).toEqual({ t: "quest_abandon", quest: "newbie_2" });
     expect(parseClientMessage(`{"t":"quest_abandon","quest":"Bad Id"}`)).toBeNull();
