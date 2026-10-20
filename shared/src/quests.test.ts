@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseClientMessage } from "./protocol";
-import { DEFAULT_QUESTS, EXTRA_QUESTS, SEED_QUESTS, collectItems, countsProgress, killCounts, objectiveTarget, questGrantKey, questStatus, validateQuests, type QuestDef } from "./quests";
+import { DEFAULT_QUESTS, EXTRA_QUESTS, SEED_QUESTS, collectItems, countsProgress, givesPathItem, killCounts, objectiveTarget, questGrantKey, questStatus, validateQuests, type QuestDef } from "./quests";
 import { MAPS_NPC_IDS } from "./map";
 
 const NPCS = new Set(["elder", "merchant"]);
@@ -98,7 +98,13 @@ describe("path and breakthrough quests", () => {
   it("the whole seed catalogue is valid: each path has its own giver NPC and the breakthrough quest follows the chain", () => {
     expect(validateQuests(SEED_QUESTS, MAPS_NPC_IDS)).toEqual([]);
     const paths = EXTRA_QUESTS.filter((q) => q.path);
-    expect(paths.map((q) => q.giver).sort()).toEqual(["path_dan", "path_kiem", "path_thuat"]);
+    expect(paths.map((q) => q.giver).sort()).toEqual(["path_dan", "path_dan", "path_kiem", "path_kiem", "path_thuat", "path_thuat"]);
+    // Two steps each, in order; only the second one rewards the path item.
+    for (const id of ["kiem", "thuat", "dan"]) {
+      expect(EXTRA_QUESTS.find((q) => q.id === `path_${id}`)!.requires).toBe(`path_${id}_1`);
+      expect(EXTRA_QUESTS.find((q) => q.id === `path_${id}_1`)!.requires).toBeNull();
+      expect(paths.filter((q) => q.path === id && givesPathItem(q)).map((q) => q.id)).toEqual([`path_${id}`]);
+    }
     expect(paths.every((q) => q.minRealm === 1 && !q.rewards.linhThach)).toBe(true);
     for (const g of ["path_kiem", "path_thuat", "path_dan"]) expect(MAPS_NPC_IDS.has(g)).toBe(true);
     const bt = EXTRA_QUESTS.find((q) => q.id === "breakthrough_1")!;
@@ -112,8 +118,8 @@ describe("path and breakthrough quests", () => {
     expect(validateQuests([{ ...base, objective: { kind: "collect", item: "linh_thao", qty: 1, also: [{ item: "nope", qty: 1 }] } }], NPCS).join()).toMatch(/collect item/);
   });
 
-  it("a path quest must reward its path item and cannot pay Linh Thạch", () => {
-    const kiem = EXTRA_QUESTS.find((q) => q.id === "path_kiem")!;
+  it("a path needs exactly one quest that rewards its item, and its quests cannot pay Linh Thạch", () => {
+    const kiem = { ...EXTRA_QUESTS.find((q) => q.id === "path_kiem")!, requires: null };
     expect(validateQuests([{ ...kiem, giver: "elder", rewards: { items: [{ item: "hoi_huyet_dan", qty: 1 }] } }], new Set(["elder"])).join()).toMatch(/path item/);
     expect(validateQuests([{ ...kiem, giver: "elder", rewards: { ...kiem.rewards, linhThach: 5 } }], new Set(["elder"])).join()).toMatch(/cannot pay Linh/);
     expect(validateQuests([{ ...kiem, giver: "elder", minRealm: 99 }], new Set(["elder"])).join()).toMatch(/minimum realm/);

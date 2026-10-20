@@ -121,11 +121,11 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
-import { GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkScores } from "@game/shared";
+import { GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { savePkScores } from "./characters";
-import { acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
-import { killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
+import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
+import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
 import { filterChat } from "./chat";
@@ -197,7 +197,7 @@ interface PlayerState {
   /** A paid breakthrough in progress (kept here so it survives the object sleeping; the alarm ends it). */
   bt?: ActiveBreakthrough;
   /** PvP: the PK switch (off at every join), sát khí, sát nhân as of `snAt` (it falls 5 a minute from there while online), anh hùng. */
-  pk?: boolean;
+  pk?: PkMode;
   sk?: number;
   sn?: number;
   snAt?: number;
@@ -478,7 +478,7 @@ export class MapRoom extends DurableObject<Env> {
       const state: PlayerState = {
         id: row.id,
         admin: request.headers.get("x-char-admin") === "1",
-        pk: false,
+        pk: 0,
         sk: row.sat_khi,
         sn: row.sat_nhan,
         snAt: Date.now(),
@@ -547,6 +547,8 @@ export class MapRoom extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets()) {
       const state = ws.deserializeAttachment() as PlayerState | null;
       if (!state || state.id !== characterId) continue;
+      // The same character connected elsewhere while this socket still looked open to the server (it never saw a close).
+      this.logSocketEnd("evicted", ws, { reason: "replaced by a newer connection" });
       await this.failBreakthroughOnExit(ws, state, "left");
       await this.flushPk(state);
       ws.serializeAttachment(null);
@@ -585,7 +587,7 @@ export class MapRoom extends DurableObject<Env> {
       case "attack":
         return this.handleAttack(ws, state, msg.id);
       case "pk_mode":
-        return this.handlePkMode(ws, state, msg.on);
+        return this.handlePkMode(ws, state, msg.mode);
       case "inv_use":
       case "inv_drop":
       case "inv_move":
@@ -606,6 +608,8 @@ export class MapRoom extends DurableObject<Env> {
       case "quest_accept":
       case "quest_turn_in":
         return this.handleQuest(ws, state, msg);
+      case "quest_abandon":
+        return this.handleQuestAbandon(ws, state, msg.quest);
       case "cast":
         return this.handleCast(ws, state, msg);
       case "hotbar_set":
@@ -620,6 +624,12 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleBreakthroughStart(ws, state, msg.pills);
       case "bt_cancel":
         return this.interruptBreakthrough(state.id, "cancel");
+      case "conn_report":
+        // What the client saw when its previous socket ended (it only goes to the log; compare with the server's own `socket close` line).
+        console.log(`conn report char=${state.id} code=${msg.code} clean=${msg.clean} reason="${msg.reason}" downMs=${msg.downMs}`);
+        return;
+      case "bt_claim":
+        return this.handleBreakthroughClaim(ws, state);
       case "path_claim":
         return this.handlePathClaim(ws, state, msg.path);
       case "path_choose":
@@ -810,13 +820,27 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    this.logSocketEnd("close", ws, { code, reason });
     await this.handleLeave(ws);
     // 1005/1006 are reserved and cannot be sent in a close frame.
     ws.close(code >= 1000 && code !== 1005 && code !== 1006 && code !== 1015 ? code : 1000, reason);
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
+    this.logSocketEnd("error", ws, {});
     await this.handleLeave(ws);
+  }
+
+  /**
+   * Log line for every way a game socket ends or is replaced (for finding out why connections drop, e.g. mid-breakthrough):
+   * who, which room, whether a breakthrough was running, and the close code and reason when the runtime gave them.
+   */
+  private logSocketEnd(kind: "close" | "error" | "evicted", ws: WebSocket, info: { code?: number; reason?: string }): void {
+    const state = ws.deserializeAttachment() as PlayerState | null;
+    if (!state) return;
+    console.log(
+      `socket ${kind} char=${state.id} map=${state.mapId} code=${info.code ?? "-"} reason="${info.reason ?? ""}" bt=${state.bt ? `running(${Math.round((state.bt.endsAt - Date.now()) / 1000)}s left)` : "no"} transferring=${state.transferring === true}`,
+    );
   }
 
   private async handleLeave(ws: WebSocket): Promise<void> {
@@ -907,7 +931,7 @@ export class MapRoom extends DurableObject<Env> {
         const catalog = await getConstitutionCatalog(this.env.DB).catch(() => DEFAULT_CATALOG);
         const live = present.find((s) => s.id === row.id);
         sim.addPlayer({ ...seedOf(row, bag, skills, catalog), satKhi: live?.sk ?? row.sat_khi, hero: live?.ah ?? row.anh_hung });
-        if (live?.pk) sim.setPkMode(row.id, true);
+        if (live?.pk) sim.setPkMode(row.id, live.pk);
       }
     } catch (err) {
       this.sim = null; // the next move or attack retries the whole rebuild
@@ -1604,15 +1628,64 @@ export class MapRoom extends DurableObject<Env> {
   /** What an NPC offers: its quests (enabled ones, plus any the character is already on) and the character's progress. */
   private async sendQuests(ws: WebSocket, id: string, npcId: string): Promise<void> {
     const [defs, rows] = await Promise.all([getQuestCatalog(this.env.DB), this.getQuestRows(id)]);
-    const mine = defs.filter((d) => d.giver === npcId && (d.enabled || rows[d.id]));
-    this.send(ws, { t: "quests", npc: npcId, defs: mine, states: rows });
+    const row = await getCharacterById(this.env.DB, id);
+    const p = parsePaths(row?.paths);
+    const owned = new Set<string>([...(p.main ? [p.main] : []), ...p.subs]);
+    const realm = this.sim?.getPlayer(id)?.realm ?? row?.realm ?? 0;
+    // Only what can be taken or is being done: no finished quests, no locked ones, no path quest for a path the character already has,
+    // and no path quest below the realm it needs (the NPC then says which realm that is).
+    let need: number | undefined;
+    const offered = (d: QuestDef) => {
+      const status = questStatus(d, rows);
+      if (status === "active") return true;
+      if (status !== "available" || !d.enabled || (d.path && owned.has(d.path))) return false;
+      if (d.path && d.minRealm !== undefined && realm < d.minRealm) {
+        need = Math.max(need ?? 0, d.minRealm);
+        return false;
+      }
+      return true;
+    };
+    const mine = defs.filter((d) => d.giver === npcId && offered(d));
+    // Quests already taken come first in the order they were taken, then the ones that can be taken in catalogue order.
+    mine.sort((a, b) => (rows[a.id] ? 0 : 1) - (rows[b.id] ? 0 : 1) || (rows[a.id]?.at ?? 0) - (rows[b.id]?.at ?? 0) || Number(a.chain === "daily") - Number(b.chain === "daily"));
+    this.send(ws, { t: "quests", npc: npcId, defs: mine, states: rows, ...(need !== undefined && mine.length === 0 ? { need } : {}) });
   }
 
-  /** The quests the character is on, for the tracker. */
+  /** Every quest the character has taken (active and done), for the quest window and the tracker. */
   private async sendQuestActive(id: string): Promise<void> {
     const [defs, rows] = await Promise.all([getQuestCatalog(this.env.DB), this.getQuestRows(id)]);
-    const active = defs.filter((d) => rows[d.id]?.state === "active");
-    this.sendToCharacter(id, { t: "quest_active", defs: active, states: Object.fromEntries(active.map((d) => [d.id, rows[d.id]!])) });
+    const taken = defs.filter((d) => rows[d.id]);
+    this.sendToCharacter(id, { t: "quest_active", defs: taken, states: Object.fromEntries(taken.map((d) => [d.id, rows[d.id]!])) });
+  }
+
+  /** The hướng tu the character has now (chủ tu and phụ tu). */
+  private async ownedPaths(id: string): Promise<Set<string>> {
+    const row = await getCharacterById(this.env.DB, id);
+    const p = parsePaths(row?.paths);
+    return new Set<string>([...(p.main ? [p.main] : []), ...p.subs]);
+  }
+
+  /** Gives up an active quest (from anywhere): the row goes and the quest is as if never taken. Finished quests are never touched. */
+  private handleQuestAbandon(ws: WebSocket, state: PlayerState, questId: string): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "quest_error", reason: "rate" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      const rows = await this.getQuestRows(id);
+      if (rows[questId]?.state !== "active") return this.send(ws, { t: "quest_error", reason: "not_active" });
+      try {
+        await abandonQuest(this.env.DB, id, questId);
+      } catch (err) {
+        console.error("quest abandon failed", id, err);
+        this.questRows.delete(id);
+        return this.send(ws, { t: "quest_error", reason: "busy" });
+      }
+      delete rows[questId];
+      this.questDirty.get(id)?.delete(questId);
+      await this.sendQuestActive(id);
+    });
   }
 
   /** Accept and hand in quests. Same queue and rate limit as the bag commands, and the giver must be within reach. */
@@ -1636,7 +1709,9 @@ export class MapRoom extends DurableObject<Env> {
 
   private async questAccept(ws: WebSocket, id: string, def: QuestDef): Promise<void> {
     const rows = await this.getQuestRows(id);
-    if (rows[def.id]) return this.send(ws, { t: "quest_error", reason: "already" });
+    const now = Date.now();
+    // A daily quest finished on an earlier day is open again (questStatus knows); anything else the character has is "already".
+    if (rows[def.id] && questStatus(def, rows, now) !== "available") return this.send(ws, { t: "quest_error", reason: "already" });
     if (!def.enabled) return this.send(ws, { t: "quest_error", reason: "invalid" });
     if (questStatus(def, rows) === "locked") return this.send(ws, { t: "quest_error", reason: "locked" });
     if (def.minRealm !== undefined) {
@@ -1644,16 +1719,17 @@ export class MapRoom extends DurableObject<Env> {
       if (realm < def.minRealm) return this.send(ws, { t: "quest_error", reason: "level" });
     }
     // A path item that was already given (the old claim button) blocks the path quest: say so now, not after the materials were gathered.
-    if (def.path && (await pathItemGiven(this.env.DB, id, def.path))) return this.send(ws, { t: "quest_error", reason: "claimed" });
+    if (def.path && (await this.ownedPaths(id)).has(def.path)) return this.send(ws, { t: "quest_error", reason: "owned" });
+    if (givesPathItem(def) && def.path && (await pathItemGiven(this.env.DB, id, def.path))) return this.send(ws, { t: "quest_error", reason: "claimed" });
     try {
-      await acceptQuest(this.env.DB, id, def.id, Date.now());
+      await acceptQuest(this.env.DB, id, def.id, now, def.repeat === "daily");
     } catch (err) {
       // The primary key says it was taken meanwhile (another socket, a retry): reload and show what is there.
       if (!String(err).includes("character_quests")) console.error("quest accept failed", id, err);
       this.questRows.delete(id);
       return this.send(ws, { t: "quest_error", reason: String(err).includes("character_quests") ? "already" : "busy" });
     }
-    rows[def.id] = { state: "active", progress: 0 };
+    rows[def.id] = { state: "active", progress: 0, at: now };
     await this.sendQuests(ws, id, def.giver);
     await this.sendQuestActive(id);
   }
@@ -1673,7 +1749,7 @@ export class MapRoom extends DurableObject<Env> {
     if ((o.kind === "kill" || o.kind === "talk") && mine.progress < objectiveTarget(o)) return this.send(ws, { t: "quest_error", reason: "not_ready" });
     if (o.kind === "reach" && (row.realm < o.realm || (row.realm === o.realm && row.stage < o.stage))) return this.send(ws, { t: "quest_error", reason: "not_ready" });
     // A path item that was already given (the claim button, or a path quest not reopened) must not be given twice: refuse before taking any materials.
-    if (def.path && (await pathItemGiven(this.env.DB, id, def.path))) return this.send(ws, { t: "quest_error", reason: "claimed" });
+    if (givesPathItem(def) && def.path && (await pathItemGiven(this.env.DB, id, def.path))) return this.send(ws, { t: "quest_error", reason: "claimed" });
     const bag = await this.getBag(id);
     const plan = planTurnIn(def, { items: bag.items, equipped: bag.equipped }, bag.tabs, row, () => crypto.randomUUID());
     if (!plan.ok) return this.send(ws, { t: "quest_error", reason: plan.reason });
@@ -1693,8 +1769,9 @@ export class MapRoom extends DurableObject<Env> {
       this.bags.set(id, after);
       this.sendBagDelta(id, bag, after);
       if (r.balance !== null) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance, gained: def.rewards.linhThach });
+      if (r.congHien !== null) this.sendToCharacter(id, { t: "wallet", currency: "cong_hien", balance: r.congHien, gained: def.rewards.congHien });
       if (plan.exp) this.sendToCharacter(id, { t: "stats", character: toCharacterSheet({ ...row, stage: plan.exp.to.stage, exp: plan.exp.to.exp, potential_points: row.potential_points + plan.exp.to.points }) });
-      rows[def.id] = { state: "done", progress: mine.progress };
+      rows[def.id] = { state: "done", progress: mine.progress, at: mine.at, done: Date.now() };
       this.sendToCharacter(id, { t: "quest_done", quest: def.id });
       await this.sendQuests(ws, id, def.giver);
       await this.sendQuestActive(id);
@@ -2510,8 +2587,8 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /**
-   * A placeholder for the NPC quest that will hand out path items: a Trúc Cơ character may take each path's item once. The grant
-   * key is stored (item_grants) so it cannot be repeated, and the quest can reuse it. A full bag refuses it.
+   * GM button: an admin at Trúc Cơ or above may take a path item as many times as wanted (no grant key, so it neither limits the
+   * button nor blocks the NPC quest). A full bag refuses it.
    */
   private handlePathClaim(ws: WebSocket, state: PlayerState, path: PathId): void {
     // The temporary claim button is for admins only now (players get the item from the path's NPC quest). Checked here, not just hidden.
@@ -2533,11 +2610,33 @@ export class MapRoom extends DurableObject<Env> {
           const ops = planAdd(bag.items, bag.tabs, PATHS[path].item, 1, () => crypto.randomUUID());
           return ops ? { ops } : null;
         },
-        `path_item:${id}:${path}`,
       );
-      if (!res.ok) return this.pathError(ws, res.reason === "duplicate" ? "claimed" : res.reason === "invalid" ? "bag_full" : "busy");
+      if (!res.ok) return this.pathError(ws, res.reason === "invalid" ? "bag_full" : "busy");
       this.sendBagDelta(id, res.before, res.after);
       this.send(ws, { t: "path_claimed", path });
+    });
+  }
+
+  /** GM button: the breakthrough pill for the realm the character is in, as many times as wanted. Admin only (checked here). */
+  private handleBreakthroughClaim(ws: WebSocket, state: PlayerState): void {
+    if (!state.admin) return this.btError(ws, "admin");
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.btError(ws, "busy");
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      const row = await getCharacterById(this.env.DB, id);
+      if (!row) return;
+      const def = getBreakthrough(this.sim?.getPlayer(id)?.realm ?? row.realm);
+      if (!def) return this.btError(ws, "max_realm");
+      const res = await this.mutateBag(id, (bag) => {
+        const ops = planAdd(bag.items, bag.tabs, def.pill, 1, () => crypto.randomUUID());
+        return ops ? { ops } : null;
+      });
+      if (!res.ok) return this.btError(ws, res.reason === "invalid" ? "full" : "busy");
+      this.sendBagDelta(id, res.before, res.after);
+      this.send(ws, { t: "bt_claimed", item: def.pill });
     });
   }
 
@@ -2785,18 +2884,19 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** The PK switch: only the player's own choice, off at every join. A safe map keeps it but nobody can be attacked there. */
-  private handlePkMode(ws: WebSocket, state: PlayerState, on: boolean): void {
+  private handlePkMode(ws: WebSocket, state: PlayerState, mode: PkMode): void {
     const next = this.patchState(ws, (s) => {
-      s.pk = on;
+      s.pk = mode;
     });
     if (!next) return;
-    this.sim?.setPkMode(state.id, on);
+    this.sim?.setPkMode(state.id, mode);
     this.sendPk(ws, next);
+    this.broadcast({ t: "pk_state", id: state.id, mode }, ws);
   }
 
   private sendPk(ws: WebSocket, state: PlayerState, now = Date.now()): void {
     const sc = this.pkScoresOf(state, now);
-    this.send(ws, { t: "pk", on: state.pk === true, satKhi: sc.satKhi, satNhan: Math.round(sc.satNhan), hero: sc.hero });
+    this.send(ws, { t: "pk", mode: state.pk ?? 0, satKhi: sc.satKhi, satNhan: Math.round(sc.satNhan), hero: sc.hero });
   }
 
   /** Writes the scores of a character that is leaving (its sát nhân may have decayed, or they changed). Best effort: the next write corrects it. */
@@ -2836,11 +2936,15 @@ export class MapRoom extends DurableObject<Env> {
       this.patchState(entry.ws, apply);
       apply(entry.state);
       this.sim?.setPk(entry.state.id, { satKhi: scores.satKhi, hero: scores.hero });
-      this.send(entry.ws, { t: "pk", on: entry.state.pk === true, satKhi: scores.satKhi, satNhan: Math.round(scores.satNhan), hero: scores.hero });
+      this.send(entry.ws, { t: "pk", mode: entry.state.pk ?? 0, satKhi: scores.satKhi, satNhan: Math.round(scores.satNhan), hero: scores.hero });
       this.broadcast({ t: "pk_score", id: entry.state.id, sn: Math.round(scores.satNhan) });
     }
     this.blows.delete(`${killerId}>${victimId}`);
     this.blows.delete(`${victimId}>${killerId}`);
+    this.sim?.clearQuarrel(killerId, victimId);
+    // Both sides drop the "attacked me" mark (the grey name) at once; the clients reset it on this message.
+    this.sendToCharacter(killerId, { t: "pk_clear", id: victimId });
+    this.sendToCharacter(victimId, { t: "pk_clear", id: killerId });
     await Promise.all([killer, victim].map((e) => this.flushPk(e.state)));
   }
 
@@ -2860,8 +2964,8 @@ export class MapRoom extends DurableObject<Env> {
       // Another player: the PK switch must be on, and neither side may be under the newbie protection (the sim checks the same rules every blow).
       const target = sim.getPlayer(monsterId);
       if (!target) return void this.send(ws, { t: "pk_error", reason: "invalid" });
-      if (!profile.pkOn) return void this.send(ws, { t: "pk_error", reason: "off" });
       if (isPkProtected(profile.realm, profile.stage) || isPkProtected(target.realm, target.stage)) return void this.send(ws, { t: "pk_error", reason: "protected" });
+      if (!sim.pvpAllowed(profile, target)) return void this.send(ws, { t: "pk_error", reason: "off" });
     }
     if (state.bt) await this.interruptBreakthrough(state.id, "moved");
     if (state.tp) await this.interruptTalisman(state.id, "moved");
@@ -2879,7 +2983,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, sn: Math.round(this.satNhanOf(p, Date.now())) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {

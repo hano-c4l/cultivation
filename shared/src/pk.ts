@@ -24,6 +24,19 @@ export function isPkProtected(realm: number, stage: number): boolean {
   return levelIndex(realm, stage) < PK_PROTECTED_BELOW;
 }
 
+/** The PK state a player chooses: 0 off (starts no fight), 1 PK (fights those who are PK or Đồ sát), 2 Đồ sát (fights anyone). */
+export type PkMode = 0 | 1 | 2;
+export const PK_OFF: PkMode = 0;
+export const PK_ON: PkMode = 1;
+export const PK_SLAUGHTER: PkMode = 2;
+export function isPkMode(v: unknown): v is PkMode {
+  return v === 0 || v === 1 || v === 2;
+}
+/** Whether a player in state `mine` may start a fight with one in state `theirs` (not counting self-defence or newbie protection). */
+export function canStartPvp(mine: PkMode, theirs: PkMode): boolean {
+  return mine === 2 || (mine === 1 && theirs >= 1);
+}
+
 // ---- sát khí ----
 export const SAT_KHI_PER_KILL = 10;
 export const SAT_KHI_LOST_ON_DEATH = 50;

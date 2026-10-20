@@ -50,7 +50,7 @@ import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initShop, type ShopUi } from "./shop-ui";
 import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
-import { GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor } from "@game/shared";
+import { GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
 import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
@@ -92,6 +92,9 @@ interface Actor {
   offAt: number;
   body: Phaser.GameObjects.Ellipse;
   label: Phaser.GameObjects.Text;
+  /** The "PK" tag after the name: brown for PK, red for Đồ sát (hidden when off). */
+  tag: Phaser.GameObjects.Text;
+  pk: PkMode;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
   snAt: number;
@@ -226,7 +229,7 @@ export class GameScene extends Phaser.Scene {
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
-    this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list());
+    this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
@@ -236,6 +239,7 @@ export class GameScene extends Phaser.Scene {
       swapPath: (path) => this.net.send({ t: "path_swap", path }),
       dropPath: (path) => this.net.send({ t: "path_drop", path }),
       claimPath: (path) => this.net.send({ t: "path_claim", path }),
+      claimBreakthroughPill: () => this.net.send({ t: "bt_claim" }),
       isAdmin: this.registry.get("isAdmin") === true,
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
@@ -441,8 +445,9 @@ export class GameScene extends Phaser.Scene {
       this.talkTo(npc);
       return;
     }
-    // With the PK switch on, a click on another player attacks them (the server checks the rules and says why when it refuses).
-    const player = this.pk.isOn() && !this.map.safe ? this.pickPlayer(world.x, world.y) : null;
+    // With the PK state on (or against a player who hit you in the last 3 minutes: self-defence), a click on another player attacks them
+    // (the server checks the rules and says why when it refuses).
+    const player = !this.map.safe ? this.pickPlayer(world.x, world.y) : null;
     const picked = player ?? this.pickMonster(world.x, world.y);
     if (picked) {
       const nowMs = performance.now();
@@ -553,6 +558,7 @@ export class GameScene extends Phaser.Scene {
         this.hotbar.setSkills(msg.skills);
         this.hotbar.setSlots(msg.hotbar);
         this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, MP_REGEN_PER_S);
+        this.hotbar.refresh(); // the slots were drawn before the MP was known (they dim what the MP cannot pay)
         this.buffs.set(msg.effects);
         for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
         this.refreshHud();
@@ -728,17 +734,32 @@ export class GameScene extends Phaser.Scene {
       }
       case "pk": {
         // Your own state: the switch and the scores. A change of the scores is said in the system tab (not the first message, which is just the join).
+        const isFirstPk = !this.pkSeen;
         const changed = msg.satKhi !== this.lastPk.satKhi || msg.satNhan !== this.lastPk.satNhan || msg.hero !== this.lastPk.hero;
         if (this.pkSeen && changed) this.chat.system(vi.pk.changed(msg.satKhi, msg.satNhan, msg.hero));
         this.pkSeen = true;
         this.lastPk = { satKhi: msg.satKhi, satNhan: msg.satNhan, hero: msg.hero };
-        this.pk.set(msg.on, msg.satKhi, msg.satNhan, msg.hero);
+        this.pk.set(msg.mode, msg.satKhi, msg.satNhan, msg.hero);
+        this.charPanel.setSatKhi(msg.satKhi);
+        // A new room starts with the PK state off: say again which one the player chose, so it survives a change of map.
+        if (isFirstPk && this.pk.chosen() !== msg.mode) this.net.send({ t: "pk_mode", mode: this.pk.chosen() });
         const self = this.actors.get(this.selfId);
         if (self) {
           self.sn = msg.satNhan;
           self.snAt = performance.now();
           this.recolorName(self, self.snAt);
         }
+        break;
+      }
+      case "pk_state": {
+        const who = this.actors.get(msg.id);
+        if (who) this.setActorPk(who, msg.mode);
+        break;
+      }
+      case "pk_clear": {
+        this.hitMeAt.delete(msg.id);
+        const who = this.actors.get(msg.id);
+        if (who) this.recolorName(who, performance.now());
         break;
       }
       case "pk_score": {
@@ -754,7 +775,7 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(vi.pk.errors[msg.reason] ?? vi.pk.errors.invalid!, "error");
         break;
       case "quests":
-        this.quests.setQuests(msg.npc, msg.defs, msg.states);
+        this.quests.setQuests(msg.npc, msg.defs, msg.states, msg.need);
         break;
       case "quest_active":
         this.quests.setActive(msg.defs, msg.states);
@@ -817,6 +838,9 @@ export class GameScene extends Phaser.Scene {
       case "path_error":
         this.chat.system(vi.paths.errors[msg.reason] ?? vi.paths.errors.invalid!, "error");
         break;
+      case "bt_claimed":
+        this.chat.system(vi.breakthrough.claimed(getItemDef(msg.item)?.nameVi ?? msg.item));
+        break;
       case "path_claimed":
         this.chat.system(vi.paths.claimed(PATHS[msg.path].itemNameVi));
         break;
@@ -863,12 +887,14 @@ export class GameScene extends Phaser.Scene {
         const label = this.add
           .text(0, 0, p.name, { fontFamily: FONT, fontSize: "13px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
           .setOrigin(0.5, 1);
-        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, sn: 0, snAt: 0 };
+        const tag = this.add.text(0, 0, "PK", { fontFamily: FONT, fontSize: "11px", fontStyle: "bold", color: "#c68642", stroke: "#000000", strokeThickness: 3 }).setOrigin(0, 1).setVisible(false);
+        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, tag, pk: 0, sn: 0, snAt: 0 };
         this.actors.set(p.id, actor);
       }
       const now = performance.now();
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
+      this.setActorPk(actor, p.pk ?? 0);
       this.recolorName(actor, now);
       if (isNew) {
         actor.path = p.path;
@@ -886,6 +912,7 @@ export class GameScene extends Phaser.Scene {
     if (!actor) return;
     actor.body.destroy();
     actor.label.destroy();
+    actor.tag.destroy();
     this.actors.delete(id);
   }
 
@@ -982,6 +1009,12 @@ export class GameScene extends Phaser.Scene {
     return displayColor(nameTier(sn), actor.id === this.selfId ? undefined : hitAt, now);
   }
 
+  /** The tag after another player's name: "PK" in brown (PK) or red (Đồ sát). Not shown on yourself. */
+  private setActorPk(actor: Actor, mode: PkMode): void {
+    actor.pk = mode;
+    actor.tag.setVisible(mode > 0 && actor.id !== this.selfId).setColor(mode === 2 ? "#ff5252" : "#c68642");
+  }
+
   private recolorName(actor: Actor, now: number): void {
     const color = this.nameColorOf(actor, now);
     actor.label.setColor(color === "gray" ? "#9e9e9e" : color === 3 ? "#ff5252" : color === 2 ? "#ff9800" : color === 1 ? "#ffd54a" : "#ffffff");
@@ -990,6 +1023,7 @@ export class GameScene extends Phaser.Scene {
   private recolorAll(): void {
     const now = performance.now();
     this.pk.tick();
+    this.hotbar.refresh(); // MP regenerates: slots it can pay for again stop being dim
     for (const a of this.actors.values()) this.recolorName(a, now);
   }
 
@@ -1000,6 +1034,8 @@ export class GameScene extends Phaser.Scene {
     let bestD = MONSTER_PICK_PX;
     for (const a of this.actors.values()) {
       if (a.id === this.selfId) continue;
+      const hitAt = this.hitMeAt.get(a.id);
+      if (this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < GRAY_WINDOW_MS)) continue;
       const pos = currentPos(a, now);
       const s = toScreen(pos.x, pos.y);
       const d = Math.hypot(s.x - wx, s.y - 20 - wy);
@@ -1049,6 +1085,7 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       actor.label.setDepth(depth + 0.1);
+      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - 38).setDepth(depth + 0.1);
     }
 
     for (const m of this.monsters.values()) {

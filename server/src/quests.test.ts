@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { DEFAULT_QUESTS, EXTRA_QUESTS, SEED_QUESTS, planAdd, type QuestDef } from "@game/shared";
+import { DAILY_QUESTS, DEFAULT_QUESTS, EXTRA_QUESTS, SEED_QUESTS, planAdd, questStatus, type QuestDef } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { commitBagOps, loadBag } from "./inventory";
-import { acceptQuest, commitTurnIn, getQuestCatalog, loadQuestCatalog, loadQuestProgress, pathItemKey, planConsume, planTurnIn, resetQuestCache, resetQuestStatements, saveQuestProgress } from "./quests";
+import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestCatalog, loadQuestProgress, pathItemKey, planConsume, planTurnIn, resetQuestCache, resetQuestStatements, saveQuestProgress } from "./quests";
 import { makeDb } from "./test-db";
 
 const A = "char-a";
@@ -43,7 +43,7 @@ describe("the catalogue", () => {
   it("is seeded with the default chain, valid, and later edits are kept", async () => {
     const first = await loadQuestCatalog(db);
     expect(first.defs.map((d) => d.id).sort()).toEqual(SEED_QUESTS.map((d) => d.id).sort());
-    expect(DEFAULT_QUESTS.length + EXTRA_QUESTS.length).toBe(SEED_QUESTS.length);
+    expect(DEFAULT_QUESTS.length + EXTRA_QUESTS.length + DAILY_QUESTS.length).toBe(SEED_QUESTS.length);
     raw.exec("UPDATE quests SET enabled = 0 WHERE id = 'newbie_3'");
     raw.exec("UPDATE quests SET def = json_set(def, '$.rewards.linhThach', 777) WHERE id = 'newbie_2'");
     resetQuestCache();
@@ -72,7 +72,10 @@ describe("progress", () => {
     raw.exec("UPDATE character_quests SET state = 'done' WHERE quest_id = 'newbie_2'");
     await saveQuestProgress(db, A, [{ id: "newbie_2", progress: 9 }]);
     expect(questRow("newbie_2")).toEqual({ state: "done", progress: 4 });
-    expect(await loadQuestProgress(db, A)).toEqual({ newbie_2: { state: "done", progress: 4 } });
+    expect(await loadQuestProgress(db, A)).toEqual({ newbie_2: { state: "done", progress: 4, at: expect.any(Number) } });
+    // Giving up touches an active quest only: a finished quest stays finished.
+    expect(await abandonQuest(db, A, "newbie_2")).toBe(false);
+    expect(questRow("newbie_2")).toEqual({ state: "done", progress: 4 });
   });
 });
 
@@ -193,20 +196,22 @@ describe("planConsume", () => {
 describe("path quests", () => {
   const dan = () => def("path_dan");
   const give2 = async () => {
-    await give("linh_thao", 30);
-    await give("hoi_huyet_dan", 5);
+    await give("duong_huyet_dan", 10);
+    await give("thu_cot", 10);
+    await give("yeu_dan", 2);
   };
 
   it("take every material, give the path item and spend the path's one-time key", async () => {
     await acceptQuest(db, A, dan().id, NOW);
-    await give("linh_thao", 30);
-    expect(((await turnIn(dan(), false)) as { ok: boolean }).ok).toBe(false); // the Hồi Huyết Đan is missing
-    expect(count("linh_thao")).toBe(30);
-    await give("hoi_huyet_dan", 5);
+    await give("duong_huyet_dan", 10);
+    await give("thu_cot", 10);
+    expect(((await turnIn(dan(), false)) as { ok: boolean }).ok).toBe(false); // the Yêu Đan is missing
+    expect(count("thu_cot")).toBe(10);
+    await give("yeu_dan", 2);
     const r = (await turnIn(dan(), false)) as { result: { status: string } };
     expect(r.result.status).toBe("done");
     expect(count("path_item_dan")).toBe(1);
-    expect(count("linh_thao") + count("hoi_huyet_dan")).toBe(0);
+    expect(count("duong_huyet_dan") + count("thu_cot") + count("yeu_dan")).toBe(0);
     expect(raw.prepare("SELECT COUNT(*) AS n FROM item_grants WHERE key = ?").get(pathItemKey(A, "dan"))).toEqual({ n: 1 });
   });
 
@@ -216,8 +221,8 @@ describe("path quests", () => {
     raw.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, 0)").run(pathItemKey(A, "dan"));
     const r = (await turnIn(dan(), false)) as { result: { status: string } };
     expect(r.result.status).toBe("duplicate");
-    expect(count("linh_thao")).toBe(30);
-    expect(count("hoi_huyet_dan")).toBe(5);
+    expect(count("duong_huyet_dan")).toBe(10);
+    expect(count("thu_cot")).toBe(10);
     expect(count("path_item_dan")).toBe(0);
     expect(questRow(dan().id)?.state).toBe("active");
   });
@@ -227,7 +232,7 @@ describe("path quests", () => {
     await give2();
     expect(((await turnIn(dan(), false)) as { result: { status: string } }).result.status).toBe("done");
     // What dropping a path does to the item key (rearrangeStatements) and to its quest (resetQuestStatements).
-    await db.batch([db.prepare("DELETE FROM item_grants WHERE key = ?").bind(pathItemKey(A, "dan")), ...resetQuestStatements(db, A, [dan()])]);
+    await db.batch([db.prepare("DELETE FROM item_grants WHERE key = ?").bind(pathItemKey(A, "dan")), ...resetQuestStatements(db, A, SEED_QUESTS.filter((q) => q.path === "dan"))]);
     expect(questRow(dan().id)).toBeUndefined();
     await acceptQuest(db, A, dan().id, NOW + 1);
     await give2();
@@ -235,30 +240,55 @@ describe("path quests", () => {
     expect(count("path_item_dan")).toBe(2);
   });
 
-  it("the three paths ask for different things: kills (kiếm), Yêu Đan and herbs (thuật), herbs and pills (đan)", () => {
-    expect(def("path_kiem").objective).toMatchObject({ kind: "kill", count: 30, map: "forest" });
-    expect(def("path_thuat").objective).toMatchObject({ kind: "collect", item: "yeu_dan", qty: 4 });
-    expect(def("path_dan").objective).toMatchObject({ kind: "collect", item: "linh_thao", qty: 30 });
-    expect(new Set(["path_kiem", "path_thuat", "path_dan"].map((id) => JSON.stringify(def(id).objective))).size).toBe(3);
+  it("the three paths ask for different things in both steps", () => {
+    expect(def("path_kiem_1").objective).toMatchObject({ kind: "kill", count: 30, map: "forest" });
+    expect(def("path_kiem").objective).toMatchObject({ kind: "kill", count: 3, map: "cave", rare: true });
+    expect(def("path_thuat_1").objective).toMatchObject({ kind: "collect", item: "yeu_dan", qty: 4 });
+    expect(def("path_thuat").objective).toMatchObject({ kind: "kill", count: 50, map: "cave" });
+    expect(def("path_dan_1").objective).toMatchObject({ kind: "collect", item: "linh_thao", qty: 30 });
+    expect(def("path_dan").objective).toMatchObject({ kind: "collect", item: "duong_huyet_dan", qty: 10 });
+    const ids = ["kiem", "thuat", "dan"].flatMap((p) => [`path_${p}_1`, `path_${p}`]);
+    expect(new Set(ids.map((id) => JSON.stringify(def(id).objective))).size).toBe(6);
   });
 
-  it("the kiếm quest is a kill quest: it needs 30 counted kills, then gives the Kiếm Tu Lệnh", async () => {
+  it("the first step gives no path item and does not spend the path's one-time key; the second step needs the first", async () => {
+    const first = def("path_dan_1");
+    await acceptQuest(db, A, first.id, NOW);
+    await give("linh_thao", 30);
+    await give("hoi_huyet_dan", 5);
+    expect(((await turnIn(first, false)) as { result: { status: string } }).result.status).toBe("done");
+    expect(count("path_item_dan")).toBe(0);
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM item_grants WHERE key = ?").get(pathItemKey(A, "dan"))).toEqual({ n: 0 });
+    expect(questStatus(def("path_dan"), await loadQuestProgress(db, A))).toBe("available");
+    expect(questStatus(def("path_dan"), {})).toBe("locked");
+  });
+
+  it("giving up an active quest removes its row, so it is as if never taken", async () => {
+    await acceptQuest(db, A, "path_kiem_1", NOW);
+    expect(await abandonQuest(db, A, "path_kiem_1")).toBe(true);
+    expect(questRow("path_kiem_1")).toBeUndefined();
+    expect(await abandonQuest(db, A, "path_kiem_1")).toBe(false);
+    await acceptQuest(db, A, "path_kiem_1", NOW + 1); // can be taken again
+    expect(questRow("path_kiem_1")?.state).toBe("active");
+  });
+
+  it("the kiếm quest is a kill quest: it needs 3 counted rare kills in the cave, then gives the Kiếm Tu Lệnh", async () => {
     const kiem = def("path_kiem");
     await acceptQuest(db, A, kiem.id, NOW);
-    await saveQuestProgress(db, A, [{ id: kiem.id, progress: 29 }]);
+    await saveQuestProgress(db, A, [{ id: kiem.id, progress: 2 }]);
     expect(((await turnIn(kiem, true)) as { result: { status: string } }).result.status).toBe("stale");
     expect(count("path_item_kiem")).toBe(0);
-    await saveQuestProgress(db, A, [{ id: kiem.id, progress: 30 }]);
+    await saveQuestProgress(db, A, [{ id: kiem.id, progress: 3 }]);
     expect(((await turnIn(kiem, true)) as { result: { status: string } }).result.status).toBe("done");
     expect(count("path_item_kiem")).toBe(1);
   });
 
-  it("the stored definitions after migration 0021 are the ones in the seed", () => {
-    const sql = readFileSync(new URL("../migrations/0021_path_quests.sql", import.meta.url), "utf8");
+  it("the stored definitions after migration 0023 are the ones in the seed", () => {
+    const sql = readFileSync(new URL("../migrations/0023_path_quest_steps.sql", import.meta.url), "utf8");
     for (const q of EXTRA_QUESTS.filter((x) => x.path)) {
-      const m = new RegExp(`UPDATE quests SET def = '([^']+)', updated_at = 0 WHERE id = '${q.id}';`).exec(sql);
-      expect(m, q.id).not.toBeNull();
-      expect(JSON.parse(m![1]!)).toEqual(JSON.parse(JSON.stringify(q)));
+      const line = sql.split(String.fromCharCode(10)).find((x) => x.includes(`{"id":"${q.id}"`));
+      expect(line, q.id).toBeDefined();
+      expect(JSON.parse(line!.slice(line!.indexOf("'{") + 1, line!.lastIndexOf("}'") + 1))).toEqual(JSON.parse(JSON.stringify(q)));
     }
     expect(sql).toMatch(/UPDATE config_versions SET version = version \+ 1/);
   });
@@ -281,5 +311,68 @@ describe("path quests", () => {
     expect(((await turnIn(bt, false)) as { result: { status: string } }).result.status).toBe("duplicate");
     expect(count("bt_pill_1")).toBe(1);
     expect(count("linh_thao")).toBe(20);
+  });
+
+  it("the stored daily quests after migration 0024 are the ones in the seed", () => {
+    const sql = readFileSync(new URL("../migrations/0024_daily_quests.sql", import.meta.url), "utf8");
+    for (const q of DAILY_QUESTS) {
+      const line = sql.split(String.fromCharCode(10)).find((x) => x.includes(`{"id":"${q.id}"`));
+      expect(line, q.id).toBeDefined();
+      expect(JSON.parse(line!.slice(line!.indexOf("'{") + 1, line!.lastIndexOf("}'") + 1))).toEqual(JSON.parse(JSON.stringify(q)));
+    }
+    expect(sql).toMatch(/UPDATE config_versions SET version = version \+ 1/);
+  });
+});
+
+describe("Cống Hiến and daily quests", () => {
+  const wallet = (cur: string) => (raw.prepare("SELECT balance FROM currency_balances WHERE character_id = ? AND currency = ?").get(A, cur) as { balance: number } | undefined)?.balance ?? 0;
+  const DAY = 86_400_000;
+  const T0 = 20_000 * DAY + 3 * 3_600_000; // 10:00 Vietnam time on some day
+
+  it("a quest pays Linh Thạch and Cống Hiến together, each with its own ledger key", async () => {
+    const d = def("daily_herb");
+    await acceptQuest(db, A, d.id, T0, true);
+    await give("linh_thao", 10);
+    const bag = await loadBag(db, A);
+    const plan = planTurnIn(d, { items: bag.items, equipped: bag.equipped }, bag.tabs, character(), newId);
+    if (!plan.ok) throw new Error("plan");
+    const r = await commitTurnIn(db, A, d, plan, false, T0);
+    expect(r).toMatchObject({ status: "done", balance: 100, congHien: 8 });
+    expect(wallet("linh_thach")).toBe(100);
+    expect(wallet("cong_hien")).toBe(8);
+    expect((raw.prepare("SELECT COUNT(*) AS n FROM currency_ledger WHERE character_id = ? AND reason = 'quest'").get(A) as { n: number }).n).toBe(2);
+  });
+
+  it("a Cống Hiến-only reward works too", async () => {
+    const q: QuestDef = { ...def("daily_herb"), id: "cong_only", rewards: { congHien: 5 } };
+    raw.prepare("INSERT INTO character_quests (character_id, quest_id, state, progress, accepted_at) VALUES (?, 'cong_only', 'active', 0, 1)").run(A);
+    await give("linh_thao", 10);
+    const bag = await loadBag(db, A);
+    const plan = planTurnIn(q, { items: bag.items, equipped: bag.equipped }, bag.tabs, character(), newId);
+    if (!plan.ok) throw new Error("plan");
+    const r = await commitTurnIn(db, A, q, plan, false, T0);
+    expect(r).toMatchObject({ status: "done", balance: null, congHien: 5 });
+    expect(wallet("cong_hien")).toBe(5);
+  });
+
+  it("a daily quest is open again the next Vietnam day, and its reward is one-time per day", async () => {
+    const d = def("daily_herb");
+    raw.prepare("INSERT INTO character_quests (character_id, quest_id, state, progress, accepted_at, done_at) VALUES (?, 'newbie_3', 'done', 1, 0, 0)").run(A);
+    const finish = async (now: number) => {
+      await acceptQuest(db, A, d.id, now, true);
+      await give("linh_thao", 10);
+      const bag = await loadBag(db, A);
+      const plan = planTurnIn(d, { items: bag.items, equipped: bag.equipped }, bag.tabs, character(), newId);
+      if (!plan.ok) throw new Error("plan");
+      return commitTurnIn(db, A, d, plan, false, now);
+    };
+    expect((await finish(T0)).status).toBe("done");
+    const rows = await loadQuestProgress(db, A);
+    expect(questStatus(d, rows, T0 + 3_600_000)).toBe("done"); // later the same day
+    expect(questStatus(d, rows, T0 + DAY)).toBe("available"); // the next day
+    await expect(acceptQuest(db, A, d.id, T0 + 3_600_000, true)).rejects.toThrow(); // the same day: the finished row stays, so the insert fails
+    expect((await finish(T0 + DAY)).status).toBe("done");
+    expect(wallet("cong_hien")).toBe(16);
+    expect(count("linh_thao")).toBe(0);
   });
 });

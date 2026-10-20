@@ -66,7 +66,10 @@ import {
   type SpiritualRoot,
   addMastery,
   heroBonus,
+  GRAY_WINDOW_MS,
+  canStartPvp,
   isPkProtected,
+  type PkMode,
   satKhiDamagePct,
   passiveTotals,
   effectiveSkill,
@@ -134,8 +137,10 @@ export interface PlayerProfile extends ProfileSeed {
   inflightPoints: number;
   expDirty: boolean;
   dead: boolean;
-  /** The PK switch: only with it on can this player attack other players. Off at every join. */
-  pkOn: boolean;
+  /** The PK state (see PkMode): off cannot start a fight, PK fights those who are PK or Đồ sát, Đồ sát fights anyone. */
+  pkMode: PkMode;
+  /** Players who hit this one (not as a retaliation) and when: this player may hit them back even with the PK state off. Cleared by a kill between the two. */
+  hitBy: Map<string, number>;
   /** The player that last hit this one while it stood still (it fights back at it even with the PK switch off). */
   retaliateId: string | null;
   /** Earliest time the next potion may be used. */
@@ -291,6 +296,8 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
 export class CombatSim {
   private monsters = new Map<string, Monster>();
   private players = new Map<string, PlayerProfile>();
+  /** Time of the latest tick (for the self-defence window, which setTarget and queueCast read without a time of their own). */
+  private clock = 0;
   private nextMonsterId = 1;
   /** Realm of the map; monster stats and EXP scale from it. */
   private readonly realm: number;
@@ -407,7 +414,8 @@ export class CombatSim {
       inflightPoints: 0,
       expDirty: false,
       dead: false,
-      pkOn: false,
+      pkMode: 0,
+      hitBy: new Map(),
       retaliateId: null,
       potionReadyAt: 0,
       mp: d.maxMp,
@@ -685,15 +693,29 @@ export class CombatSim {
    * Safe maps never get here: they have no simulation.
    */
   pvpAllowed(p: PlayerProfile, q: PlayerProfile): boolean {
-    return !p.dead && !q.dead && p.id !== q.id && !isPkProtected(p.realm, p.stage) && !isPkProtected(q.realm, q.stage) && (p.pkOn || p.retaliateId === q.id);
+    if (p.dead || q.dead || p.id === q.id || isPkProtected(p.realm, p.stage) || isPkProtected(q.realm, q.stage)) return false;
+    return canStartPvp(p.pkMode, q.pkMode) || p.retaliateId === q.id || this.hitRecently(p, q.id);
   }
 
-  /** The PK switch of a player. Turning it off drops a player target that is not a retaliation. */
-  setPkMode(id: string, on: boolean): void {
+  /** Whether `q` hit `p` in the last 3 minutes (a fight p did not start: it may defend itself whatever its PK state). */
+  private hitRecently(p: PlayerProfile, qid: string): boolean {
+    const at = p.hitBy.get(qid);
+    return at !== undefined && this.clock - at < GRAY_WINDOW_MS;
+  }
+
+  /** Forgets who hit whom between two players (after one killed the other, the quarrel is over). */
+  clearQuarrel(a: string, b: string): void {
+    this.players.get(a)?.hitBy.delete(b);
+    this.players.get(b)?.hitBy.delete(a);
+  }
+
+  /** The PK state of a player. A player target that the new state does not allow (and is not a defence) is dropped. */
+  setPkMode(id: string, mode: PkMode): void {
     const p = this.players.get(id);
     if (!p) return;
-    p.pkOn = on;
-    if (!on && p.targetId && this.players.has(p.targetId) && p.retaliateId !== p.targetId) {
+    p.pkMode = mode;
+    const q = p.targetId ? this.players.get(p.targetId) : undefined;
+    if (q && !this.pvpAllowed(p, q)) {
       p.targetId = null;
       p.pendingCast = null;
     }
@@ -761,6 +783,7 @@ export class CombatSim {
    */
   tick(now: number, positions: ReadonlyMap<string, Vec2>, moving: ReadonlySet<string> = new Set()): SimEvent[] {
     this.moving = moving;
+    this.clock = now;
     const events: SimEvent[] = [];
     this.tickMonsters(now, positions, events);
     this.tickPlayers(now, positions, events);
@@ -1092,11 +1115,15 @@ export class CombatSim {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
     const attacker = this.attackerFor(p, skill, skillPower, skillElement);
     const hit = computeDamage(attacker, q.stats, this.rand);
+    // A blow that answers someone who hit first (the automatic retaliation, or a click back by hand) is a defence: it is marked `ret`, it
+    // does not make the answerer "grey" to the attacker and it is not counted as striking first when a kill is scored.
+    const answering = p.retaliateId === q.id || this.hitRecently(p, q.id);
+    if (!answering) q.hitBy.set(p.id, now);
     const applied = Math.min(q.hp, hit.damage);
     q.hp = Math.max(0, q.hp - hit.damage);
     this.settleMp(q, now); // regeneration up to this hit is kept; it pauses from here
     q.lastHurtAt = now;
-    events.push({ t: "hit", from: p.id, to: q.id, kind: hit.kind, damage: hit.damage, hp: q.hp, ...(skill ? { skill: skill.id } : {}), ...(p.retaliateId === q.id ? { ret: true as const } : {}) });
+    events.push({ t: "hit", from: p.id, to: q.id, kind: hit.kind, damage: hit.damage, hp: q.hp, ...(skill ? { skill: skill.id } : {}), ...(answering ? { ret: true as const } : {}) });
     events.push({ t: "hp", playerId: q.id, hp: q.hp, maxHp: q.maxHp });
     if (q.mp < q.maxMp) events.push(this.mpEvent(q, now));
     if (q.hp > 0) {

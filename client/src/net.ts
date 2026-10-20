@@ -13,6 +13,8 @@ export class Net {
   private ws: WebSocket | null = null;
   private retryMs = 500;
   private closedForGood = false;
+  /** How the last socket ended and when: reported to the server after the next successful connect. */
+  private lastClose: { code: number; reason: string; clean: boolean; at: number } | null = null;
 
   constructor(
     private readonly url: string,
@@ -25,6 +27,12 @@ export class Net {
     const ws = new WebSocket(this.url);
     this.ws = ws;
     ws.addEventListener("open", () => {
+      if (this.lastClose) {
+        const c = this.lastClose;
+        this.lastClose = null;
+        console.warn(`[net] reconnected after ${Date.now() - c.at} ms (previous socket closed: code ${c.code}, clean ${c.clean}, reason "${c.reason}")`);
+        ws.send(JSON.stringify({ t: "conn_report", code: c.code, reason: c.reason, clean: c.clean, downMs: Date.now() - c.at } satisfies ClientMessage));
+      }
       this.retryMs = 500;
       this.handlers.onStatus(true);
     });
@@ -45,6 +53,8 @@ export class Net {
     ws.addEventListener("close", (ev) => {
       // 4001: the server replaced this socket with a newer one of the same character; reconnecting would start a tug of war.
       if (ev.code === 4001) this.closedForGood = true;
+      this.lastClose = { code: ev.code, reason: ev.reason ?? "", clean: ev.wasClean, at: Date.now() };
+      console.warn(`[net] socket closed: code ${ev.code}, clean ${ev.wasClean}, reason "${ev.reason}"`);
       this.handlers.onStatus(false);
       if (this.closedForGood) return;
       void this.reconnectLater();

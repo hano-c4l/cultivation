@@ -2,6 +2,7 @@ import { BREAKTHROUGHS } from "./breakthrough";
 import { isItemId } from "./items";
 import { PATHS, isPathId, type PathId } from "./paths";
 import { REALMS, STAGES_PER_REALM } from "./progression-data";
+import { shopDay } from "./shop";
 
 /**
  * Quests (phase 2e-B). A quest is DATA: every field is a plain value so the whole catalogue can live in D1 and be edited
@@ -22,6 +23,8 @@ export type QuestObjective =
 export interface QuestRewards {
   /** Linh Thạch. */
   linhThach?: number;
+  /** Cống Hiến (the locked currency for sects). */
+  congHien?: number;
   /** Raw EXP, applied like EXP from a kill (stage-ups carry over; at stage 9 the bar overflows by at most 100% and the rest is lost). */
   exp?: number;
   items?: Array<{ item: string; qty: number }>;
@@ -44,11 +47,17 @@ export interface QuestDef {
   /** The character must have reached this realm (index into REALMS) to take the quest. */
   minRealm?: number;
   /**
-   * A hướng tu quest: its reward is that path's item, so it shares the one-time key of the path item
-   * (`path_item:<character>:<path>`), and it opens again when the character drops the path (the item can then be had again).
-   * It must not pay Linh Thạch (the reward key doubles as a ledger key and the ledger is append-only).
+   * A hướng tu quest (one step of that path's quest chain): the step that rewards the path item shares the one-time key of the
+   * path item (`path_item:<character>:<path>`); every step opens again when the character drops the path (the item can then be
+   * had again), and is not offered to a character that already has the path. It must not pay Linh Thạch (the reward key doubles
+   * as a ledger key and the ledger is append-only).
    */
   path?: PathId;
+  /**
+   * A daily quest: once handed in it can be taken again from 00:00 Vietnam time the next day, and its reward is one-time per day
+   * (the grant and ledger keys carry the day number).
+   */
+  repeat?: "daily";
   objective: QuestObjective;
   rewards: QuestRewards;
 }
@@ -60,6 +69,10 @@ export type QuestStatus = "locked" | "available" | "active" | "done";
 export interface QuestProgressView {
   state: QuestState;
   progress: number;
+  /** When a finished quest was handed in (ms): a daily quest handed in on an earlier day can be taken again. */
+  done?: number;
+  /** When it was accepted (ms). Orders the lists by the order the quests were taken. */
+  at?: number;
 }
 
 /** How much progress the objective needs: the kill count, the item quantity, or 1 for a talk and a level. */
@@ -82,10 +95,16 @@ export function killCounts(o: QuestObjective, mapId: string, rare: boolean): boo
   return o.kind === "kill" && (o.map === undefined || o.map === mapId) && (!o.rare || rare);
 }
 
+/** Whether a finished daily quest was handed in on an earlier (Vietnam) day than `now`, so it can be taken again. */
+export function isStaleDaily(def: QuestDef, mine: QuestProgressView, now: number): boolean {
+  return def.repeat === "daily" && mine.state === "done" && shopDay(mine.done ?? 0) < shopDay(now);
+}
+
 /** The status of a quest for a character, from its progress rows and the set of finished quests. */
-export function questStatus(def: QuestDef, progress: Readonly<Record<string, QuestProgressView>>): QuestStatus {
+export function questStatus(def: QuestDef, progress: Readonly<Record<string, QuestProgressView>>, now = Date.now()): QuestStatus {
   const mine = progress[def.id];
-  if (mine) return mine.state;
+  // A daily quest handed in on an earlier day is open again.
+  if (mine && !isStaleDaily(def, mine, now)) return mine.state;
   if (def.requires && progress[def.requires]?.state !== "done") return "locked";
   return "available";
 }
@@ -130,28 +149,39 @@ export function validateQuests(list: readonly QuestDef[], npcs: ReadonlySet<stri
       problems.push(`${at}: bad realm or stage`);
     else if (!["talk", "kill", "collect", "reach"].includes(o.kind)) problems.push(`${at}: unknown objective`);
     if (q.minRealm !== undefined && !(Number.isInteger(q.minRealm) && q.minRealm >= 0 && q.minRealm < REALMS.length)) problems.push(`${at}: bad minimum realm`);
+    if (q.repeat !== undefined && (q.repeat !== "daily" || q.path !== undefined)) problems.push(`${at}: bad repeat`);
     if (q.path !== undefined) {
       if (!isPathId(q.path)) problems.push(`${at}: unknown path ${String(q.path)}`);
-      else if (!(q.rewards.items ?? []).some((it) => it.item === PATHS[q.path as PathId].item)) problems.push(`${at}: a path quest must reward the path item`);
-      if (q.rewards.linhThach) problems.push(`${at}: a path quest cannot pay Linh Thạch`);
+      if (q.rewards.linhThach || q.rewards.congHien) problems.push(`${at}: a path quest cannot pay Linh Thạch or Cống Hiến`);
     }
     const r = q.rewards;
     if (r.linhThach !== undefined && !POSITIVE_INT(r.linhThach)) problems.push(`${at}: bad Linh Thạch reward`);
+    if (r.congHien !== undefined && !POSITIVE_INT(r.congHien)) problems.push(`${at}: bad Cống Hiến reward`);
     if (r.exp !== undefined && !POSITIVE_INT(r.exp)) problems.push(`${at}: bad EXP reward`);
     for (const it of r.items ?? []) if (!isItemId(it.item) || !POSITIVE_INT(it.qty) || it.qty > 9999) problems.push(`${at}: bad reward item ${it.item}`);
     seen.add(q.id);
+  }
+  // Every path that has quests must hand out its item in exactly one of them (the last step).
+  for (const id of new Set(list.flatMap((q) => (q.path && isPathId(q.path) ? [q.path] : [])))) {
+    const givers = list.filter((q) => q.path === id && givesPathItem(q)).length;
+    if (givers !== 1) problems.push(`path ${id}: exactly one quest must reward the path item (found ${givers})`);
   }
   return problems;
 }
 
 /** Whether the reward adds anything at all (a quest with an empty reward is allowed: the turn-in then only closes it). */
 export function hasRewards(r: QuestRewards): boolean {
-  return !!(r.linhThach || r.exp || (r.items && r.items.length > 0));
+  return !!(r.linhThach || r.congHien || r.exp || (r.items && r.items.length > 0));
+}
+
+/** Whether handing the quest in gives the path item (only the last step of a path's chain does). */
+export function givesPathItem(def: QuestDef): boolean {
+  return !!def.path && (def.rewards.items ?? []).some((it) => it.item === PATHS[def.path as PathId].item);
 }
 
 /** The grant key that makes a quest's reward one-time. It is also the idempotency key of its Linh Thạch entry. */
-export function questGrantKey(characterId: string, questId: string): string {
-  return `quest:${characterId}:${questId}`;
+export function questGrantKey(characterId: string, questId: string, day?: number): string {
+  return day === undefined ? `quest:${characterId}:${questId}` : `quest:${characterId}:${questId}:d${day}`;
 }
 
 const NEWBIE = (q: Omit<QuestDef, "chain" | "giver" | "enabled">): QuestDef => ({ ...q, chain: "newbie", giver: "elder", enabled: true });
@@ -215,30 +245,35 @@ export const DEFAULT_QUESTS: readonly QuestDef[] = [
 ];
 
 /**
- * One quest per hướng tu, given by that path's own NPC and different from the others: Kiếm tu proves itself in combat (kills),
- * Thuật tu brings spirit essence (Yêu Đan and herbs), Đan tu brings herbs and basic pills. From Trúc Cơ; the reward is the path
- * item. The quest reopens when the path is dropped.
+ * Two quests per hướng tu, given by that path's own NPC and done in order (the second needs the first). The paths differ from
+ * each other: Kiếm tu proves itself in combat (30 kills, then rare monsters in the cave), Thuật tu brings spirit essence and then
+ * hunts in the cave, Đan tu brings herbs and pills and then brews. From Trúc Cơ; the last step rewards the path item. Both steps
+ * open again when the path is dropped.
  */
-const pathQuest = (path: PathId, seq: number, giver: string, titleVi: string, descVi: string, objective: QuestObjective): QuestDef => ({
-  id: `path_${path}`,
+const pathQuest = (path: PathId, seq: number, step: 1 | 2, titleVi: string, descVi: string, objective: QuestObjective, rewards: QuestRewards): QuestDef => ({
+  id: step === 1 ? `path_${path}_1` : `path_${path}`,
   chain: "path",
   seq,
-  giver,
+  giver: `path_${path}`,
   titleVi,
   descVi,
   enabled: true,
-  requires: null,
+  requires: step === 1 ? null : `path_${path}_1`,
   minRealm: 1,
   path,
   objective,
-  rewards: { items: [{ item: PATHS[path].item, qty: 1 }] },
+  rewards,
 });
+const pathItem = (path: PathId): QuestRewards => ({ items: [{ item: PATHS[path].item, qty: 1 }] });
 
 /** The hướng tu quests and the one-time breakthrough quest (placeholder values, like the newbie chain). */
 export const EXTRA_QUESTS: readonly QuestDef[] = [
-  pathQuest("kiem", 1, "path_kiem", "Thử kiếm", "Kiếm tu lấy chiến đấu làm gốc. Hãy ra Hắc Mộc Lâm hạ 30 con quái để chứng tỏ kiếm tâm, rồi quay lại nhận Kiếm Tu Lệnh.", {kind: "kill", count: 30, map: "forest"}),
-  pathQuest("thuat", 2, "path_thuat", "Lễ vật Yêu Đan", "Thuật tu cần linh khí cô đọng để thi triển pháp thuật. Mang đến 4 Yêu Đan và 8 Linh Thảo, ta sẽ trao Thuật Tu Lệnh.", {kind: "collect", item: "yeu_dan", qty: 4, also: [{item: "linh_thao", qty: 8}]}),
-  pathQuest("dan", 3, "path_dan", "Dược liệu và đan thuốc", "Đan tu khởi đầu từ dược liệu và đan cơ bản. Mang đến 30 Linh Thảo và 5 Hồi Huyết Đan, ta sẽ trao Đan Tu Lệnh.", {kind: "collect", item: "linh_thao", qty: 30, also: [{item: "hoi_huyet_dan", qty: 5}]}),
+  pathQuest("kiem", 1, 1, "Thử kiếm", "Kiếm tu lấy chiến đấu làm gốc. Hãy ra Hắc Mộc Lâm hạ 30 con quái để chứng tỏ kiếm tâm, rồi quay lại báo cho ta.", { kind: "kill", count: 30, map: "forest" }, { items: [{ item: "dai_hoi_huyet_dan", qty: 2 }] }),
+  pathQuest("kiem", 2, 2, "Kiếm Tâm", "Kiếm tâm phải được tôi trong nguy hiểm. Vào U Minh Động hạ 3 quái Tinh Anh hoặc Đại Yêu, ta sẽ trao Kiếm Tu Lệnh.", { kind: "kill", count: 3, map: "cave", rare: true }, pathItem("kiem")),
+  pathQuest("thuat", 3, 1, "Lễ vật Yêu Đan", "Thuật tu cần linh khí cô đọng để thi triển pháp thuật. Mang đến 4 Yêu Đan và 8 Linh Thảo làm lễ vật.", { kind: "collect", item: "yeu_dan", qty: 4, also: [{ item: "linh_thao", qty: 8 }] }, { items: [{ item: "dai_hoi_huyet_dan", qty: 2 }] }),
+  pathQuest("thuat", 4, 2, "Dẫn linh nhập thể", "Muốn dẫn linh khí vào người phải quen với nơi linh khí nồng đậm. Vào U Minh Động hạ 50 con quái, ta sẽ trao Thuật Tu Lệnh.", { kind: "kill", count: 50, map: "cave" }, pathItem("thuat")),
+  pathQuest("dan", 5, 1, "Dược liệu và đan thuốc", "Đan tu khởi đầu từ dược liệu và đan cơ bản. Mang đến 30 Linh Thảo và 5 Hồi Huyết Đan.", { kind: "collect", item: "linh_thao", qty: 30, also: [{ item: "hoi_huyet_dan", qty: 5 }] }, { items: [{ item: "duong_huyet_dan", qty: 5 }] }),
+  pathQuest("dan", 6, 2, "Thử luyện đan", "Giờ hãy chuẩn bị nguyên liệu cho một mẻ đan thật sự: 10 Dưỡng Huyết Đan, 10 Thú Cốt và 2 Yêu Đan, ta sẽ trao Đan Tu Lệnh.", { kind: "collect", item: "duong_huyet_dan", qty: 10, also: [{ item: "thu_cot", qty: 10 }, { item: "yeu_dan", qty: 2 }] }, pathItem("dan")),
   {
     id: "breakthrough_1",
     chain: "breakthrough",
@@ -253,5 +288,30 @@ export const EXTRA_QUESTS: readonly QuestDef[] = [
   },
 ];
 
+/**
+ * Daily quests of the Trưởng Lão (phase 2e-B PR3): they open after the first steps of the newbie chain and can be done once a day
+ * (Vietnam time). They pay Cống Hiến as well as Linh Thạch. Placeholder values.
+ */
+const daily = (id: string, seq: number, titleVi: string, descVi: string, requires: string, minRealm: number, objective: QuestObjective, rewards: QuestRewards): QuestDef => ({
+  id,
+  chain: "daily",
+  seq,
+  giver: "elder",
+  titleVi,
+  descVi,
+  enabled: true,
+  requires,
+  minRealm,
+  repeat: "daily",
+  objective,
+  rewards,
+});
+
+export const DAILY_QUESTS: readonly QuestDef[] = [
+  daily("daily_kill", 1, "Trừ yêu mỗi ngày", "Yêu thú ở Hắc Mộc Lâm không bao giờ hết. Mỗi ngày hạ 20 con để giữ an toàn cho thành.", "newbie_3", 0, { kind: "kill", count: 20, map: "forest" }, { linhThach: 150, congHien: 10, exp: 300 }),
+  daily("daily_herb", 2, "Dược liệu mỗi ngày", "Mỗi ngày mang cho ta 10 Linh Thảo để luyện đan cho đệ tử trong thành.", "newbie_3", 0, { kind: "collect", item: "linh_thao", qty: 10 }, { linhThach: 100, congHien: 8 }),
+  daily("daily_cave", 3, "Thám hiểm U Minh Động", "Từ Trúc Cơ trở đi, mỗi ngày hạ 20 con quái ở U Minh Động.", "newbie_6", 1, { kind: "kill", count: 20, map: "cave" }, { linhThach: 400, congHien: 20 }),
+];
+
 /** Everything the server seeds into an empty catalogue, in order. */
-export const SEED_QUESTS: readonly QuestDef[] = [...DEFAULT_QUESTS, ...EXTRA_QUESTS];
+export const SEED_QUESTS: readonly QuestDef[] = [...DEFAULT_QUESTS, ...EXTRA_QUESTS, ...DAILY_QUESTS];

@@ -10,6 +10,7 @@ import {
   pathDropCost,
   pathLevelName,
   pathSwapCost,
+  satKhiDamagePct,
   withPaths,
   type PathId,
   breakthroughRateParts,
@@ -47,6 +48,8 @@ export interface CharacterPanel {
   setSkills(ids: readonly string[], states: Readonly<Record<string, { lv: number }>>): void;
   /** The worn gear, whose stats are part of the derived stats shown. */
   setEquipped(items: EquippedItem[]): void;
+  /** Sát khí of the character (it adds damage above 200); shown under the item-drop bonus. */
+  setSatKhi(value: number): void;
   /** The bag changed (the breakthrough pills on offer are counted from it). */
   refresh(): void;
   /** A breakthrough started: `ms` from now until it ends. */
@@ -69,6 +72,8 @@ export interface CharacterPanelDeps {
   dropPath: (path: PathId) => void;
   /** Take the item of a hướng tu (a placeholder for the NPC quest). */
   claimPath: (path: PathId) => void;
+  /** GM only: take the breakthrough pill of the realm to break out of. */
+  claimBreakthroughPill: () => void;
   /** The account is an admin: only then is the temporary "claim path item" button shown (the server refuses it for everyone else). */
   isAdmin: boolean;
   /** How many of an item type the bag holds. */
@@ -100,6 +105,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
   let sheet: CharacterSheet | null = null;
   let pending: Partial<Record<StatKey, number>> = {};
   let worn: EquippedItem[] = [];
+  let satKhi = 0;
   let skillIds: readonly string[] = [];
   let skillStates: Readonly<Record<string, { lv: number }>> = {};
   /** The running breakthrough (client clock), and how many pills the player has chosen to use. */
@@ -215,6 +221,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       [vi.character.derived.dodgeRate, `${d.dodgeRate}%`],
       [vi.character.derived.expBonus, `${d.expBonus >= 0 ? "+" : ""}${d.expBonus}%`],
       [vi.character.derived.dropBonus, `+${d.dropBonus}%`],
+      [vi.character.derived.satKhi, `${satKhi}${satKhiDamagePct(satKhi) > 0 ? ` (+${Math.round(satKhiDamagePct(satKhi) * 10) / 10}% sát thương)` : ""}`],
     ];
     for (const [name, value] of lines) {
       const row = el("div", "cp-row");
@@ -245,7 +252,9 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     }
     const named = (p: PathId) => `${PATHS[p].nameVi} (${pathLevelName(s.paths, p)})`;
     const subs = s.paths.subs.length > 0 ? s.paths.subs.map(named).join(", ") : vi.paths.none;
-    row.append(el("span", undefined, `${vi.paths.mainWord}: ${named(s.paths.main)} · ${vi.paths.subWord}: ${subs}`));
+    const lines = el("div", "cp-path-lines");
+    lines.append(el("div", undefined, `${vi.paths.mainWord}: ${named(s.paths.main)}`), el("div", undefined, `${vi.paths.subWord}: ${subs}`));
+    row.append(lines);
     if (nextPathSlot(s.paths, PATH_IDS.find((p) => p !== s.paths.main && !s.paths.subs.includes(p)) ?? "kiem") !== null) {
       const add = el("button", "cp-path-btn cp-path-add", vi.paths.addSub);
       add.onclick = () => {
@@ -401,6 +410,14 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       deps.startBreakthrough(chosenPills);
     };
     box.append(start);
+    if (deps.isAdmin) {
+      const gm = el("button", "cp-confirm", vi.breakthrough.claim);
+      gm.onclick = () => deps.claimBreakthroughPill();
+      box.append(gm);
+    }
+    // Say why the button is off instead of leaving it grey.
+    if (!ready.ok) box.append(el("div", "cp-bt-warn", vi.breakthrough.notReady));
+    else if (have < chosenPills) box.append(el("div", "cp-bt-warn", vi.breakthrough.needPills(pillName, chosenPills, have)));
     return box;
   }
 
@@ -439,6 +456,11 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     setEquipped(items) {
       worn = items;
       render();
+    },
+    setSatKhi(value) {
+      if (value === satKhi) return;
+      satKhi = value;
+      if (!running) render();
     },
     refresh() {
       if (!running) render();

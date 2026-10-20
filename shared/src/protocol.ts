@@ -4,6 +4,7 @@ import { isCombatTargetId, isMonsterId, type HitKind } from "./combat";
 import type { BreakthroughEnd, BreakthroughError } from "./breakthrough";
 import { MAX_SHOP_QTY, SHOP_SELL_MANY_MAX } from "./shop";
 import type { QuestDef, QuestProgressView } from "./quests";
+import { isPkMode, type PkMode } from "./pk";
 import { isPathId, type PathError, type PathId } from "./paths";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
@@ -56,8 +57,8 @@ export type ClientMessage =
   | { t: "allocate"; points: Partial<BaseStats> }
   /** Target a monster (or, with the PK switch on, another player): the server walks into range and auto-attacks until the target dies or the player moves. */
   | { t: "attack"; id: string }
-  /** Turn the PK switch on or off. Off by default each time the player joins; only with it on can another player be attacked (never in a safe map). */
-  | { t: "pk_mode"; on: boolean }
+  /** Set the PK state: 0 off, 1 PK (fights players who are PK or Đồ sát), 2 Đồ sát (fights anyone). Never in a safe map. A new room starts at off; the client sends its chosen state again after each join, so it survives a change of map. */
+  | { t: "pk_mode"; mode: PkMode }
   /** Bag commands name a cell, never an item id: the server resolves the item from its own copy of the bag. */
   | { t: "inv_use"; tab: number; cell: number }
   | { t: "inv_drop"; tab: number; cell: number; qty?: number }
@@ -87,8 +88,12 @@ export type ClientMessage =
   | { t: "skill_boost"; skill: string }
   /** Start a breakthrough with this many pills (the pills and the Linh Thạch are paid now). Moving, fighting or being hit before it ends makes it fail. */
   | { t: "bt_start"; pills: number }
+  /** GM only: take the breakthrough pill for the realm to break out of (as many times as wanted). */
+  | { t: "bt_claim" }
   /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
   | { t: "bt_cancel" }
+  /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
+  | { t: "conn_report"; code: number; reason: string; clean: boolean; downMs: number }
   /** Take a path item (a placeholder for the NPC quest): one per path per character. */
   | { t: "path_claim"; path: PathId }
   /** Take up a hướng tu: the item (and for a phụ tu the Linh Thạch) is spent; the first is the chủ tu. */
@@ -108,7 +113,9 @@ export type ClientMessage =
   /** Take a quest from its giver (the server checks the distance, that it is available and that nothing is in the way). */
   | { t: "quest_accept"; npc: string; quest: string }
   /** Hand a quest in: the objective is checked, then the reward and the closing of the quest commit in one batch. */
-  | { t: "quest_turn_in"; npc: string; quest: string };
+  | { t: "quest_turn_in"; npc: string; quest: string }
+  /** Give up an active quest (from anywhere): it goes back to "not taken". */
+  | { t: "quest_abandon"; quest: string };
 
 /** One running effect on the character for the buff bar: id is "s:<skill>" (a buff skill) or "i:<item type>" (a potion that works over time); `ms` is the time left. */
 export interface EffectView {
@@ -157,6 +164,8 @@ export interface PlayerSnapshot {
   name: string;
   /** Sát nhân of the player when the snapshot was made (it falls 5 a minute while online; the client works the name colour out from it). */
   sn?: number;
+  /** The PK state of the player (1 PK, 2 Đồ sát; left out when off), shown after the name. */
+  pk?: PkMode;
   /** Continuous waypoints in tile units (see Vec2). */
   path: Vec2[];
   ageMs: number;
@@ -201,20 +210,24 @@ export type ServerMessage =
   /** A multi-item sale went through: `count` stacks sold for `total` Linh Thạch. */
   | { t: "shop_sold"; count: number; total: number }
   /** Your own PvP state: the PK switch and the three scores (sát nhân as of now; it keeps falling 5 a minute while you are online). */
-  | { t: "pk"; on: boolean; satKhi: number; satNhan: number; hero: number }
+  | { t: "pk"; mode: PkMode; satKhi: number; satNhan: number; hero: number }
   /** A PvP command was refused: the PK switch is off, the map is safe, or someone is under the newbie protection. */
   | { t: "pk_error"; reason: "off" | "safe" | "protected" | "invalid" }
   /** The sát nhân of a player changed (a kill or a death): everyone in the room recolours the name. */
   | { t: "pk_score"; id: string; sn: number }
+  /** The PK state of a player in the room changed (the tag after their name). */
+  | { t: "pk_state"; id: string; mode: PkMode }
+  /** A kill ended the quarrel with this player: forget that they attacked you (the grey name). */
+  | { t: "pk_clear"; id: string }
   /** The quests a giver has (all enabled ones plus any the character is on) and the character's progress on them. */
-  | { t: "quests"; npc: string; defs: QuestDef[]; states: Record<string, QuestProgressView> }
-  /** The quests the character is on, for the tracker: sent on joining and after a quest is accepted or handed in. */
+  | { t: "quests"; npc: string; defs: QuestDef[]; states: Record<string, QuestProgressView>; need?: number }
+  /** Every quest the character has taken (active and done) with its progress: sent on joining and after a quest is accepted, handed in or given up. */
   | { t: "quest_active"; defs: QuestDef[]; states: Record<string, QuestProgressView> }
   /** Progress of an active quest changed (a kill, or talking to the NPC). */
   | { t: "quest_progress"; quest: string; progress: number }
   /** A quest was handed in: the reward is already in the bag and the wallet. */
   | { t: "quest_done"; quest: string }
-  | { t: "quest_error"; reason: "level" | "claimed" | "far" | "locked" | "not_active" | "not_ready" | "full" | "busy" | "invalid" | "already" | "rate" }
+  | { t: "quest_error"; reason: "level" | "claimed" | "far" | "locked" | "not_active" | "not_ready" | "full" | "busy" | "invalid" | "already" | "rate" | "owned" }
   /** A teleport talisman is being channelled for `ms`; the talisman is only used up when it completes. */
   | { t: "tp"; ms: number; item: string }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
@@ -252,6 +265,7 @@ export type ServerMessage =
   | { t: "path_error"; reason: PathError }
   /** A path item was handed out. */
   | { t: "path_claimed"; path: PathId }
+  | { t: "bt_claimed"; item: string }
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
@@ -311,7 +325,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "attack":
       return isCombatTargetId(m.id) ? { t: "attack", id: m.id } : null;
     case "pk_mode":
-      return typeof m.on === "boolean" ? { t: "pk_mode", on: m.on } : null;
+      return isPkMode(m.mode) ? { t: "pk_mode", mode: m.mode } : null;
     case "inv_use":
       return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) ? { t: "inv_use", tab: m.tab, cell: m.cell } : null;
     case "inv_drop": {
@@ -351,10 +365,16 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isInt(m.a) && isInt(m.b) && m.a >= 0 && m.b >= 0 && m.a < HOTBAR_SLOTS && m.b < HOTBAR_SLOTS && m.a !== m.b ? { t: "hotbar_swap", a: m.a, b: m.b } : null;
     case "use_type":
       return typeof m.type === "string" && /^[a-z0-9_.]{1,60}$/.test(m.type) ? { t: "use_type", type: m.type } : null;
+    case "bt_claim":
+      return { t: "bt_claim" };
     case "bt_start":
       return isInt(m.pills) && m.pills >= 1 && m.pills <= 9 ? { t: "bt_start", pills: m.pills } : null;
     case "bt_cancel":
       return { t: "bt_cancel" };
+    case "conn_report":
+      return isInt(m.code) && typeof m.reason === "string" && typeof m.clean === "boolean" && isInt(m.downMs)
+        ? { t: "conn_report", code: m.code, reason: m.reason.slice(0, 80), clean: m.clean, downMs: Math.min(Math.max(m.downMs, 0), 86_400_000) }
+        : null;
     case "path_claim":
       return isPathId(m.path) ? { t: "path_claim", path: m.path } : null;
     case "path_choose":
@@ -397,6 +417,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "quest_accept":
     case "quest_turn_in":
       return isNpcId(m.npc) && typeof m.quest === "string" && /^[a-z0-9_]{1,40}$/.test(m.quest) ? { t: m.t, npc: m.npc, quest: m.quest } : null;
+    case "quest_abandon":
+      return typeof m.quest === "string" && /^[a-z0-9_]{1,40}$/.test(m.quest) ? { t: "quest_abandon", quest: m.quest } : null;
     case "mail_claim":
       return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseClientMessage } from "./protocol";
-import { GRAY_WINDOW_MS, applyGuardKill, applyPvpKill, decayedSatNhan, displayColor, heroBonus, isPkProtected, nameTier, satKhiDamagePct, type PkScores } from "./pk";
+import { GRAY_WINDOW_MS, applyGuardKill, applyPvpKill, canStartPvp, decayedSatNhan, displayColor, heroBonus, isPkProtected, nameTier, satKhiDamagePct, type PkScores } from "./pk";
 
 const scores = (satKhi = 0, satNhan = 0, hero = 0): PkScores => ({ satKhi, satNhan, hero });
 
@@ -113,8 +113,24 @@ describe("PvP messages", () => {
     expect(parseClientMessage(`{"t":"attack","id":"bad id"}`)).toBeNull();
     expect(parseClientMessage(`{"t":"cast","skill":"chuong_0","target":"${uuid}","el":"kim"}`)).toMatchObject({ t: "cast", target: uuid });
   });
-  it("the PK switch takes a boolean", () => {
-    expect(parseClientMessage(`{"t":"pk_mode","on":true}`)).toEqual({ t: "pk_mode", on: true });
-    expect(parseClientMessage(`{"t":"pk_mode","on":"yes"}`)).toBeNull();
+  it("the PK state is 0, 1 or 2", () => {
+    expect(parseClientMessage(`{"t":"pk_mode","mode":0}`)).toEqual({ t: "pk_mode", mode: 0 });
+    expect(parseClientMessage(`{"t":"pk_mode","mode":2}`)).toEqual({ t: "pk_mode", mode: 2 });
+    expect(parseClientMessage(`{"t":"pk_mode","mode":3}`)).toBeNull();
+    expect(parseClientMessage(`{"t":"pk_mode","mode":"yes"}`)).toBeNull();
+    expect(parseClientMessage(`{"t":"pk_mode","on":true}`)).toBeNull();
+  });
+  it("who may start a fight: off never, PK only against PK or Đồ sát, Đồ sát against anyone", () => {
+    expect([0, 1, 2].map((t) => canStartPvp(0, t as 0 | 1 | 2))).toEqual([false, false, false]);
+    expect([0, 1, 2].map((t) => canStartPvp(1, t as 0 | 1 | 2))).toEqual([false, true, true]);
+    expect([0, 1, 2].map((t) => canStartPvp(2, t as 0 | 1 | 2))).toEqual([true, true, true]);
+  });
+  it("a connection report carries the close code, reason and downtime", () => {
+    expect(parseClientMessage(`{"t":"conn_report","code":1006,"reason":"","clean":false,"downMs":1500}`)).toEqual({ t: "conn_report", code: 1006, reason: "", clean: false, downMs: 1500 });
+    expect(parseClientMessage(`{"t":"conn_report","code":"x","reason":"","clean":false,"downMs":1}`)).toBeNull();
+  });
+  it("giving up a quest names a quest id", () => {
+    expect(parseClientMessage(`{"t":"quest_abandon","quest":"newbie_2"}`)).toEqual({ t: "quest_abandon", quest: "newbie_2" });
+    expect(parseClientMessage(`{"t":"quest_abandon","quest":"Bad Id"}`)).toBeNull();
   });
 });
