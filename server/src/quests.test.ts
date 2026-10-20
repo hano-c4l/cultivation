@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_QUESTS, EXTRA_QUESTS, SEED_QUESTS, planAdd, type QuestDef } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -190,48 +191,76 @@ describe("planConsume", () => {
 });
 
 describe("path quests", () => {
-  const kiem = () => def("path_kiem");
+  const dan = () => def("path_dan");
   const give2 = async () => {
-    await give("linh_thao", 10);
-    await give("thu_cot", 5);
+    await give("linh_thao", 30);
+    await give("hoi_huyet_dan", 5);
   };
 
   it("take every material, give the path item and spend the path's one-time key", async () => {
-    await acceptQuest(db, A, kiem().id, NOW);
-    await give("linh_thao", 10);
-    expect(((await turnIn(kiem(), false)) as { ok: boolean }).ok).toBe(false); // the Thú Cốt is missing
-    expect(count("linh_thao")).toBe(10);
-    await give("thu_cot", 5);
-    const r = (await turnIn(kiem(), false)) as { result: { status: string } };
+    await acceptQuest(db, A, dan().id, NOW);
+    await give("linh_thao", 30);
+    expect(((await turnIn(dan(), false)) as { ok: boolean }).ok).toBe(false); // the Hồi Huyết Đan is missing
+    expect(count("linh_thao")).toBe(30);
+    await give("hoi_huyet_dan", 5);
+    const r = (await turnIn(dan(), false)) as { result: { status: string } };
     expect(r.result.status).toBe("done");
-    expect(count("path_item_kiem")).toBe(1);
-    expect(count("linh_thao") + count("thu_cot")).toBe(0);
-    expect(raw.prepare("SELECT COUNT(*) AS n FROM item_grants WHERE key = ?").get(pathItemKey(A, "kiem"))).toEqual({ n: 1 });
+    expect(count("path_item_dan")).toBe(1);
+    expect(count("linh_thao") + count("hoi_huyet_dan")).toBe(0);
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM item_grants WHERE key = ?").get(pathItemKey(A, "dan"))).toEqual({ n: 1 });
   });
 
   it("a path item given before (the claim button) makes the hand-in fail whole: nothing is taken, nothing is given", async () => {
-    await acceptQuest(db, A, kiem().id, NOW);
+    await acceptQuest(db, A, dan().id, NOW);
     await give2();
-    raw.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, 0)").run(pathItemKey(A, "kiem"));
-    const r = (await turnIn(kiem(), false)) as { result: { status: string } };
+    raw.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, 0)").run(pathItemKey(A, "dan"));
+    const r = (await turnIn(dan(), false)) as { result: { status: string } };
     expect(r.result.status).toBe("duplicate");
-    expect(count("linh_thao")).toBe(10);
-    expect(count("thu_cot")).toBe(5);
-    expect(count("path_item_kiem")).toBe(0);
-    expect(questRow(kiem().id)?.state).toBe("active");
+    expect(count("linh_thao")).toBe(30);
+    expect(count("hoi_huyet_dan")).toBe(5);
+    expect(count("path_item_dan")).toBe(0);
+    expect(questRow(dan().id)?.state).toBe("active");
   });
 
   it("dropping the path opens the quest again and the item can be earned a second time", async () => {
-    await acceptQuest(db, A, kiem().id, NOW);
+    await acceptQuest(db, A, dan().id, NOW);
     await give2();
-    expect(((await turnIn(kiem(), false)) as { result: { status: string } }).result.status).toBe("done");
+    expect(((await turnIn(dan(), false)) as { result: { status: string } }).result.status).toBe("done");
     // What dropping a path does to the item key (rearrangeStatements) and to its quest (resetQuestStatements).
-    await db.batch([db.prepare("DELETE FROM item_grants WHERE key = ?").bind(pathItemKey(A, "kiem")), ...resetQuestStatements(db, A, [kiem()])]);
-    expect(questRow(kiem().id)).toBeUndefined();
-    await acceptQuest(db, A, kiem().id, NOW + 1);
+    await db.batch([db.prepare("DELETE FROM item_grants WHERE key = ?").bind(pathItemKey(A, "dan")), ...resetQuestStatements(db, A, [dan()])]);
+    expect(questRow(dan().id)).toBeUndefined();
+    await acceptQuest(db, A, dan().id, NOW + 1);
     await give2();
-    expect(((await turnIn(kiem(), false)) as { result: { status: string } }).result.status).toBe("done");
-    expect(count("path_item_kiem")).toBe(2);
+    expect(((await turnIn(dan(), false)) as { result: { status: string } }).result.status).toBe("done");
+    expect(count("path_item_dan")).toBe(2);
+  });
+
+  it("the three paths ask for different things: kills (kiếm), Yêu Đan and herbs (thuật), herbs and pills (đan)", () => {
+    expect(def("path_kiem").objective).toMatchObject({ kind: "kill", count: 30, map: "forest" });
+    expect(def("path_thuat").objective).toMatchObject({ kind: "collect", item: "yeu_dan", qty: 4 });
+    expect(def("path_dan").objective).toMatchObject({ kind: "collect", item: "linh_thao", qty: 30 });
+    expect(new Set(["path_kiem", "path_thuat", "path_dan"].map((id) => JSON.stringify(def(id).objective))).size).toBe(3);
+  });
+
+  it("the kiếm quest is a kill quest: it needs 30 counted kills, then gives the Kiếm Tu Lệnh", async () => {
+    const kiem = def("path_kiem");
+    await acceptQuest(db, A, kiem.id, NOW);
+    await saveQuestProgress(db, A, [{ id: kiem.id, progress: 29 }]);
+    expect(((await turnIn(kiem, true)) as { result: { status: string } }).result.status).toBe("stale");
+    expect(count("path_item_kiem")).toBe(0);
+    await saveQuestProgress(db, A, [{ id: kiem.id, progress: 30 }]);
+    expect(((await turnIn(kiem, true)) as { result: { status: string } }).result.status).toBe("done");
+    expect(count("path_item_kiem")).toBe(1);
+  });
+
+  it("the stored definitions after migration 0021 are the ones in the seed", () => {
+    const sql = readFileSync(new URL("../migrations/0021_path_quests.sql", import.meta.url), "utf8");
+    for (const q of EXTRA_QUESTS.filter((x) => x.path)) {
+      const m = new RegExp(`UPDATE quests SET def = '([^']+)', updated_at = 0 WHERE id = '${q.id}';`).exec(sql);
+      expect(m, q.id).not.toBeNull();
+      expect(JSON.parse(m![1]!)).toEqual(JSON.parse(JSON.stringify(q)));
+    }
+    expect(sql).toMatch(/UPDATE config_versions SET version = version \+ 1/);
   });
 
   it("the breakthrough quest takes three kinds of materials and gives the pill, once", async () => {

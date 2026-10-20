@@ -442,7 +442,7 @@ export interface EquipDrop {
  * monster's; rare monsters may instead drop over-level gear (the next realm). Uses exactly nine rolls so the order of
  * a seeded sequence stays stable: chance, kind, style, bậc, grade, over-level, over-level bậc, element, weapon type.
  */
-export function rollEquipmentDrop(mapRealm: number, monsterTier: number, rank: MonsterRank, rand: () => number): EquipDrop | null {
+export function rollEquipmentDrop(mapRealm: number, monsterTier: number, rank: MonsterRank, rand: () => number, chanceMult = 1): EquipDrop | null {
   const cfg = EQUIP_DROP[rank];
   const chance = rand();
   const kindRoll = rand();
@@ -453,7 +453,7 @@ export function rollEquipmentDrop(mapRealm: number, monsterTier: number, rank: M
   const overTierRoll = rand();
   const elementRoll = rand();
   const weaponRoll = rand();
-  if (chance >= cfg.chance) return null;
+  if (chance >= cfg.chance * chanceMult) return null;
   const kind = EQUIP_KINDS[Math.floor(kindRoll * EQUIP_KINDS.length)] as EquipKind;
   const style: EquipStyle = GENDERED_KINDS.has(kind) ? (styleRoll < 0.5 ? "m" : "f") : "u";
   let realm = mapRealm;

@@ -406,10 +406,10 @@ export function parseHotbar(raw: string | null | undefined): string[] {
 export const BOOK_DROP_CHANCE: Readonly<Record<MonsterRank, number>> = { normal: 0.003, rare1: 0.03, rare2: 0.08 };
 
 /** A book dropped by one kill, or null. Draws exactly two numbers (chance, which book) so seeded sequences stay stable. */
-export function rollBookDrop(rank: MonsterRank, rand: () => number): string | null {
+export function rollBookDrop(rank: MonsterRank, rand: () => number, chanceMult = 1): string | null {
   const chance = rand();
   const pick = rand();
-  if (chance >= BOOK_DROP_CHANCE[rank]) return null;
+  if (chance >= BOOK_DROP_CHANCE[rank] * chanceMult) return null;
   const skill = BOOK_SKILLS[Math.floor(pick * BOOK_SKILLS.length)];
   return skill ? bookItemId(skill.id) : null;
 }

@@ -213,12 +213,12 @@ export interface LootDrop {
 }
 
 /** Items dropped by one kill. `rand` returns uniform [0, 1); two numbers are drawn per entry (chance, quantity). */
-export function rollLoot(rank: MonsterRank, rand: () => number): LootDrop[] {
+export function rollLoot(rank: MonsterRank, rand: () => number, chanceMult = 1): LootDrop[] {
   const out: LootDrop[] = [];
   for (const e of LOOT_TABLES[rank]) {
     const chanceRoll = rand();
     const qtyRoll = rand();
-    if (chanceRoll >= e.chance) continue;
+    if (chanceRoll >= e.chance * chanceMult) continue;
     out.push({ item: e.item, qty: e.min + Math.floor(qtyRoll * (e.max - e.min + 1)) });
   }
   return out;

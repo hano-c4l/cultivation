@@ -214,8 +214,12 @@ export const DEFAULT_QUESTS: readonly QuestDef[] = [
   }),
 ];
 
-/** One quest per hướng tu, given by that path's own NPC: from Trúc Cơ, hand in materials and receive the path item. Reopens when the path is dropped. */
-const pathQuest = (path: PathId, seq: number, giver: string, titleVi: string, descVi: string): QuestDef => ({
+/**
+ * One quest per hướng tu, given by that path's own NPC and different from the others: Kiếm tu proves itself in combat (kills),
+ * Thuật tu brings spirit essence (Yêu Đan and herbs), Đan tu brings herbs and basic pills. From Trúc Cơ; the reward is the path
+ * item. The quest reopens when the path is dropped.
+ */
+const pathQuest = (path: PathId, seq: number, giver: string, titleVi: string, descVi: string, objective: QuestObjective): QuestDef => ({
   id: `path_${path}`,
   chain: "path",
   seq,
@@ -226,15 +230,15 @@ const pathQuest = (path: PathId, seq: number, giver: string, titleVi: string, de
   requires: null,
   minRealm: 1,
   path,
-  objective: { kind: "collect", item: "linh_thao", qty: 10, also: [{ item: "thu_cot", qty: 5 }] },
+  objective,
   rewards: { items: [{ item: PATHS[path].item, qty: 1 }] },
 });
 
 /** The hướng tu quests and the one-time breakthrough quest (placeholder values, like the newbie chain). */
 export const EXTRA_QUESTS: readonly QuestDef[] = [
-  pathQuest("kiem", 1, "path_kiem", "Nhập môn Kiếm tu", "Muốn bước vào con đường kiếm, hãy mang đến 10 Linh Thảo và 5 Thú Cốt làm lễ vật. Ta sẽ trao Kiếm Tu Lệnh."),
-  pathQuest("thuat", 2, "path_thuat", "Nhập môn Thuật tu", "Thuật pháp cần nguyên liệu để luyện bùa chú. Mang đến 10 Linh Thảo và 5 Thú Cốt, ta sẽ trao Thuật Tu Lệnh."),
-  pathQuest("dan", 3, "path_dan", "Nhập môn Đan tu", "Luyện đan khởi đầu từ dược liệu. Mang đến 10 Linh Thảo và 5 Thú Cốt, ta sẽ trao Đan Tu Lệnh."),
+  pathQuest("kiem", 1, "path_kiem", "Thử kiếm", "Kiếm tu lấy chiến đấu làm gốc. Hãy ra Hắc Mộc Lâm hạ 30 con quái để chứng tỏ kiếm tâm, rồi quay lại nhận Kiếm Tu Lệnh.", {kind: "kill", count: 30, map: "forest"}),
+  pathQuest("thuat", 2, "path_thuat", "Lễ vật Yêu Đan", "Thuật tu cần linh khí cô đọng để thi triển pháp thuật. Mang đến 4 Yêu Đan và 8 Linh Thảo, ta sẽ trao Thuật Tu Lệnh.", {kind: "collect", item: "yeu_dan", qty: 4, also: [{item: "linh_thao", qty: 8}]}),
+  pathQuest("dan", 3, "path_dan", "Dược liệu và đan thuốc", "Đan tu khởi đầu từ dược liệu và đan cơ bản. Mang đến 30 Linh Thảo và 5 Hồi Huyết Đan, ta sẽ trao Đan Tu Lệnh.", {kind: "collect", item: "linh_thao", qty: 30, also: [{item: "hoi_huyet_dan", qty: 5}]}),
   {
     id: "breakthrough_1",
     chain: "breakthrough",

@@ -1,4 +1,5 @@
-// Local test of the hướng tu and breakthrough quests (phase 2e-B, PR2): each path has its own NPC and quest (from Trúc Cơ),
+// Local test of the hướng tu and breakthrough quests (phase 2e-B, PR2): each path has its own NPC and its own kind of quest (from Trúc Cơ;
+// kiếm: kills, thuật: Yêu Đan and herbs, đan: herbs and pills),
 // the path item comes only from the quest (the claim button is admin-only, checked by the server), dropping the path opens
 // the quest again, and the one-time breakthrough quest pays the pill.
 // Usage: node tools/path-quests-smoke.mjs [ws://localhost:8787]
@@ -94,7 +95,8 @@ sql(`UPDATE accounts SET role='admin' WHERE email='pq-admin-${run}@example.test'
 const qrow = (q) => sql(`SELECT state, progress FROM character_quests WHERE character_id = '${id}' AND quest_id = '${q}'`)[0];
 const keyRows = (k) => sql(`SELECT COUNT(*) AS n FROM item_grants WHERE key = '${k}'`)[0].n;
 const pathsOf = () => sql(`SELECT paths FROM characters WHERE id = '${id}'`)[0].paths;
-const SPOT = { x: 24, y: 23 };
+const SPOT_KIEM = { x: 23, y: 23 };
+const SPOT_DAN = { x: 27.5, y: 23 };
 
 let c = await connect(reg.cookie);
 const loot = async (item, qty) => {
@@ -111,66 +113,82 @@ const walk = async (to) => {
 let r = await after(c, { t: "path_claim", path: "kiem" });
 check("a normal player cannot use the temporary claim button (the server refuses)", r.some((m) => m.t === "path_error" && m.reason === "admin") && countOf(c, "path_item_kiem") === 0);
 
-// --- each path has its own NPC; Trúc Cơ is needed ---
-await walk(SPOT);
-r = await after(c, { t: "npc_open", npc: "path_kiem" });
-const kiemList = r.find((m) => m.t === "quests");
-check("the kiếm master offers only the kiếm quest", kiemList?.defs.length === 1 && kiemList.defs[0].id === "path_kiem", JSON.stringify(kiemList?.defs.map((d) => d.id)));
-r = await after(c, { t: "quest_accept", npc: "path_kiem", quest: "path_kiem" });
-check("below Trúc Cơ the quest cannot be taken", r.some((m) => m.t === "quest_error" && m.reason === "level") && !qrow("path_kiem"));
-r = await after(c, { t: "quest_accept", npc: "path_kiem", quest: "path_dan" });
+// --- each path has its own NPC and its own quest; Trúc Cơ is needed ---
+await walk(SPOT_DAN);
+r = await after(c, { t: "npc_open", npc: "path_dan" });
+const danList = r.find((m) => m.t === "quests");
+check("the đan master offers only the đan quest", danList?.defs.length === 1 && danList.defs[0].id === "path_dan", JSON.stringify(danList?.defs.map((d) => d.id)));
+check("the đan quest asks for herbs and pills", danList?.defs[0].objective.kind === "collect" && danList.defs[0].objective.item === "linh_thao" && danList.defs[0].objective.also[0].item === "hoi_huyet_dan");
+r = await after(c, { t: "quest_accept", npc: "path_dan", quest: "path_dan" });
+check("below Trúc Cơ the quest cannot be taken", r.some((m) => m.t === "quest_error" && m.reason === "level") && !qrow("path_dan"));
+r = await after(c, { t: "quest_accept", npc: "path_dan", quest: "path_thuat" });
 check("a master does not give another path's quest", r.some((m) => m.t === "quest_error" && m.reason === "invalid"));
 c.ws.close();
 await sleep(800);
 sql(`UPDATE characters SET realm = 1, stage = 1, exp = 0 WHERE id = '${id}'`);
 c = await connect(reg.cookie);
-await walk(SPOT);
-await after(c, { t: "quest_accept", npc: "path_kiem", quest: "path_kiem" });
-check("at Trúc Cơ it is taken", qrow("path_kiem")?.state === "active");
-r = await after(c, { t: "quest_turn_in", npc: "path_kiem", quest: "path_kiem" });
+await walk(SPOT_DAN);
+await after(c, { t: "quest_accept", npc: "path_dan", quest: "path_dan" });
+check("at Trúc Cơ it is taken", qrow("path_dan")?.state === "active");
+r = await after(c, { t: "quest_turn_in", npc: "path_dan", quest: "path_dan" });
 check("without the materials it is refused", r.some((m) => m.t === "quest_error" && m.reason === "not_ready"));
-await loot("linh_thao", 10);
-await loot("thu_cot", 4);
-r = await after(c, { t: "quest_turn_in", npc: "path_kiem", quest: "path_kiem" });
-check("one material short: still refused, nothing taken", r.some((m) => m.t === "quest_error" && m.reason === "not_ready") && countOf(c, "linh_thao") === 10 && countOf(c, "thu_cot") === 4);
-await loot("thu_cot", 1);
-r = await after(c, { t: "quest_turn_in", npc: "path_kiem", quest: "path_kiem" }, 1000);
+await loot("linh_thao", 30);
+await loot("hoi_huyet_dan", 4);
+r = await after(c, { t: "quest_turn_in", npc: "path_dan", quest: "path_dan" });
+check("one material short: still refused, nothing taken", r.some((m) => m.t === "quest_error" && m.reason === "not_ready") && countOf(c, "linh_thao") === 30 && countOf(c, "hoi_huyet_dan") === 4);
+await loot("hoi_huyet_dan", 1);
+r = await after(c, { t: "quest_turn_in", npc: "path_dan", quest: "path_dan" }, 1000);
 check(
-  "with all of it: the materials go and the Kiếm Tu Lệnh comes",
-  r.some((m) => m.t === "quest_done") && countOf(c, "path_item_kiem") === 1 && countOf(c, "linh_thao") === 0 && countOf(c, "thu_cot") === 0 && keyRows(`path_item:${id}:kiem`) === 1,
+  "with all of it: the materials go and the Đan Tu Lệnh comes",
+  r.some((m) => m.t === "quest_done") && countOf(c, "path_item_dan") === 1 && countOf(c, "linh_thao") === 0 && countOf(c, "hoi_huyet_dan") === 0 && keyRows(`path_item:${id}:dan`) === 1,
 );
 
 // --- take the path, then drop it: the quest opens again ---
-await after(c, { t: "path_choose", path: "kiem" }, 1000);
-check("the item takes the character into the path", countOf(c, "path_item_kiem") === 0 && pathsOf().startsWith("kiem"), pathsOf());
+await after(c, { t: "path_choose", path: "dan" }, 1000);
+check("the item takes the character into the path", countOf(c, "path_item_dan") === 0 && pathsOf().startsWith("dan"), pathsOf());
 await post("/api/admin/grant", { characterId: id, currency: "linh_thach", amount: 200000, reason: "smoke", idempotencyKey: crypto.randomUUID() }, adminReg.cookie);
 c.ws.close();
 await sleep(800);
 c = await connect(reg.cookie);
-await walk(SPOT);
-await after(c, { t: "path_drop", path: "kiem" }, 1200);
+await walk(SPOT_DAN);
+await after(c, { t: "path_drop", path: "dan" }, 1200);
 check("dropping the path works", pathsOf() === "", pathsOf());
-check("dropping it also reopened the quest (progress row and both one-time keys are gone)", !qrow("path_kiem") && keyRows(`path_item:${id}:kiem`) === 0 && keyRows(`quest:${id}:path_kiem`) === 0);
-r = await after(c, { t: "npc_open", npc: "path_kiem" });
-check("the master offers it as available again", !r.find((m) => m.t === "quests")?.states.path_kiem);
-await after(c, { t: "quest_accept", npc: "path_kiem", quest: "path_kiem" });
-await loot("linh_thao", 10);
-await loot("thu_cot", 5);
-r = await after(c, { t: "quest_turn_in", npc: "path_kiem", quest: "path_kiem" }, 1000);
-check("and the item can be earned a second time", r.some((m) => m.t === "quest_done") && countOf(c, "path_item_kiem") === 1);
+check("dropping it also reopened the quest (progress row and both one-time keys are gone)", !qrow("path_dan") && keyRows(`path_item:${id}:dan`) === 0 && keyRows(`quest:${id}:path_dan`) === 0);
+r = await after(c, { t: "npc_open", npc: "path_dan" });
+check("the master offers it as available again", !r.find((m) => m.t === "quests")?.states.path_dan);
+await after(c, { t: "quest_accept", npc: "path_dan", quest: "path_dan" });
+await loot("linh_thao", 30);
+await loot("hoi_huyet_dan", 5);
+r = await after(c, { t: "quest_turn_in", npc: "path_dan", quest: "path_dan" }, 1000);
+check("and the item can be earned a second time", r.some((m) => m.t === "quest_done") && countOf(c, "path_item_dan") === 1);
 
-// --- a path item given before blocks the quest (no second item, materials kept) ---
+// --- thuật: Yêu Đan and herbs; a path item given before blocks the quest (no second item, materials kept) ---
 sql(`INSERT INTO item_grants (key, created_at) VALUES ('path_item:${id}:thuat', 0)`);
 r = await after(c, { t: "quest_accept", npc: "path_thuat", quest: "path_thuat" });
 check("a path item given before (the old button) refuses the quest at accept time", r.some((m) => m.t === "quest_error" && m.reason === "claimed") && !qrow("path_thuat"));
-// A quest taken before the key was spent (the old button used meanwhile) is refused at hand-in, before any material is taken.
 sql(`DELETE FROM item_grants WHERE key = 'path_item:${id}:thuat'`);
 await after(c, { t: "quest_accept", npc: "path_thuat", quest: "path_thuat" });
-await loot("linh_thao", 10);
-await loot("thu_cot", 5);
+await loot("yeu_dan", 4);
+await loot("linh_thao", 8);
 sql(`INSERT INTO item_grants (key, created_at) VALUES ('path_item:${id}:thuat', 0)`);
 r = await after(c, { t: "quest_turn_in", npc: "path_thuat", quest: "path_thuat" });
-check("or at hand-in (materials kept, no item)", r.some((m) => m.t === "quest_error" && m.reason === "claimed") && countOf(c, "linh_thao") === 10 && countOf(c, "path_item_thuat") === 0);
+check("or at hand-in (materials kept, no item)", r.some((m) => m.t === "quest_error" && m.reason === "claimed") && countOf(c, "yeu_dan") === 4 && countOf(c, "path_item_thuat") === 0);
+sql(`DELETE FROM item_grants WHERE key = 'path_item:${id}:thuat'`);
+r = await after(c, { t: "quest_turn_in", npc: "path_thuat", quest: "path_thuat" }, 1000);
+check("the thuật quest is handed in with Yêu Đan and herbs", r.some((m) => m.t === "quest_done") && countOf(c, "path_item_thuat") === 1 && countOf(c, "yeu_dan") === 0 && countOf(c, "linh_thao") === 0);
+
+// --- kiếm: a kill quest (30 kills; the count is filled in by hand here, real kills are covered by quests-smoke) ---
+await walk(SPOT_KIEM);
+await after(c, { t: "quest_accept", npc: "path_kiem", quest: "path_kiem" });
+r = await after(c, { t: "quest_turn_in", npc: "path_kiem", quest: "path_kiem" });
+check("kiếm: with no kills the hand-in is refused", r.some((m) => m.t === "quest_error" && m.reason === "not_ready") && countOf(c, "path_item_kiem") === 0);
+c.ws.close();
+await sleep(800);
+sql(`UPDATE character_quests SET progress = 30 WHERE character_id = '${id}' AND quest_id = 'path_kiem'`);
+c = await connect(reg.cookie);
+await walk(SPOT_KIEM);
+r = await after(c, { t: "quest_turn_in", npc: "path_kiem", quest: "path_kiem" }, 1000);
+check("kiếm: after 30 kills the Kiếm Tu Lệnh comes", r.some((m) => m.t === "quest_done") && countOf(c, "path_item_kiem") === 1);
 
 // --- the one-time breakthrough quest ---
 c.ws.close();
@@ -181,11 +199,11 @@ c = await connect(reg.cookie);
 r = await after(c, { t: "npc_open", npc: "elder" });
 check("the elder now offers the breakthrough quest", !!r.find((m) => m.t === "quests")?.defs.some((d) => d.id === "breakthrough_1"));
 await after(c, { t: "quest_accept", npc: "elder", quest: "breakthrough_1" });
-// The bag already holds 10 Linh Thảo and 5 Thú Cốt from the step above; top it up to exactly the quest's 20, 10 and 3.
-await loot("linh_thao", 10);
+await loot("linh_thao", 20);
 await loot("thu_cot", 5);
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "breakthrough_1" });
-check("it needs all three materials (no Yêu Đan yet)", r.some((m) => m.t === "quest_error" && m.reason === "not_ready"));
+check("it needs all three materials (Thú Cốt and Yêu Đan are short)", r.some((m) => m.t === "quest_error" && m.reason === "not_ready"));
+await loot("thu_cot", 5);
 await loot("yeu_dan", 3);
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "breakthrough_1" }, 1000);
 check("with them: the Đan Đột Phá Trúc Cơ is given and the quest is closed for good", r.some((m) => m.t === "quest_done") && countOf(c, "bt_pill_1") === 1 && qrow("breakthrough_1")?.state === "done");

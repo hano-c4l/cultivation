@@ -21,6 +21,7 @@ export * from "./constitutions";
 export * from "./economy";
 export * from "./shop";
 export * from "./quests";
+export * from "./pk";
 export * from "./settings";
 export * from "./theme";
 export * from "./gear-skills";

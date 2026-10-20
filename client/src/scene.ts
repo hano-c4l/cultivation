@@ -49,6 +49,8 @@ import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initShop, type ShopUi } from "./shop-ui";
 import { initQuests, type QuestUi } from "./quest-ui";
+import { initPk, type PkUi } from "./pk-ui";
+import { GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor } from "@game/shared";
 import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
@@ -90,6 +92,9 @@ interface Actor {
   offAt: number;
   body: Phaser.GameObjects.Ellipse;
   label: Phaser.GameObjects.Text;
+  /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
+  sn: number;
+  snAt: number;
 }
 
 interface MonsterActor {
@@ -155,6 +160,11 @@ export class GameScene extends Phaser.Scene {
   private equipment!: EquipmentUi;
   private shop!: ShopUi;
   private quests!: QuestUi;
+  private pk!: PkUi;
+  /** When each player last hit you (performance.now): they show grey to you for 3 minutes unless their name is orange or red. */
+  private hitMeAt = new Map<string, number>();
+  private lastPk = { satKhi: 0, satNhan: 0, hero: 0 };
+  private pkSeen = false;
   private hotbar!: HotbarUi;
   private buffs!: BuffsUi;
   /** Mastery of the skills that have it, and the worn gear: what the numbers a skill is shown with depend on. */
@@ -217,6 +227,7 @@ export class GameScene extends Phaser.Scene {
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list());
+    this.pk = initPk((msg) => this.net.send(msg));
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
       startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
@@ -267,6 +278,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.chatNet.connect();
 
+    this.time.addEvent({ delay: 1000, loop: true, callback: () => this.recolorAll() });
     this.time.addEvent({
       delay: 2000,
       loop: true,
@@ -429,7 +441,9 @@ export class GameScene extends Phaser.Scene {
       this.talkTo(npc);
       return;
     }
-    const picked = this.pickMonster(world.x, world.y);
+    // With the PK switch on, a click on another player attacks them (the server checks the rules and says why when it refuses).
+    const player = this.pk.isOn() && !this.map.safe ? this.pickPlayer(world.x, world.y) : null;
+    const picked = player ?? this.pickMonster(world.x, world.y);
     if (picked) {
       const nowMs = performance.now();
       if (nowMs - this.lastAttackSentAt >= ATTACK_MIN_GAP_MS + 20) {
@@ -502,8 +516,10 @@ export class GameScene extends Phaser.Scene {
         this.colo = msg.colo;
         this.transferring = false;
         this.hotbar.setAimNote(null); // a channel never survives a (re)connect
+        this.pkSeen = false; // the first PvP message after joining is not a change
         this.portalSentAt = 0;
         this.switchMap(msg.map);
+        this.pk.setSafe(this.map.safe);
         this.clearActors();
         this.upsertActor(msg.players);
         for (const m of msg.monsters) this.upsertMonster(m);
@@ -710,6 +726,33 @@ export class GameScene extends Phaser.Scene {
         this.shop.notify(text);
         break;
       }
+      case "pk": {
+        // Your own state: the switch and the scores. A change of the scores is said in the system tab (not the first message, which is just the join).
+        const changed = msg.satKhi !== this.lastPk.satKhi || msg.satNhan !== this.lastPk.satNhan || msg.hero !== this.lastPk.hero;
+        if (this.pkSeen && changed) this.chat.system(vi.pk.changed(msg.satKhi, msg.satNhan, msg.hero));
+        this.pkSeen = true;
+        this.lastPk = { satKhi: msg.satKhi, satNhan: msg.satNhan, hero: msg.hero };
+        this.pk.set(msg.on, msg.satKhi, msg.satNhan, msg.hero);
+        const self = this.actors.get(this.selfId);
+        if (self) {
+          self.sn = msg.satNhan;
+          self.snAt = performance.now();
+          this.recolorName(self, self.snAt);
+        }
+        break;
+      }
+      case "pk_score": {
+        const who = this.actors.get(msg.id);
+        if (who) {
+          who.sn = msg.sn;
+          who.snAt = performance.now();
+          this.recolorName(who, who.snAt);
+        }
+        break;
+      }
+      case "pk_error":
+        this.chat.system(vi.pk.errors[msg.reason] ?? vi.pk.errors.invalid!, "error");
+        break;
       case "quests":
         this.quests.setQuests(msg.npc, msg.defs, msg.states);
         break;
@@ -820,10 +863,13 @@ export class GameScene extends Phaser.Scene {
         const label = this.add
           .text(0, 0, p.name, { fontFamily: FONT, fontSize: "13px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
           .setOrigin(0.5, 1);
-        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label };
+        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, sn: 0, snAt: 0 };
         this.actors.set(p.id, actor);
       }
       const now = performance.now();
+      actor.sn = p.sn ?? 0;
+      actor.snAt = now;
+      this.recolorName(actor, now);
       if (isNew) {
         actor.path = p.path;
         actor.speed = p.speed;
@@ -928,7 +974,45 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Floating damage number over the target; also keeps a monster's HP bar current. */
+  /** The colour a name is shown in to this player: white, yellow, orange or red by sát nhân, grey for a white or yellow player who hit you in the last 3 minutes. */
+  private nameColorOf(actor: Actor, now: number): NameColor {
+    const sn = decayedSatNhan(actor.sn, now - actor.snAt);
+    const hitAt = this.hitMeAt.get(actor.id);
+    // hitMeAt holds performance.now() values; displayColor compares against the same clock.
+    return displayColor(nameTier(sn), actor.id === this.selfId ? undefined : hitAt, now);
+  }
+
+  private recolorName(actor: Actor, now: number): void {
+    const color = this.nameColorOf(actor, now);
+    actor.label.setColor(color === "gray" ? "#9e9e9e" : color === 3 ? "#ff5252" : color === 2 ? "#ff9800" : color === 1 ? "#ffd54a" : "#ffffff");
+  }
+
+  private recolorAll(): void {
+    const now = performance.now();
+    this.pk.tick();
+    for (const a of this.actors.values()) this.recolorName(a, now);
+  }
+
+  /** The player drawn under a click, other than yourself (used with the PK switch on). */
+  private pickPlayer(wx: number, wy: number): string | null {
+    const now = performance.now();
+    let best: string | null = null;
+    let bestD = MONSTER_PICK_PX;
+    for (const a of this.actors.values()) {
+      if (a.id === this.selfId) continue;
+      const pos = currentPos(a, now);
+      const s = toScreen(pos.x, pos.y);
+      const d = Math.hypot(s.x - wx, s.y - 20 - wy);
+      if (d <= bestD) {
+        bestD = d;
+        best = a.id;
+      }
+    }
+    return best;
+  }
+
   private showHit(msg: Extract<ServerMessage, { t: "hit" }>): void {
+    if (msg.to === this.selfId && this.actors.has(msg.from) && !msg.ret) this.hitMeAt.set(msg.from, performance.now());
     const monster = this.monsters.get(msg.to);
     if (monster) monster.hp = msg.hp;
     const now = performance.now();

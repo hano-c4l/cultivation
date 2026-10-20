@@ -121,8 +121,9 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
-import { TALISMAN_CAST_MS, findOffer, npcNear, sellPrice, type Gender } from "@game/shared";
+import { GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
+import { savePkScores } from "./characters";
 import { acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import { killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
@@ -195,6 +196,14 @@ interface PlayerState {
   moveBudgetAt?: number;
   /** A paid breakthrough in progress (kept here so it survives the object sleeping; the alarm ends it). */
   bt?: ActiveBreakthrough;
+  /** PvP: the PK switch (off at every join), sát khí, sát nhân as of `snAt` (it falls 5 a minute from there while online), anh hùng. */
+  pk?: boolean;
+  sk?: number;
+  sn?: number;
+  snAt?: number;
+  ah?: number;
+  /** The scores changed since they were last written (they are also written when the character leaves while it has sát nhân to decay). */
+  pkDirty?: boolean;
   /** A teleport talisman being channelled: when it completes, which talisman and where it leads. Any move, attack or hit breaks it. */
   tp?: { endsAt: number; item: string; to: MapId };
 }
@@ -265,6 +274,8 @@ function seedOf(row: CharacterRow, bag: BagState | undefined, skills: readonly S
     paths: parsePaths(row.paths),
     id: row.id,
     name: row.name,
+    satKhi: row.sat_khi,
+    hero: row.anh_hung,
     potentialPoints: row.potential_points,
     element: row.spiritual_root,
     base: baseOf(row),
@@ -467,6 +478,11 @@ export class MapRoom extends DurableObject<Env> {
       const state: PlayerState = {
         id: row.id,
         admin: request.headers.get("x-char-admin") === "1",
+        pk: false,
+        sk: row.sat_khi,
+        sn: row.sat_nhan,
+        snAt: Date.now(),
+        ah: row.anh_hung,
         name: row.name,
         claimId,
         mapId,
@@ -515,6 +531,7 @@ export class MapRoom extends DurableObject<Env> {
       });
       if (staleLoss !== null) this.send(server, { t: "bt_end", ok: false, reason: "left", expLost: staleLoss });
       void this.sendQuestActive(row.id).catch((err) => console.error("quest list failed", row.id, err));
+      this.sendPk(server, state);
       if (removedAtJoin.length > 0) this.send(server, { t: "eq_removed", items: removedAtJoin.map((r) => ({ type: r.item.type, reason: r.reason, mailed: r.mailed })) });
       this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
       return new Response(null, { status: 101, webSocket: client });
@@ -531,6 +548,7 @@ export class MapRoom extends DurableObject<Env> {
       const state = ws.deserializeAttachment() as PlayerState | null;
       if (!state || state.id !== characterId) continue;
       await this.failBreakthroughOnExit(ws, state, "left");
+      await this.flushPk(state);
       ws.serializeAttachment(null);
       await this.save(state);
       await this.settleBag(state.id);
@@ -566,6 +584,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleAllocate(ws, state, msg.points);
       case "attack":
         return this.handleAttack(ws, state, msg.id);
+      case "pk_mode":
+        return this.handlePkMode(ws, state, msg.on);
       case "inv_use":
       case "inv_drop":
       case "inv_move":
@@ -695,6 +715,7 @@ export class MapRoom extends DurableObject<Env> {
       return false;
     }
     if (progress) this.sim?.endFlush(state.id, progress, true);
+    await this.flushPk(state);
     ws.serializeAttachment(null);
     await this.settleBag(state.id);
     this.dropPlayer(state.id);
@@ -806,6 +827,7 @@ export class MapRoom extends DurableObject<Env> {
     // Keep the attachment until the save finished: a claim arriving meanwhile must still find this
     // socket in evictCharacter() and wait for a save before the new room reads the character row.
     await this.save(state);
+    await this.flushPk(state);
     // Pending bag writes finish while the attachment is still set, so a login that claims the lock meanwhile still
     // finds this socket in evictCharacter() and waits, and its new room reads the finished bag.
     await this.settleBag(state.id);
@@ -883,7 +905,9 @@ export class MapRoom extends DurableObject<Env> {
         const bag = await this.getBag(row.id).catch(() => undefined);
         const skills = await this.getSkillRows(row.id).catch(() => [] as SkillRow[]);
         const catalog = await getConstitutionCatalog(this.env.DB).catch(() => DEFAULT_CATALOG);
-        sim.addPlayer(seedOf(row, bag, skills, catalog));
+        const live = present.find((s) => s.id === row.id);
+        sim.addPlayer({ ...seedOf(row, bag, skills, catalog), satKhi: live?.sk ?? row.sat_khi, hero: live?.ah ?? row.anh_hung });
+        if (live?.pk) sim.setPkMode(row.id, true);
       }
     } catch (err) {
       this.sim = null; // the next move or attack retries the whole rebuild
@@ -1057,8 +1081,11 @@ export class MapRoom extends DurableObject<Env> {
       case "mon_gone":
         return this.broadcast({ t: "mon_gone", id: ev.id });
       case "hit": {
-        this.broadcast({ t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}) });
+        this.broadcast({ t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}) });
         // Anything that attacks a character in the middle of a breakthrough (hit or miss) breaks it.
+        // Who hit whom among the players: a player that hit you in the last 3 minutes is a self-defence kill, and shows grey on your screen.
+        // An answer to a blow is not an attack of its own and does not count.
+        if (sockets.has(ev.from) && sockets.has(ev.to) && !ev.ret) this.noteBlow(ev.from, ev.to, now);
         const target = sockets.get(ev.to);
         if (target?.state.bt) later.push(this.interruptBreakthrough(ev.to, "hit"));
         if (target?.state.tp) later.push(this.interruptTalisman(ev.to, "hit"));
@@ -1119,6 +1146,9 @@ export class MapRoom extends DurableObject<Env> {
       }
       case "loot":
         this.enqueueLoot(ev.playerId, ev.drops);
+        return;
+      case "pvp_kill":
+        later.push(this.settlePvpKill(ev.killerId, ev.victimId, sockets, now));
         return;
       case "kill": {
         const mapId = sockets.get(ev.playerId)?.state.mapId;
@@ -2735,6 +2765,85 @@ export class MapRoom extends DurableObject<Env> {
     this.send(ws, { t: "path", player: snap });
   }
 
+  // ---- PvP scores (shared/src/pk.ts) ----
+
+  /** Sát nhân of a character right now: the stored value less 5 a minute of the time online since it was set (never below 0). */
+  private satNhanOf(state: PlayerState, now: number): number {
+    return Math.max(0, (state.sn ?? 0) - (SAT_NHAN_DECAY_PER_MIN * Math.max(0, now - (state.snAt ?? now))) / 60_000);
+  }
+
+  private pkScoresOf(state: PlayerState, now: number): PkScores {
+    return { satKhi: state.sk ?? 0, satNhan: this.satNhanOf(state, now), hero: state.ah ?? 0 };
+  }
+
+  /** Last time one player hit another (attacker>victim), for self-defence and the grey name. Small and short-lived. */
+  private blows = new Map<string, number>();
+
+  private noteBlow(from: string, to: string, now: number): void {
+    this.blows.set(`${from}>${to}`, now);
+    if (this.blows.size > 400) for (const [k, t] of this.blows) if (now - t > GRAY_WINDOW_MS) this.blows.delete(k);
+  }
+
+  /** The PK switch: only the player's own choice, off at every join. A safe map keeps it but nobody can be attacked there. */
+  private handlePkMode(ws: WebSocket, state: PlayerState, on: boolean): void {
+    const next = this.patchState(ws, (s) => {
+      s.pk = on;
+    });
+    if (!next) return;
+    this.sim?.setPkMode(state.id, on);
+    this.sendPk(ws, next);
+  }
+
+  private sendPk(ws: WebSocket, state: PlayerState, now = Date.now()): void {
+    const sc = this.pkScoresOf(state, now);
+    this.send(ws, { t: "pk", on: state.pk === true, satKhi: sc.satKhi, satNhan: Math.round(sc.satNhan), hero: sc.hero });
+  }
+
+  /** Writes the scores of a character that is leaving (its sát nhân may have decayed, or they changed). Best effort: the next write corrects it. */
+  private async flushPk(state: PlayerState): Promise<void> {
+    if (!state.pkDirty && (state.sn ?? 0) <= 0) return;
+    try {
+      await savePkScores(this.env.DB, state.id, { satKhi: state.sk ?? 0, satNhan: this.satNhanOf(state, Date.now()), hero: state.ah ?? 0 });
+    } catch (err) {
+      console.error("pk scores write failed", state.id, err);
+    }
+  }
+
+  /**
+   * A player killed another: both sides' scores are settled (applyPvpKill) on the socket states the tick works with, written at once
+   * (a kill is rare) and sent to both and to the room (the name colour). The victim's own death goes on through handleDeath.
+   */
+  private async settlePvpKill(killerId: string, victimId: string, sockets: Map<string, { ws: WebSocket; state: PlayerState }>, now: number): Promise<void> {
+    const killer = sockets.get(killerId);
+    const victim = sockets.get(victimId);
+    if (!killer || !victim) return;
+    const victimSn = this.satNhanOf(victim.state, now);
+    const hitMeAt = this.blows.get(`${victimId}>${killerId}`);
+    // Self defence: the victim hit the killer in the last 3 minutes and was showing white or yellow to the killer.
+    const selfDefense = nameTier(victimSn) <= 1 && hitMeAt !== undefined && now - hitMeAt < GRAY_WINDOW_MS;
+    const killerSn = this.satNhanOf(killer.state, now);
+    const r = applyPvpKill(this.pkScoresOf(killer.state, now), this.pkScoresOf(victim.state, now), victimSn, selfDefense, killerSn);
+    for (const [entry, scores] of [[killer, r.killer], [victim, r.victim]] as const) {
+      const apply = (s: PlayerState) => {
+        s.sk = scores.satKhi;
+        s.sn = scores.satNhan;
+        s.snAt = now;
+        s.ah = scores.hero;
+        s.pkDirty = true;
+      };
+      // The live attachment gets the scores (not a stale copy that could undo what this tick already did to it), and the copy the tick
+      // works with gets them too, so the victim's handoff, which writes that copy back, keeps them.
+      this.patchState(entry.ws, apply);
+      apply(entry.state);
+      this.sim?.setPk(entry.state.id, { satKhi: scores.satKhi, hero: scores.hero });
+      this.send(entry.ws, { t: "pk", on: entry.state.pk === true, satKhi: scores.satKhi, satNhan: Math.round(scores.satNhan), hero: scores.hero });
+      this.broadcast({ t: "pk_score", id: entry.state.id, sn: Math.round(scores.satNhan) });
+    }
+    this.blows.delete(`${killerId}>${victimId}`);
+    this.blows.delete(`${victimId}>${killerId}`);
+    await Promise.all([killer, victim].map((e) => this.flushPk(e.state)));
+  }
+
   private async handleAttack(ws: WebSocket, state: PlayerState, monsterId: string): Promise<void> {
     try {
       await this.wake(state.mapId);
@@ -2744,9 +2853,16 @@ export class MapRoom extends DurableObject<Env> {
     }
     const sim = this.sim;
     const profile = sim?.getPlayer(state.id);
-    if (!sim || !profile) return;
+    if (!sim || !profile) return void (isMonsterId(monsterId) ? undefined : this.send(ws, { t: "pk_error", reason: "safe" }));
     const now = Date.now();
     if (profile.dead || now - profile.lastAttackMsgAt < ATTACK_MIN_GAP_MS) return;
+    if (!isMonsterId(monsterId)) {
+      // Another player: the PK switch must be on, and neither side may be under the newbie protection (the sim checks the same rules every blow).
+      const target = sim.getPlayer(monsterId);
+      if (!target) return void this.send(ws, { t: "pk_error", reason: "invalid" });
+      if (!profile.pkOn) return void this.send(ws, { t: "pk_error", reason: "off" });
+      if (isPkProtected(profile.realm, profile.stage) || isPkProtected(target.realm, target.stage)) return void this.send(ws, { t: "pk_error", reason: "protected" });
+    }
     if (state.bt) await this.interruptBreakthrough(state.id, "moved");
     if (state.tp) await this.interruptTalisman(state.id, "moved");
     profile.lastAttackMsgAt = now;
@@ -2763,7 +2879,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, sn: Math.round(this.satNhanOf(p, Date.now())) };
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {
