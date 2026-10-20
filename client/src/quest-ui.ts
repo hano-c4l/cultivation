@@ -86,7 +86,9 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
   const log = el("div");
   log.id = "quest-log";
   log.hidden = true;
-  document.body.append(panel, tracker, toggle, log);
+  // The tracker lives under the buffs in the left column (inside #vitals-wrap), so it never overlaps the HP/MP box, the PK row or the buffs.
+  document.getElementById("vitals-wrap")!.append(tracker);
+  document.body.append(panel, toggle, log);
   registerWindow("quest-log", log, 4);
   registerWindow("quests", panel, 5);
 
@@ -126,10 +128,10 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     return { text: sheet ? `${REALMS[sheet.realm]?.nameVi ?? ""} ${sheet.stage}` : "", ready: atLeast };
   }
 
-  const storageKey = "cultivation.quest-tracked";
+  const storageKey = () => `cultivation.quest-tracked.${sheet?.id ?? ""}`; // per character, in this browser
   function loadTracked(): string[] | null {
     try {
-      const raw = localStorage.getItem(storageKey);
+      const raw = localStorage.getItem(storageKey());
       const list = raw ? (JSON.parse(raw) as unknown) : null;
       return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string").slice(0, MAX_TRACKED) : null;
     } catch {
@@ -138,7 +140,7 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
   }
   function saveTracked(): void {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(tracked));
+      localStorage.setItem(storageKey(), JSON.stringify(tracked));
     } catch {
       // storage unavailable: the choice just lasts until the page is reloaded
     }

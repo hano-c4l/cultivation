@@ -6,6 +6,7 @@ import {
   applyBag,
   applyExp,
   objectiveTarget,
+  SHOP_RESET_OFFSET_MS,
   shopDay,
   planAdd,
   planRemove,
@@ -106,8 +107,7 @@ export async function acceptQuest(db: D1Database, characterId: string, questId: 
 
 /** The first millisecond of the Vietnam day that contains `now` (00:00 UTC+7). */
 export function shopDayStart(now: number): number {
-  const VN = 7 * 3_600_000;
-  return Math.floor((now + VN) / 86_400_000) * 86_400_000 - VN;
+  return shopDay(now) * 86_400_000 - SHOP_RESET_OFFSET_MS;
 }
 
 /** Gives up an active quest: its row goes, so the character is as if it never took it (a finished quest is never touched). True when a row was removed. */

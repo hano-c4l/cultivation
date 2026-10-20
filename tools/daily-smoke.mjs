@@ -1,8 +1,6 @@
-// Local test of the hướng tu and breakthrough quests (phase 2e-B, PR2): each path has its own NPC and its own kind of quest (from Trúc Cơ;
-// kiếm: kills, thuật: Yêu Đan and herbs, đan: herbs and pills),
-// the path item comes only from the quest (the claim button is admin-only, checked by the server), dropping the path opens
-// the quest again, and the one-time breakthrough quest pays the pill.
-// Usage: node tools/path-quests-smoke.mjs [ws://localhost:8787]
+// Local test of the rest of 2e-B (PR4): the GM breakthrough-pill button (repeatable), the Trưởng Lão's daily quests, a reward in both
+// Linh Thạch and Cống Hiến, and a daily quest opening again the next day (simulated by moving `done_at` back a day).
+// Usage: node tools/daily-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
 import { execFileSync } from "node:child_process";

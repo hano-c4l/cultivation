@@ -1627,7 +1627,7 @@ export class MapRoom extends DurableObject<Env> {
     };
     const mine = defs.filter((d) => d.giver === npcId && offered(d));
     // Quests already taken come first in the order they were taken, then the ones that can be taken in catalogue order.
-    mine.sort((a, b) => (rows[a.id] ? 0 : 1) - (rows[b.id] ? 0 : 1) || (rows[a.id]?.at ?? 0) - (rows[b.id]?.at ?? 0));
+    mine.sort((a, b) => (rows[a.id] ? 0 : 1) - (rows[b.id] ? 0 : 1) || (rows[a.id]?.at ?? 0) - (rows[b.id]?.at ?? 0) || Number(a.chain === "daily") - Number(b.chain === "daily"));
     this.send(ws, { t: "quests", npc: npcId, defs: mine, states: rows, ...(need !== undefined && mine.length === 0 ? { need } : {}) });
   }
 

@@ -249,7 +249,7 @@ export const vi = {
   },
   pk: {
     off: "PK",
-    labels: ["PK", "PK", "ĐS"] as readonly string[],
+    labels: ["PK", "PK", "PK"] as readonly string[],
     stateNames: ["Tắt", "PK", "Đồ sát"] as readonly string[],
     title: "Bấm để đổi chế độ. Tắt: không chủ động đánh người. PK: chỉ đánh người cũng đang PK hoặc Đồ sát. Đồ sát: đánh được tất cả. Ai đánh bạn thì bạn luôn đánh trả được. Dưới Luyện Khí tầng 5 không ai bị đánh và cũng không đánh được người.",
     safeTitle: "Trong thành không thể PvP.",

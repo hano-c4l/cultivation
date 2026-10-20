@@ -229,7 +229,7 @@ export class GameScene extends Phaser.Scene {
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
-    this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title), "important"));
+    this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
@@ -1022,6 +1022,7 @@ export class GameScene extends Phaser.Scene {
   private recolorAll(): void {
     const now = performance.now();
     this.pk.tick();
+    this.hotbar.refresh(); // MP regenerates: slots it can pay for again stop being dim
     for (const a of this.actors.values()) this.recolorName(a, now);
   }
 
