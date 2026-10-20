@@ -18,8 +18,8 @@ export function makeDb(): { db: D1Database; raw: DatabaseSync } {
       return stmt(sql, a);
     },
     run: async () => {
-      raw.prepare(sql).run(...(args as never[]));
-      return {};
+      const r = raw.prepare(sql).run(...(args as never[]));
+      return { meta: { changes: Number(r.changes) } };
     },
     first: async () => (raw.prepare(sql).get(...(args as never[])) as unknown) ?? null,
     all: async () => ({ results: raw.prepare(sql).all(...(args as never[])) as unknown[] }),

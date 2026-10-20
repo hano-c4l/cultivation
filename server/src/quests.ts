@@ -2,6 +2,7 @@ import {
   MAPS_NPC_IDS,
   SEED_QUESTS,
   collectItems,
+  givesPathItem,
   applyBag,
   applyExp,
   objectiveTarget,
@@ -83,17 +84,23 @@ export function resetQuestCache(): void {
 
 export async function loadQuestProgress(db: D1Database, characterId: string): Promise<Record<string, QuestProgressView>> {
   const { results } = await db
-    .prepare("SELECT quest_id, state, progress FROM character_quests WHERE character_id = ?")
+    .prepare("SELECT quest_id, state, progress, accepted_at FROM character_quests WHERE character_id = ?")
     .bind(characterId)
-    .all<{ quest_id: string; state: "active" | "done"; progress: number }>();
+    .all<{ quest_id: string; state: "active" | "done"; progress: number; accepted_at: number }>();
   const out: Record<string, QuestProgressView> = {};
-  for (const r of results) out[r.quest_id] = { state: r.state, progress: r.progress };
+  for (const r of results) out[r.quest_id] = { state: r.state, progress: r.progress, at: r.accepted_at };
   return out;
 }
 
 /** Takes a quest. The primary key throws when the character already has it (active or done). */
 export async function acceptQuest(db: D1Database, characterId: string, questId: string, now: number): Promise<void> {
   await db.prepare("INSERT INTO character_quests (character_id, quest_id, state, progress, accepted_at) VALUES (?, ?, 'active', 0, ?)").bind(characterId, questId, now).run();
+}
+
+/** Gives up an active quest: its row goes, so the character is as if it never took it (a finished quest is never touched). True when a row was removed. */
+export async function abandonQuest(db: D1Database, characterId: string, questId: string): Promise<boolean> {
+  const r = await db.prepare("DELETE FROM character_quests WHERE character_id = ? AND quest_id = ? AND state = 'active'").bind(characterId, questId).run();
+  return (r.meta?.changes ?? 0) > 0;
 }
 
 /** Writes absolute progress of active quests (a quest that was closed meanwhile is left alone). */
@@ -192,9 +199,9 @@ export async function commitTurnIn(
   const needed = counted ? requiredProgress(def) : 0;
   const statements: D1PreparedStatement[] = [
     db.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, ?)").bind(key, now),
-    // A path quest shares the one-time key of the path item: a path item already had (the old claim button, an earlier run
+    // The step that gives the path item shares the one-time key of the path item: a path item already had (the old claim button, an earlier run
     // that was not reset) makes the whole batch fail instead of handing out a second one.
-    ...(def.path ? [db.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, ?)").bind(pathItemKey(characterId, def.path), now)] : []),
+    ...(givesPathItem(def) ? [db.prepare("INSERT INTO item_grants (key, created_at) VALUES (?, ?)").bind(pathItemKey(characterId, def.path ?? ""), now)] : []),
     // The quest must still be active (and, for a counted objective, have the progress the room saw).
     db
       .prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM character_quests WHERE character_id = ? AND quest_id = ? AND state = 'active' AND progress >= ?)")

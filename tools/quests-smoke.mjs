@@ -107,7 +107,7 @@ check("from far away the quest NPC refuses", r.some((m) => m.t === "quest_error"
 await walk(NEAR_ELDER, [20.5, 20.5]);
 r = await after(c, { t: "npc_open", npc: "elder" });
 const list = r.find((m) => m.t === "quests");
-check("opening the elder lists his quests (the 6-step chain and the breakthrough quest, nothing started)", list?.defs.length === 7 && Object.keys(list.states).length === 0, JSON.stringify(list?.states));
+check("opening the elder lists only what can be taken now (the first step; later ones are locked and hidden), nothing started", list?.defs.length === 1 && list.defs[0].id === "newbie_1" && Object.keys(list.states).length === 0, JSON.stringify(list?.defs.map((d) => d.id)));
 r = await after(c, { t: "quest_accept", npc: "elder", quest: "newbie_2" });
 check("the second quest is locked until the first is done", r.some((m) => m.t === "quest_error" && m.reason === "locked"));
 r = await after(c, { t: "quest_accept", npc: "elder", quest: "newbie_1" });

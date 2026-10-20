@@ -55,7 +55,7 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
     ...SEND_CHANNELS.map((c) => {
       const o = document.createElement("option");
       o.value = c;
-      o.textContent = vi.chat.channels[c];
+      o.textContent = c === "system" ? vi.chat.gmSystem : vi.chat.channels[c];
       return o;
     }),
   );

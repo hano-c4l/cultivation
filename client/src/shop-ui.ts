@@ -51,7 +51,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   panel.id = "shop-panel";
   panel.hidden = true;
   document.body.append(panel);
-  registerWindow("shop", panel, 4);
+  registerWindow("shop", panel, 5);
 
   let npc = "";
   let mapId = "";
