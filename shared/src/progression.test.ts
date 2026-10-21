@@ -12,6 +12,7 @@ import {
   deriveStats,
   elementMultiplier,
   elementOutcome,
+  maybeMutantRoot,
   expCap,
   expToNext,
   getRootGrade,
@@ -397,8 +398,35 @@ describe("elementOutcome (every attacker element against every target element, s
     expect(elementOutcome(["moc"], [])).toBe(1);
   });
 
-  it("the user's example: A kim moc thuy against B kim hoa is -1 -1 +1 = -1, so x0.8", () => {
-    expect(elementOutcome(["kim", "moc", "thuy"], ["kim", "hoa"])).toBe(0.8);
+  it("the user's example: A hoa kim tho plain-attacks B hoa moc thuy: two each, so a draw (x1)", () => {
+    expect(elementOutcome(["hoa", "kim", "tho"], ["hoa", "moc", "thuy"])).toBe(1);
+    expect(elementOutcome(["hoa", "moc", "thuy"], ["hoa", "kim", "tho"])).toBe(1);
+  });
+
+  it("an element both sides have is a draw and counts for nobody", () => {
+    // hoa is shared; kim overcomes moc (1) against nothing of the target's that overcomes kim or tho.
+    expect(elementOutcome(["hoa", "kim"], ["hoa", "moc"])).toBe(1.2);
+    expect(elementOutcome(["hoa", "moc"], ["hoa", "kim"])).toBe(0.8);
+  });
+
+  it("the mutant elements: Lôi and Băng overcome thủy and mộc, Phong overcomes thổ, and each has its own weakness", () => {
+    expect(elementOutcome(["loi"], ["thuy"])).toBe(1.2);
+    expect(elementOutcome(["loi"], ["moc"])).toBe(1.2);
+    expect(elementOutcome(["tho"], ["loi"])).toBe(1.2);
+    expect(elementOutcome(["bang"], ["moc"])).toBe(1.2);
+    expect(elementOutcome(["hoa"], ["bang"])).toBe(1.2);
+    expect(elementOutcome(["phong"], ["tho"])).toBe(1.2);
+    expect(elementOutcome(["hoa"], ["phong"])).toBe(1.2);
+    expect(elementOutcome(["kim"], ["phong"])).toBe(1.2);
+    expect(elementOutcome(["phong"], ["kim"])).toBe(0.8);
+    expect(elementOutcome(["loi"], ["bang"])).toBe(1); // no relation between mutants
+  });
+
+  it("a mutant root is rolled only for a single element, by the configured chance", () => {
+    expect(maybeMutantRoot(["kim"], 0, 1, 100)).toEqual(["bang"]);
+    expect(maybeMutantRoot(["kim"], 100, 1, 100)).toEqual(["kim"]);
+    expect(maybeMutantRoot(["kim", "moc"], 0, 1, 1000)).toEqual(["kim", "moc"]);
+    expect(maybeMutantRoot(["kim"], 0, 1, 0)).toEqual(["kim"]);
   });
 
   it("the user's skill example: hoa against a moc + kim target is 0 + 1, so x1.2", () => {
@@ -406,8 +434,8 @@ describe("elementOutcome (every attacker element against every target element, s
   });
 
   it("an element that overcomes and one that is overcome cancel out", () => {
-    expect(elementOutcome(["kim"], ["moc", "hoa"])).toBe(1); // +1 (moc), -1 (hoa)
-    expect(elementOutcome(["kim", "hoa"], ["moc", "thuy"])).toBe(1); // kim +1 (moc); hoa -1 (thuy)
+    expect(elementOutcome(["kim"], ["moc", "hoa"])).toBe(1); // kim overcomes moc; hoa overcomes kim
+    expect(elementOutcome(["kim", "hoa"], ["moc", "thuy"])).toBe(1); // kim overcomes moc; thuy overcomes hoa
   });
 
   it("a single pair is the plain table (one element each)", () => {

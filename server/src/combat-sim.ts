@@ -62,6 +62,8 @@ import {
   skillContextFor,
   type PathState,
   SPIRITUAL_ROOTS,
+  isMutantRoot,
+  elementTuning,
   topContributor,
   findSmoothPath,
   isStandable,
@@ -1279,7 +1281,8 @@ export class CombatSim {
     // A skill's grade is already in its power (effectiveSkill), so only the plain attack takes the root grade's damage share here.
     const gradePct = !skill && roots.includes(element) ? getRootGrade(p.rootGrade).elementDamagePct : 0;
     const bonusPct = skill ? modifierTotal(p.effects ?? [], "skill_damage", { elements: [element], weapons: p.weapon ? [p.weapon] : [], skill: skill.id }).percent + pathSkillDamagePct(p.paths ?? NO_PATHS, skill, p.weapon ?? null) : 0;
-    const power = skill ? skillPower : 1;
+    const mutantPct = skill && isMutantRoot(element) ? elementTuning().mutantSkillBonusPct : 0;
+    const power = skill ? skillPower * (1 + mutantPct / 100) : 1;
     const skMult = 1 + satKhiDamagePct(p.satKhi ?? 0) / 100;
     return { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100) * skMult)), element, roots: skill ? undefined : roots };
   }

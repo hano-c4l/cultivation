@@ -1,6 +1,8 @@
 import type { ConstitutionEffect } from "./constitutions";
 import { gearStyleOf, type Gender } from "./gender";
 import type { MonsterRank } from "./monsters";
+import { elementTuning } from "./element-tuning";
+import { isMutantRoot, MUTANT_ROOTS } from "./character";
 import { expToNext, levelIndex } from "./progression";
 import { BASE_STAT_START, REALMS, STAGES_PER_REALM, type BaseStats, type StatKey } from "./progression-data";
 
@@ -127,7 +129,7 @@ export const WEAPON_TYPES = ["kiem", "dao", "thuong", "riu", "cung", "quyen"] as
 export type WeaponType = (typeof WEAPON_TYPES)[number];
 /** Elements gear can carry: the five (ngũ hành) plus the variant elements planned for phase 2c (same ids as ELEMENT_TAGS). */
 export const GEAR_ELEMENTS = ["kim", "moc", "thuy", "hoa", "tho", "loi", "bang", "phong"] as const;
-/** What drops from monsters: the five only. */
+/** What drops from monsters, apart from the small mutant share (see rollEquipmentDrop): the five. */
 export const DROP_ELEMENTS = GEAR_ELEMENTS.slice(0, 5);
 
 export interface EquipRequirement {
@@ -366,6 +368,13 @@ export function resonates(info: Pick<EquipInfo, "element" | "weaponType">, affin
   return (info.element !== null && affinity.elements.includes(info.element)) || (info.weaponType !== null && affinity.weapons.includes(info.weaponType));
 }
 
+/** Extra strength (0.15 = +15%) a piece gives its wearer: more when its element is a mutant one the wearer has. */
+export function resonanceBonus(info: Pick<EquipInfo, "element" | "weaponType">, affinity: GearAffinity | undefined): number {
+  if (!resonates(info, affinity)) return 0;
+  const mutant = info.element !== null && isMutantRoot(info.element) && !!affinity?.elements.includes(info.element);
+  return mutant ? elementTuning().mutantGearBonusPct / 100 : AFFINITY_BONUS;
+}
+
 /** What a wearer must satisfy. Requirements are judged against the character without gear. */
 export interface WearerCtx {
   /** What the wearer resonates with; leave out when only the requirements are being checked. */
@@ -397,7 +406,7 @@ export function equipmentBonus(items: readonly EquippedItem[], w: WearerCtx): Eq
     const info = equipmentInfo(it.type);
     if (!info || equipBlock(info, it.slot, it.dur, w)) continue;
     if (info.kind === "flight" && !w.mounted) continue;
-    const s = scaledStats(info, it.dur, it.max, it.lv, resonates(info, w.affinity) ? 1 + AFFINITY_BONUS : 1);
+    const s = scaledStats(info, it.dur, it.max, it.lv, 1 + resonanceBonus(info, w.affinity));
     for (const key of EQUIP_STAT_KEYS) total[key] += s[key];
   }
   for (const key of EQUIP_STAT_KEYS) total[key] = Math.round(total[key] * 10) / 10;
@@ -476,7 +485,12 @@ export function rollEquipmentDrop(mapRealm: number, monsterTier: number, rank: M
       break;
     }
   }
-  const element = DROP_ELEMENTS[Math.floor(elementRoll * DROP_ELEMENTS.length)] as string;
+  // A small share of drops carry a mutant element; the same roll decides, so the number of rolls stays nine.
+  const mutantChance = elementTuning().mutantGearDropPermille / 1000;
+  const element =
+    elementRoll < mutantChance
+      ? (MUTANT_ROOTS[Math.min(MUTANT_ROOTS.length - 1, Math.floor((elementRoll / mutantChance) * MUTANT_ROOTS.length))] as string)
+      : (DROP_ELEMENTS[Math.floor(((elementRoll - mutantChance) / (1 - mutantChance)) * DROP_ELEMENTS.length)] as string);
   const weaponType = kind === "weapon" ? (WEAPON_TYPES[Math.floor(weaponRoll * WEAPON_TYPES.length)] as string) : undefined;
   const type = makeEquipmentId(kind, style, realm, tier, grade, element, weaponType);
   const d = newDurability(type);

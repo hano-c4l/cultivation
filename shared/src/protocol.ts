@@ -1,4 +1,4 @@
-import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
+import { ALL_ROOTS, type SpiritualRoot } from "./character";
 import type { Vec2 } from "./map";
 import { isCombatTargetId, isMonsterId, type HitKind } from "./combat";
 import type { BreakthroughEnd, BreakthroughError } from "./breakthrough";
@@ -368,7 +368,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (typeof m.skill !== "string" || !/^[a-z0-9_]{1,32}$/.test(m.skill)) return null;
       // An attack skill without a fixed element says which of the character's elements to use.
       if (m.el !== undefined) {
-        if (typeof m.el !== "string" || !(SPIRITUAL_ROOTS as readonly string[]).includes(m.el)) return null;
+        if (typeof m.el !== "string" || !(ALL_ROOTS as readonly string[]).includes(m.el)) return null;
         const el = m.el as SpiritualRoot;
         if (m.target === undefined) return { t: "cast", skill: m.skill, el };
         return isCombatTargetId(m.target) ? { t: "cast", skill: m.skill, target: m.target, el } : null;

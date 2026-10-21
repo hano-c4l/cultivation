@@ -1,15 +1,14 @@
-import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
+import { ALL_ROOTS, MUTANT_ROOTS, SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import type { PathState } from "./paths";
 import type { EquipStats } from "./equipment-data";
 import type { Gender } from "./gender";
 import { BASE_SPEED } from "./pathfinding";
 import { effectiveSpeed } from "./movement";
+import { elementTuning } from "./element-tuning";
 import {
   BASE_STAT_START,
   KILLS_BASE,
   KILLS_GROWTH,
-  ELEMENT_OVERCOME_BY_MULT,
-  ELEMENT_OVERCOME_MULT,
   MAX_ALLOCATE_PER_STAT,
   OVERFLOW_EXP_MAX,
   REALMS,
@@ -162,9 +161,18 @@ export function rollRoots(count: number, picks: readonly number[]): SpiritualRoo
   return out;
 }
 
+/**
+ * A single plain element may turn out to be a mutant one (Lôi, Băng, Phong): `chanceRoll` in 0..999 decides whether
+ * (below the chance, per thousand), `pick` which of the three. Characters with more elements never get one.
+ */
+export function maybeMutantRoot(roots: readonly SpiritualRoot[], chanceRoll: number, pick: number, chancePermille = elementTuning().mutantRootChancePermille): SpiritualRoot[] {
+  if (roots.length !== 1 || chanceRoll >= chancePermille) return [...roots];
+  return [MUTANT_ROOTS[Math.abs(Math.trunc(pick)) % MUTANT_ROOTS.length] as SpiritualRoot];
+}
+
 /** The roots stored on a character: the list when there is one, otherwise just the main element (older characters). */
 export function parseRoots(raw: string | null | undefined, primary: SpiritualRoot): SpiritualRoot[] {
-  const list = (raw ?? "").split(",").filter((r): r is SpiritualRoot => (SPIRITUAL_ROOTS as readonly string[]).includes(r));
+  const list = (raw ?? "").split(",").filter((r): r is SpiritualRoot => (ALL_ROOTS as readonly string[]).includes(r));
   const unique = [...new Set(list)];
   return unique.length > 0 ? unique : [primary];
 }
@@ -252,28 +260,21 @@ export function parseAllocation(raw: unknown): Partial<BaseStats> | null {
 
 export type Element = SpiritualRoot;
 
-/** Each element overcomes (tương khắc) the next one in this cycle: kim > mộc > thổ > thủy > hỏa > kim. */
-const OVERCOMES: Record<Element, Element> = { kim: "moc", moc: "tho", tho: "thuy", thuy: "hoa", hoa: "kim" };
-
 /**
- * Damage multiplier of one attack, judged from the attacker's side only (the one hit simply takes what the attacker deals).
- * Every element of the attacker is compared with every element of the target: +1 when the attacker's element overcomes the
- * target's (khắc), -1 when the target's overcomes it (bị khắc), 0 otherwise (the same element, or no relation). The scores are
- * added up: a positive total is x1.2, a negative one x0.8, zero x1. Nothing else matters (a spare element or an element in common
- * does not cancel anything by itself; it only adds its own zeros and scores).
- * Example: A kim + mộc + thủy against B kim + hỏa: kim is 0 against kim and -1 against hỏa, mộc is -1 against kim and 0 against
- * hỏa, thủy is 0 against kim and +1 against hỏa; -1 -1 +1 = -1, so x0.8. A skill has one element, a plain attack uses them all.
+ * Damage multiplier of one attack, judged from the attacker's side (the one hit simply takes what the attacker deals).
+ * An element both sides have is a draw and counts for nobody. Each remaining element of the attacker scores one point for
+ * the attacker when it overcomes (khắc) any element of the target; each remaining element of the target scores one for the
+ * target when it overcomes any element of the attacker. Whoever has more points wins: x1.2 for the attacker, x0.8 for the
+ * target, x1 on a tie. A skill has one element, a plain attack uses all of the attacker's.
+ * Example: A hỏa + kim + thổ plain-attacks B hỏa + mộc + thủy: hỏa is shared (a draw); A's kim overcomes mộc and thổ overcomes
+ * thủy (2); B's mộc overcomes thổ and thủy overcomes hỏa (2); equal, so x1. Who overcomes whom is in ElementTuning.
  */
 export function elementOutcome(attacker: readonly Element[], target: readonly Element[]): number {
-  let score = 0;
-  for (const a of attacker) {
-    for (const t of target) {
-      if (OVERCOMES[a] === t) score += 1;
-      else if (OVERCOMES[t] === a) score -= 1;
-    }
-  }
-  if (score > 0) return ELEMENT_OVERCOME_MULT;
-  if (score < 0) return ELEMENT_OVERCOME_BY_MULT;
+  const t = elementTuning();
+  const mine = attacker.filter((a) => !target.includes(a) && target.some((d) => t.overcomes[a]?.includes(d))).length;
+  const theirs = target.filter((d) => !attacker.includes(d) && attacker.some((a) => t.overcomes[d]?.includes(a))).length;
+  if (mine > theirs) return t.overcomeMult;
+  if (mine < theirs) return t.overcomeByMult;
   return 1;
 }
 
