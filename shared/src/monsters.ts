@@ -45,8 +45,9 @@ export const GUARD_REALM_BONUS = 1;
 export const GUARD_TIER = 3;
 /** Guard positions per map (tile units, snapped to standable ground by the server): beside the arrival point, off the lane. */
 export const GUARDS: Readonly<Record<MapId, readonly (readonly [number, number])[]>> = {
-  town: [],
-  forest: [[19.5, 5.5], [22.5, 5.5]],
+  // Every portal has them on its arrival side: town (from the forest), forest (from the town and from the cave), cave (from the forest).
+  town: [[18.5, 35.5], [21.5, 35.5]],
+  forest: [[19.5, 5.5], [22.5, 5.5], [43.5, 22.5], [43.5, 25.5]],
   cave: [[5.5, 19.5], [5.5, 22.5]],
 };
 
