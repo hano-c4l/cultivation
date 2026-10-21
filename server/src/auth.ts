@@ -1,3 +1,4 @@
+import { applyElementSettings } from "./element-settings";
 import {
   SPIRITUAL_ROOTS,
   isGender,
@@ -9,6 +10,7 @@ import {
   rootGradeFromRoll,
   rootCountFromRoll,
   rollRoots,
+  maybeMutantRoot,
   STAT_DEFS,
   getMap,
   isLeaderboard,
@@ -19,7 +21,7 @@ import {
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
 import { adminBagTabs, adminConstitutions, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
-import { getCharacterByAccount, grantExp, toCharacterSheet } from "./characters";
+import { getCharacterByAccount, grantExp, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
 import {
@@ -179,7 +181,13 @@ async function createCharacter(request: Request, env: Env): Promise<Response> {
   // The server rolls the spiritual root; the client cannot choose it.
   // How many elements (đơn ... ngũ linh căn) and which ones; the first is the main element.
   const rootRolls = crypto.getRandomValues(new Uint32Array(6));
-  const roots = rollRoots(rootCountFromRoll(rootRolls[0]! % 100), [...rootRolls.slice(1)]);
+  try {
+    await applyElementSettings(env.DB);
+  } catch (err) {
+    console.error("element settings unavailable, using defaults", err);
+  }
+  const mutantRolls = crypto.getRandomValues(new Uint32Array(2));
+  const roots = maybeMutantRoot(rollRoots(rootCountFromRoll(rootRolls[0]! % 100), [...rootRolls.slice(1)]), mutantRolls[0]! % 1000, mutantRolls[1]!);
   const root = roots[0]!;
   const [sx, sy] = getMap("town").spawn;
   const rootGrade = rootGradeFromRoll(crypto.getRandomValues(new Uint32Array(1))[0]! % 100);
@@ -201,7 +209,7 @@ async function createCharacter(request: Request, env: Env): Promise<Response> {
       `INSERT INTO characters (id, account_id, name, spiritual_root, roots, map_id, x, y, potential_points, root_grade, constitution, constitution_tier, gender, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
         `VALUES (?, ?, ?, ?, ?, 'town', ?, ?, ?, ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
     )
-      .bind(id, session.accountId, name, root, roots.join(","), sx, sy, start.potentialPoints, rootGrade, constitution.id, constitution.tier, gender, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
+      .bind(id, session.accountId, name, STAND_IN_ROOT[root] ?? root, roots.join(","), sx, sy, start.potentialPoints, rootGrade, constitution.id, constitution.tier, gender, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
       .run();
   } catch (err) {
     if (String(err).includes("characters.name")) return errorResponse("name_taken", 409);

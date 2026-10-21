@@ -149,7 +149,7 @@ export const vi = {
     masteryMax: "Đã đạt cấp cao nhất",
     usePill: (n: number) => `Ngộ Đạo Đan (${n})`,
     chooseElement: "Gán theo hệ:",
-    elementNames: { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ" } as Record<string, string>,
+    elementNames: { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ", loi: "Lôi", bang: "Băng", phong: "Phong" } as Record<string, string>,
     rootGranted: (name: string) => `Linh căn ban cho bạn kỹ năng ${name}.`,
     levelUp: (name: string, level: string) => `${name} đạt cấp ${level}.`,
     power: {
@@ -521,7 +521,7 @@ export const vi = {
       satKhi: "Sát khí",
     },
   },
-  roots: { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ" } as Record<string, string>,
+  roots: { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ", loi: "Lôi", bang: "Băng", phong: "Phong" } as Record<string, string>,
   errors: {
     invalid_email: "Email không hợp lệ.",
     invalid_password: "Mật khẩu phải từ 8 đến 128 ký tự.",

@@ -126,6 +126,9 @@ export const ROOT_FAVOURED_STAT: Record<SpiritualRoot, StatKey> = {
   thuy: "thanThuc",
   hoa: "linhLuc",
   tho: "canCot",
+  loi: "linhLuc",
+  bang: "thanThuc",
+  phong: "thanPhap",
 };
 
 /** Largest allocation accepted in one request, per stat and in total. */

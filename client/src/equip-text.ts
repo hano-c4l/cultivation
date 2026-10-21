@@ -1,4 +1,4 @@
-import { AFFINITY_BONUS, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
+import { resonanceBonus, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
 import { vi } from "./locales/vi";
 
 /** "+12 Công kích" style text for one stat; rates are percentage points. */
@@ -147,8 +147,8 @@ export function describeItem(type: string, opts: { dur?: number; max?: number; q
   if (info) {
     // Gear that suits the wearer (its element is their root's or their constitution's, or its weapon family is) gives more.
     const suits = resonates(info, opts.wearer?.affinity);
-    line(`${vi.equip.statsLabel}: ${statsText(type, opts.dur, opts.max, opts.lv, suits ? 1 + AFFINITY_BONUS : 1)}`);
-    if (suits) line(vi.equip.resonates(Math.round(AFFINITY_BONUS * 100)));
+    line(`${vi.equip.statsLabel}: ${statsText(type, opts.dur, opts.max, opts.lv, suits ? 1 + resonanceBonus(info, opts.wearer?.affinity) : 1)}`);
+    if (suits) line(vi.equip.resonates(Math.round(resonanceBonus(info, opts.wearer?.affinity) * 100)));
     // The pháp bảo bản mệnh trains on its own EXP, up to the level of its owner.
     if (info.kind === "bonded") line(vi.equip.refine(opts.xp ?? 0, refineExpNeeded(refineLevelOf(info, opts.lv))));
     line(durabilityText(opts.dur, opts.max));

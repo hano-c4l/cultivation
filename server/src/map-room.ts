@@ -165,6 +165,7 @@ import {
 import { CombatSim, staticGuardSnapshots, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
 import { getSetting } from "./settings";
+import { applyElementSettings } from "./element-settings";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
 interface PlayerState {
@@ -403,6 +404,7 @@ export class MapRoom extends DurableObject<Env> {
       this.roomId = room;
       await this.ctx.storage.put("room", room);
     }
+    await applyElementSettings(this.env.DB).catch((err) => console.error("element settings unavailable", err));
 
     const lock = this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(characterId));
     // Claim first: the previous holder (any room) kicks its socket and saves before we read the row.
@@ -584,6 +586,8 @@ export class MapRoom extends DurableObject<Env> {
     if (typeof raw !== "string") return;
     const msg = parseClientMessage(raw);
     if (!msg) return;
+    // The tuning is in this isolate's memory: a room that woke on this message reads it again (cached, cheap).
+    await applyElementSettings(this.env.DB).catch(() => undefined);
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state || state.transferring) return;
 

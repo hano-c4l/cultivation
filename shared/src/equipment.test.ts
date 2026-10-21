@@ -292,7 +292,7 @@ describe("element and weapon family", () => {
     expect(equipTierTag(equipmentInfo("eq.robe.m.1.4.1")!)).toBe("TC4");
   });
 
-  it("drops carry one of the five elements, and weapons a family", () => {
+  it("drops carry one of the five elements (or, rarely, a mutant one), and weapons a family", () => {
     const seen = new Set<string>();
     for (let t = 0; t < 400; t++) {
       let s = t + 7;
@@ -300,11 +300,11 @@ describe("element and weapon family", () => {
       const drop = rollEquipmentDrop(0, 4, "rare2", rand);
       if (!drop) continue;
       const info = equipmentInfo(drop.type)!;
-      expect(["kim", "moc", "thuy", "hoa", "tho"]).toContain(info.element);
+      expect(["kim", "moc", "thuy", "hoa", "tho", "loi", "bang", "phong"]).toContain(info.element);
       expect(info.kind === "weapon" ? info.weaponType !== null : info.weaponType === null).toBe(true);
       seen.add(info.element!);
     }
-    expect(seen.size).toBe(5);
+    for (const el of ["kim", "moc", "thuy", "hoa", "tho"]) expect(seen.has(el)).toBe(true);
   });
 });
 
