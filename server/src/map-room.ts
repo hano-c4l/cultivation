@@ -2872,11 +2872,12 @@ export class MapRoom extends DurableObject<Env> {
   /**
    * The PvP drop (docs/PHASE2.md 2f): with the chance of the victim's name tier, one bag stack or worn piece goes to the killer's mailbox (never
    * expiring) in ONE batch (the victim's row is deleted and a copy is made for the killer), keyed once per kill so a retry cannot give two. The
-   * killer must still be in this room; if it left, nothing drops. Both sides are told.
+   * killer does not have to be in this room (the mail is written to D1 for it anyway); both sides are told when they are here.
    */
   private async dropToKiller(ws: WebSocket, victim: PlayerState, killerId: string, tier: NameTier): Promise<void> {
+    // The killer need not be here any more (it may have left the room or even logged out): the mail goes to its mailbox in D1 either way,
+    // only the notification and the refreshed mail list need its socket in this room.
     const killer = this.socketOf(killerId);
-    if (!killer) return;
     const key = `pkdrop:${crypto.randomUUID()}`;
     const ids = { newId: crypto.randomUUID(), mailId: crypto.randomUUID() };
     // Local tests set PK_DROP_FORCE=1 (in .dev.vars) so the drop always happens; the real game rolls.
@@ -2899,9 +2900,12 @@ export class MapRoom extends DurableObject<Env> {
     });
     const gave = chosen as Extract<BagOp, { op: "give" }> | null;
     if (!done || !gave) return;
-    this.send(ws, { t: "pk_drop", role: "victim", item: gave.type, qty: gave.qty, other: killer.state.name });
-    this.send(killer.ws, { t: "pk_drop", role: "killer", item: gave.type, qty: gave.qty, other: victim.name });
-    await this.sendMailList(killerId, killer.ws).catch((err) => console.error("mail list failed", killerId, err));
+    const killerName = killer?.state.name ?? (await getCharacterById(this.env.DB, killerId).catch(() => null))?.name ?? "";
+    this.send(ws, { t: "pk_drop", role: "victim", item: gave.type, qty: gave.qty, other: killerName });
+    if (killer) {
+      this.send(killer.ws, { t: "pk_drop", role: "killer", item: gave.type, qty: gave.qty, other: victim.name });
+      await this.sendMailList(killerId, killer.ws).catch((err) => console.error("mail list failed", killerId, err));
+    }
   }
 
   /** The PvP drop with nobody to give it to: with the chance of the name tier, one item (the same choice as for a kill by a player) is deleted. */
