@@ -44,6 +44,28 @@ export const BOSS_SKILLS = {
   slash: { power: 1.7, cdMs: 5_000 },
 } as const;
 
+/**
+ * The boss's special skill: a cone in front of it (towards the player it is fighting) that hits every player inside, with a long cooldown,
+ * and only once its HP is below `below` of the maximum. `halfAngleDeg` is half the opening of the cone. Placeholder numbers.
+ */
+export const BOSS_CONE = { power: 2.2, cdMs: 25_000, below: 0.25, range: 4.5, halfAngleDeg: 45 } as const;
+
+/**
+ * Unlike an ordinary monster, a boss that has lost its fight (everybody dead or out of reach) and walked home does not jump back to full
+ * HP: it heals this fraction of its maximum HP per second, so players who died can run back and carry on. Its damage table is kept until
+ * it is full again. Back to full from nothing in 50 seconds.
+ */
+export const BOSS_REGEN_PER_S = 0.02;
+
+/** Whether a point at offset (dx, dy) from the boss lies inside its cone when it faces (fx, fy); true at the boss's own spot. */
+export function inCone(dx: number, dy: number, fx: number, fy: number, range: number, halfAngleDeg: number): boolean {
+  const d = Math.hypot(dx, dy);
+  if (d > range) return false;
+  if (d < 1e-6 || Math.hypot(fx, fy) < 1e-6) return true;
+  const cos = (dx * fx + dy * fy) / (d * Math.hypot(fx, fy));
+  return cos >= Math.cos((halfAngleDeg * Math.PI) / 180) - 1e-9;
+}
+
 export function bossStats(mapRealm: number): GuardStats {
   const realm = mapRealm + BOSS_REALM_BONUS;
   const base = startingStats("kim", 1).base;

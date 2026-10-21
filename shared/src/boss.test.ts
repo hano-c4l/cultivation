@@ -38,3 +38,14 @@ describe("pickByShare", () => {
     expect(pickByShare([], 0.5)).toBeNull();
   });
 });
+
+describe("inCone", () => {
+  it("covers the space in front, within range and the half angle", async () => {
+    const { inCone } = await import("./boss");
+    expect(inCone(3, 0, 1, 0, 4.5, 45)).toBe(true);
+    expect(inCone(3, 2, 1, 0, 4.5, 45)).toBe(true); // about 34 degrees
+    expect(inCone(2, 3, 1, 0, 4.5, 45)).toBe(false); // about 56 degrees
+    expect(inCone(-2, 0, 1, 0, 4.5, 45)).toBe(false); // behind
+    expect(inCone(5, 0, 1, 0, 4.5, 45)).toBe(false); // out of range
+  });
+});
