@@ -72,6 +72,24 @@ for (const type of ["eq.bonded.u.0.1.2.kim", "eq.flight.u.0.1.2.moc"]) {
 const worn = [...c.log].reverse().find((m) => m.t === "eq").items;
 check("both special artifacts are worn, each in its own slot", worn.some((e) => e.slot === "bonded") && worn.some((e) => e.slot === "flight"));
 
+// Riding: the flight artifact's speed and stats only count while mounted, and a change mid-walk re-plans at the new speed.
+const speedOf = (pred) => [...c.log].reverse().find(pred)?.player?.speed;
+const footSpeed = c.welcome.players.find((p) => p.id === charId).speed;
+c.send({ t: "mount", on: true });
+await c.wait((m) => m.t === "mounted" && m.on === true, 5000, "mounted on");
+await c.wait((m) => m.t === "path" && m.player.id === charId && m.player.mounted === true, 5000, "mounted path");
+const rideSpeed = speedOf((m) => m.t === "path" && m.player.id === charId);
+check("riding is faster than walking", rideSpeed > footSpeed, `${footSpeed} -> ${rideSpeed}`);
+c.send({ t: "move", x: 20.5, y: 30.5, fx: 20.5, fy: 20.5, seq: 90 });
+await c.wait((m) => m.t === "ack" && m.seq === 90);
+await sleep(700);
+c.send({ t: "mount", on: false });
+await c.wait((m) => m.t === "mounted" && m.on === false, 5000, "mounted off");
+await sleep(500);
+const landed = [...c.log].reverse().find((m) => m.t === "path" && m.player.id === charId && !m.player.mounted);
+check("getting off mid-walk drops the speed and keeps walking", landed && landed.player.speed === footSpeed && landed.player.path.length >= 2, `${landed?.player.speed}`);
+c.send({ t: "mount", on: false });
+
 // To the forest and a kill.
 c.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1);

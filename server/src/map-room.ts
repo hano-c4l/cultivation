@@ -66,8 +66,10 @@ import {
   parseHotbar,
   applyBag,
   applyRefineExp,
+  equipBlock,
   equipmentBonus,
   equipmentInfo,
+  walkSpeed,
   levelIndex,
   refineLevelOf,
   newDurability,
@@ -177,6 +179,9 @@ interface PlayerState {
   path: Vec2[];
   startedAt: number;
   speed: number;
+  /** Riding the flight pháp bảo (kept per connection: a map change gets off). */
+  mounted?: boolean;
+  lastMountAt?: number;
   lastMoveAt: number;
   /** Last bag command, to rate-limit them (each one is a D1 write). */
   lastInvAt?: number;
@@ -497,7 +502,7 @@ export class MapRoom extends DurableObject<Env> {
         mapId,
         path: [position],
         startedAt: Date.now(),
-        speed: BASE_SPEED,
+        speed: walkSpeed(baseOf(row), equipmentBonus(bagNow.equipped, wearerOfRow(row)).moveSpeed),
         lastMoveAt: 0,
         dirty: false,
         chatTimes: [],
@@ -593,7 +598,7 @@ export class MapRoom extends DurableObject<Env> {
         // Only map chat belongs on this socket; a client that sends the others here is ignored.
         return msg.channel === "map" ? this.handleChat(ws, state, msg.text) : undefined;
       case "allocate":
-        return this.handleAllocate(ws, state, msg.points);
+        return this.handleAllocate(ws, state, msg.points).then(() => this.refreshSpeed(ws));
       case "attack":
         return this.handleAttack(ws, state, msg.id);
       case "pk_mode":
@@ -606,6 +611,8 @@ export class MapRoom extends DurableObject<Env> {
       case "inv_expand":
       case "mail_claim":
         return this.handleInventory(ws, state, msg);
+      case "mount":
+        return this.handleMount(ws, state, msg.on);
       case "eq_equip":
       case "eq_unequip":
       case "eq_repair":
@@ -680,7 +687,8 @@ export class MapRoom extends DurableObject<Env> {
       state.moveBudget ?? MOVE_BUDGET_CAP,
       now - (state.moveBudgetAt ?? now),
       Math.hypot(msg.fx - here.x, msg.fy - here.y),
-      MAX_DESYNC_TILES,
+      MAX_DESYNC_TILES * Math.max(1, state.speed / BASE_SPEED),
+      state.speed / BASE_SPEED,
     );
     const claimedOk = spent.accepted && isStandable(map, msg.fx, msg.fy);
     // A claim that was refused (too far, or not standable) is not charged.
@@ -1519,8 +1527,90 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  private isMounted(id: string): boolean {
+    return !!this.socketOf(id)?.state.mounted;
+  }
+
+  /**
+   * Re-derives the walking speed (stats, riding, and later buffs and items). A change while walking re-plans the path from
+   * where the character is now at the new speed and tells everyone, so nobody's track runs at the wrong speed.
+   */
+  private async refreshSpeed(ws: WebSocket): Promise<void> {
+    const first = ws.deserializeAttachment() as PlayerState | null;
+    if (!first || first.transferring) return;
+    const w = await this.wearerOf(first.id);
+    const bag = await this.getBag(first.id);
+    const state = ws.deserializeAttachment() as PlayerState | null;
+    if (!w || !state || state.transferring) return;
+    const speed = walkSpeed(w.base, equipmentBonus(bag.equipped, { ...w, mounted: state.mounted }).moveSpeed);
+    if (speed === state.speed) return;
+    const now = Date.now();
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const dest = state.path[state.path.length - 1];
+    const rest = here.moving && dest ? findSmoothPath(getMap(state.mapId), [here.x, here.y], dest) : null;
+    state.path = rest ?? [[here.x, here.y]];
+    state.startedAt = now;
+    state.speed = speed;
+    state.dirty = true;
+    ws.serializeAttachment(state);
+    // Everyone, the mover included: its own client swaps to the new track and speed.
+    this.broadcast({ t: "path", player: this.snapshot(state) });
+  }
+
+  /** Gets off when the flight pháp bảo is gone, broken or no longer allowed, then settles the speed. */
+  private async syncMount(id: string): Promise<void> {
+    const sock = this.socketOf(id);
+    if (!sock) return;
+    const { ws, state } = sock;
+    if (state.mounted) {
+      const w = await this.wearerOf(id);
+      const bag = await this.getBag(id);
+      const flight = bag.equipped.find((e) => e.slot === "flight");
+      const info = flight ? equipmentInfo(flight.type) : undefined;
+      const fresh = ws.deserializeAttachment() as PlayerState | null;
+      if (fresh?.mounted && (!w || !flight || !info || equipBlock(info, flight.slot as EquipSlot, flight.dur, w))) {
+        fresh.mounted = false;
+        ws.serializeAttachment(fresh);
+        this.send(ws, { t: "mounted", on: false });
+        this.broadcast({ t: "path", player: this.snapshot(fresh) });
+      }
+    }
+    await this.refreshSpeed(ws);
+  }
+
+  /** Get on or off the flight pháp bảo. Stats and speed follow at once. */
+  private async handleMount(ws: WebSocket, state: PlayerState, on: boolean): Promise<void> {
+    const now = Date.now();
+    if (now - (state.lastMountAt ?? 0) < 500) return;
+    state.lastMountAt = now;
+    ws.serializeAttachment(state);
+    if (!on) {
+      if (!state.mounted) return this.send(ws, { t: "mounted", on: false });
+    } else {
+      if (state.mounted) return this.send(ws, { t: "mounted", on: true });
+      if (state.bt || state.tp) return this.send(ws, { t: "mounted", on: false, error: "busy" });
+      const w = await this.wearerOf(state.id);
+      const bag = await this.getBag(state.id);
+      const flight = bag.equipped.find((e) => e.slot === "flight");
+      const info = flight ? equipmentInfo(flight.type) : undefined;
+      if (!w || !flight || !info) return this.send(ws, { t: "mounted", on: false, error: "no_flight" });
+      const block = equipBlock(info, flight.slot as EquipSlot, flight.dur, w);
+      if (block) return this.send(ws, { t: "mounted", on: false, error: block === "broken" ? "broken" : "requirements" });
+    }
+    const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+    if (fresh.transferring) return;
+    fresh.mounted = on;
+    ws.serializeAttachment(fresh);
+    this.send(ws, { t: "mounted", on });
+    // The riding flag rides on the snapshot, so other players see it too.
+    this.broadcast({ t: "path", player: this.snapshot(fresh) });
+    const bag = await this.getBag(fresh.id);
+    this.applyGear(fresh.id, bag, ws); // also settles the speed (syncMount)
+  }
+
   /** Worn gear changed (or wore down): the combat stats follow, in a combat map. In town the next join recomputes them. */
   private applyGear(id: string, bag: BagState, direct?: WebSocket): void {
+    void this.syncMount(id).catch((err) => console.error("mount sync failed", id, err));
     const p = this.sim?.getPlayer(id);
     if (!p || !this.sim) {
       // In town there is no profile, but the skills that pháp bảo grant still follow what is worn.
@@ -1531,7 +1621,7 @@ export class MapRoom extends DurableObject<Env> {
       return;
     }
     const before = this.sim.skillsOf(p).join(",");
-    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity }), weaponFamily(bag.equipped), gearSkillInfo(bag.equipped));
+    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity, mounted: this.isMounted(id) }), weaponFamily(bag.equipped), gearSkillInfo(bag.equipped));
     this.sendToCharacter(id, { t: "hp", hp: p.hp, maxHp: p.maxHp }, direct);
     // Pháp bảo grant skills while worn: the list changes when one is put on, taken off or breaks.
     const skills = this.sim.skillsOf(p);
@@ -1541,7 +1631,7 @@ export class MapRoom extends DurableObject<Env> {
   /** Who is wearing: the live profile when there is one, otherwise the saved row. */
   private async wearerOf(id: string): Promise<WearerCtx | null> {
     const p = this.sim?.getPlayer(id);
-    if (p) return { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base };
+    if (p) return { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity };
     const row = await getCharacterById(this.env.DB, id);
     return row ? wearerOfRow(row) : null;
   }
@@ -3272,7 +3362,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {

@@ -3,6 +3,7 @@ import type { PathState } from "./paths";
 import type { EquipStats } from "./equipment-data";
 import type { Gender } from "./gender";
 import { BASE_SPEED } from "./pathfinding";
+import { effectiveSpeed } from "./movement";
 import {
   BASE_STAT_START,
   KILLS_BASE,
@@ -198,17 +199,22 @@ export interface DerivedStats {
   expBonus: number;
   /** Percent bonus to drop chance. */
   dropBonus: number;
-  /** Tiles per second. Display only: movement still uses BASE_SPEED (changing speed mid-walk would desync paths). */
+  /** Tiles per second: what the server walks the character at (a speed change re-plans the path, see map-room refreshSpeed). */
   moveSpeed: number;
 }
 
 export const RATE_CAP = 60;
 
+/** Walking speed (tiles per second) from the base stats, the speed percent of worn gear and any other percent modifiers. */
+export function walkSpeed(base: BaseStats, gearPct: number, speedMods: readonly number[] = []): number {
+  return effectiveSpeed(BASE_SPEED * (1 + base.thanPhap * 0.01), [gearPct, ...speedMods]);
+}
+
 /**
  * Combat stats from base stats and cultivation level, plus the stats of worn gear (`gear`, see equipmentBonus).
  * Formulas live here so client and server always agree.
  */
-export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number, gear?: EquipStats, rootCount = 1): DerivedStats {
+export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number, gear?: EquipStats, rootCount = 1, speedMods: readonly number[] = []): DerivedStats {
   const lv = levelIndex(realm, stage);
   return {
     maxHp: 100 + base.canCot * 15 + lv * 25 + (gear?.maxHp ?? 0),
@@ -219,7 +225,7 @@ export function deriveStats(base: BaseStats, realm: number, stage: number, rootG
     dodgeRate: Math.min(RATE_CAP, base.thanPhap * 0.5 + (gear?.dodgeRate ?? 0)),
     expBonus: Math.max(-50, base.ngoTinh + getRootGrade(rootGrade).expBonusPct + getRootCount(rootCount).expBonusPct),
     dropBonus: Math.min(RATE_CAP, base.phucDuyen * 0.5),
-    moveSpeed: Math.round(BASE_SPEED * (1 + base.thanPhap * 0.01) * (1 + (gear?.moveSpeed ?? 0) / 100) * 100) / 100,
+    moveSpeed: walkSpeed(base, gear?.moveSpeed ?? 0, speedMods),
   };
 }
 

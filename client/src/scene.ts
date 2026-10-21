@@ -65,6 +65,7 @@ import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { vi } from "./locales/vi";
+import { isMounted, setMounted } from "./wearer";
 import { Net } from "./net";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
@@ -101,6 +102,9 @@ interface Actor {
   /** The "PK" tag after the name: brown for PK, red for Đồ sát (hidden when off). */
   tag: Phaser.GameObjects.Text;
   pk: PkMode;
+  /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
+  mounted: boolean;
+  cloud?: Phaser.GameObjects.Ellipse;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
   snAt: number;
@@ -199,6 +203,8 @@ export class GameScene extends Phaser.Scene {
   private charPanel!: CharacterPanel;
   private vitals!: VitalsUi;
   private hud!: HTMLElement;
+  private mountBtn!: HTMLButtonElement;
+  private flightWorn = false;
   private ping = 0;
   private pingSentAt = 0;
   private moveSeq = 0;
@@ -214,6 +220,11 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.hud = document.getElementById("hud")!;
+    this.mountBtn = document.createElement("button");
+    this.mountBtn.hidden = true;
+    this.mountBtn.style.cssText = "position:fixed;top:44px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:12px;border:1px solid #bfeeff;background:rgba(40,110,150,.85);color:#e8faff;font-size:13px;z-index:20;cursor:pointer";
+    this.mountBtn.onclick = () => this.net.send({ t: "mount", on: !isMounted() });
+    document.body.append(this.mountBtn);
     this.drawMap();
     this.marker = this.add.graphics().setDepth(1);
     this.chat = initChat((channel, text, to) => {
@@ -269,6 +280,11 @@ export class GameScene extends Phaser.Scene {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && this.aiming) this.endAim();
+      const a = document.activeElement;
+      const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
+      if (!typing && (ev.key === "m" || ev.key === "M") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && this.selfId) {
+        this.net.send({ t: "mount", on: !isMounted() });
+      }
     });
 
     // Channel picks which Durable Object (and so which Cloudflare data centre) serves us; override with ?ch=N.
@@ -535,6 +551,9 @@ export class GameScene extends Phaser.Scene {
     switch (msg.t) {
       case "welcome":
         this.selfId = msg.self;
+        setMounted(false); // a new room starts on foot
+        this.flightWorn = msg.equipped.some((e) => e.slot === "flight");
+        this.refreshMountBtn();
         this.hitMeAt.clear(); // a new room starts without quarrels
         this.endAim();
         this.colo = msg.colo;
@@ -640,6 +659,14 @@ export class GameScene extends Phaser.Scene {
         this.upsertActor([msg.player]);
         this.refreshHud();
         break;
+      case "mounted":
+        if (msg.error) this.chat.system(vi.mount.errors[msg.error] ?? msg.error);
+        this.applyMounted(msg.on);
+        {
+          const me = this.actors.get(this.selfId);
+          if (me) this.setActorMounted(me, msg.on);
+        }
+        break;
       case "ack":
         // Only corrections carry a track; an accepted move keeps the local prediction untouched.
         if (msg.player) this.upsertActor([msg.player]);
@@ -670,6 +697,8 @@ export class GameScene extends Phaser.Scene {
         this.skillsUi.refresh(); // the pill count
         break;
       case "eq": {
+        this.flightWorn = msg.items.some((e) => e.slot === "flight");
+        this.refreshMountBtn();
         // The pháp bảo bản mệnh reaching a new training level is worth a line.
         const bonded = msg.items.find((e) => e.slot === "bonded");
         const level = bonded ? bondedLevel(bonded) : undefined;
@@ -932,13 +961,14 @@ export class GameScene extends Phaser.Scene {
           .text(0, 0, p.name, { fontFamily: FONT, fontSize: "13px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
           .setOrigin(0.5, 1);
         const tag = this.add.text(0, 0, "PK", { fontFamily: FONT, fontSize: "10px", fontStyle: "bold", color: "#c68642", stroke: "#000000", strokeThickness: 2 }).setOrigin(0, 1).setResolution(3).setVisible(false);
-        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, tag, pk: 0, sn: 0, snAt: 0 };
+        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, tag, pk: 0, mounted: false, sn: 0, snAt: 0 };
         this.actors.set(p.id, actor);
       }
       const now = performance.now();
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
+      this.setActorMounted(actor, p.mounted === true);
       this.recolorName(actor, now);
       if (isNew) {
         actor.path = p.path;
@@ -957,6 +987,7 @@ export class GameScene extends Phaser.Scene {
     actor.body.destroy();
     actor.label.destroy();
     actor.tag.destroy();
+    actor.cloud?.destroy();
     this.actors.delete(id);
   }
 
@@ -1074,6 +1105,32 @@ export class GameScene extends Phaser.Scene {
     actor.tag.setVisible(mode > 0 && actor.id !== this.selfId).setColor(mode === 2 ? "#ff5252" : "#c68642");
   }
 
+  /** Draws (or removes) the cloud under a rider; for yourself it also keeps the badge and the gear-stat views in step. */
+  private setActorMounted(actor: Actor, on: boolean): void {
+    if (actor.mounted === on) return;
+    actor.mounted = on;
+    if (on && !actor.cloud) actor.cloud = this.add.ellipse(0, 0, 40, 16, 0x9fe8ff, 0.75).setStrokeStyle(2, 0xffffff, 0.8);
+    actor.cloud?.setVisible(on);
+    if (actor.id === this.selfId && isMounted() !== on) this.applyMounted(on);
+  }
+
+  /** The button is there while a flight pháp bảo is worn (or you are riding): it says what a press does. */
+  private refreshMountBtn(): void {
+    const on = isMounted();
+    this.mountBtn.hidden = !(on || this.flightWorn);
+    this.mountBtn.textContent = on ? vi.mount.badge : vi.mount.ride;
+  }
+
+  /** Your own riding state changed: badge, stat views and the line in the system chat. */
+  private applyMounted(on: boolean): void {
+    if (isMounted() === on) return;
+    setMounted(on);
+    this.refreshMountBtn();
+    this.charPanel.refresh();
+    this.equipment.refresh();
+    this.chat.system(on ? vi.mount.on : vi.mount.off);
+  }
+
   private recolorName(actor: Actor, now: number): void {
     const color = this.nameColorOf(actor, now);
     actor.label.setColor(color === "gray" ? "#9e9e9e" : color === 3 ? "#ff5252" : color === 2 ? "#ff9800" : color === 1 ? "#ffd54a" : "#ffffff");
@@ -1139,12 +1196,13 @@ export class GameScene extends Phaser.Scene {
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
-      actor.body.setPosition(s.x, s.y - 17);
-      actor.label.setPosition(s.x, s.y - 38);
+      actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
+      if (actor.cloud) actor.cloud.setPosition(s.x, s.y - 4).setDepth(10 + pos.x + pos.y - 0.1);
+      actor.label.setPosition(s.x, s.y - (actor.mounted ? 46 : 38));
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       actor.label.setDepth(depth + 0.1);
-      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - 39).setDepth(depth + 0.1);
+      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - (actor.mounted ? 47 : 39)).setDepth(depth + 0.1);
     }
 
     for (const m of this.monsters.values()) {

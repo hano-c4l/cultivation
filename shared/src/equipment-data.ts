@@ -53,7 +53,7 @@ export function slotKind(slot: EquipSlot): EquipKind {
 }
 
 /** Stats gear can add. Limited to what combat already uses (docs/PHASE2.md, 2b). Rates are percentage points. */
-/** moveSpeed is a percentage; it is shown but does not move anyone yet (the server walks everyone at BASE_SPEED). */
+/** moveSpeed is a percentage added to the walking speed (see effectiveSpeed). */
 export const EQUIP_STAT_KEYS = ["attack", "defense", "maxHp", "critRate", "dodgeRate", "moveSpeed"] as const;
 /** Stats given in percentage points, shown with one decimal. */
 export const EQUIP_RATE_KEYS: readonly EquipStatKey[] = ["critRate", "dodgeRate", "moveSpeed"];
@@ -91,7 +91,7 @@ const KIND_WEIGHTS: Readonly<Record<EquipKind, Partial<EquipStats>>> = {
   belt: { defense: 1.5, maxHp: 3 },
   charm: { attack: 1.5, defense: 0.5 },
   bonded: { attack: 2, defense: 1, maxHp: 3 },
-  flight: { moveSpeed: 0.6 },
+  flight: { moveSpeed: 25 },
 };
 
 /** The base stat a high-grade piece of each kind asks for. */
@@ -374,6 +374,8 @@ export interface WearerCtx {
   realm: number;
   stage: number;
   base: BaseStats;
+  /** Riding the flight pháp bảo. Its stats only count while this is true; every other piece counts either way. */
+  mounted?: boolean;
 }
 
 export type EquipBlock = "slot" | "gender" | "level" | "stat" | "broken";
@@ -394,6 +396,7 @@ export function equipmentBonus(items: readonly EquippedItem[], w: WearerCtx): Eq
   for (const it of items) {
     const info = equipmentInfo(it.type);
     if (!info || equipBlock(info, it.slot, it.dur, w)) continue;
+    if (info.kind === "flight" && !w.mounted) continue;
     const s = scaledStats(info, it.dur, it.max, it.lv, resonates(info, w.affinity) ? 1 + AFFINITY_BONUS : 1);
     for (const key of EQUIP_STAT_KEYS) total[key] += s[key];
   }

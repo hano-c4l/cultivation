@@ -211,7 +211,7 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
   document.addEventListener("keydown", (ev) => {
     const a = document.activeElement;
     const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
-    if (!typing && (ev.key === "k" || ev.key === "K") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !toggle.hidden) {
+    if (!typing && (ev.key === "v" || ev.key === "V") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !toggle.hidden) {
       panel.hidden = !panel.hidden;
       render();
     }
