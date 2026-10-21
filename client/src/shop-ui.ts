@@ -111,7 +111,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       qty.value = String(stackable ? (qtys.get(offer.id) ?? 1) : 1);
       qty.disabled = !stackable;
       qty.oninput = () => qtys.set(offer.id, Number(qty.value) || 1);
-      const price = el("div", "shop-price", vi.shop.price(offer.price));
+      const price = el("div", "shop-price", offer.currency === "tien_ngoc" ? vi.shop.priceTienNgoc(offer.price) : vi.shop.price(offer.price));
       const stock = el("div", "muted", remaining === null ? vi.shop.unlimited : vi.shop.left(remaining));
       const buy = el("button", "eq-small", vi.shop.buy);
       buy.disabled = remaining !== null && remaining <= 0;

@@ -40,6 +40,8 @@ export interface BagItem {
   xp?: number;
   /** Equipment: the stats rolled when it was made (see RolledStats); absent on older pieces. */
   rs?: RolledStats;
+  /** Equipment: the upgrade level from the blacksmith (+1..+10); absent means +0. */
+  en?: number;
 }
 
 /** What travels with an item between the bag, the slots and the mailbox: wear, training and rolled stats. */
@@ -49,12 +51,14 @@ export interface Carry {
   lv?: number;
   xp?: number;
   rs?: RolledStats;
+  en?: number;
 }
 
 /** The wear, training and rolled-stat fields of an item that must travel with it between the bag, the slots and the mailbox. */
 export function carried(x: Carry): Carry {
   return {
     ...(x.rs ? { rs: x.rs } : {}),
+    ...(x.en ? { en: x.en } : {}),
     ...(x.dur !== undefined && x.max !== undefined ? { dur: x.dur, max: x.max } : {}),
     ...(x.lv !== undefined ? { lv: x.lv } : {}),
     ...(x.xp !== undefined ? { xp: x.xp } : {}),

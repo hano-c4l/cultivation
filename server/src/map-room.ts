@@ -67,6 +67,12 @@ import {
   applyBag,
   applyRefineExp,
   currentGearSetNames,
+  smithRealmOf,
+  STAGES_PER_REALM,
+  KEEP_LEVEL_ITEM,
+  planConsume,
+  resolveUpgrade,
+  upgradeCost,
   equipBlock,
   equipmentBonus,
   equipmentInfo,
@@ -168,6 +174,7 @@ import type { Env } from "./env";
 import { getSetting } from "./settings";
 import { applyElementSettings } from "./element-settings";
 import { getGearMaster, rollGear } from "./gear-master";
+import { getEnhanceTable, loadPity } from "./enhance";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
 interface PlayerState {
@@ -408,6 +415,7 @@ export class MapRoom extends DurableObject<Env> {
     }
     await applyElementSettings(this.env.DB).catch((err) => console.error("element settings unavailable", err));
     await getGearMaster(this.env.DB); // installs the gear set names (never throws)
+    await getEnhanceTable(this.env.DB); // installs the blacksmith rules (never throws)
 
     const lock = this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(characterId));
     // Claim first: the previous holder (any room) kicks its socket and saves before we read the row.
@@ -593,6 +601,7 @@ export class MapRoom extends DurableObject<Env> {
     // The tuning is in this isolate's memory: a room that woke on this message reads it again (cached, cheap).
     await applyElementSettings(this.env.DB).catch(() => undefined);
     await getGearMaster(this.env.DB);
+    await getEnhanceTable(this.env.DB);
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state || state.transferring) return;
 
@@ -626,6 +635,9 @@ export class MapRoom extends DurableObject<Env> {
       case "eq_unequip":
       case "eq_repair":
         return this.handleEquipment(ws, state, msg);
+      case "smith_upgrade":
+      case "smith_repair":
+        return this.handleSmith(ws, state, msg);
       case "npc_open":
       case "shop_buy":
       case "shop_sell":
@@ -2067,6 +2079,7 @@ export class MapRoom extends DurableObject<Env> {
         // Opening any NPC counts as talking to it (a talk quest may be waiting for that).
         await this.noteTalk(id, npcId).catch((err) => console.error("quest talk failed", id, err));
         if (spot.kind === "quest") return this.sendQuests(ws, id, npcId);
+        if (spot.kind === "smith") return this.sendSmith(ws, id, npcId);
       }
       if (spot.kind !== "merchant") return;
       const wearer = await this.wearerOf(id);
@@ -2097,19 +2110,20 @@ export class MapRoom extends DurableObject<Env> {
     const ops = planAdd(bag.items, bag.tabs, offer.item, qty, () => crypto.randomUUID(), max != null ? { dur: max, max, ...(rs ? { rs } : {}) } : undefined);
     if (!ops) return this.resync(ws, id, "full");
     const total = offer.price * qty;
+    const currency = offer.currency ?? "linh_thach";
     const extra = [
       ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now)),
       ...(offer.dailyLimit !== undefined ? limitStatements(this.env.DB, id, offer.id, qty, offer.dailyLimit, now) : []),
     ];
     try {
-      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -total, reason: "shop_buy", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency, delta: -total, reason: "shop_buy", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
       if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
       const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
       this.bags.set(id, after);
       this.sendBagDelta(id, bag, after);
-      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+      this.sendToCharacter(id, { t: "wallet", currency, balance: r.balance });
       this.sendToCharacter(id, { t: "shop_ok", op: "buy", item: offer.item, qty, total });
       await sendStock();
     } catch (err) {
@@ -2192,6 +2206,8 @@ export class MapRoom extends DurableObject<Env> {
   private handleEquipment(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "eq_equip" | "eq_unequip" | "eq_repair" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    // Players repair at the blacksmith; this command is the GM's shortcut (the button is only shown to admins, the server is what decides).
+    if (msg.t === "eq_repair" && !state.admin) return this.send(ws, { t: "inv_error", reason: "forbidden" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
@@ -2214,6 +2230,82 @@ export class MapRoom extends DurableObject<Env> {
       if (res.reason === "invalid") return this.resync(ws, id, refusal ?? "invalid");
       return this.resync(ws, id, "busy");
     });
+  }
+
+  /** The blacksmith's window: the upgrade rules and the bonus chance each of the character's pieces has built up. */
+  private async sendSmith(ws: WebSocket, id: string, npcId: string): Promise<void> {
+    const [levels, pity] = await Promise.all([getEnhanceTable(this.env.DB), loadPity(this.env.DB, id)]);
+    this.send(ws, { t: "smith", npc: npcId, levels, pity });
+  }
+
+  /** Blacksmith commands: upgrading a piece and repairing. Same checks as the merchant (close enough, no murderers, rate limit). */
+  private handleSmith(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "smith_upgrade" | "smith_repair" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "smith") return this.send(ws, { t: "inv_error", reason: "far" });
+    if (this.satNhanOf(state, now) >= NAME_TIER_ORANGE_FROM) return this.send(ws, { t: "inv_error", reason: "murderer" });
+    if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      if (msg.t === "smith_repair") return this.repairGear(ws, id, msg.slot);
+      return this.smithUpgrade(ws, id, msg);
+    });
+  }
+
+  /**
+   * One upgrade attempt. The Linh Thạch, the ore, a Hộ Cấp Phù when it saves a level, and the new level and bonus chance of the piece are
+   * written in ONE batch (guarded on the level the piece had), so a failure never takes a cost without its result or the other way round.
+   */
+  private async smithUpgrade(ws: WebSocket, id: string, msg: Extract<ClientMessage, { t: "smith_upgrade" }>): Promise<void> {
+    await getEnhanceTable(this.env.DB);
+    const bag = await this.getBag(id);
+    const piece = msg.slot ? bag.equipped.find((e) => e.slot === msg.slot) : bag.items.find((i) => i.tab === msg.tab && i.cell === msg.cell);
+    const info = piece ? equipmentInfo(piece.type) : undefined;
+    if (!piece || !info) return this.resync(ws, id, "smith_item");
+    const level = piece.en ?? 0;
+    const row = await this.env.DB.prepare("SELECT enhance_level, enhance_bonus FROM item_instances WHERE id = ? AND owner_character_id = ?").bind(piece.id, id).first<{ enhance_level: number; enhance_bonus: number }>();
+    if (!row || row.enhance_level !== level) {
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+    const cost = upgradeCost(smithRealmOf(info, info.kind === "bonded" ? refineLevelOf(info, piece.lv) : undefined, STAGES_PER_REALM), level, row.enhance_bonus);
+    if (!cost) return this.send(ws, { t: "inv_error", reason: "smith_max" });
+    const ore = planConsume(bag.items, cost.ore, cost.materials);
+    if (!ore) return this.send(ws, { t: "inv_error", reason: "smith_mats" });
+    const wantScroll = msg.protect && cost.step.dropOnFail;
+    const scroll = wantScroll ? planConsume(bag.items, KEEP_LEVEL_ITEM, 1) : [];
+    if (!scroll) return this.send(ws, { t: "inv_error", reason: "smith_scroll" });
+    const roll = crypto.getRandomValues(new Uint32Array(1))[0]! / 4294967296;
+    const out = resolveUpgrade(level, row.enhance_bonus, cost.chancePct, cost.step, wantScroll, roll);
+    const ops = [...ore, ...(out.scrollUsed ? scroll : [])];
+    const now = Date.now();
+    const extra = [
+      this.env.DB.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM item_instances WHERE id = ? AND owner_character_id = ? AND enhance_level = ? AND enhance_bonus = ?)").bind(piece.id, id, level, row.enhance_bonus),
+      ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now)),
+      this.env.DB.prepare("UPDATE item_instances SET enhance_level = ?, enhance_bonus = ? WHERE id = ? AND owner_character_id = ?").bind(out.level, out.pity, piece.id, id),
+    ];
+    try {
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -cost.linhThach, reason: "smith_upgrade", actor: "system", idempotencyKey: `smith:${crypto.randomUUID()}` }, extra);
+      if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+      if (r.status !== "applied") return this.resync(ws, id, "busy");
+      // Reload: the level of a worn piece changes the stats, so the gear refresh follows.
+      this.bags.delete(id);
+      const fresh = await this.getBag(id);
+      this.send(ws, { t: "inv", full: true, tabs: fresh.tabs, items: fresh.items, removed: [], tabPrice: await getSetting(this.env.DB, "bag_tab_price") });
+      this.send(ws, { t: "eq", items: fresh.equipped });
+      this.applyGear(id, fresh, ws);
+      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+      this.send(ws, { t: "smith_result", id: piece.id, success: out.success, level: out.level, dropped: out.dropped, scrollUsed: out.scrollUsed, pity: out.pity });
+    } catch (err) {
+      // A failed guard means the cached bag was stale: nothing was written, so reload and let the player retry.
+      if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("smith upgrade failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
   }
 
   /**

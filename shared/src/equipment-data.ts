@@ -2,6 +2,7 @@ import type { ConstitutionEffect } from "./constitutions";
 import { gearStyleOf, type Gender } from "./gender";
 import type { MonsterRank } from "./monsters";
 import { gearNamesVersion, gearSetName } from "./gear-names";
+import { enhanceStatMult } from "./smith";
 import { elementTuning } from "./element-tuning";
 import { isMutantRoot, MUTANT_ROOTS } from "./character";
 import { expToNext, levelIndex } from "./progression";
@@ -313,6 +314,8 @@ export interface EquippedItem {
   xp?: number;
   /** Rolled stats of this piece (see RolledStats). */
   rs?: RolledStats;
+  /** Upgrade level from the blacksmith (+1..+10); absent: +0. */
+  en?: number;
 }
 
 /** Level and EXP of the pháp bảo bản mệnh, which has its own EXP stream (half of what a character needs per level, never above the owner's level). */
@@ -358,11 +361,13 @@ export function baseStatsAt(info: EquipInfo, lv: number | undefined, rolled?: Ro
   return rolled ? { ...emptyEquipStats(), ...rolled } : { ...info.stats };
 }
 
-export function scaledStats(info: EquipInfo, dur: number | undefined, max: number | undefined, lv?: number, mult = 1, rolled?: RolledStats): EquipStats {
+export function scaledStats(info: EquipInfo, dur: number | undefined, max: number | undefined, lv?: number, mult = 1, rolled?: RolledStats, en?: number): EquipStats {
   const base = baseStatsAt(info, lv, rolled);
-  if ((dur === undefined || max === undefined || max <= 0) && mult === 1) return base;
+  const enh = enhanceStatMult(en);
+  const noWear = dur === undefined || max === undefined || max <= 0;
+  if (noWear && mult === 1 && enh === 1) return base;
   const out = emptyEquipStats();
-  const f = dur === undefined || max === undefined || max <= 0 ? mult : Math.min(1, Math.max(0, dur / max)) * mult;
+  const f = (noWear ? mult : Math.min(1, Math.max(0, dur / max)) * mult) * enh;
   for (const key of EQUIP_STAT_KEYS) {
     const v = base[key] * f;
     out[key] = EQUIP_RATE_KEYS.includes(key) ? Math.floor(v * 10) / 10 : Math.floor(v);
@@ -441,7 +446,7 @@ export function equipmentBonus(items: readonly EquippedItem[], w: WearerCtx): Eq
     const info = equipmentInfo(it.type);
     if (!info || equipBlock(info, it.slot, it.dur, w)) continue;
     if (info.kind === "flight" && !w.mounted) continue;
-    const s = scaledStats(info, it.dur, it.max, it.lv, 1 + resonanceBonus(info, w.affinity), it.rs);
+    const s = scaledStats(info, it.dur, it.max, it.lv, 1 + resonanceBonus(info, w.affinity), it.rs, it.en);
     for (const key of EQUIP_STAT_KEYS) total[key] += s[key];
   }
   for (const key of EQUIP_STAT_KEYS) total[key] = Math.round(total[key] * 10) / 10;
