@@ -1,6 +1,7 @@
 import type { ConstitutionEffect } from "./constitutions";
 import { gearStyleOf, type Gender } from "./gender";
 import type { MonsterRank } from "./monsters";
+import { gearNamesVersion, gearSetName } from "./gear-names";
 import { elementTuning } from "./element-tuning";
 import { isMutantRoot, MUTANT_ROOTS } from "./character";
 import { expToNext, levelIndex } from "./progression";
@@ -113,7 +114,7 @@ const KIND_REQ_STAT: Readonly<Record<EquipKind, StatKey>> = {
 
 export const MAX_EQUIP_GRADE = 4;
 /** Phẩm cấp multiplier of a piece's stats, grade 1 (Hạ) to 4 (Cực). */
-const GRADE_MULT = [1, 1.25, 1.6, 2.2] as const;
+export const GRADE_MULT = [1, 1.25, 1.6, 2.2] as const;
 /** Linh Thạch to repair one lost durability point, per grade (doubling each grade). */
 export const REPAIR_COST_PER_POINT = [1, 2, 4, 8] as const;
 /** Durability of generated gear. */
@@ -170,7 +171,7 @@ function unitsOf(realm: number, tier: number, grade: number): number {
 }
 
 /** Stats of a piece of this kind and grade at flat level `lv` (see levelIndex). */
-function statsFor(kind: EquipKind, lv: number, grade: number): EquipStats {
+export function formulaStats(kind: EquipKind, lv: number, grade: number): EquipStats {
   const units = (1 + lv * 0.6) * (GRADE_MULT[grade - 1] ?? 1);
   const stats = emptyEquipStats();
   for (const key of EQUIP_STAT_KEYS) {
@@ -183,7 +184,7 @@ function statsFor(kind: EquipKind, lv: number, grade: number): EquipStats {
 
 function buildInfo(kind: EquipKind, style: EquipStyle, realm: number, tier: number, grade: number, element: string | null, weaponType: string | null): EquipInfo {
   const lv = levelIndex(realm, tier);
-  const stats = statsFor(kind, lv, grade);
+  const stats = formulaStats(kind, lv, grade);
   // The very first, lowest-grade pieces ask for nothing; everything else asks for the level it is made for, and
   // high-grade pieces also for a base stat.
   const level = lv <= 1 && grade === 1 ? null : lv;
@@ -200,8 +201,8 @@ function buildInfo(kind: EquipKind, style: EquipStyle, realm: number, tier: numb
     stats,
     maxDurability: DEFAULT_MAX_DURABILITY,
     req: { level, stat },
-    // The realm and bậc are not part of the name: they show as a small tag (equipTierTag) and in the details.
-    nameVi: kindName,
+    // The set of this realm and bậc gives the name (Lăng Y Đạo Bào); the realm and bậc also show as a small tag (equipTierTag).
+    nameVi: `${gearSetName(realm, tier)} ${kindName}`.trim(),
     descVi: style === "m" ? "Trang bị dành cho nam." : style === "f" ? "Trang bị dành cho nữ." : "Trang bị dùng chung.",
   };
 }
@@ -225,9 +226,14 @@ export const SPECIAL_EQUIPMENT: Readonly<Record<string, EquipInfo>> = {
 };
 
 const cache = new Map<string, EquipInfo | null>();
+let cacheNamesVersion = 0;
 
 /** The gear template behind an item type, or undefined when the type is not equipment. */
 export function equipmentInfo(type: string): EquipInfo | undefined {
+  if (cacheNamesVersion !== gearNamesVersion()) {
+    cache.clear(); // a set was renamed
+    cacheNamesVersion = gearNamesVersion();
+  }
   const hit = cache.get(type);
   if (hit !== undefined) return hit ?? undefined;
   let info: EquipInfo | null = SPECIAL_EQUIPMENT[type] ?? null;
@@ -270,6 +276,31 @@ export function newDurability(type: string): { dur: number; max: number } | null
   return max ? { dur: max, max } : null;
 }
 
+/**
+ * Stats rolled for one piece when it was created (final values, already scaled by its grade), kept with the item: no two pieces of the
+ * same kind need have the same stats. Absent on pieces made before rolling existed (they use the fixed stats of their type).
+ */
+export type RolledStats = Partial<Record<EquipStatKey, number>>;
+
+/** A stored/received value as RolledStats, or undefined when it is not one (unknown keys dropped, numbers sane). */
+export function parseRolledStats(raw: unknown): RolledStats | undefined {
+  let v = raw;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return undefined;
+  const out: RolledStats = {};
+  for (const key of EQUIP_STAT_KEYS) {
+    const n = (v as Record<string, unknown>)[key];
+    if (typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 100_000) out[key] = n;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /** One worn piece, as the room and the client see it. `dur`/`max` are absent for pieces that never wear out. */
 export interface EquippedItem {
   id: string;
@@ -280,6 +311,8 @@ export interface EquippedItem {
   /** Pháp bảo bản mệnh only: its trained level (flat level index) and the EXP towards the next one. Absent: still at its own level, no EXP. */
   lv?: number;
   xp?: number;
+  /** Rolled stats of this piece (see RolledStats). */
+  rs?: RolledStats;
 }
 
 /** Level and EXP of the pháp bảo bản mệnh, which has its own EXP stream (half of what a character needs per level, never above the owner's level). */
@@ -319,12 +352,14 @@ export function applyRefineExp(level: number, xp: number, gain: number, cap: num
 }
 
 /** Stats at the current durability: a piece at 60% gives 60% (rounded down) of each stat; a broken one gives nothing. */
-export function baseStatsAt(info: EquipInfo, lv: number | undefined): EquipStats {
-  return info.kind === "bonded" && lv !== undefined ? statsFor(info.kind, lv, info.grade) : { ...info.stats };
+export function baseStatsAt(info: EquipInfo, lv: number | undefined, rolled?: RolledStats): EquipStats {
+  if (info.kind === "bonded" && lv !== undefined) return formulaStats(info.kind, lv, info.grade);
+  // A piece with rolled stats uses them; a stat it did not roll is 0 (the roll covers every stat the kind has).
+  return rolled ? { ...emptyEquipStats(), ...rolled } : { ...info.stats };
 }
 
-export function scaledStats(info: EquipInfo, dur: number | undefined, max: number | undefined, lv?: number, mult = 1): EquipStats {
-  const base = baseStatsAt(info, lv);
+export function scaledStats(info: EquipInfo, dur: number | undefined, max: number | undefined, lv?: number, mult = 1, rolled?: RolledStats): EquipStats {
+  const base = baseStatsAt(info, lv, rolled);
   if ((dur === undefined || max === undefined || max <= 0) && mult === 1) return base;
   const out = emptyEquipStats();
   const f = dur === undefined || max === undefined || max <= 0 ? mult : Math.min(1, Math.max(0, dur / max)) * mult;
@@ -406,7 +441,7 @@ export function equipmentBonus(items: readonly EquippedItem[], w: WearerCtx): Eq
     const info = equipmentInfo(it.type);
     if (!info || equipBlock(info, it.slot, it.dur, w)) continue;
     if (info.kind === "flight" && !w.mounted) continue;
-    const s = scaledStats(info, it.dur, it.max, it.lv, 1 + resonanceBonus(info, w.affinity));
+    const s = scaledStats(info, it.dur, it.max, it.lv, 1 + resonanceBonus(info, w.affinity), it.rs);
     for (const key of EQUIP_STAT_KEYS) total[key] += s[key];
   }
   for (const key of EQUIP_STAT_KEYS) total[key] = Math.round(total[key] * 10) / 10;

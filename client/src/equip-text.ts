@@ -1,4 +1,4 @@
-import { resonanceBonus, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
+import { type RolledStats, resonanceBonus, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
 import { vi } from "./locales/vi";
 
 /** "+12 Công kích" style text for one stat; rates are percentage points. */
@@ -74,11 +74,11 @@ export function durabilityText(dur?: number, max?: number): string {
 }
 
 /** "+5 Công kích, +5 Sinh lực" at the current durability; a stat that wore down shows its maximum too. */
-function statsText(type: string, dur?: number, max?: number, lv?: number, mult = 1): string {
+function statsText(type: string, dur?: number, max?: number, lv?: number, mult = 1, rs?: RolledStats): string {
   const info = equipmentInfo(type);
   if (!info) return "";
-  const full = scaledStats(info, undefined, undefined, lv, mult);
-  const now = scaledStats(info, dur, max, lv, mult);
+  const full = scaledStats(info, undefined, undefined, lv, mult, rs);
+  const now = scaledStats(info, dur, max, lv, mult, rs);
   const parts: string[] = [];
   for (const key of EQUIP_STAT_KEYS) {
     if (full[key] <= 0) continue;
@@ -101,10 +101,10 @@ function requirementText(type: string): string | null {
 }
 
 /** Short one-paragraph description of a piece of gear for the equipment chooser: stats, durability, requirement (no style, the list is already filtered). */
-export function equipLines(type: string, dur?: number, max?: number, lv?: number): string[] {
+export function equipLines(type: string, dur?: number, max?: number, lv?: number, rs?: RolledStats): string[] {
   if (!equipmentInfo(type)) return [];
   const req = requirementText(type);
-  return [statsText(type, dur, max, lv), durabilityText(dur, max), ...(req ? [`${vi.equip.requires}: ${req}`] : [])];
+  return [statsText(type, dur, max, lv, 1, rs), durabilityText(dur, max), ...(req ? [`${vi.equip.requires}: ${req}`] : [])];
 }
 
 /** The element name for display ("Thủy"), or null. */
@@ -122,7 +122,7 @@ function elementName(type: string): string | null {
  *   Độ bền: ...            (gear)
  *   Yêu cầu: ...           (gear, only when it asks something)
  */
-export function describeItem(type: string, opts: { dur?: number; max?: number; qty?: number; lv?: number; xp?: number; wearer?: WearerCtx } = {}): HTMLElement {
+export function describeItem(type: string, opts: { dur?: number; max?: number; qty?: number; lv?: number; xp?: number; rs?: RolledStats; wearer?: WearerCtx } = {}): HTMLElement {
   const box = document.createElement("div");
   box.className = "item-desc";
   const def = getItemDef(type);
@@ -147,7 +147,7 @@ export function describeItem(type: string, opts: { dur?: number; max?: number; q
   if (info) {
     // Gear that suits the wearer (its element is their root's or their constitution's, or its weapon family is) gives more.
     const suits = resonates(info, opts.wearer?.affinity);
-    line(`${vi.equip.statsLabel}: ${statsText(type, opts.dur, opts.max, opts.lv, suits ? 1 + resonanceBonus(info, opts.wearer?.affinity) : 1)}`);
+    line(`${vi.equip.statsLabel}: ${statsText(type, opts.dur, opts.max, opts.lv, suits ? 1 + resonanceBonus(info, opts.wearer?.affinity) : 1, opts.rs)}`);
     if (suits) line(vi.equip.resonates(Math.round(resonanceBonus(info, opts.wearer?.affinity) * 100)));
     // The pháp bảo bản mệnh trains on its own EXP, up to the level of its owner.
     if (info.kind === "bonded") line(vi.equip.refine(opts.xp ?? 0, refineExpNeeded(refineLevelOf(info, opts.lv))));

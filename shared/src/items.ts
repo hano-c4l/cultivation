@@ -210,6 +210,8 @@ export interface LootDrop {
   /** Equipment: current and maximum durability of the dropped piece (absent for pieces that never wear out). */
   dur?: number;
   max?: number;
+  /** Equipment: the stats rolled for this piece (filled in by the server when the drop is paid out). */
+  rs?: Partial<Record<"attack" | "defense" | "maxHp" | "critRate" | "dodgeRate" | "moveSpeed", number>>;
 }
 
 /** Items dropped by one kill. `rand` returns uniform [0, 1); two numbers are drawn per entry (chance, quantity). */

@@ -66,6 +66,7 @@ import {
   parseHotbar,
   applyBag,
   applyRefineExp,
+  currentGearSetNames,
   equipBlock,
   equipmentBonus,
   equipmentInfo,
@@ -166,6 +167,7 @@ import { CombatSim, staticGuardSnapshots, type PlayerProfile, type ProfileSeed, 
 import type { Env } from "./env";
 import { getSetting } from "./settings";
 import { applyElementSettings } from "./element-settings";
+import { getGearMaster, rollGear } from "./gear-master";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
 interface PlayerState {
@@ -405,6 +407,7 @@ export class MapRoom extends DurableObject<Env> {
       await this.ctx.storage.put("room", room);
     }
     await applyElementSettings(this.env.DB).catch((err) => console.error("element settings unavailable", err));
+    await getGearMaster(this.env.DB); // installs the gear set names (never throws)
 
     const lock = this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(characterId));
     // Claim first: the previous holder (any room) kicks its socket and saves before we read the row.
@@ -539,6 +542,7 @@ export class MapRoom extends DurableObject<Env> {
         equipped: bagNow.equipped,
         skills: profile && sim ? sim.skillsOf(profile) : availableSkills((skills ?? []).map((r) => r.skill_id), gearSkillIds(bagNow.equipped)),
         skillStates: stateOfRows(skills ?? []),
+        gearSets: currentGearSetNames().map((r) => [...r]),
         hotbar,
         cd: profile && sim ? sim.cooldownsLeft(profile, Date.now()) : Object.fromEntries(Object.entries(away.cooldowns).map(([k, t]) => [k, t - Date.now()])),
         mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
@@ -588,6 +592,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!msg) return;
     // The tuning is in this isolate's memory: a room that woke on this message reads it again (cached, cheap).
     await applyElementSettings(this.env.DB).catch(() => undefined);
+    await getGearMaster(this.env.DB);
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state || state.transferring) return;
 
@@ -1674,12 +1679,14 @@ export class MapRoom extends DurableObject<Env> {
   private enqueueLoot(characterId: string, drops: LootDrop[]): void {
     const key = `loot:${crypto.randomUUID()}`;
     void this.bagTask(characterId, async () => {
+      // Gear gets its stats rolled once, here, so a retry of the same loot key creates the same pieces.
+      const rolled: LootDrop[] = await Promise.all(drops.map(async (d) => (d.rs || d.dur === undefined ? d : { ...d, rs: await rollGear(this.env.DB, d.item) })));
       const plan = (bag: BagState) => {
         let items = bag.items;
         const ops: BagOp[] = [];
         const mail: MailItem[] = [];
-        for (const d of drops) {
-          const wear = d.dur !== undefined && d.max !== undefined ? { dur: d.dur, max: d.max } : undefined;
+        for (const d of rolled) {
+          const wear = d.dur !== undefined && d.max !== undefined ? { dur: d.dur, max: d.max, ...(d.rs ? { rs: d.rs } : {}) } : undefined;
           const p = planAdd(items, bag.tabs, d.item, d.qty, () => crypto.randomUUID(), wear);
           if (p) {
             ops.push(...p);
@@ -2086,7 +2093,8 @@ export class MapRoom extends DurableObject<Env> {
     }
     const bag = await this.getBag(id);
     const max = equipmentInfo(offer.item)?.maxDurability;
-    const ops = planAdd(bag.items, bag.tabs, offer.item, qty, () => crypto.randomUUID(), max != null ? { dur: max, max } : undefined);
+    const rs = max != null ? await rollGear(this.env.DB, offer.item) : undefined;
+    const ops = planAdd(bag.items, bag.tabs, offer.item, qty, () => crypto.randomUUID(), max != null ? { dur: max, max, ...(rs ? { rs } : {}) } : undefined);
     if (!ops) return this.resync(ws, id, "full");
     const total = offer.price * qty;
     const extra = [

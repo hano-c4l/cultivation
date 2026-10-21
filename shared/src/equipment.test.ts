@@ -283,11 +283,11 @@ describe("element and weapon family", () => {
     }
   });
 
-  it("do not change the stats, and the name has no realm or bậc (they are a tag)", () => {
+  it("do not change the stats, and the name is the set and the kind, without the realm or bậc (they are a tag)", () => {
     const a = equipmentInfo("eq.weapon.u.0.2.1")!;
     const b = equipmentInfo("eq.weapon.u.0.2.1.hoa.kiem")!;
     expect(b.stats).toEqual(a.stats);
-    expect(b.nameVi).toBe("Phi Kiếm");
+    expect(b.nameVi).toBe("Bạch Thi Phi Kiếm");
     expect(equipTierTag(b)).toBe("LK2");
     expect(equipTierTag(equipmentInfo("eq.robe.m.1.4.1")!)).toBe("TC4");
   });
@@ -360,8 +360,8 @@ describe("pháp bảo bản mệnh and pháp bảo phi hành", () => {
   const flight = "eq.flight.u.0.1.2.moc";
 
   it("have their own slot each, one piece per slot", () => {
-    expect(equipmentInfo(bonded)).toMatchObject({ kind: "bonded", nameVi: "Pháp Bảo Bản Mệnh" });
-    expect(equipmentInfo(flight)).toMatchObject({ kind: "flight", nameVi: "Pháp Bảo Phi Hành" });
+    expect(equipmentInfo(bonded)).toMatchObject({ kind: "bonded", nameVi: expect.stringContaining("Pháp Bảo Bản Mệnh") });
+    expect(equipmentInfo(flight)).toMatchObject({ kind: "flight", nameVi: expect.stringContaining("Pháp Bảo Phi Hành") });
     const st: BagContents = { items: [bagItem("b", bonded, 0, 0, 100), bagItem("f", flight, 0, 1, 100)], equipped: [] };
     const a = planEquip(st, 1, { tab: 0, cell: 0 }, undefined, maleWearer);
     expect(a.ok && a.ops[0]).toMatchObject({ op: "equip", slot: "bonded" });
