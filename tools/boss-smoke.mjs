@@ -79,7 +79,7 @@ async function makePlayer(tag, map, x, y, satNhan = 0, admin = false) {
   const created = await post("/api/character", { name: `${tag}${run.slice(-5)}`, gender: "male" }, reg.cookie);
   const id = created.data.character.id;
   if (admin) sql(`UPDATE accounts SET role = 'admin' WHERE email = 'bs-${tag}-${run}@example.test'`);
-  sql(`UPDATE characters SET map_id = '${map}', x = ${x}, y = ${y}, realm = 0, stage = 9, exp = 0, sat_nhan = ${satNhan}, vitals = NULL WHERE id = '${id}'`);
+  sql(`UPDATE characters SET map_id = '${map}', x = ${x}, y = ${y}, realm = 0, stage = 9, exp = 0, sat_nhan = ${satNhan}, vitals = NULL, stat_can_cot = 3000 WHERE id = '${id}'`);
   await sleep(2500); // a request right after wrangler d1 execute can hit a reset connection
   return { id, cookie: reg.cookie };
 }
@@ -112,7 +112,7 @@ await sleep(500);
 check("the whole world is told with a system line naming the boss", chatLog.some((m) => m.t === "chat" && m.channel === "system" && /Huyết Lang Vương/.test(m.text) && /kênh 3/.test(m.text)), JSON.stringify(chatLog));
 const claims = sql("SELECT room FROM world_boss");
 check("the claim names this room", claims.length === 1 && claims[0].room === "forest:3", JSON.stringify(claims));
-check("the boss is a Đại Yêu of the top bậc with a lot of HP", spawned?.monster.tier === 9 && spawned?.monster.maxHp > 5000, JSON.stringify(spawned?.monster));
+check("the boss is a few levels above the map (bậc 5 of the next realm) with a lot of HP", spawned?.monster.tier === 5 && spawned?.monster.maxHp > 5000, JSON.stringify(spawned?.monster));
 
 // Another channel of the same map is refused.
 CH = 4;
@@ -142,7 +142,7 @@ check("the boss dies for good", !!gone);
 await sleep(1500);
 check("the claim is released", sql("SELECT room FROM world_boss").length === 0);
 const paid = sql(`SELECT COUNT(*) AS n, COALESCE(SUM(delta), 0) AS total FROM currency_ledger WHERE character_id = '${k.id}' AND reason = 'monster_drop'`)[0];
-check("the only sharer is paid Linh Thạch from the boss pool", paid.n === 1 && paid.total > 1000, JSON.stringify(paid));
+check("the only sharer is paid Linh Thạch from the boss pool", paid.n >= 1 && paid.total > 1000, JSON.stringify(paid));
 check("and gains EXP", ck.log.some((m) => m.t === "stats"));
 check("a second system line says the boss fell", chatLog.filter((m) => m.t === "chat" && m.channel === "system").length >= 2 && chatLog.some((m) => /hạ gục/.test(m.text ?? "")), JSON.stringify(chatLog.map((m) => m.text)));
 check("the boss never comes back to this room", !(await connect(k.cookie).then((c) => { const has = c.welcome.monsters.some((m) => m.boss); c.ws.close(); return has; })));

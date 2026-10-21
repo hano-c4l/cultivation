@@ -11,10 +11,10 @@ export function errorResponse(code: string, status: number): Response {
 }
 
 /** Reads a small JSON object body; returns null for wrong content type, oversize or malformed bodies. */
-export async function readJson(request: Request): Promise<Record<string, unknown> | null> {
+export async function readJson(request: Request, maxBytes = MAX_JSON_BYTES): Promise<Record<string, unknown> | null> {
   if (!(request.headers.get("Content-Type") ?? "").includes("application/json")) return null;
   const text = await request.text();
-  if (text.length > MAX_JSON_BYTES) return null;
+  if (text.length > maxBytes) return null;
   try {
     const data: unknown = JSON.parse(text);
     return typeof data === "object" && data !== null && !Array.isArray(data) ? (data as Record<string, unknown>) : null;

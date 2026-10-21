@@ -4,6 +4,7 @@ export * from "./movement";
 export * from "./monsters";
 export * from "./guards";
 export * from "./boss";
+export * from "./leaderboard";
 export * from "./combat";
 export * from "./protocol";
 export * from "./chat";

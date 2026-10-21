@@ -11,13 +11,14 @@ import {
   rollRoots,
   STAT_DEFS,
   getMap,
+  isLeaderboard,
   startingStats,
   validateCharacterName,
   validateEmail,
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
+import { adminBagTabs, adminConstitutions, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
 import { getCharacterByAccount, grantExp, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
@@ -241,7 +242,9 @@ async function constitutionsApi(env: Env): Promise<Response> {
 async function leaderboardApi(request: Request, env: Env): Promise<Response> {
   if (!(await getSession(request, env))) return errorResponse("unauthenticated", 401);
   try {
-    return json({ rows: await getLeaderboard(env.DB) });
+    const board = new URL(request.url).searchParams.get("board") ?? "realm";
+    if (!isLeaderboard(board)) return errorResponse("invalid_board", 400);
+    return json({ board, rows: await getLeaderboard(env.DB, board) });
   } catch (err) {
     console.error("leaderboard unavailable", err);
     return errorResponse("unavailable", 503);
@@ -276,6 +279,9 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     case "GET /api/admin/settings":
     case "POST /api/admin/settings":
       return adminSettings(request, env);
+    case "GET /api/admin/constitutions":
+    case "POST /api/admin/constitutions":
+      return adminConstitutions(request, env);
     case "GET /api/admin/supply":
       return adminSupply(request, env);
     case "POST /api/dev/grant-exp":

@@ -1,8 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
-import { BOSS_CLAIM_TTL_MS } from "@game/shared";
+import { BOSS_CLAIM_TTL_MS, equipScore, makeEquipmentId } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { bossHolder, claimBoss, refreshBoss, releaseBoss } from "./boss";
-import { getLeaderboard } from "./leaderboard";
+import { getLeaderboard, resetLeaderboardCache } from "./leaderboard";
 import { makeDb } from "./test-db";
 
 let db: D1Database;
@@ -49,17 +49,52 @@ describe("keeping the claim", () => {
   });
 });
 
-describe("the leaderboard", () => {
-  it("orders by realm, stage and exp, leaves admins out and caches for a minute", async () => {
+describe("the leaderboards", () => {
+  const ins = (id: string, acc: string, realm: number, stage: number, exp: number) =>
+    raw.exec(`INSERT INTO characters (id, account_id, name, spiritual_root, x, y, realm, stage, exp, created_at, updated_at) VALUES ('${id}', '${acc}', '${id}', 'kim', 0, 0, ${realm}, ${stage}, ${exp}, 0, 0)`);
+  const wear = (n: number, owner: string, type: string, slot: string, refine = "NULL") =>
+    raw.exec(`INSERT INTO item_instances (id, owner_character_id, item_type, created_at, equip_slot, refine_level) VALUES ('it${n}', '${owner}', '${type}', 0, '${slot}', ${refine})`);
+  beforeEach(() => {
+    resetLeaderboardCache();
     raw.exec("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, role, created_at) VALUES ('p1', 'p1@x.test', 'h', 's', 1, 'player', 0), ('p2', 'p2@x.test', 'h', 's', 1, 'player', 0), ('ad', 'ad@x.test', 'h', 's', 1, 'admin', 0)");
-    const ins = (id: string, acc: string, realm: number, stage: number, exp: number) =>
-      raw.exec(`INSERT INTO characters (id, account_id, name, spiritual_root, x, y, realm, stage, exp, created_at, updated_at) VALUES ('${id}', '${acc}', '${id}', 'kim', 0, 0, ${realm}, ${stage}, ${exp}, 0, 0)`);
     ins("low", "p1", 0, 9, 500);
     ins("high", "p2", 1, 1, 0);
     ins("gm", "ad", 3, 9, 9999);
-    const rows = await getLeaderboard(db, 10_000_000);
+  });
+
+  it("realm: orders by realm, stage and exp, leaves admins out and caches for a minute", async () => {
+    const rows = await getLeaderboard(db, "realm", 10_000_000);
     expect(rows.map((r) => r.name)).toEqual(["high", "low"]);
-    raw.exec("UPDATE characters SET exp = 99999 WHERE id = 'low'");
-    expect((await getLeaderboard(db, 10_000_000 + 30_000)).map((r) => r.name)).toEqual(["high", "low"]); // cached
+    expect(rows[1]!.value).toBe(500);
+    raw.exec("UPDATE characters SET realm = 2 WHERE id = 'low'");
+    expect((await getLeaderboard(db, "realm", 10_000_000 + 30_000)).map((r) => r.name)).toEqual(["high", "low"]); // cached
+    expect((await getLeaderboard(db, "realm", 10_000_000 + 61_000)).map((r) => r.name)).toEqual(["low", "high"]);
+  });
+
+  it("wealth: counts Linh Thạch only", async () => {
+    raw.exec("INSERT INTO currency_balances (character_id, currency, balance) VALUES ('low', 'linh_thach', 50), ('high', 'linh_thach', 20), ('high', 'cong_hien', 9999), ('gm', 'linh_thach', 99999)");
+    expect((await getLeaderboard(db, "wealth")).map((r) => [r.name, r.value])).toEqual([["low", 50], ["high", 20]]);
+  });
+
+  it("gear and pháp bảo: worn pieces only, each board counts its own slots", async () => {
+    wear(1, "low", makeEquipmentId("weapon", "u", 0, 1, 1), "weapon");
+    wear(2, "high", makeEquipmentId("hat", "m", 1, 1, 4), "hat");
+    wear(3, "high", makeEquipmentId("bonded", "u", 0, 1, 1), "bonded", "3");
+    raw.exec(`INSERT INTO item_instances (id, owner_character_id, item_type, created_at, bag_tab, cell) VALUES ('bag1', 'low', '${makeEquipmentId("hat", "m", 3, 9, 4)}', 0, 0, 0)`); // in the bag: not counted
+    const gear = await getLeaderboard(db, "gear");
+    expect(gear.map((r) => r.name)).toEqual(["high", "low"]);
+    expect(gear[0]!.value).toBe(equipScore(makeEquipmentId("hat", "m", 1, 1, 4)));
+    const art = await getLeaderboard(db, "artifact");
+    expect(art.map((r) => r.name)).toEqual(["high"]);
+    expect(art[0]!.value).toBe(equipScore(makeEquipmentId("bonded", "u", 0, 1, 1), 3));
+  });
+
+  it("power: follows the realm, the stage and the gear worn", async () => {
+    const plain = await getLeaderboard(db, "power");
+    expect(plain.map((r) => r.name)).toEqual(["high", "low"]);
+    resetLeaderboardCache();
+    wear(1, "low", makeEquipmentId("weapon", "u", 3, 9, 4), "weapon");
+    const geared = await getLeaderboard(db, "power");
+    expect(geared[0]!.name).toBe("low");
   });
 });

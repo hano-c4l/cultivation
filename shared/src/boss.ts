@@ -1,4 +1,6 @@
+import { fullGearStats, type GuardStats } from "./guards";
 import type { MapId } from "./map";
+import { deriveStats, levelIndex, startingStats } from "./progression";
 
 /**
  * Map bosses (phase 2h). One boss per map across all channels (its claim lives in D1, table `world_boss`), never respawning once killed,
@@ -18,7 +20,37 @@ export const BOSS_CLAIM_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** The species of the boss of each map (see MONSTERS) and its bậc: the highest of the realm, so a group is needed. */
 export const BOSSES: Readonly<Record<MapId, string | null>> = { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong" };
+/** The bậc the boss pays out at (EXP and drops follow it, as for any monster): the top of the map's realm. */
 export const BOSS_TIER = 9;
+/**
+ * Its fighting strength is a few levels above the map's, like a vệ binh: a character `BOSS_REALM_BONUS` realm above the map's, at bậc
+ * `BOSS_STAT_TIER`, in a full set of top-grade gear, with its points spent and `BOSS_HP_MULT` times the maximum HP. Placeholder values.
+ */
+export const BOSS_REALM_BONUS = 1;
+export const BOSS_STAT_TIER = 5;
+export const BOSS_GEAR_GRADE = 4;
+export const BOSS_HP_MULT = 25;
+export const BOSS_POINTS_PER_LEVEL = 2;
+
+/**
+ * What the boss does besides its plain attack (3 skills: two attacks and a heal; no buff). Checked in this order each time it acts, each on
+ * its own cooldown. `power` multiplies its attack; the heal restores `fraction` of its maximum HP and is used below `below` of it.
+ */
+export const BOSS_SKILLS = {
+  mend: { fraction: 0.04, below: 0.5, cdMs: 20_000 },
+  burst: { power: 2.6, cdMs: 10_000 },
+  slash: { power: 1.7, cdMs: 5_000 },
+} as const;
+
+export function bossStats(mapRealm: number): GuardStats {
+  const realm = mapRealm + BOSS_REALM_BONUS;
+  const base = startingStats("kim", 1).base;
+  const lv = levelIndex(realm, BOSS_STAT_TIER);
+  base.canCot += lv * BOSS_POINTS_PER_LEVEL;
+  base.linhLuc += lv * BOSS_POINTS_PER_LEVEL;
+  const d = deriveStats(base, realm, BOSS_STAT_TIER, 1, fullGearStats(realm, BOSS_STAT_TIER, BOSS_GEAR_GRADE), 1);
+  return { maxHp: d.maxHp * BOSS_HP_MULT, attack: d.attack, defense: d.defense, critRate: d.critRate, dodgeRate: d.dodgeRate };
+}
 
 /** A contribution under this share of the HP-and-last-hit total gets nothing, from Linh Thạch as well as from items. */
 export const BOSS_MIN_SHARE = 0.1;
