@@ -264,6 +264,21 @@ describe("the map boss", () => {
     expect(new CombatSim(getMap("town"), "town", noCrit, 0).spawnBoss("town", 0)).toBeNull();
   });
 
+  it("stands away from every monster cluster and guard of its map", () => {
+    for (const id of ["forest", "cave"] as const) {
+      const sim = new CombatSim(getMap(id), id, noCrit, 0);
+      const boss = sim.spawnBoss(id, 0)!;
+      const at = boss.path[0]!;
+      const others = sim.snapshots(0).filter((m) => !m.boss).map((m) => m.path[0]!);
+      for (const o of others) expect(Math.hypot(o[0] - at[0], o[1] - at[1])).toBeGreaterThan(6);
+    }
+  });
+
+  it("is a realm above the map at bậc 2 (a map of Luyện Khí gets a Trúc Cơ 2 boss)", () => {
+    const sim = new CombatSim(getMap("forest"), "forest", noCrit, 0);
+    expect(sim.spawnBoss("forest", 0)).toMatchObject({ tier: 2, boss: true });
+  });
+
   it("dies for good and pays its sharers: EXP, Linh Thạch and the claim release event", () => {
     const { sim, a, b } = forest();
     const snap = sim.spawnBoss("forest", 0)!;

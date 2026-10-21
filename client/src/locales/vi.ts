@@ -422,7 +422,7 @@ export const vi = {
     button: "Xếp hạng",
     bossTag: "Boss",
     gmSummon: "GM · Gọi boss",
-    gmSummoned: "Đã gửi yêu cầu gọi boss (chỉ thành công ở bản đồ có boss, khi bản đồ chưa có boss ở kênh nào).",
+    gmRemove: "GM · Tắt boss",
     title: "Bảng xếp hạng",
     refresh: "Tải lại",
     loading: "Đang tải...",

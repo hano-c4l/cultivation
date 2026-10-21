@@ -548,6 +548,7 @@ export class GameScene extends Phaser.Scene {
         this.clearActors();
         this.upsertActor(msg.players);
         for (const m of msg.monsters) this.upsertMonster(m);
+        this.syncRankContext();
         setCatalog(msg.constitutions);
         // A breakthrough never survives a (re)connect: the server settled it as a failure when the old connection ended.
         this.charPanel.breakthroughEnded();
@@ -996,6 +997,7 @@ export class GameScene extends Phaser.Scene {
       const icon = this.add.circle(0, 0, 5, ELEMENT_DOT[snap.element] ?? 0xcccccc).setStrokeStyle(1, 0xffffff, 1).setVisible(snap.guard !== true);
       m = { color: "#ffffff", icon, id: snap.id, guard: snap.guard === true, boss: snap.boss === true, tier: snap.tier, rank: snap.rank, element: snap.element, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
       this.monsters.set(snap.id, m);
+      this.syncRankContext();
     }
     // A respawn can roll a different rank, so name and size follow the latest snapshot.
     m.tier = snap.tier;
@@ -1040,6 +1042,11 @@ export class GameScene extends Phaser.Scene {
     return "#ff6b6b";
   }
 
+  /** Tells the ranking window what its GM buttons need: a map with monsters, and whether a boss stands here. */
+  private syncRankContext(): void {
+    this.rank.setContext(!this.map.safe, [...this.monsters.values()].some((m) => m.boss));
+  }
+
   private removeMonster(id: string): void {
     const m = this.monsters.get(id);
     if (!m) return;
@@ -1049,6 +1056,7 @@ export class GameScene extends Phaser.Scene {
     m.bar.destroy();
     this.monsters.delete(id);
     if (this.targetId === id) this.targetId = null;
+    this.syncRankContext();
   }
 
   /** Floating damage number over the target; also keeps a monster's HP bar current. */

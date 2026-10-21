@@ -112,7 +112,7 @@ await sleep(500);
 check("the whole world is told with a system line naming the boss", chatLog.some((m) => m.t === "chat" && m.channel === "system" && /Huyết Lang Vương/.test(m.text) && /kênh 3/.test(m.text)), JSON.stringify(chatLog));
 const claims = sql("SELECT room FROM world_boss");
 check("the claim names this room", claims.length === 1 && claims[0].room === "forest:3", JSON.stringify(claims));
-check("the boss is a few levels above the map (bậc 5 of the next realm) with a lot of HP", spawned?.monster.tier === 5 && spawned?.monster.maxHp > 5000, JSON.stringify(spawned?.monster));
+check("the boss is a few levels above the map (bậc 2 of the next realm) with a lot of HP", spawned?.monster.tier === 2 && spawned?.monster.maxHp > 5000, JSON.stringify(spawned?.monster));
 
 // Another channel of the same map is refused.
 CH = 4;
@@ -132,7 +132,7 @@ check("after the room slept the welcome lists the boss again", c3.welcome.monste
 const bossId = c3.welcome.monsters.find((m) => m.boss)?.id;
 
 // Kill it: a second character beside it, the boss left with 1 HP by the dev hook (local only).
-const k = await makePlayer("K", "forest", 33.5, 12.5);
+const k = await makePlayer("K", "forest", 27.5, 30.5);
 const ck = await connect(k.cookie);
 const hook = await fetch(`${httpBase}/api/dev/boss-hp?room=forest:3&hp=1`).then((r) => r.json());
 check("the dev hook left the boss on 1 HP", hook.ok === true, JSON.stringify(hook));
@@ -151,6 +151,17 @@ check("the boss never comes back to this room", !(await connect(k.cookie).then((
 c3.send({ t: "boss_summon" });
 const again = await c3.wait((m) => m.t === "mon" && m.monster.boss && m.monster.id !== bossId, 6000, "a new boss").catch(() => null);
 check("a new boss can be summoned once the old one is dead", !!again);
+// A player cannot take the boss away; the GM can, and nobody is paid for it.
+const second = again?.monster.id;
+ck.send({ t: "boss_remove" });
+await sleep(1200);
+check("a player's boss_remove does nothing", !c3.log.some((m) => m.t === "mon_gone" && m.id === second) && sql("SELECT room FROM world_boss").length === 1);
+const before = sql(`SELECT COUNT(*) AS n FROM currency_ledger WHERE reason = 'monster_drop' AND character_id = '${k.id}'`)[0].n;
+c3.send({ t: "boss_remove" });
+const removed = await c3.wait((m) => m.t === "mon_gone" && m.id === second, 5000, "the boss going").catch(() => null);
+await sleep(800);
+check("the GM can take the boss away: it leaves, the claim is released", !!removed && sql("SELECT room FROM world_boss").length === 0);
+check("and nothing is paid for it", sql(`SELECT COUNT(*) AS n FROM currency_ledger WHERE reason = 'monster_drop' AND character_id = '${k.id}'`)[0].n === before);
 ck.ws.close();
 c3.ws.close();
 chat.close();

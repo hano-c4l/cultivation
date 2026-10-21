@@ -92,6 +92,8 @@ export type ClientMessage =
   | { t: "bt_claim" }
   /** GM only: call the map's boss into this room now (it still has to be free: one boss per map). */
   | { t: "boss_summon" }
+  /** GM only: take the boss of this room off the map (the players cannot kill it); its claim is released so a new one can appear. */
+  | { t: "boss_remove" }
   /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
   | { t: "bt_cancel" }
   /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
@@ -379,6 +381,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "bt_claim" };
     case "bt_start":
       return isInt(m.pills) && m.pills >= 1 && m.pills <= 9 ? { t: "bt_start", pills: m.pills } : null;
+    case "boss_remove":
+      return { t: "boss_remove" };
     case "boss_summon":
       return { t: "boss_summon" };
     case "bt_cancel":
