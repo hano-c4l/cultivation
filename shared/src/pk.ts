@@ -179,6 +179,7 @@ export function planPkDrop(
     ...(c.max !== undefined ? { max: c.max } : {}),
     ...(c.lv !== undefined ? { lv: c.lv } : {}),
     ...(c.xp !== undefined ? { xp: c.xp } : {}),
+    ...(c.rs ? { rs: c.rs } : {}),
     to,
     newId: ids.newId,
     mailId: ids.mailId,
@@ -195,8 +196,8 @@ export function planPkLoss(bag: BagContents, tier: NameTier, roll: number, pick:
 function pickDropCandidate(bag: BagContents, tier: NameTier, roll: number, pick: number) {
   if (roll >= PK_DROP_CHANCE[tier]) return undefined;
   const candidates = [
-    ...bag.items.filter((i) => !isBonded(i.type)).map((i) => ({ id: i.id, type: i.type, qty: i.qty, dur: i.dur, max: i.max, lv: i.lv, xp: i.xp })),
-    ...bag.equipped.filter((e) => !isBonded(e.type)).map((e) => ({ id: e.id, type: e.type, qty: 1, dur: e.dur, max: e.max, lv: e.lv, xp: e.xp })),
+    ...bag.items.filter((i) => !isBonded(i.type)).map((i) => ({ id: i.id, type: i.type, qty: i.qty, dur: i.dur, max: i.max, lv: i.lv, xp: i.xp, rs: i.rs })),
+    ...bag.equipped.filter((e) => !isBonded(e.type)).map((e) => ({ id: e.id, type: e.type, qty: 1, dur: e.dur, max: e.max, lv: e.lv, xp: e.xp, rs: e.rs })),
   ];
   return candidates[Math.min(candidates.length - 1, Math.floor(pick * candidates.length))];
 }

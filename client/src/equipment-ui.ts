@@ -80,7 +80,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       const optDot = elementDot(item.type);
       const optName = el("div", undefined, nameOf(item.type));
       if (optDot) optName.prepend(optDot);
-      text.append(tagOf(item.type, item.lv), optName, el("div", "muted", equipLines(item.type, item.dur, item.max, item.lv).join(" · ")));
+      text.append(tagOf(item.type, item.lv), optName, el("div", "muted", equipLines(item.type, item.dur, item.max, item.lv, item.rs).join(" · ")));
       const btn = el("button", undefined, vi.inventory.wear);
       btn.onclick = () => {
         send({ t: "eq_equip", tab: item.tab, cell: item.cell, slot });
@@ -101,7 +101,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   /** Full description of a worn piece: grade, rarity, stats at the current durability, durability, requirements, style. */
   function renderInfo(piece: EquippedItem): HTMLElement {
     const box = el("div", `eq-info rar-${getItemDef(piece.type)?.rarity ?? "common"}`);
-    box.append(describeItem(piece.type, { dur: piece.dur, max: piece.max, lv: piece.lv, xp: piece.xp, wearer: wearer() ?? undefined }));
+    box.append(describeItem(piece.type, { dur: piece.dur, max: piece.max, lv: piece.lv, xp: piece.xp, rs: piece.rs, wearer: wearer() ?? undefined }));
     return box;
   }
 
