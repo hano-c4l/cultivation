@@ -22,12 +22,14 @@ export const BOSS_CLAIM_TTL_MS = 24 * 60 * 60 * 1000;
 export const BOSSES: Readonly<Record<MapId, string | null>> = { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong" };
 /** The bậc the boss pays out at (EXP and drops follow it, as for any monster): the top of the map's realm. */
 export const BOSS_TIER = 9;
+/** Where the boss stands (tile units): away from the three monster clusters and the guards of its map, so it is found, not stumbled into. */
+export const BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { town: null, forest: [26.5, 30.5], cave: [30.5, 8.5] };
 /**
  * Its fighting strength is a few levels above the map's, like a vệ binh: a character `BOSS_REALM_BONUS` realm above the map's, at bậc
  * `BOSS_STAT_TIER`, in a full set of top-grade gear, with its points spent and `BOSS_HP_MULT` times the maximum HP. Placeholder values.
  */
 export const BOSS_REALM_BONUS = 1;
-export const BOSS_STAT_TIER = 5;
+export const BOSS_STAT_TIER = 2;
 export const BOSS_GEAR_GRADE = 4;
 export const BOSS_HP_MULT = 25;
 export const BOSS_POINTS_PER_LEVEL = 2;

@@ -640,6 +640,9 @@ export class MapRoom extends DurableObject<Env> {
         return;
       case "bt_claim":
         return this.handleBreakthroughClaim(ws, state);
+      case "boss_remove":
+        if (state.admin) void this.removeBossNow().catch((err) => console.error("boss remove failed", err));
+        return;
       case "boss_summon":
         // GM only (the Worker sets the flag from the account role); the roll is skipped, the claim is not.
         if (state.admin) void this.requestBoss().catch((err) => console.error("boss summon failed", err));
@@ -937,6 +940,19 @@ export class MapRoom extends DurableObject<Env> {
     this.startTick();
     const channel = room.split(":")[1]?.replace(/^ch/, "") ?? "";
     await this.announce(bossSpawnText(getMonsterDef(snap.kind)?.nameVi ?? snap.kind, mapId, channel));
+  }
+
+  /** GM: the boss of this room goes (nobody could kill it): it leaves the map, the claim is released and nobody is paid. */
+  private async removeBossNow(): Promise<void> {
+    const sim = this.sim;
+    const room = await this.roomName();
+    const mapId = room?.split(":")[0];
+    if (!sim || !room || !mapId) return;
+    const gone = sim.removeBoss();
+    if (!gone) return;
+    this.broadcast({ t: "mon_gone", id: gone });
+    await releaseBoss(this.env.DB, mapId, room);
+    console.log("boss removed by a GM", room);
   }
 
   /** Renews the claim; if it is no longer this room's (it ran out and another channel took the map's boss), this room's boss goes. */

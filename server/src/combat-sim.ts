@@ -16,6 +16,7 @@ import {
   decayedSatNhan,
   RANKS,
   BOSSES,
+  BOSS_SPOTS,
   BOSS_EXP_MULT,
   BOSS_ITEM_CHANCE_MULT,
   BOSS_ITEM_ROUNDS,
@@ -516,8 +517,8 @@ export class CombatSim {
     const kind = BOSSES[mapId];
     const def = kind ? getMonsterDef(kind) : undefined;
     if (!def || this.hasBoss) return null;
-    const cluster = [...CLUSTERS[mapId]].sort((a, b) => b.tier - a.tier)[0];
-    const home = cluster ? nearestStandablePoint(this.map, cluster.x, cluster.y, 3) : null;
+    const spot = BOSS_SPOTS[mapId];
+    const home = spot ? nearestStandablePoint(this.map, spot[0], spot[1], 3) : null;
     if (!home) return null;
     const m: Monster = {
       id: `m${this.nextMonsterId++}`,

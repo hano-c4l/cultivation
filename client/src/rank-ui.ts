@@ -6,6 +6,8 @@ import { registerWindow } from "./window-manager";
 export interface RankUi {
   /** Shows the button (once the character is in the game). */
   show(selfName: string): void;
+  /** What the GM buttons depend on: this map has monsters (so a boss can exist) and a boss stands in this room now. */
+  setContext(combatMap: boolean, bossHere: boolean): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -28,23 +30,31 @@ export function initRank(send: (msg: ClientMessage) => void, isAdmin: boolean): 
   let selfName = "";
   let board: Leaderboard = "realm";
 
+  let combatMap = false;
+  let bossHere = false;
+  let lastBody: HTMLElement | string = "";
+
   function draw(body: HTMLElement | string): void {
+    lastBody = body;
     panel.replaceChildren();
     const head = el("div", "eq-head");
     const close = el("button", undefined, "×");
     close.onclick = () => (panel.hidden = true);
     const refresh = el("button", undefined, vi.rank.refresh);
     refresh.onclick = () => void load();
-    head.append(el("b", undefined, vi.rank.title), refresh, close);
-    if (isAdmin) {
-      // GM only (the server refuses it for everyone else): call the map's boss into the channel you stand in.
-      const gm = el("button", undefined, vi.rank.gmSummon);
+    head.append(el("b", undefined, vi.rank.title));
+    // GM only (the server refuses both for everyone else), and only on a map with monsters: call the map's boss into this channel, or take it away
+    // when the players cannot kill it. Order: GM button, reload, close.
+    if (isAdmin && combatMap) {
+      const gm = el("button", undefined, bossHere ? vi.rank.gmRemove : vi.rank.gmSummon);
       gm.onclick = () => {
-        send({ t: "boss_summon" });
-        gm.textContent = vi.rank.gmSummoned;
+        send({ t: bossHere ? "boss_remove" : "boss_summon" });
+        gm.disabled = true; // the room answers with the boss appearing or going, which redraws this
+        setTimeout(() => draw(lastBody), 3000);
       };
       head.append(gm);
     }
+    head.append(refresh, close);
     const tabs = el("div", "eq-tabs");
     for (const id of LEADERBOARDS) {
       const b = el("button", id === board ? "active" : "sub", vi.rank.tabs[id]);
@@ -82,6 +92,12 @@ export function initRank(send: (msg: ClientMessage) => void, isAdmin: boolean): 
     if (!panel.hidden) void load();
   };
   return {
+    setContext(combat, boss) {
+      if (combat === combatMap && boss === bossHere) return;
+      combatMap = combat;
+      bossHere = boss;
+      if (!panel.hidden) draw(lastBody);
+    },
     show(name) {
       selfName = name;
       toggle.hidden = false;
