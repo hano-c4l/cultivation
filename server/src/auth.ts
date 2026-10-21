@@ -20,6 +20,7 @@ import { getConstitutionCatalog } from "./constitution-catalog";
 import { adminBagTabs, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
 import { getCharacterByAccount, grantExp, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
+import { getLeaderboard } from "./leaderboard";
 import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
@@ -237,6 +238,16 @@ async function constitutionsApi(env: Env): Promise<Response> {
   }
 }
 
+async function leaderboardApi(request: Request, env: Env): Promise<Response> {
+  if (!(await getSession(request, env))) return errorResponse("unauthenticated", 401);
+  try {
+    return json({ rows: await getLeaderboard(env.DB) });
+  } catch (err) {
+    console.error("leaderboard unavailable", err);
+    return errorResponse("unavailable", 503);
+  }
+}
+
 export async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "POST" && hasForeignOrigin(request)) return errorResponse("forbidden_origin", 403);
   switch (`${request.method} ${url.pathname}`) {
@@ -250,6 +261,8 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return me(request, env);
     case "GET /api/constitutions":
       return constitutionsApi(env);
+    case "GET /api/leaderboard":
+      return leaderboardApi(request, env);
     case "POST /api/character":
       return createCharacter(request, env);
     case "POST /api/admin/grant":

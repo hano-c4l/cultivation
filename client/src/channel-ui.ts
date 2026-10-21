@@ -31,15 +31,17 @@ export function initChannel(): ChannelUi {
   let endsAt = 0;
   let total = 1;
   const draw = () => {
+    // The server always ends a channel; if its message was lost, the bar must not sit at 0.0 forever.
+    if (Date.now() > endsAt + 8000) return stop();
     const remaining = Math.max(0, endsAt - Date.now());
     fill.style.width = `${Math.min(100, ((total - remaining) / total) * 100)}%`;
     left.textContent = vi.shop.channelLeft((remaining / 1000).toFixed(1));
   };
-  const stop = () => {
+  function stop(): void {
     if (timer) clearInterval(timer);
     timer = undefined;
     box.hidden = true;
-  };
+  }
 
   return {
     start(label, ms) {

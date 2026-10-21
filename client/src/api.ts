@@ -37,6 +37,7 @@ export const api = {
   me: () => call<Me>("GET", "/api/me"),
   register: (email: string, password: string) => call<{ ok: true }>("POST", "/api/register", { email, password }),
   login: (email: string, password: string) => call<{ ok: true }>("POST", "/api/login", { email, password }),
+  leaderboard: () => call<{ rows: Array<{ name: string; realm: number; stage: number; exp: number }> }>("GET", "/api/leaderboard"),
   logout: () => call<{ ok: true }>("POST", "/api/logout"),
   createCharacter: (name: string, gender: Gender) => call<{ character: PublicCharacter }>("POST", "/api/character", { name, gender }),
 };

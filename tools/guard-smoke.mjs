@@ -112,5 +112,22 @@ const cc = await connect(c2.cookie);
 check("the cave has two guards at its gate", cc.welcome.monsters.filter((m) => m.guard).length === 2);
 cc.ws.close();
 
+// --- orange and red names may not deal with NPCs (the merchant and the elder), a white name beside them may ---
+const m1 = await makePlayer("M", "town", 24.5, 17.5, 300);
+const cm = await connect(m1.cookie);
+let rr = await after(cm, { t: "npc_open", npc: "merchant" }, 1000);
+check("an orange name beside the merchant is refused", rr.some((m) => m.t === "inv_error" && m.reason === "murderer") && !rr.some((m) => m.t === "shop"), JSON.stringify(rr));
+cm.ws.close();
+const e1 = await makePlayer("E", "town", 17.5, 17.5, 300);
+const ce = await connect(e1.cookie);
+rr = await after(ce, { t: "npc_open", npc: "elder" }, 1000);
+check("an orange name beside the elder is refused", rr.some((m) => m.t === "quest_error" && m.reason === "murderer") && !rr.some((m) => m.t === "quests"), JSON.stringify(rr));
+ce.ws.close();
+const w2 = await makePlayer("V", "town", 24.5, 17.5, 0);
+const cv = await connect(w2.cookie);
+rr = await after(cv, { t: "npc_open", npc: "merchant" }, 1000);
+check("a white name beside the merchant gets the shop", rr.some((m) => m.t === "shop"), JSON.stringify(rr.map((m) => m.t)));
+cv.ws.close();
+
 console.log(failures === 0 ? "all guard checks passed" : `${failures} guard check(s) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -90,6 +90,15 @@ export default {
         await stub.devLoot(char, [{ item, qty }]);
         return json({ ok: true });
       }
+      if (url.pathname === "/api/dev/boss-hp") {
+        // Local testing only (same gate as evict): leaves the room's boss with `hp` health.
+        const room = url.searchParams.get("room") ?? "";
+        const hp = Number(url.searchParams.get("hp") ?? "1");
+        if (env.ENABLE_DEV_GRANT !== "1" || !/^(forest|cave):\d{1,3}$/.test(room)) return errorResponse("not_found", 404);
+        if (!Number.isInteger(hp) || hp < 1) return errorResponse("bad_request", 400);
+        const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
+        return json({ ok: await stub.devBossHp(hp) });
+      }
       if (url.pathname === "/api/dev/evict") {
         // Local testing only (same gate as tick-stats): imitates the runtime evicting a paused room.
         const room = url.searchParams.get("room") ?? "";
