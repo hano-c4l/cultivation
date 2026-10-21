@@ -201,6 +201,18 @@ export function opStatements(db: D1Database, characterId: string, op: BagOp, now
           .prepare("INSERT INTO mailbox (id, character_id, subject, body, item_id, expires_at, created_at) VALUES (?, ?, ?, '', ?, NULL, ?)")
           .bind(op.mailId, characterId, op.subject, op.id, now),
       ];
+    case "give":
+      // The owner's row goes and a copy for the receiver is created in the same batch, with an unexpiring mail pointing at it.
+      return [
+        guard(db, characterId, op.id, { qty: op.qty }),
+        db.prepare("DELETE FROM item_instances WHERE id = ? AND owner_character_id = ?").bind(op.id, characterId),
+        db
+          .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, durability, max_durability, refine_level, refine_exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(op.newId, op.to, op.type, op.qty, op.dur ?? null, op.max ?? null, op.lv ?? null, op.xp ?? null, now),
+        db
+          .prepare("INSERT INTO mailbox (id, character_id, subject, body, item_id, expires_at, created_at) VALUES (?, ?, ?, '', ?, NULL, ?)")
+          .bind(op.mailId, op.to, op.subject, op.newId, now),
+      ];
     case "setqty":
       return [
         guard(db, characterId, op.id, { qty: op.from }),

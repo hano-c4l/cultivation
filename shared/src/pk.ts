@@ -1,3 +1,5 @@
+import { isBonded } from "./equipment-data";
+import type { BagContents, BagOp } from "./inventory";
 import { levelIndex } from "./progression";
 
 /**
@@ -141,4 +143,64 @@ export function applyPvpKill(killer: PkScores, victim: PkScores, victimSatNhan: 
 /** Killing a guard counts as killing a white name (without the self-defence exemption): sát khí and sát nhân both rise, the hero points go. */
 export function applyGuardKill(killer: PkScores, killerSatNhan = killer.satNhan): PkScores {
   return { satKhi: killer.satKhi + SAT_KHI_PER_KILL, satNhan: killerSatNhan + SAT_NHAN_PER_KILL, hero: 0 };
+}
+
+// ---- what a death costs by name colour (phase 2f, PR2) ----
+
+/** Chance that a player killed by another player loses one item, by name tier (white, yellow, orange, red). Placeholder values. */
+export const PK_DROP_CHANCE: Readonly<Record<NameTier, number>> = { 0: 0, 1: 0.1, 2: 0.25, 3: 0.5 };
+
+/** Share of its maximum durability each worn piece loses at ANY death, by name tier: orange and red names wear their gear down harder. */
+export const DEATH_DURABILITY_BY_TIER: Readonly<Record<NameTier, number>> = { 0: 0.05, 1: 0.05, 2: 0.1, 3: 0.2 };
+
+/**
+ * The item a player killed by another player loses, as a `give` op, or null when nothing drops (the roll fails, or there is nothing to
+ * take). Any bag stack or worn piece can go, whole (a full stack goes, not one unit), except the pháp bảo bản mệnh (its trained level
+ * belongs to its owner). `roll` is a number in [0, 1) for the chance and `pick` another for the choice.
+ */
+export function planPkDrop(
+  bag: BagContents,
+  tier: NameTier,
+  roll: number,
+  pick: number,
+  to: string,
+  ids: { newId: string; mailId: string },
+  subject: string,
+): Extract<BagOp, { op: "give" }> | null {
+  const c = pickDropCandidate(bag, tier, roll, pick);
+  if (!c) return null;
+  return {
+    op: "give",
+    id: c.id,
+    qty: c.qty,
+    type: c.type,
+    ...(c.dur !== undefined ? { dur: c.dur } : {}),
+    ...(c.max !== undefined ? { max: c.max } : {}),
+    ...(c.lv !== undefined ? { lv: c.lv } : {}),
+    ...(c.xp !== undefined ? { xp: c.xp } : {}),
+    to,
+    newId: ids.newId,
+    mailId: ids.mailId,
+    subject,
+  };
+}
+
+/** The same roll and pick for a death with no player to receive the item (a guard or a monster killed the player): the item is simply lost. */
+export function planPkLoss(bag: BagContents, tier: NameTier, roll: number, pick: number): { op: Extract<BagOp, { op: "remove" }>; type: string; qty: number } | null {
+  const c = pickDropCandidate(bag, tier, roll, pick);
+  return c ? { op: { op: "remove", id: c.id, qty: c.qty }, type: c.type, qty: c.qty } : null;
+}
+
+function pickDropCandidate(bag: BagContents, tier: NameTier, roll: number, pick: number) {
+  if (roll >= PK_DROP_CHANCE[tier]) return undefined;
+  const candidates = [
+    ...bag.items.filter((i) => !isBonded(i.type)).map((i) => ({ id: i.id, type: i.type, qty: i.qty, dur: i.dur, max: i.max, lv: i.lv, xp: i.xp })),
+    ...bag.equipped.filter((e) => !isBonded(e.type)).map((e) => ({ id: e.id, type: e.type, qty: 1, dur: e.dur, max: e.max, lv: e.lv, xp: e.xp })),
+  ];
+  return candidates[Math.min(candidates.length - 1, Math.floor(pick * candidates.length))];
+}
+
+/** A guard's kill of a player lowers the victim's sát nhân like any death does. */
+export function satNhanAfterDeath(satNhan: number): number {
+  return Math.max(0, satNhan - SAT_NHAN_LOST_ON_DEATH);
 }

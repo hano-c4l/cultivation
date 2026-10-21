@@ -76,11 +76,11 @@ export function planReconcile(state: BagContents, bagTabs: number, w: WearerCtx,
 }
 
 /** Death wears every worn piece by the fixed share of its maximum, then drops what broke or no longer fits. */
-export function planDeathWear(state: BagContents, bagTabs: number, w: WearerCtx, newId: () => string): { ops: BagOp[]; removed: AutoUnequip[] } {
+export function planDeathWear(state: BagContents, bagTabs: number, w: WearerCtx, newId: () => string, fraction?: number): { ops: BagOp[]; removed: AutoUnequip[] } {
   const ops: BagOp[] = [];
   for (const e of state.equipped) {
     if (e.dur === undefined || e.max === undefined) continue; // never wears out
-    const to = Math.max(0, e.dur - deathDurabilityLoss(e.max));
+    const to = Math.max(0, e.dur - deathDurabilityLoss(e.max, fraction));
     if (to !== e.dur) ops.push({ op: "setdur", id: e.id, from: e.dur, to });
   }
   const worn = applyBag(state, ops);

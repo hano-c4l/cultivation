@@ -23,6 +23,7 @@ import {
   TILE_W,
   ATTACK_MIN_GAP_MS,
   MIN_MOVE_INTERVAL_MS,
+  GUARD_REALM_BONUS,
   RANKS,
   REALMS,
   getMonsterDef,
@@ -50,6 +51,8 @@ import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initShop, type ShopUi } from "./shop-ui";
 import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
+import { initChannel, type ChannelUi } from "./channel-ui";
+import { closeAllWindows } from "./window-manager";
 import { GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
 import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
@@ -102,6 +105,8 @@ interface Actor {
 
 interface MonsterActor {
   id: string;
+  /** A vệ binh: own name and colour, and it is only clicked (attacked) with the PK state on. */
+  guard: boolean;
   tier: number;
   rank: MonsterRank;
   /** The element rolled when it (re)spawned: it shows in the name and in the colour of the body. */
@@ -111,7 +116,7 @@ interface MonsterActor {
   speed: number;
   hp: number;
   maxHp: number;
-  body: Phaser.GameObjects.Rectangle;
+  body: Phaser.GameObjects.Shape;
   label: Phaser.GameObjects.Text;
   /** The element icon drawn just before the name. */
   icon: Phaser.GameObjects.Arc;
@@ -164,6 +169,7 @@ export class GameScene extends Phaser.Scene {
   private shop!: ShopUi;
   private quests!: QuestUi;
   private pk!: PkUi;
+  private channel!: ChannelUi;
   /** When each player last hit you (performance.now): they show grey to you for 3 minutes unless their name is orange or red. */
   private hitMeAt = new Map<string, number>();
   private lastPk = { satKhi: 0, satNhan: 0, hero: 0 };
@@ -231,6 +237,7 @@ export class GameScene extends Phaser.Scene {
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
+    this.channel = initChannel();
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
       startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
@@ -522,6 +529,7 @@ export class GameScene extends Phaser.Scene {
         this.transferring = false;
         this.hotbar.setAimNote(null); // a channel never survives a (re)connect
         this.pkSeen = false; // the first PvP message after joining is not a change
+        this.channel.stop(); // a talisman channel never survives a (re)connect or the transfer it ends in
         this.portalSentAt = 0;
         this.switchMap(msg.map);
         this.pk.setSafe(this.map.safe);
@@ -576,6 +584,8 @@ export class GameScene extends Phaser.Scene {
         this.vitals.set(msg.hp, msg.maxHp);
         break;
       case "died":
+        this.hitMeAt.clear(); // the quarrel with whoever killed us is over: their name goes back to its real colour
+        this.channel.stop();
         this.chat.system(vi.combat.died(msg.expLost), "important");
         break;
       case "wallet":
@@ -751,6 +761,14 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       }
+      case "pk_drop": {
+        const name = getItemDef(msg.item)?.nameVi ?? msg.item;
+        this.chat.system(
+          msg.role === "killer" ? vi.pk.dropKiller(name, msg.qty, msg.other) : msg.role === "lost" ? vi.pk.dropLost(name, msg.qty) : vi.pk.dropVictim(name, msg.qty, msg.other),
+          msg.role === "killer" ? "info" : "important",
+        );
+        break;
+      }
       case "pk_state": {
         const who = this.actors.get(msg.id);
         if (who) this.setActorPk(who, msg.mode);
@@ -796,10 +814,13 @@ export class GameScene extends Phaser.Scene {
         // The note above the hotbar counts down the channel; the server ends it (tp_end or the transfer).
         const name = getItemDef(msg.item)?.nameVi ?? msg.item;
         this.chat.system(vi.shop.channel(name, Math.round(msg.ms / 1000)));
-        this.hotbar.setAimNote(vi.shop.channel(name, Math.round(msg.ms / 1000)));
+        // Channelling is standing still, with nothing open: every window closes, and a bar in the middle of the screen counts down.
+        closeAllWindows();
+        this.channel.start(name, msg.ms);
         break;
       }
       case "tp_end": {
+        this.channel.stop();
         this.hotbar.setAimNote(null);
         if (msg.ok) break;
         // Not an alarming (red) line: the player still sees why it stopped, on the note above the hotbar for a moment.
@@ -887,7 +908,7 @@ export class GameScene extends Phaser.Scene {
         const label = this.add
           .text(0, 0, p.name, { fontFamily: FONT, fontSize: "13px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
           .setOrigin(0.5, 1);
-        const tag = this.add.text(0, 0, "PK", { fontFamily: FONT, fontSize: "11px", fontStyle: "bold", color: "#c68642", stroke: "#000000", strokeThickness: 3 }).setOrigin(0, 1).setVisible(false);
+        const tag = this.add.text(0, 0, "PK", { fontFamily: FONT, fontSize: "10px", fontStyle: "bold", color: "#c68642", stroke: "#000000", strokeThickness: 2 }).setOrigin(0, 1).setResolution(3).setVisible(false);
         actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, tag, pk: 0, sn: 0, snAt: 0 };
         this.actors.set(p.id, actor);
       }
@@ -928,6 +949,7 @@ export class GameScene extends Phaser.Scene {
     let best: string | null = null;
     let bestD = MONSTER_PICK_PX;
     for (const m of this.monsters.values()) {
+      if (m.guard && this.pk.mode() === 0) continue; // a guard is only attacked on purpose: with the PK state off a click walks past it
       const pos = positionAlongPath(m.path, now - m.startedAt, m.speed);
       const s = toScreen(pos.x, pos.y);
       const d = Math.hypot(s.x - wx, s.y - 20 - wy);
@@ -944,21 +966,24 @@ export class GameScene extends Phaser.Scene {
     let m = this.monsters.get(snap.id);
     if (!m) {
       const color = ELEMENT_COLOR[snap.element] ?? 0xcccccc;
-      const body = this.add.rectangle(0, 0, 26, 26, color).setStrokeStyle(2, 0x000000, 0.7);
+      // A guard looks like a player (an oval body, a plain name) and shows no element, realm or HP bar; a monster is a square in its element's colour.
+      const body: Phaser.GameObjects.Shape = snap.guard ? this.add.ellipse(0, 0, 22, 34, 0x6ec6ff).setStrokeStyle(2, 0x000000, 0.6) : this.add.rectangle(0, 0, 26, 26, color).setStrokeStyle(2, 0x000000, 0.7);
       const label = this.add
-        .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
+        .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank, snap.guard === true), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1);
-      const icon = this.add.circle(0, 0, 5, ELEMENT_DOT[snap.element] ?? 0xcccccc).setStrokeStyle(1, 0xffffff, 1);
-      m = { color: "#ffffff", icon, id: snap.id, tier: snap.tier, rank: snap.rank, element: snap.element, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
+      const icon = this.add.circle(0, 0, 5, ELEMENT_DOT[snap.element] ?? 0xcccccc).setStrokeStyle(1, 0xffffff, 1).setVisible(snap.guard !== true);
+      m = { color: "#ffffff", icon, id: snap.id, guard: snap.guard === true, tier: snap.tier, rank: snap.rank, element: snap.element, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
       this.monsters.set(snap.id, m);
     }
     // A respawn can roll a different rank, so name and size follow the latest snapshot.
     m.tier = snap.tier;
     m.rank = snap.rank;
     m.element = snap.element;
-    m.body.setFillStyle(ELEMENT_COLOR[snap.element] ?? 0xcccccc);
-    m.icon.setFillStyle(ELEMENT_DOT[snap.element] ?? 0xcccccc);
-    m.label.setText(this.monsterName(snap.kind, snap.tier, snap.rank));
+    if (!m.guard) {
+      m.body.setFillStyle(ELEMENT_COLOR[snap.element] ?? 0xcccccc);
+      m.icon.setFillStyle(ELEMENT_DOT[snap.element] ?? 0xcccccc);
+    }
+    m.label.setText(this.monsterName(snap.kind, snap.tier, snap.rank, snap.guard === true));
     m.body.setScale(snap.rank === "rare2" ? 1.4 : snap.rank === "rare1" ? 1.2 : 1);
     const now = performance.now();
     // Monsters are re-planned often; blending keeps them from snapping, but a plain swap is fine at their speed.
@@ -971,7 +996,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** "Sói Rừng · Bậc 4" plus the class tag for rare monsters. */
-  private monsterName(kind: string, tier: number, rank: MonsterRank): string {
+  private monsterName(kind: string, tier: number, rank: MonsterRank, guard = false): string {
+    // A guard shows its name only (no realm, no element, no HP bar), like a player.
+    if (guard) return getMonsterDef(kind)?.nameVi ?? kind;
     const tag = RANKS[rank].tagVi;
     // The bậc shows as the realm tag and the bậc ("TC2"), like on gear.
     return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[this.map.realm ?? 0]?.shortVi ?? ""}${tier}${tag ? ` · ${tag}` : ""}`;
@@ -979,6 +1006,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Rare monsters have their own colours; normal ones are coloured by how their bậc compares to the player's level. */
   private monsterColor(m: MonsterActor): string {
+    if (m.guard) return "#ffd54a"; // guards are gold like a boss, whatever the player's level
     if (m.rank === "rare2") return "#ffd54a";
     if (m.rank === "rare1") return "#7fd6ff";
     if (!this.selfSheet) return "#ffffff";
@@ -1085,15 +1113,16 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       actor.label.setDepth(depth + 0.1);
-      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - 38).setDepth(depth + 0.1);
+      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - 39).setDepth(depth + 0.1);
     }
 
     for (const m of this.monsters.values()) {
       const pos = positionAlongPath(m.path, now - m.startedAt, m.speed);
       const s = toScreen(pos.x, pos.y);
       const depth = 10 + pos.x + pos.y;
-      m.body.setPosition(s.x, s.y - 13).setDepth(depth);
-      m.label.setPosition(s.x, s.y - 40).setDepth(depth + 0.1);
+      // A guard stands like a player: the same body and name height, no element icon and no HP bar.
+      m.body.setPosition(s.x, s.y - (m.guard ? 17 : 13)).setDepth(depth);
+      m.label.setPosition(s.x, s.y - (m.guard ? 38 : 40)).setDepth(depth + 0.1);
       // The element icon sits just left of the name, level with its middle.
       m.icon.setPosition(s.x - m.label.width / 2 - 8, s.y - 40 - m.label.height / 2).setDepth(depth + 0.1);
       const color = this.monsterColor(m);
@@ -1102,9 +1131,11 @@ export class GameScene extends Phaser.Scene {
         m.label.setColor(color);
       }
       m.bar.clear().setDepth(depth + 0.1);
-      const w = 34;
-      m.bar.fillStyle(0x000000, 0.7).fillRect(s.x - w / 2, s.y - 36, w, 5);
-      m.bar.fillStyle(0xe53935, 1).fillRect(s.x - w / 2 + 1, s.y - 35, (w - 2) * Math.max(0, m.hp / m.maxHp), 3);
+      if (!m.guard) {
+        const w = 34;
+        m.bar.fillStyle(0x000000, 0.7).fillRect(s.x - w / 2, s.y - 36, w, 5);
+        m.bar.fillStyle(0xe53935, 1).fillRect(s.x - w / 2 + 1, s.y - 35, (w - 2) * Math.max(0, m.hp / m.maxHp), 3);
+      }
       if (m.id === this.targetId) m.body.setStrokeStyle(3, 0xffe08a, 1);
       else m.body.setStrokeStyle(2, 0x000000, 0.7);
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { deathDurabilityLoss } from "./equipment-data";
 import { parseClientMessage } from "./protocol";
-import { GRAY_WINDOW_MS, applyGuardKill, applyPvpKill, canStartPvp, decayedSatNhan, displayColor, heroBonus, isPkProtected, nameTier, satKhiDamagePct, type PkScores } from "./pk";
+import { DEATH_DURABILITY_BY_TIER, satNhanAfterDeath, GRAY_WINDOW_MS, applyGuardKill, applyPvpKill, canStartPvp, decayedSatNhan, displayColor, heroBonus, isPkProtected, nameTier, satKhiDamagePct, type PkScores } from "./pk";
 
 const scores = (satKhi = 0, satNhan = 0, hero = 0): PkScores => ({ satKhi, satNhan, hero });
 
@@ -132,5 +133,22 @@ describe("PvP messages", () => {
   it("giving up a quest names a quest id", () => {
     expect(parseClientMessage(`{"t":"quest_abandon","quest":"newbie_2"}`)).toEqual({ t: "quest_abandon", quest: "newbie_2" });
     expect(parseClientMessage(`{"t":"quest_abandon","quest":"Bad Id"}`)).toBeNull();
+  });
+});
+
+describe("death wear by name colour", () => {
+  it("orange and red names wear their gear down harder than white and yellow", () => {
+    expect(DEATH_DURABILITY_BY_TIER[0]).toBe(DEATH_DURABILITY_BY_TIER[1]);
+    expect(DEATH_DURABILITY_BY_TIER[2]).toBeGreaterThan(DEATH_DURABILITY_BY_TIER[1]);
+    expect(DEATH_DURABILITY_BY_TIER[3]).toBeGreaterThan(DEATH_DURABILITY_BY_TIER[2]);
+    expect(deathDurabilityLoss(100)).toBe(5);
+    expect(deathDurabilityLoss(100, DEATH_DURABILITY_BY_TIER[3])).toBe(20);
+  });
+});
+
+describe("a guard's kill", () => {
+  it("lowers the victim's sát nhân like any death, never below 0", () => {
+    expect(satNhanAfterDeath(600)).toBe(550);
+    expect(satNhanAfterDeath(30)).toBe(0);
   });
 });

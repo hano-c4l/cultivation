@@ -71,6 +71,11 @@ export function registerWindow(id: string, el: HTMLElement, order: number): void
   }).observe(el, { attributes: true, attributeFilter: ["hidden"] });
 }
 
+/** Closes every registered window (a teleport talisman starts channelling: nothing may stay open on screen). */
+export function closeAllWindows(): void {
+  for (const w of wins) if (isOpen(w)) w.el.hidden = true;
+}
+
 window.addEventListener("resize", () => {
   if (lastOpened && isOpen(lastOpened)) makeRoom(lastOpened);
   layout();

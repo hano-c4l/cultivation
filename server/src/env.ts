@@ -14,4 +14,6 @@ export interface Env {
   DISABLE_RATE_LIMIT?: string;
   /** Set only in local .dev.vars to enable POST /api/dev/grant-exp. */
   ENABLE_DEV_GRANT?: string;
+  /** Local tests only: "1" makes a PvP kill of a coloured name always drop an item. */
+  PK_DROP_FORCE?: string;
 }

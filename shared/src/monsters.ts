@@ -31,7 +31,24 @@ export const MONSTERS: Readonly<Record<string, MonsterDef>> = {
   bao_dem: { id: "bao_dem", nameVi: "Báo Đêm", element: "hoa", hpMult: 1.2, attackMult: 1.4, defenseMult: 1, speed: 3.6, aggroRadius: 6, leashRadius: 9, attackRange: 1.3, attackCooldownMs: 1300, respawnMs: 25_000 },
   doi_u_minh: { id: "doi_u_minh", nameVi: "Dơi U Minh", element: "kim", hpMult: 1, attackMult: 1.2, defenseMult: 0.9, speed: 3.4, aggroRadius: 6, leashRadius: 8, attackRange: 1.3, attackCooldownMs: 1300, respawnMs: 15_000 },
   thi_quy: { id: "thi_quy", nameVi: "Thi Quỷ", element: "thuy", hpMult: 1.8, attackMult: 1.3, defenseMult: 1.6, speed: 2.2, aggroRadius: 5, leashRadius: 8, attackRange: 1.4, attackCooldownMs: 2000, respawnMs: 20_000 },
+  ve_binh: { id: "ve_binh", nameVi: "Vệ Binh", element: "kim", hpMult: 3, attackMult: 2.5, defenseMult: 2, speed: 3, aggroRadius: 8, leashRadius: 12, attackRange: 1.4, attackCooldownMs: 1200, respawnMs: 60_000 },
   xich_thi: { id: "xich_thi", nameVi: "Xích Thi", element: "hoa", hpMult: 1.4, attackMult: 1.5, defenseMult: 1.2, speed: 2.8, aggroRadius: 5, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1700, respawnMs: 25_000 },
+};
+
+/**
+ * Vệ binh (guards, phase 2f PR2): they stand at the gate of the forest and the cave and fight only red names (sát nhân from 501) and anyone
+ * who hits them. They are one realm above the map's and at bậc `GUARD_TIER`, strong enough to beat a red player of the map's own level. Killing
+ * one pays nothing (no EXP, Linh Thạch or loot) and costs sát khí and sát nhân like killing a white name. Placeholder values.
+ */
+export const GUARD_KIND = "ve_binh";
+export const GUARD_REALM_BONUS = 1;
+export const GUARD_TIER = 3;
+/** Guard positions per map (tile units, snapped to standable ground by the server): beside the arrival point, off the lane. */
+export const GUARDS: Readonly<Record<MapId, readonly (readonly [number, number])[]>> = {
+  // Every portal has them on its arrival side: town (from the forest), forest (from the town and from the cave), cave (from the forest).
+  town: [[18.5, 35.5], [21.5, 35.5]],
+  forest: [[19.5, 5.5], [22.5, 5.5], [43.5, 22.5], [43.5, 25.5]],
+  cave: [[5.5, 19.5], [5.5, 22.5]],
 };
 
 export function getMonsterDef(kind: string): MonsterDef | undefined {

@@ -2,6 +2,7 @@ export * from "./map";
 export * from "./pathfinding";
 export * from "./movement";
 export * from "./monsters";
+export * from "./guards";
 export * from "./combat";
 export * from "./protocol";
 export * from "./chat";

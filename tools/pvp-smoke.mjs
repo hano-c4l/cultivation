@@ -2,7 +2,7 @@
 // sát nhân and anh hùng (white victim, self defence, orange victim), the name colour broadcast, and the scores kept in D1.
 // Usage: node tools/pvp-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
-// DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
+// DISABLE_RATE_LIMIT=1, ENABLE_DEV_GRANT=1 and PK_DROP_FORCE=1 (the PvP item drop always succeeds) in .dev.vars. Never run it against preview or production.
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -73,12 +73,12 @@ async function after(c, msg, wait = 700) {
 }
 
 /** A character standing in the forest gate at (x, 4.5): stage, sát nhân and HP as asked. */
-async function makePlayer(tag, x, { stage = 5, satNhan = 0, satKhi = 0, hero = 0, hp = null } = {}) {
+async function makePlayer(tag, x, { stage = 5, satNhan = 0, satKhi = 0, hero = 0, hp = null, y = 4.5 } = {}) {
   const reg = await post("/api/register", { email: `pvp-${tag}-${run}@example.test`, password: "correct-horse-battery" });
   const created = await post("/api/character", { name: `${tag}${run.slice(-5)}`, gender: "male" }, reg.cookie);
   const id = created.data.character.id;
   const vitals = hp === null ? "NULL" : `json_object('hp', ${hp}, 'mp', 10, 'at', ${Date.now()}, 'cd', json_object(), 'buffs', json('[]'))`;
-  sql(`UPDATE characters SET map_id = 'forest', x = ${x}, y = 4.5, realm = 0, stage = ${stage}, exp = 0, sat_nhan = ${satNhan}, sat_khi = ${satKhi}, anh_hung = ${hero}, vitals = ${vitals} WHERE id = '${id}'`);
+  sql(`UPDATE characters SET map_id = 'forest', x = ${x}, y = ${y}, realm = 0, stage = ${stage}, exp = 0, sat_nhan = ${satNhan}, sat_khi = ${satKhi}, anh_hung = ${hero}, vitals = ${vitals} WHERE id = '${id}'`);
   return { id, cookie: reg.cookie, tag };
 }
 const row = (id) => sql(`SELECT sat_khi, sat_nhan, anh_hung, stage FROM characters WHERE id = '${id}'`)[0];
@@ -131,8 +131,11 @@ check("self defence: +10 sát khí (20) but no new sát nhân", second?.satKhi =
 cc.ws.close();
 
 // --- an orange victim: a killer with sát nhân 0 earns hero points, nothing else ---
-const k = await makePlayer("K", 20.5);
-const o = await makePlayer("O", 21.5, { satNhan: 300, hp: 1 });
+// Down the lane, away from the guards at the gate (they go for orange and red names) and from the monster clusters.
+const k = await makePlayer("K", 20.5, { y: 22.5 });
+const o = await makePlayer("O", 21.5, { satNhan: 300, hp: 1, y: 22.5 });
+// The orange victim carries one stack; with PK_DROP_FORCE=1 in .dev.vars the roll always succeeds (the real chance for orange is 25%).
+sql(`INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, created_at) VALUES ('pk-smoke-${run}', '${o.id}', 'linh_thao', 7, 0, 0, 0)`);
 const ck = await connect(k.cookie);
 const co = await connect(o.cookie);
 check("an orange name is announced by its sát nhân when it joins", ck.log.some((m) => m.t === "joined" && m.player.id === o.id && m.player.sn >= 299), JSON.stringify(ck.log.filter((m) => m.t === "joined").map((m) => m.player.sn)));
@@ -144,6 +147,11 @@ check("killing an orange name with sát nhân 0 gives +20 anh hùng and no sát 
 await sleep(500);
 check("and the hero points are in D1", row(k.id).anh_hung === 20, JSON.stringify(row(k.id)));
 check("the orange victim lost 50 sát nhân", row(o.id).sat_nhan === 250, JSON.stringify(row(o.id)));
+// --- the drop (needs PK_DROP_FORCE=1 in .dev.vars) ---
+check("the victim lost its stack (it is not in its bag any more)", sql(`SELECT COUNT(*) AS n FROM item_instances WHERE owner_character_id = '${o.id}' AND item_type = 'linh_thao'`)[0].n === 0);
+check("the killer owns a copy of it, unplaced, with an unexpiring mail", sql(`SELECT COUNT(*) AS n FROM item_instances WHERE owner_character_id = '${k.id}' AND item_type = 'linh_thao' AND qty = 7 AND cell IS NULL`)[0].n === 1 && sql(`SELECT COUNT(*) AS n FROM mailbox WHERE character_id = '${k.id}' AND subject = 'pk_drop' AND expires_at IS NULL AND claimed_at IS NULL`)[0].n === 1);
+check("both sides are told", ck.log.some((m) => m.t === "pk_drop" && m.role === "killer" && m.item === "linh_thao" && m.qty === 7) && co.log.some((m) => m.t === "pk_drop" && m.role === "victim"), JSON.stringify(ck.log.filter((m) => m.t === "pk_drop")));
+check("and the killer's mail list shows it", ck.log.some((m) => m.t === "mail" && m.mail.some((x) => x.subject === "pk_drop")));
 
 ca.ws.close();
 ck.ws.close();
