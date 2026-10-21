@@ -23,6 +23,7 @@ import {
   TILE_W,
   ATTACK_MIN_GAP_MS,
   MIN_MOVE_INTERVAL_MS,
+  GUARD_REALM_BONUS,
   RANKS,
   REALMS,
   getMonsterDef,
@@ -102,6 +103,8 @@ interface Actor {
 
 interface MonsterActor {
   id: string;
+  /** A vệ binh: own name and colour, and it is only clicked (attacked) with the PK state on. */
+  guard: boolean;
   tier: number;
   rank: MonsterRank;
   /** The element rolled when it (re)spawned: it shows in the name and in the colour of the body. */
@@ -751,6 +754,11 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       }
+      case "pk_drop": {
+        const name = getItemDef(msg.item)?.nameVi ?? msg.item;
+        this.chat.system(msg.role === "victim" ? vi.pk.dropVictim(name, msg.qty, msg.other) : vi.pk.dropKiller(name, msg.qty, msg.other), msg.role === "victim" ? "important" : "info");
+        break;
+      }
       case "pk_state": {
         const who = this.actors.get(msg.id);
         if (who) this.setActorPk(who, msg.mode);
@@ -887,7 +895,7 @@ export class GameScene extends Phaser.Scene {
         const label = this.add
           .text(0, 0, p.name, { fontFamily: FONT, fontSize: "13px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
           .setOrigin(0.5, 1);
-        const tag = this.add.text(0, 0, "PK", { fontFamily: FONT, fontSize: "11px", fontStyle: "bold", color: "#c68642", stroke: "#000000", strokeThickness: 3 }).setOrigin(0, 1).setVisible(false);
+        const tag = this.add.text(0, 0, "PK", { fontFamily: FONT, fontSize: "7px", fontStyle: "bold", color: "#c68642", stroke: "#000000", strokeThickness: 2 }).setOrigin(0, 1).setResolution(3).setVisible(false);
         actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, tag, pk: 0, sn: 0, snAt: 0 };
         this.actors.set(p.id, actor);
       }
@@ -928,6 +936,7 @@ export class GameScene extends Phaser.Scene {
     let best: string | null = null;
     let bestD = MONSTER_PICK_PX;
     for (const m of this.monsters.values()) {
+      if (m.guard && this.pk.mode() === 0) continue; // a guard is only attacked on purpose: with the PK state off a click walks past it
       const pos = positionAlongPath(m.path, now - m.startedAt, m.speed);
       const s = toScreen(pos.x, pos.y);
       const d = Math.hypot(s.x - wx, s.y - 20 - wy);
@@ -946,10 +955,10 @@ export class GameScene extends Phaser.Scene {
       const color = ELEMENT_COLOR[snap.element] ?? 0xcccccc;
       const body = this.add.rectangle(0, 0, 26, 26, color).setStrokeStyle(2, 0x000000, 0.7);
       const label = this.add
-        .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
+        .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank, snap.guard === true), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1);
       const icon = this.add.circle(0, 0, 5, ELEMENT_DOT[snap.element] ?? 0xcccccc).setStrokeStyle(1, 0xffffff, 1);
-      m = { color: "#ffffff", icon, id: snap.id, tier: snap.tier, rank: snap.rank, element: snap.element, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
+      m = { color: "#ffffff", icon, id: snap.id, guard: snap.guard === true, tier: snap.tier, rank: snap.rank, element: snap.element, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
       this.monsters.set(snap.id, m);
     }
     // A respawn can roll a different rank, so name and size follow the latest snapshot.
@@ -958,7 +967,7 @@ export class GameScene extends Phaser.Scene {
     m.element = snap.element;
     m.body.setFillStyle(ELEMENT_COLOR[snap.element] ?? 0xcccccc);
     m.icon.setFillStyle(ELEMENT_DOT[snap.element] ?? 0xcccccc);
-    m.label.setText(this.monsterName(snap.kind, snap.tier, snap.rank));
+    m.label.setText(this.monsterName(snap.kind, snap.tier, snap.rank, snap.guard === true));
     m.body.setScale(snap.rank === "rare2" ? 1.4 : snap.rank === "rare1" ? 1.2 : 1);
     const now = performance.now();
     // Monsters are re-planned often; blending keeps them from snapping, but a plain swap is fine at their speed.
@@ -971,7 +980,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** "Sói Rừng · Bậc 4" plus the class tag for rare monsters. */
-  private monsterName(kind: string, tier: number, rank: MonsterRank): string {
+  private monsterName(kind: string, tier: number, rank: MonsterRank, guard = false): string {
+    // A guard is one realm above the map's, shown as "Vệ Binh · TC3".
+    if (guard) return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[(this.map.realm ?? 0) + GUARD_REALM_BONUS]?.shortVi ?? ""}${tier}`;
     const tag = RANKS[rank].tagVi;
     // The bậc shows as the realm tag and the bậc ("TC2"), like on gear.
     return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[this.map.realm ?? 0]?.shortVi ?? ""}${tier}${tag ? ` · ${tag}` : ""}`;
@@ -979,6 +990,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Rare monsters have their own colours; normal ones are coloured by how their bậc compares to the player's level. */
   private monsterColor(m: MonsterActor): string {
+    if (m.guard) return "#7be0a8"; // guards are green, whatever the player's level
     if (m.rank === "rare2") return "#ffd54a";
     if (m.rank === "rare1") return "#7fd6ff";
     if (!this.selfSheet) return "#ffffff";
@@ -1085,7 +1097,7 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       actor.label.setDepth(depth + 0.1);
-      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - 38).setDepth(depth + 0.1);
+      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - 40).setDepth(depth + 0.1);
     }
 
     for (const m of this.monsters.values()) {

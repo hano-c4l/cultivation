@@ -189,6 +189,10 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     return b;
   }
 
+  /** "Trưởng Lão · Gặp Thương nhân": the giver in front of the title (the quest window lists quests of every NPC), sorted by that name. */
+  const fullTitle = (d: QuestDef) => `${vi.npcs[d.giver] ?? d.giver} · ${d.titleVi}${d.repeat ? ` ${vi.quests.daily}` : ""}`;
+  const byName = (a: QuestDef, b: QuestDef) => fullTitle(a).localeCompare(fullTitle(b), "vi");
+
   function renderLog(): void {
     log.replaceChildren();
     const head = el("div", "eq-head");
@@ -209,12 +213,12 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     log.append(head, tabs);
     if (flash) log.append(el("div", "shop-flash", flash));
     if (logTab === "doing") {
-      const list = activeDefs();
+      const list = activeDefs().sort(byName);
       if (list.length === 0) log.append(el("div", "muted", vi.quests.noneDoing));
       for (const def of list) {
         const m = measure(def);
         const card = el("div", "quest-card active");
-        card.append(el("div", "quest-title", def.repeat ? `${def.titleVi} ${vi.quests.daily}` : def.titleVi), el("div", "muted", def.descVi), el("div", "quest-line", `${vi.quests.goal} ${objectiveText(def.objective)}`));
+        card.append(el("div", "quest-title", fullTitle(def)), el("div", "muted", def.descVi), el("div", "quest-line", `${vi.quests.goal} ${objectiveText(def.objective)}`));
         card.append(el("div", "quest-line", `${vi.quests.progress} ${m.text}${m.ready ? " ✓" : ""}`), el("div", "quest-line", `${vi.quests.reward} ${rewardText(def.rewards)}`));
         card.append(el("div", "muted", vi.quests.turnInAt(vi.npcs[def.giver] ?? def.giver)));
         const row = el("div", "quest-actions");
@@ -225,11 +229,11 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
         log.append(card);
       }
     } else {
-      const list = active.filter((d) => states[d.id]?.state === "done").sort((a, b) => (states[b.id]?.at ?? 0) - (states[a.id]?.at ?? 0));
+      const list = active.filter((d) => states[d.id]?.state === "done").sort(byName);
       if (list.length === 0) log.append(el("div", "muted", vi.quests.noneDone));
       for (const def of list) {
         const card = el("div", "quest-card done");
-        card.append(el("div", "quest-title", def.repeat ? `${def.titleVi} ${vi.quests.daily}` : def.titleVi), el("div", "quest-line", `${vi.quests.reward} ${rewardText(def.rewards)}`));
+        card.append(el("div", "quest-title", fullTitle(def)), el("div", "quest-line", `${vi.quests.reward} ${rewardText(def.rewards)}`));
         log.append(card);
       }
     }

@@ -414,8 +414,8 @@ export function mustUnequip(items: readonly EquippedItem[], w: WearerCtx): Array
 }
 
 /** Durability a worn piece loses at death, or 0 for a piece that never wears out. */
-export function deathDurabilityLoss(max: number | undefined): number {
-  return max === undefined ? 0 : Math.max(1, Math.ceil(max * DEATH_DURABILITY_FRACTION));
+export function deathDurabilityLoss(max: number | undefined, fraction = DEATH_DURABILITY_FRACTION): number {
+  return max === undefined ? 0 : Math.max(1, Math.ceil(max * fraction));
 }
 
 /** Linh Thạch to restore `lost` durability points of a piece of the given grade. */
