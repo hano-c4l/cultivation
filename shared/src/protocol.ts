@@ -96,6 +96,8 @@ export type ClientMessage =
   | { t: "boss_remove" }
   /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
   | { t: "bt_cancel" }
+  /** Get on (true) or off (false) the flight pháp bảo. Its stats and speed only count while riding. */
+  | { t: "mount"; on: boolean }
   /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
   | { t: "conn_report"; code: number; reason: string; clean: boolean; downMs: number }
   /** Take a path item (a placeholder for the NPC quest): one per path per character. */
@@ -178,6 +180,8 @@ export interface PlayerSnapshot {
   path: Vec2[];
   ageMs: number;
   speed: number;
+  /** Riding the flight pháp bảo (left out when on foot). */
+  mounted?: true;
 }
 
 export type ServerMessage =
@@ -195,6 +199,8 @@ export type ServerMessage =
   | { t: "chat_error"; reason: "rate" | "invalid" | "offline" | "forbidden" }
   /** Current character sheet; sent after every allocation attempt (also when it was rejected). */
   | { t: "stats"; character: CharacterSheet }
+  /** Whether you are riding the flight pháp bảo now (also sent when it comes off by itself), or why getting on failed. */
+  | { t: "mounted"; on: boolean; error?: "no_flight" | "broken" | "busy" | "requirements" }
   /** A monster appeared or changed its path. */
   | { t: "mon"; monster: MonsterSnapshot }
   | { t: "mon_gone"; id: string }
@@ -387,6 +393,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "boss_summon" };
     case "bt_cancel":
       return { t: "bt_cancel" };
+    case "mount":
+      if (typeof m.on !== "boolean") return null;
+      return { t: "mount", on: m.on };
     case "conn_report":
       return isInt(m.code) && typeof m.reason === "string" && typeof m.clean === "boolean" && isInt(m.downMs)
         ? { t: "conn_report", code: m.code, reason: m.reason.slice(0, 80), clean: m.clean, downMs: Math.min(Math.max(m.downMs, 0), 86_400_000) }

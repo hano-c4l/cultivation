@@ -210,7 +210,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   document.addEventListener("keydown", (ev) => {
     const a = document.activeElement;
     const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
-    if (!typing && (ev.key === "e" || ev.key === "E") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !toggle.hidden) setOpen(panel.hidden);
+    if (!typing && (ev.key === "b" || ev.key === "B") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !toggle.hidden) setOpen(panel.hidden);
   });
 
   return {

@@ -370,9 +370,12 @@ describe("pháp bảo bản mệnh and pháp bảo phi hành", () => {
     expect(planEquip(st, 1, { tab: 0, cell: 0 }, "flight", maleWearer)).toEqual({ ok: false, error: "slot" });
   });
 
-  it("the flight artifact gives speed (a stat that is shown but does not move anyone yet)", () => {
+  it("the flight artifact gives speed, but only while its wearer rides it", () => {
     expect(equipmentInfo(flight)!.stats.moveSpeed).toBeGreaterThan(0);
-    expect(equipmentBonus([{ id: "f", type: flight, slot: "flight", dur: 100, max: 100 }], maleWearer).moveSpeed).toBeGreaterThan(0);
+    const worn = [{ id: "f", type: flight, slot: "flight" as const, dur: 100, max: 100 }];
+    expect(equipmentBonus(worn, maleWearer).moveSpeed).toBe(0);
+    expect(equipmentBonus(worn, { ...maleWearer, mounted: false }).moveSpeed).toBe(0);
+    expect(equipmentBonus(worn, { ...maleWearer, mounted: true }).moveSpeed).toBeGreaterThan(0);
     const plain = deriveStats(base(), 0, 5, 1);
     const fast = deriveStats(base(), 0, 5, 1, { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 10 });
     expect(fast.moveSpeed).toBeGreaterThan(plain.moveSpeed);

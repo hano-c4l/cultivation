@@ -311,10 +311,16 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     }
   }
 
-  toggle.onclick = () => {
+  const toggleLog = () => {
     log.hidden = !log.hidden;
     if (!log.hidden) renderLog();
   };
+  toggle.onclick = toggleLog;
+  document.addEventListener("keydown", (ev) => {
+    const a = document.activeElement;
+    const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
+    if (!typing && (ev.key === "l" || ev.key === "L") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !toggle.hidden) toggleLog();
+  });
   const ui: QuestUi = {
     open(id) {
       npc = id;

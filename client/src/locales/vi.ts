@@ -183,6 +183,18 @@ export const vi = {
       blocked: "Không thể dịch chuyển tới điểm đó.",
     } as Record<string, string>,
   },
+  mount: {
+    badge: "Đang cưỡi pháp bảo phi hành · bấm để xuống (M)",
+    ride: "Cưỡi pháp bảo phi hành (M)",
+    on: "Bạn đã lên pháp bảo phi hành.",
+    off: "Bạn đã xuống pháp bảo phi hành.",
+    errors: {
+      no_flight: "Bạn chưa mặc pháp bảo phi hành.",
+      broken: "Pháp bảo phi hành đã hỏng.",
+      busy: "Đang đột phá hoặc niệm phù, chưa thể lên pháp bảo.",
+      requirements: "Bạn chưa đủ điều kiện dùng pháp bảo phi hành này.",
+    } as Record<string, string>,
+  },
   equip: {
     tabs: { gear: "Trang bị", artifact: "Pháp bảo" },
     button: "Trang bị",
