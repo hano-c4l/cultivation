@@ -256,6 +256,7 @@ export const vi = {
     scoresTitle: "Sát nhân (đổi màu tên, giảm 5 mỗi phút online) · Anh hùng (thưởng linh lực và tỉ lệ rơi đồ từ 200)",
     scores: (sn: number, ah: number) => `Sát nhân ${sn} · Anh hùng ${ah}`,
     dropVictim: (item: string, qty: number, other: string) => `${other} đã giết bạn và lấy đi ${item}${qty > 1 ? ` × ${qty}` : ""}.`,
+    dropLost: (item: string, qty: number) => `Bạn đã chết và đánh rơi mất ${item}${qty > 1 ? ` × ${qty}` : ""}.`,
     dropKiller: (item: string, qty: number, other: string) => `Bạn nhận được ${item}${qty > 1 ? ` × ${qty}` : ""} từ ${other}: xem hòm thư.`,
     changed: (sk: number, sn: number, ah: number) => `Điểm PvP: sát khí ${sk}, sát nhân ${sn}, anh hùng ${ah}.`,
     errors: {
@@ -337,6 +338,7 @@ export const vi = {
     bought: (name: string, qty: number, total: number) => `Đã mua ${name} × ${qty} (${total} Linh Thạch).`,
     sold: (name: string, qty: number, total: number) => `Đã bán ${name} × ${qty} (nhận ${total} Linh Thạch).`,
     tooFar: "Hãy lại gần NPC hơn.",
+    channelLeft: (s: string) => `${s} giây`,
     channel: (name: string, s: number) => `Đang niệm ${name}… giữ nguyên vị trí ${s} giây (di chuyển hoặc bị đánh sẽ bị ngắt, phù không mất).`,
     channelBroken: { moved: "Niệm phù bị ngắt vì bạn hành động. Phù chưa bị mất.", hit: "Niệm phù bị ngắt vì bị tấn công. Phù chưa bị mất.", dead: "Niệm phù thất bại vì bạn đã tử vong.", no_item: "Niệm phù thất bại: không còn phù trong túi.", other: "Niệm phù bị ngắt. Phù chưa bị mất." } as Record<string, string>,
     categories: { all: "Tất cả", pill: "Đan dược/phù", gear: "Trang bị", artifact: "Pháp bảo", book: "Bí tịch", material: "Nguyên liệu" } as Record<string, string>,

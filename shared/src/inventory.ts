@@ -149,6 +149,7 @@ export function applyBag(state: BagContents, ops: readonly BagOp[]): BagContents
         break;
       case "remove":
         next = next.filter((i) => i.id !== op.id);
+        worn = worn.filter((e) => e.id !== op.id);
         break;
       case "move":
         place(op.id, op.tab, op.cell);

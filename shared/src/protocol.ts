@@ -219,8 +219,8 @@ export type ServerMessage =
   | { t: "pk_score"; id: string; sn: number }
   /** The PK state of a player in the room changed (the tag after their name). */
   | { t: "pk_state"; id: string; mode: PkMode }
-  /** A player killed by another lost an item to the killer's mailbox: `role` says which side this message is for, `other` is the other player's name. */
-  | { t: "pk_drop"; role: "killer" | "victim"; item: string; qty: number; other: string }
+  /** A player killed by another lost an item to the killer's mailbox: `role` says which side this message is for ("lost": no killer to receive it, a guard or monster killed the player and the item is gone), `other` is the other player's name. */
+  | { t: "pk_drop"; role: "killer" | "victim" | "lost"; item: string; qty: number; other: string }
   /** A player killed by another lost an item to the killer's mailbox: `role` says which side this message is for, `other` is the other player's name. */
   | { t: "pk_drop"; role: "killer" | "victim"; item: string; qty: number; other: string }
   /** A kill ended the quarrel with this player: forget that they attacked you (the grey name). */

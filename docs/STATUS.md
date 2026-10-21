@@ -11,7 +11,7 @@ Cập nhật: 2026-10-21 (2e hoàn tất và 2f PR1 PvP ở production; 2f PR2 r
 - Admin phải kết nối lại sau mỗi lần deploy có thay đổi cờ admin (socket cũ không có cờ) thì các nút "GM · Nhận vật phẩm hướng tu/đột phá" mới dùng được. PK mặc định Tắt khi mở trang (client gửi lại trạng thái đã chọn sau mỗi lần đổi bản đồ).
 
 ## Đang làm dở
-- **2f PvP, sát khí và vệ binh: xong cả hai PR** (PR1 ở production; PR2 gồm rơi đồ vào hòm thư người giết, độ bền hao nặng theo màu tên, vệ binh ở cửa rừng và hang, **đã ở preview, chưa lên production**). Còn lại ngoài phạm vi: area-of-interest, thông báo "bị PK" cho cả phòng, thời gian chờ khi tắt PK (xem `docs/PHASE2.md` mục 2f).
+- **2f PvP, sát khí và vệ binh: xong cả hai PR** (PR1 ở production; PR2 gồm rơi đồ vào hòm thư người giết, độ bền hao nặng theo màu tên, vệ binh ở cửa rừng và hang, **đã ở preview, chưa lên production**). Vệ binh đã chỉnh lần hai (mọi cổng kể cả thành, đánh cả tên cam, mạnh hơn, mất đồ khi quái/vệ binh giết). Còn lại ngoài phạm vi: area-of-interest, thông báo "bị PK" cho cả phòng, thời gian chờ khi tắt PK (xem `docs/PHASE2.md` mục 2f).
 - **Điều tra rớt WebSocket khi đang đột phá (2026-10-20):** trên preview, một lần đột phá Trúc Cơ → Kim Đan của Admin bị rớt kết nối giữa chừng và mất đan cùng 30% tu vi; nghi do đường truyền (người dùng dùng Cloudflare One Client, ping khoảng 400 ms). **Luật giữ nguyên; đã thêm log** (`socket close|error|evicted` ở server, `conn report` do client gửi sau khi nối lại) để tái hiện và đọc nguyên nhân. Sau đó mới quyết định giữa "không mất đan và tu vi" hoặc "chờ khoảng 30 giây để nối lại" (chi tiết ở `docs/PHASE2.md`).
 - Chưa thử tay: giao diện điện thoại của các cửa sổ mới, giữ trạng thái PK qua cổng bản đồ trong trình duyệt.
 

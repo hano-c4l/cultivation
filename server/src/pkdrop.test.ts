@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { PK_DROP_CHANCE, applyBag, planAdd, planPkDrop } from "@game/shared";
+import { PK_DROP_CHANCE, applyBag, planAdd, planPkDrop, planPkLoss } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { commitBagOps, listMail, loadBag } from "./inventory";
 import { makeDb } from "./test-db";
@@ -87,5 +87,25 @@ describe("the give op", () => {
     expect(rows(A)).toHaveLength(1);
     expect(rows(B)).toHaveLength(0);
     expect(await listMail(db, B)).toHaveLength(0);
+  });
+});
+
+describe("a death with nobody to receive the item", () => {
+  it("planPkLoss uses the same chance and choice, and the item is simply deleted (from the bag or from the slots)", async () => {
+    const bag = { items: [{ id: "i1", type: "linh_thao", tab: 0, cell: 0, qty: 7 }], equipped: [{ id: "e1", type: "x", slot: "weapon" as const, dur: 5, max: 50 }] };
+    expect(planPkLoss(bag, 0, 0, 0)).toBeNull();
+    expect(planPkLoss(bag, 1, PK_DROP_CHANCE[1], 0)).toBeNull();
+    const loss = planPkLoss(bag, 3, 0, 0.99)!;
+    expect(loss).toMatchObject({ type: "x", qty: 1, op: { op: "remove", id: "e1", qty: 1 } });
+    expect(applyBag(bag, [loss.op]).equipped).toEqual([]);
+
+    await addStack("linh_thao", 9);
+    const real = await loadBag(db, A);
+    const plan = planPkLoss(real, 3, 0, 0)!;
+    expect(await commitBagOps(db, A, [plan.op], { grantKey: "pkloss:1" })).toBe("ok");
+    expect(rows(A)).toHaveLength(0);
+    expect(rows(B)).toHaveLength(0); // nobody received anything
+    expect(await listMail(db, B)).toHaveLength(0);
+    expect(await commitBagOps(db, A, [plan.op], { grantKey: "pkloss:1" })).toBe("duplicate");
   });
 });

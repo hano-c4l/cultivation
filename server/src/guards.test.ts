@@ -1,4 +1,4 @@
-import { GUARDS, getMap, startingStats, type Vec2 } from "@game/shared";
+import { GUARDS, fullGearStats, getMap, guardStats, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -50,8 +50,8 @@ describe("guards", () => {
     expect(Object.keys(sim.ranks()).some((id) => guards.some((g) => g.id === id))).toBe(false);
   });
 
-  it("ignore white, yellow and orange names beside them, and the room can sleep with them there", () => {
-    for (const satNhan of [0, 50, 300]) {
+  it("ignore white and yellow names beside them, and the room can sleep with them there", () => {
+    for (const satNhan of [0, 50, 200]) {
       const { sim, guards } = forest();
       const p = sim.addPlayer(seed("p", { satNhan, satNhanAt: 0 }));
       const pos = new Map<string, Vec2>([["p", beside(guards[0]!)]]);
@@ -62,22 +62,38 @@ describe("guards", () => {
     }
   });
 
-  it("go for a red name in range, and win against one of the map's own level", () => {
+  it("go for an orange or a red name in range, and win against one of the map's own level in a full set of top gear", () => {
+  for (const satNhan of [201, 600]) {
     const { sim, guards } = forest();
-    const p = sim.addPlayer(seed("p", { satNhan: 600, satNhanAt: 0 }));
+    const p = sim.addPlayer(seed("p", { satNhan, satNhanAt: 0, gear: fullGearStats(0, 9, 4) }));
     const pos = new Map<string, Vec2>([["p", beside(guards[0]!)]]);
-    expect(sim.isIdle(pos)).toBe(false); // a red name in range keeps the room awake
-    const events = run(sim, 0, 60_000, pos);
+    expect(sim.isIdle(pos)).toBe(false); // a coloured name in range keeps the room awake
+    const events = run(sim, 0, 120_000, pos);
     expect(events.some((e) => e.t === "hit" && e.to === "p")).toBe(true);
     expect(p.dead).toBe(true);
-    expect(events.some((e) => e.t === "player_dead" && e.playerId === "p" && !("by" in e && e.by))).toBe(true); // a guard is not a player: nobody collects a drop
+    // A guard is not a player (nobody collects a drop), and the death says it was a guard (it lowers the sát nhân).
+    expect(events.some((e) => e.t === "player_dead" && e.playerId === "p" && !("by" in e && e.by) && "guard" in e && e.guard === true)).toBe(true);
+  }
   });
 
-  it("a name that was red but has fallen below 501 by now is left alone (sát nhân falls with the sim clock)", () => {
+  it("have a character's stats in a full set of top gear one realm up, five times the HP, and use skills", () => {
+    const g = guardStats(0);
+    expect(g.maxHp).toBeGreaterThan(5 * 1000);
+    expect(g.attack).toBeGreaterThan(250);
     const { sim, guards } = forest();
-    sim.addPlayer(seed("p", { satNhan: 505, satNhanAt: 0 }));
+    const p = sim.addPlayer(seed("p", { satNhan: 600, satNhanAt: 0 }));
+    p.hp = p.maxHp = 1e9;
+    p.stats.defense = 0;
     const pos = new Map<string, Vec2>([["p", beside(guards[0]!)]]);
-    const events = run(sim, 120_000, 125_000, pos); // two minutes later: 505 - 10
+    const hits = run(sim, 0, 30_000, pos).filter((e) => e.t === "hit" && e.to === "p").map((e) => (e as { damage: number }).damage);
+    expect(Math.max(...hits)).toBeGreaterThan(Math.min(...hits) * 1.4); // the attack skills hit harder than the plain attack
+  });
+
+  it("a name that was orange but has fallen below 201 by now is left alone (sát nhân falls with the sim clock)", () => {
+    const { sim, guards } = forest();
+    sim.addPlayer(seed("p", { satNhan: 205, satNhanAt: 0 }));
+    const pos = new Map<string, Vec2>([["p", beside(guards[0]!)]]);
+    const events = run(sim, 120_000, 125_000, pos); // two minutes later: 205 - 10 = 195, no longer orange
     expect(events.some((e) => e.t === "hit" && e.to === "p")).toBe(false);
   });
 

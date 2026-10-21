@@ -264,7 +264,7 @@ const D = await newPlayer("d");
 let d = connect(D.cookie, 5);
 await d.opened;
 let wd = await d.wait((m) => m.t === "welcome");
-assert(wd.monsters.length === 0 && wd.hp > 0 && wd.maxHp >= wd.hp, "town has no monsters and the welcome carries hp");
+assert(wd.monsters.every((m) => m.guard) && wd.hp > 0 && wd.maxHp >= wd.hp, "town has no monsters (only its guards) and the welcome carries hp");
 d.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
 await d.wait((m) => m.t === "ack" && m.seq === 1);
 await sleep(5500);
@@ -274,7 +274,7 @@ await sleep(500);
 d = connect(D.cookie, 5);
 await d.opened;
 wd = await d.wait((m) => m.t === "welcome");
-assert(wd.map === "forest" && wd.monsters.filter((m) => !m.guard).length === 9 && wd.monsters.filter((m) => !m.guard).every((m) => m.tier === 1 || m.tier === 4 || m.tier === 7) && wd.monsters.filter((m) => m.guard).length === 2, "the forest welcome lists 3 clusters of 3 monsters at bậc 1, 4 and 7, and 2 guards");
+assert(wd.map === "forest" && wd.monsters.filter((m) => !m.guard).length === 9 && wd.monsters.filter((m) => !m.guard).every((m) => m.tier === 1 || m.tier === 4 || m.tier === 7) && wd.monsters.filter((m) => m.guard).length === 4, "the forest welcome lists 3 clusters of 3 monsters at bậc 1, 4 and 7, and 4 guards");
 // Rare ranks are rolled at random, so hunt a normal bậc-1 monster to keep the test deterministic.
 const prey = wd.monsters.find((m) => !m.guard && m.rank === "normal" && m.tier === 1) ?? wd.monsters.find((m) => !m.guard);
 d.send({ t: "attack", id: prey.id });

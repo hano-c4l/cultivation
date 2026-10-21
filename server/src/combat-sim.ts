@@ -5,9 +5,13 @@ import {
   REGEN_PER_S,
   CLUSTERS,
   GUARDS,
+  getMap,
   GUARD_KIND,
   GUARD_REALM_BONUS,
   GUARD_TIER,
+  GUARD_SKILLS,
+  NAME_TIER_ORANGE_FROM,
+  guardStats,
   NAME_TIER_RED_FROM,
   decayedSatNhan,
   RANKS,
@@ -210,8 +214,11 @@ interface Monster {
   nextAttackAt: number;
   lastRepathAt: number;
   respawnAt: number;
-  /** A vệ binh: fixed class and element, fights only red names and its attackers, pays nothing when killed. */
+  /** A vệ binh: fixed class and element, fights only orange and red names and its attackers, pays nothing when killed. */
   guard?: boolean;
+  /** Guards only: when each of its skills is ready again, and until when its buff lasts. */
+  skillReadyAt?: Record<string, number>;
+  buffUntil?: number;
 }
 
 export type SimEvent =
@@ -242,7 +249,7 @@ export type SimEvent =
   | { t: "loot"; playerId: string; drops: LootDrop[] }
   /** A kill dropped Linh Thạch for this player; the room writes it to the ledger. */
   | { t: "drop"; playerId: string; amount: number }
-  | { t: "player_dead"; playerId: string; /** The player who landed the killing blow, when it was a player. */ by?: string }
+  | { t: "player_dead"; playerId: string; /** The player who landed the killing blow, when it was a player. */ by?: string; /** Killed by a guard (it lowers the victim's sát nhân). */ guard?: true }
   /** A player killed another player: the room settles the scores (shared/src/pk.ts). */
   | { t: "pvp_kill"; killerId: string; victimId: string }
   /** The server wants this player to walk to `to` (chasing their target). */
@@ -377,13 +384,18 @@ export class CombatSim {
    */
   private applyRank(m: Monster, saved?: string): void {
     if (m.guard) {
-      // A guard never rerolls: normal class, its own element, one realm above the map and a fixed bậc.
-      const g = monsterStats(m.def, this.realm + GUARD_REALM_BONUS, GUARD_TIER, "normal");
+      // A guard never rerolls: normal class, its own element, and the stats of a character one realm above the map in a full set of gear
+      // (shared/src/guards.ts), with five times the HP.
+      const g = guardStats(this.realm);
       m.rank = "normal";
       m.combatant.element = m.def.element;
       m.maxHp = g.maxHp;
       m.combatant.attack = g.attack;
       m.combatant.defense = g.defense;
+      m.combatant.critRate = g.critRate;
+      m.combatant.dodgeRate = g.dodgeRate;
+      m.skillReadyAt = {};
+      m.buffUntil = 0;
       return;
     }
     const [savedRank, savedElement] = (saved ?? "").split("|");
@@ -430,6 +442,11 @@ export class CombatSim {
       if (p.dead || p.targetId !== null || p.hp < p.maxHp || p.hots.length > 0 || moving.has(p.id)) return false;
     }
     return true;
+  }
+
+  /** A safe map's sim exists only for its guards. */
+  get isSafeMap(): boolean {
+    return this.map.safe === true;
   }
 
   get monsterCount(): number {
@@ -732,7 +749,7 @@ export class CombatSim {
    * Safe maps never get here: they have no simulation.
    */
   pvpAllowed(p: PlayerProfile, q: PlayerProfile): boolean {
-    if (p.dead || q.dead || p.id === q.id || isPkProtected(p.realm, p.stage) || isPkProtected(q.realm, q.stage)) return false;
+    if (this.map.safe || p.dead || q.dead || p.id === q.id || isPkProtected(p.realm, p.stage) || isPkProtected(q.realm, q.stage)) return false;
     return canStartPvp(p.pkMode, q.pkMode) || p.retaliateId === q.id || this.hitRecently(p, q.id);
   }
 
@@ -907,7 +924,7 @@ export class CombatSim {
   /** Whether a monster starts a chase on this player: any monster goes for anyone in range, a guard only for red names and the ones who hit it. */
   private wouldAggro(m: Monster, p: PlayerProfile): boolean {
     if (!m.guard) return true;
-    return m.damage.has(p.id) || this.satNhanNow(p) >= NAME_TIER_RED_FROM;
+    return m.damage.has(p.id) || this.satNhanNow(p) >= NAME_TIER_ORANGE_FROM;
   }
 
   /** A player's sát nhân at the sim clock (the stored value less 5 a minute since it was set). */
@@ -917,12 +934,45 @@ export class CombatSim {
 
   /** Whether `p` may attack a guard: the PK state must be on and the player must not be under the newbie protection. */
   private canAttackGuard(p: PlayerProfile): boolean {
-    return p.pkMode > 0 && !isPkProtected(p.realm, p.stage);
+    return !this.map.safe && p.pkMode > 0 && !isPkProtected(p.realm, p.stage);
+  }
+
+  /**
+   * What a guard does with this turn: heals itself when hurt, raises its attack, or picks one of its two attack skills, in that order, each on
+   * its own cooldown; otherwise a plain attack. Returns the attack power multiplier, or null when the turn went to the heal or the buff.
+   */
+  private guardTurn(m: Monster, now: number, events: SimEvent[]): number | null {
+    const ready = (id: string, cd: number): boolean => {
+      if (now < (m.skillReadyAt?.[id] ?? 0)) return false;
+      (m.skillReadyAt ??= {})[id] = now + cd;
+      return true;
+    };
+    const left = (id: string) => (m.skillReadyAt?.[id] ?? 0) <= now;
+    if (m.hp < m.maxHp * GUARD_SKILLS.mend.below && left("mend") && ready("mend", GUARD_SKILLS.mend.cdMs)) {
+      m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * GUARD_SKILLS.mend.fraction));
+      events.push({ t: "mon", monster: this.snapshot(m, now) });
+      return null;
+    }
+    if (now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", GUARD_SKILLS.ward.cdMs)) {
+      m.buffUntil = now + GUARD_SKILLS.ward.durationMs;
+      return null;
+    }
+    const buff = now < (m.buffUntil ?? 0) ? 1 + GUARD_SKILLS.ward.attackPct / 100 : 1;
+    if (left("burst") && ready("burst", GUARD_SKILLS.burst.cdMs)) return GUARD_SKILLS.burst.power * buff;
+    if (left("slash") && ready("slash", GUARD_SKILLS.slash.cdMs)) return GUARD_SKILLS.slash.power * buff;
+    return buff;
   }
 
   private monsterAttack(m: Monster, p: PlayerProfile, now: number, events: SimEvent[]): void {
     m.nextAttackAt = now + m.def.attackCooldownMs;
-    const hit = computeDamage(m.combatant, p.stats, this.rand);
+    let power = 1;
+    if (m.guard) {
+      const turn = this.guardTurn(m, now, events);
+      if (turn === null) return; // the turn went to a heal or the buff
+      power = turn;
+    }
+    const attacker = power === 1 ? m.combatant : { ...m.combatant, attack: Math.max(1, Math.round(m.combatant.attack * power)) };
+    const hit = computeDamage(attacker, p.stats, this.rand);
     p.hp = Math.max(0, p.hp - hit.damage);
     this.settleMp(p, now); // regeneration up to this hit is kept; it pauses from here
     p.lastHurtAt = now;
@@ -938,7 +988,7 @@ export class CombatSim {
     if (p.hp <= 0) {
       p.dead = true;
       p.targetId = null;
-      events.push({ t: "player_dead", playerId: p.id });
+      events.push({ t: "player_dead", playerId: p.id, ...(m.guard ? { guard: true as const } : {}) });
     }
   }
 
@@ -1269,4 +1319,16 @@ export class CombatSim {
       p.expDirty = true;
     }
   }
+}
+
+const guardSnapshotCache = new Map<MapId, MonsterSnapshot[]>();
+
+/** The guards of a map as they stand at home, for a safe map that has no simulation running (so they can still be seen). */
+export function staticGuardSnapshots(mapId: MapId): MonsterSnapshot[] {
+  let list = guardSnapshotCache.get(mapId);
+  if (!list) {
+    list = new CombatSim(getMap(mapId), mapId, Math.random, 0).snapshots(0).filter((m) => m.guard);
+    guardSnapshotCache.set(mapId, list);
+  }
+  return list;
 }

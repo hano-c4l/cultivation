@@ -167,12 +167,7 @@ export function planPkDrop(
   ids: { newId: string; mailId: string },
   subject: string,
 ): Extract<BagOp, { op: "give" }> | null {
-  if (roll >= PK_DROP_CHANCE[tier]) return null;
-  const candidates = [
-    ...bag.items.filter((i) => !isBonded(i.type)).map((i) => ({ id: i.id, type: i.type, qty: i.qty, dur: i.dur, max: i.max, lv: i.lv, xp: i.xp })),
-    ...bag.equipped.filter((e) => !isBonded(e.type)).map((e) => ({ id: e.id, type: e.type, qty: 1, dur: e.dur, max: e.max, lv: e.lv, xp: e.xp })),
-  ];
-  const c = candidates[Math.min(candidates.length - 1, Math.floor(pick * candidates.length))];
+  const c = pickDropCandidate(bag, tier, roll, pick);
   if (!c) return null;
   return {
     op: "give",
@@ -188,4 +183,24 @@ export function planPkDrop(
     mailId: ids.mailId,
     subject,
   };
+}
+
+/** The same roll and pick for a death with no player to receive the item (a guard or a monster killed the player): the item is simply lost. */
+export function planPkLoss(bag: BagContents, tier: NameTier, roll: number, pick: number): { op: Extract<BagOp, { op: "remove" }>; type: string; qty: number } | null {
+  const c = pickDropCandidate(bag, tier, roll, pick);
+  return c ? { op: { op: "remove", id: c.id, qty: c.qty }, type: c.type, qty: c.qty } : null;
+}
+
+function pickDropCandidate(bag: BagContents, tier: NameTier, roll: number, pick: number) {
+  if (roll >= PK_DROP_CHANCE[tier]) return undefined;
+  const candidates = [
+    ...bag.items.filter((i) => !isBonded(i.type)).map((i) => ({ id: i.id, type: i.type, qty: i.qty, dur: i.dur, max: i.max, lv: i.lv, xp: i.xp })),
+    ...bag.equipped.filter((e) => !isBonded(e.type)).map((e) => ({ id: e.id, type: e.type, qty: 1, dur: e.dur, max: e.max, lv: e.lv, xp: e.xp })),
+  ];
+  return candidates[Math.min(candidates.length - 1, Math.floor(pick * candidates.length))];
+}
+
+/** A guard's kill of a player lowers the victim's sát nhân like any death does. */
+export function satNhanAfterDeath(satNhan: number): number {
+  return Math.max(0, satNhan - SAT_NHAN_LOST_ON_DEATH);
 }

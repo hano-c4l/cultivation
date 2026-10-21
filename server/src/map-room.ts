@@ -121,7 +121,7 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
-import { DEATH_DURABILITY_BY_TIER, applyGuardKill, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -159,7 +159,7 @@ import {
   type BagState,
   type MailItem,
 } from "./inventory";
-import { CombatSim, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
+import { CombatSim, staticGuardSnapshots, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
 import { getSetting } from "./settings";
 
@@ -421,7 +421,7 @@ export class MapRoom extends DurableObject<Env> {
       // synchronous, so no broadcast, tick event or monster resync can reach the new socket ahead of its welcome
       // (the client rebuilds its actors from the welcome and would otherwise show stale ones).
       // After a sleep the sim is gone and every connected player needs a profile again.
-      await this.wake(mapId);
+      await this.wake(mapId, row.sat_nhan);
       const wallet = await getWallet(this.env.DB, row.id).catch((err) => {
         console.error("wallet read failed", err);
         return { ...EMPTY_WALLET };
@@ -514,7 +514,8 @@ export class MapRoom extends DurableObject<Env> {
         players,
         colo,
         character: toCharacterSheet(row),
-        monsters: sim?.snapshots(Date.now()) ?? [],
+        // A safe map has no simulation until a coloured name is in it, but its guards are always there to see.
+        monsters: sim?.snapshots(Date.now()) ?? (map.safe ? staticGuardSnapshots(mapId) : []),
         hp: profile?.hp ?? away.hp,
         maxHp,
         wallet,
@@ -893,9 +894,19 @@ export class MapRoom extends DurableObject<Env> {
 
   private ensureSim(mapId: MapId, ranks?: Record<string, string>): CombatSim | null {
     const map = getMap(mapId);
-    if (map.safe) return null;
+    if (map.safe && GUARDS[mapId].length === 0) return null;
     if (!this.sim) this.sim = new CombatSim(map, mapId, Math.random, Date.now(), ranks);
     return this.sim;
+  }
+
+  /**
+   * Whether some character in this room (or one that is joining, with `joinerSatNhan`) is an orange or red name. A safe map only runs a simulation
+   * (for its guards) while one is here: otherwise it stays without one, so it can sleep.
+   */
+  private murdererPresent(joinerSatNhan = 0): boolean {
+    if (joinerSatNhan >= NAME_TIER_ORANGE_FROM) return true;
+    const now = Date.now();
+    return this.players().some((p) => !p.transferring && this.satNhanOf(p, now) >= NAME_TIER_ORANGE_FROM);
   }
 
   /**
@@ -904,8 +915,9 @@ export class MapRoom extends DurableObject<Env> {
    * the monster classes from storage and a profile for every connected player from D1, then tells clients about the
    * monsters again.
    */
-  private wake(mapId: MapId): Promise<void> {
-    if (getMap(mapId).safe) return Promise.resolve();
+  private wake(mapId: MapId, joinerSatNhan = 0): Promise<void> {
+    // A safe map is woken only for its guards, and only when a coloured name is in it (see murdererPresent).
+    if (getMap(mapId).safe && !this.sim && (GUARDS[mapId].length === 0 || !this.murdererPresent(joinerSatNhan))) return Promise.resolve();
     if (this.sim) {
       this.startTick();
       return Promise.resolve();
@@ -979,6 +991,13 @@ export class MapRoom extends DurableObject<Env> {
   /** Forgets a character's combat profile; with nobody left the tick stops and the monsters are discarded. */
   private dropPlayer(id: string): void {
     this.sim?.removePlayer(id);
+    // A safe map's sim exists only for the guards: with no coloured name left it goes, and the room can sleep again.
+    if (this.sim?.isSafeMap && !this.murdererPresent()) {
+      if (this.tickTimer) clearInterval(this.tickTimer);
+      this.tickTimer = null;
+      this.sim = null;
+      this.ranksJson = null;
+    }
     // Judged by the sockets, not the sim: after a sleep the sim may be gone while the last players leave.
     if (this.players().length === 0) {
       if (this.tickTimer) clearInterval(this.tickTimer);
@@ -1188,7 +1207,7 @@ export class MapRoom extends DurableObject<Env> {
         const entry = sockets.get(ev.playerId);
         const profile = this.sim?.getPlayer(ev.playerId);
         if (!entry || !profile) return;
-        later.push(this.handleDeath(entry.ws, entry.state, profile, ev.by));
+        later.push(this.handleDeath(entry.ws, entry.state, profile, ev.by, ev.guard === true));
         return;
       }
       case "teleport": {
@@ -2829,7 +2848,7 @@ export class MapRoom extends DurableObject<Env> {
     return loss;
   }
 
-  private async handleDeath(ws: WebSocket, state: PlayerState, profile: PlayerProfile, by?: string): Promise<void> {
+  private async handleDeath(ws: WebSocket, state: PlayerState, profile: PlayerProfile, by?: string, byGuard = false): Promise<void> {
     // The name tier is read before anything awaits. The sim pushes `player_dead` before `pvp_kill`, and settlePvpKill (called right after this
     // synchronous start) lowers the victim's sát nhân, so reading later would use the score after the kill. server/src/pvp.test.ts pins the order.
     const tier = nameTier(this.satNhanOf(state, Date.now()));
@@ -2838,6 +2857,10 @@ export class MapRoom extends DurableObject<Env> {
     // Killed by a player while yellow, orange or red: maybe one item goes to the killer's mailbox. It is done first (and awaited), so the wear
     // below and the handoff, which waits for the bag queue, both see the bag without it.
     if (by && tier >= 1) await this.dropToKiller(ws, state, by, tier);
+    // Killed by a guard or a monster while yellow, orange or red: the same chance of losing an item, but with no one to receive it it is just gone.
+    else if (tier >= 1) await this.loseItem(ws, state, tier);
+    // A guard's kill lowers the victim's sát nhân like a kill by a player does.
+    if (byGuard) this.settleGuardDeath(ws, state);
     // Every worn piece wears down (whatever killed the character). Queued before the handoff, which waits for the bag
     // queue before the lock is released, so the town room reads the new durability.
     this.wearGearOnDeath(ws, state.id, { gender: profile.gender, realm: profile.realm, stage: profile.stage, base: profile.base }, DEATH_DURABILITY_BY_TIER[tier]);
@@ -2849,11 +2872,12 @@ export class MapRoom extends DurableObject<Env> {
   /**
    * The PvP drop (docs/PHASE2.md 2f): with the chance of the victim's name tier, one bag stack or worn piece goes to the killer's mailbox (never
    * expiring) in ONE batch (the victim's row is deleted and a copy is made for the killer), keyed once per kill so a retry cannot give two. The
-   * killer must still be in this room; if it left, nothing drops. Both sides are told.
+   * killer does not have to be in this room (the mail is written to D1 for it anyway); both sides are told when they are here.
    */
   private async dropToKiller(ws: WebSocket, victim: PlayerState, killerId: string, tier: NameTier): Promise<void> {
+    // The killer need not be here any more (it may have left the room or even logged out): the mail goes to its mailbox in D1 either way,
+    // only the notification and the refreshed mail list need its socket in this room.
     const killer = this.socketOf(killerId);
-    if (!killer) return;
     const key = `pkdrop:${crypto.randomUUID()}`;
     const ids = { newId: crypto.randomUUID(), mailId: crypto.randomUUID() };
     // Local tests set PK_DROP_FORCE=1 (in .dev.vars) so the drop always happens; the real game rolls.
@@ -2876,9 +2900,55 @@ export class MapRoom extends DurableObject<Env> {
     });
     const gave = chosen as Extract<BagOp, { op: "give" }> | null;
     if (!done || !gave) return;
-    this.send(ws, { t: "pk_drop", role: "victim", item: gave.type, qty: gave.qty, other: killer.state.name });
-    this.send(killer.ws, { t: "pk_drop", role: "killer", item: gave.type, qty: gave.qty, other: victim.name });
-    await this.sendMailList(killerId, killer.ws).catch((err) => console.error("mail list failed", killerId, err));
+    const killerName = killer?.state.name ?? (await getCharacterById(this.env.DB, killerId).catch(() => null))?.name ?? "";
+    this.send(ws, { t: "pk_drop", role: "victim", item: gave.type, qty: gave.qty, other: killerName });
+    if (killer) {
+      this.send(killer.ws, { t: "pk_drop", role: "killer", item: gave.type, qty: gave.qty, other: victim.name });
+      await this.sendMailList(killerId, killer.ws).catch((err) => console.error("mail list failed", killerId, err));
+    }
+  }
+
+  /** The PvP drop with nobody to give it to: with the chance of the name tier, one item (the same choice as for a kill by a player) is deleted. */
+  private async loseItem(ws: WebSocket, victim: PlayerState, tier: NameTier): Promise<void> {
+    const key = `pkloss:${crypto.randomUUID()}`;
+    const roll = this.env.PK_DROP_FORCE === "1" ? 0 : Math.random();
+    const pick = Math.random();
+    let lost: { type: string; qty: number } | null = null;
+    await this.bagTask(victim.id, async () => {
+      const res = await this.mutateBag(
+        victim.id,
+        (bag) => {
+          const plan = planPkLoss({ items: bag.items, equipped: bag.equipped }, tier, roll, pick);
+          lost = plan ? { type: plan.type, qty: plan.qty } : null;
+          return plan ? { ops: [plan.op] } : null;
+        },
+        key,
+      );
+      if (!res.ok) {
+        lost = null;
+        return;
+      }
+      this.sendBagDelta(victim.id, res.before, res.after, ws);
+    });
+    const gone = lost as { type: string; qty: number } | null;
+    if (gone) this.send(ws, { t: "pk_drop", role: "lost", item: gone.type, qty: gone.qty, other: "" });
+  }
+
+  /** A guard killed this character: its sát nhân falls by the death share (written at once, like after a kill by a player). */
+  private settleGuardDeath(ws: WebSocket, state: PlayerState): void {
+    const now = Date.now();
+    const next = satNhanAfterDeath(this.satNhanOf(state, now));
+    const apply = (s: PlayerState) => {
+      s.sn = next;
+      s.snAt = now;
+      s.pkDirty = true;
+    };
+    this.patchState(ws, apply);
+    apply(state);
+    this.sim?.setPk(state.id, { satKhi: state.sk ?? 0, hero: state.ah ?? 0, satNhan: next, satNhanAt: now });
+    this.send(ws, { t: "pk", mode: state.pk ?? 0, satKhi: state.sk ?? 0, satNhan: Math.round(next), hero: state.ah ?? 0 });
+    this.broadcast({ t: "pk_score", id: state.id, sn: Math.round(next) });
+    void this.flushPk(state);
   }
 
   /** A teleport skill went off: the player stands at `to` from now on, and everyone (the player included) gets that as a new track. */

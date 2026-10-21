@@ -40,7 +40,7 @@ describe("CombatSim", () => {
   it("spawns every configured monster on the forest map and none in town", () => {
     expect(forestSim().monsterCount).toBe(CLUSTERS.forest.reduce((n, c) => n + c.count, 0) + GUARDS.forest.length);
     expect(new CombatSim(getMap("cave"), "cave", noCrit, 0).monsterCount).toBe(CLUSTERS.cave.reduce((n, c) => n + c.count, 0) + GUARDS.cave.length);
-    expect(new CombatSim(getMap("town"), "town", noCrit, 0).monsterCount).toBe(0);
+    expect(new CombatSim(getMap("town"), "town", noCrit, 0).monsterCount).toBe(GUARDS.town.length); // only the guards at the town gate
   });
 
   it("snapshots carry a path, hp and the kind", () => {
