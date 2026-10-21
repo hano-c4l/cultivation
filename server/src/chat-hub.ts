@@ -158,6 +158,11 @@ export class ChatHub extends DurableObject<Env> {
     }
   }
 
+  /** A server-side announcement (a boss appeared or fell), shown as a system line to everyone online. Called by a map room over RPC. */
+  async announce(text: string): Promise<void> {
+    this.broadcast({ t: "chat", channel: "system", id: "system", name: "", text, ts: Date.now() });
+  }
+
   private broadcast(msg: ServerMessage): void {
     const data = JSON.stringify(msg);
     for (const ws of this.ctx.getWebSockets()) {

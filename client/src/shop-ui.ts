@@ -28,6 +28,8 @@ export interface ShopUi {
   refresh(): void;
   /** A trade went through: shown as a green line at the top of the window. */
   notify(text: string): void;
+  /** The merchant refuses this player: the window shows only the reason. */
+  ban(text: string): void;
   isOpen(): boolean;
 }
 
@@ -62,6 +64,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   let element: string | null = null;
   let left: Record<string, number> = {};
   let flash = "";
+  let banned = "";
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
   /** Items ticked for the quick sale (by item id, which survives the bag being redrawn). */
   const ticked = new Set<string>();
@@ -231,6 +234,10 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     const close = el("button", "eq-small", "×");
     close.onclick = () => ui.close();
     head.append(el("b", undefined, vi.shop.title), close);
+    if (banned) {
+      panel.append(head, el("div", "shop-flash", banned));
+      return;
+    }
     const modes = el("div", "eq-tabs");
     for (const m of ["buy", "sell"] as const) {
       const b = el("button", m === mode ? "active" : undefined, vi.shop.tabs[m]);
@@ -280,6 +287,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       category = "all";
       ticked.clear();
       flash = "";
+      banned = "";
       if (element === null) element = sheet?.roots[0] ?? "";
       panel.hidden = false;
       send({ t: "npc_open", npc: id });
@@ -295,6 +303,10 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     setStock(id, stock) {
       if (id !== npc) return;
       left = stock;
+      render();
+    },
+    ban(text) {
+      banned = text;
       render();
     },
     notify(text) {

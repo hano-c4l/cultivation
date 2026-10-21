@@ -84,6 +84,20 @@ describe("fighting a player", () => {
     expect(a.hp).toBeLessThan(a.maxHp);
   });
 
+  it("forgetQuarrels (a portal) ends the right to answer; a plain removal of the attacker does not", () => {
+    const { sim, b } = pair();
+    sim.setPkMode("a", 2);
+    sim.setTarget("a", "b");
+    run(sim, 0, 1000);
+    expect(b.hitBy.has("a")).toBe(true);
+    sim.removePlayer("a"); // a reconnect: b keeps the right to answer a later
+    expect(b.hitBy.has("a")).toBe(true);
+    sim.addPlayer(seed("a"));
+    sim.forgetQuarrels("a");
+    expect(b.hitBy.has("a")).toBe(false);
+    expect(sim.setTarget("b", "a")).toBe(false);
+  });
+
   it("the retaliation ends with the target: the answering player cannot start a fight on their own", () => {
     const { sim, a, b } = pair();
     sim.setPkMode("a", 2);
@@ -227,5 +241,58 @@ describe("what the scores do in a fight", () => {
     };
     expect(at(1)).toEqual([]);
     expect(at(1.05)).toEqual(["linh_thao", "thu_cot"]);
+  });
+});
+
+describe("the map boss", () => {
+  const forest = () => {
+    const sim = new CombatSim(getMap("forest"), "forest", noCrit, 0);
+    const a = sim.addPlayer(seed("a", { realm: 0, stage: 9 }));
+    const b = sim.addPlayer(seed("b", { realm: 0, stage: 9 }));
+    return { sim, a, b };
+  };
+
+  it("spawns once, stays out of the saved classes and is flagged in its snapshot", () => {
+    const { sim } = forest();
+    const snap = sim.spawnBoss("forest", 0);
+    expect(snap?.boss).toBe(true);
+    expect(sim.hasBoss).toBe(true);
+    expect(sim.spawnBoss("forest", 0)).toBeNull();
+    expect(Object.keys(sim.ranks())).not.toContain(snap!.id);
+    expect(new CombatSim(getMap("town"), "town", noCrit, 0).spawnBoss("town", 0)).toBeNull();
+  });
+
+  it("dies for good and pays its sharers: EXP, Linh Thạch and the claim release event", () => {
+    const { sim, a, b } = forest();
+    const snap = sim.spawnBoss("forest", 0)!;
+    const at: Vec2 = [snap.path[0]![0] + 1, snap.path[0]![1]];
+    const pos = new Map<string, Vec2>([["a", at], ["b", [at[0], at[1] + 0.5]]]);
+    sim.setMonsterHp(snap.id, 1);
+    sim.setTarget("a", snap.id);
+    const events = run(sim, 0, 3000, pos);
+    const kill = events.find((e) => e.t === "boss_kill");
+    expect(kill).toMatchObject({ t: "boss_kill", killerId: "a" });
+    if (kill?.t === "boss_kill") expect(kill.shares.map((s) => s.id)).toEqual(["a"]); // b dealt nothing: under 10%
+    expect(events.some((e) => e.t === "progress" && e.playerId === "a")).toBe(true);
+    expect(events.some((e) => e.t === "progress" && e.playerId === "b")).toBe(false);
+    expect(a.exp).toBeGreaterThan(0);
+    expect(b.exp).toBe(0);
+    expect(sim.hasBoss).toBe(false);
+    expect(sim.snapshots(10_000).some((m) => m.boss)).toBe(false);
+  });
+
+  it("asks for the boss once when the kill count is reached, and not when it is off", () => {
+    const killOne = (enable: boolean) => {
+      const sim = new CombatSim(getMap("forest"), "forest", noCrit, 0);
+      sim.addPlayer(seed("a", { realm: 0, stage: 9 }));
+      if (enable) sim.enableBoss(500);
+      const m = sim.snapshots(0).find((s) => s.tier === 1 && !s.guard)!;
+      const at: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+      sim.setMonsterHp(m.id, 1);
+      sim.setTarget("a", m.id);
+      return run(sim, 0, 60_000, new Map([["a", at]])).filter((e) => e.t === "boss_request");
+    };
+    expect(killOne(true)).toHaveLength(1);
+    expect(killOne(false)).toHaveLength(0);
   });
 });

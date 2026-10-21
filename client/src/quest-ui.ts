@@ -28,6 +28,8 @@ export interface QuestUi {
   /** The bag changed: "collect" objectives may have become possible. */
   refresh(): void;
   notify(text: string): void;
+  /** The NPC refuses this player: the window shows only the reason. */
+  ban(text: string): void;
   isOpen(): boolean;
   /** The title of a quest seen so far. */
   titleOf(quest: string): string | undefined;
@@ -102,6 +104,7 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
   let states: Record<string, QuestProgressView> = {};
   let active: QuestDef[] = [];
   let flash = "";
+  let banned = "";
   let logTab: "doing" | "done" = "doing";
   /** Quests shown under the vitals (at most MAX_TRACKED), by id; kept in this browser. */
   let tracked: string[] = [];
@@ -266,6 +269,10 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     close.onclick = () => ui.close();
     head.append(el("b", undefined, vi.npcs[npc] ?? vi.quests.title), close);
     panel.append(head);
+    if (banned) {
+      panel.append(el("div", "shop-flash", banned));
+      return;
+    }
     if (flash) panel.append(el("div", "shop-flash", flash));
     // The server sends only what can be taken or is being done, the ones already taken first in the order they were taken.
     if (loading) panel.append(el("div", "muted", vi.quests.loading));
@@ -315,6 +322,7 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
       loading = true;
       needRealm = undefined;
       flash = "";
+      banned = "";
       panel.hidden = false;
       send({ t: "npc_open", npc: id });
       render();
@@ -353,6 +361,11 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
     },
     refresh() {
       checkReady();
+      render();
+    },
+    ban(text) {
+      banned = text;
+      loading = false;
       render();
     },
     notify(text) {
