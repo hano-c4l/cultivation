@@ -8,6 +8,7 @@ import { isPkMode, type PkMode } from "./pk";
 import { isPathId, type PathError, type PathId } from "./paths";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
+import type { EnhanceLevelDef } from "./smith";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type Carry, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
@@ -75,7 +76,12 @@ export type ClientMessage =
   | { t: "eq_equip"; tab: number; cell: number; slot?: EquipSlot }
   | { t: "eq_unequip"; slot: EquipSlot }
   /** Repair one worn piece, or all of them, for Linh Thạch. */
+  /** GM only: repair worn pieces from anywhere. Players repair at the blacksmith (smith_repair). */
   | { t: "eq_repair"; slot: EquipSlot | "all" }
+  /** Blacksmith: upgrade one piece, worn (`slot`) or in the bag (`tab`, `cell`); `protect` spends a Hộ Cấp Phù when it would save a level. */
+  | { t: "smith_upgrade"; npc: string; slot?: EquipSlot; tab?: number; cell?: number; protect: boolean }
+  /** Blacksmith: repair one worn piece or all of them for Linh Thạch. */
+  | { t: "smith_repair"; npc: string; slot: EquipSlot | "all" }
   /** Use a skill. `target` is the monster to hit (attack skills; omitted: the current target). Heals and buffs need none. */
   | { t: "cast"; skill: string; target?: string; x?: number; y?: number; el?: SpiritualRoot }
   /** Set one hotbar slot: "" (empty), "s:<skill id>" or "i:<item type>". One slot per message, one D1 write. */
@@ -250,7 +256,7 @@ export type ServerMessage =
   | { t: "tp"; ms: number; item: string }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
   | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "other" }
-  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer"; retryMs?: number }
+  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -273,6 +279,10 @@ export type ServerMessage =
   | { t: "eq_worn" }
   /** A repair was paid for. */
   | { t: "repaired"; cost: number }
+  /** The blacksmith's window: the upgrade rules and the extra success chance (percent) each of your pieces has built up from failures. */
+  | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number> }
+  /** The outcome of an upgrade: the piece, whether it worked, its level now, whether a level was lost or a Hộ Cấp Phù used, and its new bonus chance. */
+  | { t: "smith_result"; id: string; success: boolean; level: number; dropped: boolean; scrollUsed: boolean; pity: number }
   /** The receiving character died; a transfer to town follows. */
   | { t: "died"; expLost: number }
   /** A breakthrough started: it ends in `ms` unless interrupted, with `ratePct` percent chance. */
@@ -419,6 +429,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isEquipSlot(m.slot) ? { t: "eq_unequip", slot: m.slot } : null;
     case "eq_repair":
       return m.slot === "all" || isEquipSlot(m.slot) ? { t: "eq_repair", slot: m.slot as EquipSlot | "all" } : null;
+    case "smith_upgrade": {
+      if (!isNpcId(m.npc) || typeof m.protect !== "boolean") return null;
+      if (m.slot !== undefined) return isEquipSlot(m.slot) ? { t: "smith_upgrade", npc: m.npc, slot: m.slot, protect: m.protect } : null;
+      return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) ? { t: "smith_upgrade", npc: m.npc, tab: m.tab, cell: m.cell, protect: m.protect } : null;
+    }
+    case "smith_repair":
+      return isNpcId(m.npc) && (m.slot === "all" || isEquipSlot(m.slot)) ? { t: "smith_repair", npc: m.npc, slot: m.slot as EquipSlot | "all" } : null;
     case "npc_open":
       return isNpcId(m.npc) ? { t: "npc_open", npc: m.npc } : null;
     case "shop_buy":

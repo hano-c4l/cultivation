@@ -162,6 +162,26 @@
       #shop-panel .shop-main { display: flex; align-items: center; gap: 8px; min-width: 0; } #shop-panel .shop-main input { flex: none; }
       #shop-panel .shop-bulk { display: flex; gap: 6px; margin-top: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
       #shop-panel .shop-price { color: #ffd54a; font-variant-numeric: tabular-nums; }
+      #smith-panel[hidden] { display: none; }
+      #smith-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
+        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
+        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #smith-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
+      #smith-panel button:disabled { opacity: 0.45; cursor: default; }
+      #smith-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #smith-panel .eq-head b { flex: 1; font-size: 15px; }
+      #smith-panel .eq-tabs { display: flex; gap: 4px; margin: 6px 0; } #smith-panel .eq-tabs button { padding: 4px 10px; font-size: 12px; background: #3a4560; color: #e8e4d8; } #smith-panel .eq-tabs button.active { background: #d6a94b; color: #1b1405; }
+      #smith-panel .muted { opacity: 0.65; font-size: 12px; }
+      #smith-panel .shop-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; margin-top: 6px; padding: 4px 6px; border: 1px solid #3a4560; border-radius: 6px; }
+      #smith-panel .shop-item.rar-uncommon .shop-name { color: #4fc3f7; } #smith-panel .shop-item.rar-rare .shop-name { color: #ba68c8; } #smith-panel .shop-item.rar-epic .shop-name { color: #ffb300; }
+      #smith-panel .shop-name { display: flex; align-items: center; gap: 5px; font-weight: 600; }
+      #smith-panel .shop-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; } #smith-panel .shop-side input { width: 56px; }
+      #smith-panel .shop-cats { flex-wrap: wrap; } #smith-panel .shop-cats button { padding: 3px 7px; }
+      #smith-panel .shop-flash { margin: 4px 0; padding: 5px 8px; border-radius: 6px; background: rgba(60, 160, 110, 0.25); color: #9be8c0; }
+      #smith-panel .shop-element { display: flex; align-items: center; gap: 6px; margin: 4px 0; } #smith-panel select { background: #2a3245; color: #e8e4d8; border: 1px solid #3a4560; border-radius: 6px; padding: 3px 6px; font: inherit; }
+      #smith-panel .shop-main { display: flex; align-items: center; gap: 8px; min-width: 0; } #smith-panel .shop-main input { flex: none; }
+      #smith-panel .shop-bulk { display: flex; gap: 6px; margin-top: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+      #smith-panel .shop-price { color: #ffd54a; font-variant-numeric: tabular-nums; }
+      #smith-panel .smith-keep { display: block; margin: 6px 0; } #smith-panel .shop-flash.smith-bad { background: rgba(190, 80, 70, 0.25); color: #f0a8a0; }
       #eq-btn { position: fixed; right: 12px; top: 92px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #eq-btn[hidden], #eq-panel[hidden] { display: none; }

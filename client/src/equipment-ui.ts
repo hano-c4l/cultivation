@@ -41,7 +41,7 @@ const ARTIFACT_SLOTS: ReadonlySet<EquipSlot> = new Set<EquipSlot>(["bonded", "fl
  * open a chooser with the bag pieces that fit it. The server decides everything (who may wear what, the price), the
  * checks here only grey out what it would refuse and say why.
  */
-export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => BagItem[]): EquipmentUi {
+export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => BagItem[], isAdmin = false): EquipmentUi {
   const toggle = el("button", undefined, vi.equip.button);
   toggle.id = "eq-btn";
   toggle.hidden = true;
@@ -80,7 +80,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       const optDot = elementDot(item.type);
       const optName = el("div", undefined, nameOf(item.type));
       if (optDot) optName.prepend(optDot);
-      text.append(tagOf(item.type, item.lv), optName, el("div", "muted", equipLines(item.type, item.dur, item.max, item.lv, item.rs).join(" · ")));
+      text.append(tagOf(item.type, item.lv), optName, el("div", "muted", equipLines(item.type, item.dur, item.max, item.lv, item.rs, item.en).join(" · ")));
       const btn = el("button", undefined, vi.inventory.wear);
       btn.onclick = () => {
         send({ t: "eq_equip", tab: item.tab, cell: item.cell, slot });
@@ -101,7 +101,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
   /** Full description of a worn piece: grade, rarity, stats at the current durability, durability, requirements, style. */
   function renderInfo(piece: EquippedItem): HTMLElement {
     const box = el("div", `eq-info rar-${getItemDef(piece.type)?.rarity ?? "common"}`);
-    box.append(describeItem(piece.type, { dur: piece.dur, max: piece.max, lv: piece.lv, xp: piece.xp, rs: piece.rs, wearer: wearer() ?? undefined }));
+    box.append(describeItem(piece.type, { dur: piece.dur, max: piece.max, lv: piece.lv, xp: piece.xp, rs: piece.rs, en: piece.en, wearer: wearer() ?? undefined }));
     return box;
   }
 
@@ -117,11 +117,16 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
     panel.append(head);
     if (!w) return;
 
-    const all = planRepair({ items: [], equipped: worn }, "all");
-    const repairAll = el("button", "eq-wide", all.ok ? vi.equip.repairAll(all.cost) : vi.equip.nothingToRepair);
-    repairAll.disabled = !all.ok;
-    repairAll.onclick = () => send({ t: "eq_repair", slot: "all" });
-    panel.append(repairAll);
+    // Players repair at the blacksmith; the repair here is the GM's shortcut (the server refuses it for everyone else).
+    if (isAdmin) {
+      const all = planRepair({ items: [], equipped: worn }, "all");
+      const repairAll = el("button", "eq-wide", all.ok ? vi.equip.repairAll(all.cost) : vi.equip.nothingToRepair);
+      repairAll.disabled = !all.ok;
+      repairAll.onclick = () => send({ t: "eq_repair", slot: "all" });
+      panel.append(repairAll);
+    } else {
+      panel.append(el("div", "muted", vi.equip.repairAtSmith));
+    }
 
     const bonus = equipmentBonus(worn, w);
     const parts = (Object.keys(bonus) as Array<keyof typeof bonus>).filter((k) => bonus[k] > 0).map((k) => statText(k, bonus[k]));
@@ -181,7 +186,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
         const off = el("button", "eq-small", vi.equip.unequip);
         off.onclick = () => send({ t: "eq_unequip", slot });
         actions.append(off);
-        if (piece.dur !== undefined && piece.max !== undefined && piece.dur > 0 && piece.dur < piece.max) {
+        if (isAdmin && piece.dur !== undefined && piece.max !== undefined && piece.dur > 0 && piece.dur < piece.max) {
           const cost = repairCost(equipmentInfo(piece.type)?.grade ?? 1, piece.max - piece.dur);
           const fix = el("button", "eq-small", vi.equip.repairShort(cost));
           fix.title = vi.equip.repair(cost);

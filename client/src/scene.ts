@@ -51,6 +51,7 @@ import { setCatalog } from "./constitution-store";
 import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initShop, type ShopUi } from "./shop-ui";
+import { initSmith, type SmithUi } from "./smith-ui";
 import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
 import { initChannel, type ChannelUi } from "./channel-ui";
@@ -180,6 +181,8 @@ export class GameScene extends Phaser.Scene {
   private inventory!: InventoryUi;
   private equipment!: EquipmentUi;
   private shop!: ShopUi;
+  private smith!: SmithUi;
+  private linhThach = 0;
   private quests!: QuestUi;
   private pk!: PkUi;
   private channel!: ChannelUi;
@@ -254,8 +257,9 @@ export class GameScene extends Phaser.Scene {
       pillCount: () => this.inventory.list().filter((i) => getItemDef(i.type)?.masteryPills !== undefined).reduce((n, i) => n + i.qty, 0),
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
-    this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
+    this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list(), this.registry.get("isAdmin") === true);
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
+    this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }));
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
     this.channel = initChannel();
@@ -505,7 +509,9 @@ export class GameScene extends Phaser.Scene {
       // One NPC window at a time (both would otherwise open on the same spot).
       this.shop.close();
       this.quests.close();
+      this.smith.close();
       if (npc.kind === "quest") this.quests.open(npc.id);
+      else if (npc.kind === "smith") this.smith.open(npc.id);
       else this.shop.open(npc.id, this.map.id);
       return;
     }
@@ -528,6 +534,7 @@ export class GameScene extends Phaser.Scene {
     this.lastMoveSentAt = now;
     this.shop.close(); // walking away from an NPC closes its window
     this.quests.close();
+    this.smith.close();
     this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
     const c = toScreen(tx, ty);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
@@ -582,6 +589,7 @@ export class GameScene extends Phaser.Scene {
         this.selfSheet = msg.character;
         this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
         this.vitals.setWallet(msg.wallet);
+        this.linhThach = msg.wallet.linh_thach;
         this.inventory.setBag(msg.bag);
         this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
@@ -623,11 +631,14 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(vi.combat.died(msg.expLost), "important");
         break;
       case "wallet":
+        if (msg.currency === "linh_thach") this.linhThach = msg.balance;
         this.vitals.setBalance(msg.currency, msg.balance);
+        this.smith.refresh();
         if (msg.gained) this.chat.system(vi.chat.gainedCurrency(msg.gained, vi.economy.currency[msg.currency]));
         break;
       case "stats": {
         const before = this.selfSheet;
+        this.smith.setSheet(msg.character);
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
         this.shop.setSheet(msg.character);
@@ -690,6 +701,7 @@ export class GameScene extends Phaser.Scene {
       case "inv":
         if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items, tabPrice: msg.tabPrice });
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
+        this.smith.refresh();
         this.charPanel.refresh();
         this.equipment.refresh();
         this.shop.refresh();
@@ -708,6 +720,7 @@ export class GameScene extends Phaser.Scene {
         }
         this.bondedLv = level;
         this.equipment.setEquipped(msg.items);
+        this.smith.setEquipped(msg.items);
         this.inventory.setEquipped(msg.items);
         this.charPanel.setEquipped(msg.items);
         this.worn = msg.items;
@@ -779,6 +792,18 @@ export class GameScene extends Phaser.Scene {
       case "shop":
         this.shop.setStock(msg.npc, msg.left);
         break;
+      case "smith":
+        this.smith.setRules(msg.npc, msg.levels, msg.pity);
+        break;
+      case "smith_result": {
+        const owned = [...this.worn, ...this.inventory.list()].find((x) => x.id === msg.id);
+        const name = owned ? (getItemDef(owned.type)?.nameVi ?? owned.type) : "";
+        const text = msg.success ? vi.smith.success(name, msg.level) : msg.dropped ? vi.smith.failedDropped(name, msg.level) : msg.scrollUsed ? vi.smith.failedKept(name, msg.level) : vi.smith.failed(name, msg.level);
+        this.chat.system(text, msg.success ? undefined : "warning");
+        this.smith.notify(text, msg.success);
+        this.smith.setPity(msg.id, msg.pity);
+        break;
+      }
       case "shop_ok": {
         const name = getItemDef(msg.item)?.nameVi ?? msg.item;
         const text = msg.op === "buy" ? vi.shop.bought(name, msg.qty, msg.total) : vi.shop.sold(name, msg.qty, msg.total);
@@ -890,7 +915,10 @@ export class GameScene extends Phaser.Scene {
           if (this.inventory.rejected("wait", msg.retryMs)) this.chat.system(vi.inventory.sortBlocked(Math.max(1, Math.ceil((msg.retryMs ?? 5000) / 1000))), "warning");
           break;
         }
-        if (msg.reason === "murderer") this.shop.ban(vi.inventory.errors.murderer!);
+        if (msg.reason === "murderer") {
+          this.shop.ban(vi.inventory.errors.murderer!);
+          this.smith.ban(vi.inventory.errors.murderer!);
+        }
         // Rate-limit refusals are silent: they only happen when commands are sent faster than a person taps.
         this.inventory.rejected(msg.reason);
         if (msg.reason !== "rate") this.chat.system(vi.inventory.errors[msg.reason] ?? vi.inventory.errors.invalid!, "error");
