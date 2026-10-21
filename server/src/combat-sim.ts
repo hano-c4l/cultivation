@@ -15,6 +15,20 @@ import {
   NAME_TIER_RED_FROM,
   decayedSatNhan,
   RANKS,
+  BOSSES,
+  BOSS_SPOTS,
+  BOSS_EXP_MULT,
+  BOSS_ITEM_CHANCE_MULT,
+  BOSS_ITEM_ROUNDS,
+  BOSS_LINH_MULT,
+  BOSS_SPAWN_CHANCE,
+  BOSS_TIER,
+  bossPityKills,
+  bossShares,
+  bossStats,
+  BOSS_SKILLS,
+  BOSS_STAT_TIER,
+  pickByShare,
   applyExp,
   getRootGrade,
   computeDamage,
@@ -214,6 +228,8 @@ interface Monster {
   nextAttackAt: number;
   lastRepathAt: number;
   respawnAt: number;
+  /** The map's boss (phase 2h): rolled once, stats of a Đại Yêu of the top bậc times the species' multipliers; never respawns, never rerolls. */
+  boss?: boolean;
   /** A vệ binh: fixed class and element, fights only orange and red names and its attackers, pays nothing when killed. */
   guard?: boolean;
   /** Guards only: when each of its skills is ready again, and until when its buff lasts. */
@@ -232,6 +248,10 @@ export type SimEvent =
   | { t: "progress"; playerId: string; stagesGained: number }
   /** A monster died and `playerId` (who takes its reward) gets the credit: quests count it. `rare` is any rank above normal. */
   | { t: "kill"; playerId: string; rare: boolean }
+  /** The room should try to claim the map's boss for this room (a spawn roll hit, or the pity counter ran out). Answer with bossAnswered. */
+  | { t: "boss_request" }
+  /** The boss died: everything it pays has been worked out and sent as progress, drop, loot and kill events; the room releases the claim and announces it. */
+  | { t: "boss_kill"; killerId: string; name: string; shares: Array<{ id: string; share: number }> }
   /** The kill's EXP, which the pháp bảo bản mệnh of the winner also receives (its own stream, no effect on the character's EXP). */
   | { t: "refine"; playerId: string; gain: number }
   /** MP changed (spent, or settled when hit); the client regenerates it from the snapshot. */
@@ -414,10 +434,21 @@ export class CombatSim {
     if (m) m.combatant.element = element;
   }
 
+  /** Sets the boss's health (the dev hook of the boss smoke). */
+  setBossHp(hp: number): void {
+    for (const m of this.monsters.values()) if (m.boss) m.hp = Math.min(m.maxHp, Math.max(1, hp));
+  }
+
+  /** Sets a monster's health (tests use it to end a fight quickly). */
+  setMonsterHp(id: string, hp: number): void {
+    const m = this.monsters.get(id);
+    if (m) m.hp = Math.min(m.maxHp, hp);
+  }
+
   /** Current class of every monster, kept by the room across a sleep so a rebuilt sim cannot reroll rare monsters. */
   ranks(): Record<string, string> {
     const out: Record<string, string> = {};
-    for (const m of this.monsters.values()) if (!m.guard) out[m.id] = `${m.rank}|${m.combatant.element}`;
+    for (const m of this.monsters.values()) if (!m.guard && !m.boss) out[m.id] = `${m.rank}|${m.combatant.element}`;
     return out;
   }
 
@@ -442,6 +473,82 @@ export class CombatSim {
       if (p.dead || p.targetId !== null || p.hp < p.maxHp || p.hots.length > 0 || moving.has(p.id)) return false;
     }
     return true;
+  }
+
+  // ---- the map boss (phase 2h) ----
+  private bossEnabled = false;
+  private bossAsked = false;
+  private pityKills = 0;
+
+  /** Turns the boss rolls on (the room does, for a map that has a boss). */
+  enableBoss(pityKills = 0): void {
+    this.bossEnabled = true;
+    this.pityKills = pityKills;
+  }
+
+  get pity(): number {
+    return this.pityKills;
+  }
+
+  get hasBoss(): boolean {
+    for (const m of this.monsters.values()) if (m.boss) return true;
+    return false;
+  }
+
+  /** Takes the boss off the map without a kill (its claim is gone); returns its id so the room can tell the clients. */
+  removeBoss(): string | null {
+    for (const m of this.monsters.values()) {
+      if (!m.boss) continue;
+      this.monsters.delete(m.id);
+      for (const p of this.players.values()) if (p.targetId === m.id) p.targetId = null;
+      return m.id;
+    }
+    return null;
+  }
+
+  /** The room answered a boss_request: the next one may be raised (the pity counter starts again either way). */
+  bossAnswered(): void {
+    this.bossAsked = false;
+    this.pityKills = 0;
+  }
+
+  /** Puts the map's boss on the ground at the home of the highest-bậc cluster, at full health, with a freshly rolled element. Null when it cannot (already one, no boss for this map). */
+  spawnBoss(mapId: MapId, now: number): MonsterSnapshot | null {
+    const kind = BOSSES[mapId];
+    const def = kind ? getMonsterDef(kind) : undefined;
+    if (!def || this.hasBoss) return null;
+    const spot = BOSS_SPOTS[mapId];
+    const home = spot ? nearestStandablePoint(this.map, spot[0], spot[1], 3) : null;
+    if (!home) return null;
+    const m: Monster = {
+      id: `m${this.nextMonsterId++}`,
+      def,
+      tier: BOSS_TIER,
+      rank: "rare2",
+      maxHp: 0,
+      combatant: { attack: 0, defense: 0, critRate: 5, dodgeRate: 0, element: rollMonsterElement(this.rand()) },
+      damage: new Map(),
+      home,
+      hp: 0,
+      state: "idle",
+      path: [home],
+      startedAt: now,
+      targetId: null,
+      nextAttackAt: 0,
+      lastRepathAt: 0,
+      respawnAt: 0,
+      boss: true,
+    };
+    const stats = bossStats(this.realm);
+    m.maxHp = stats.maxHp;
+    m.hp = stats.maxHp;
+    m.combatant.attack = stats.attack;
+    m.combatant.defense = stats.defense;
+    m.combatant.critRate = stats.critRate;
+    m.combatant.dodgeRate = stats.dodgeRate;
+    m.skillReadyAt = {};
+    this.monsters.set(m.id, m);
+    return this.snapshot(m, now);
   }
 
   /** A safe map's sim exists only for its guards. */
@@ -759,6 +866,14 @@ export class CombatSim {
     return at !== undefined && this.clock - at < GRAY_WINDOW_MS;
   }
 
+  /** A player went through a portal: nobody keeps a "hit me" mark or a retaliation aimed at them. (A mere reconnect does not call this.) */
+  forgetQuarrels(id: string): void {
+    for (const q of this.players.values()) {
+      q.hitBy.delete(id);
+      if (q.retaliateId === id) q.retaliateId = null;
+    }
+  }
+
   /** Forgets who hit whom between two players (after one killed the other, the quarrel is over). */
   clearQuarrel(a: string, b: string): void {
     this.players.get(a)?.hitBy.delete(b);
@@ -802,7 +917,7 @@ export class CombatSim {
     return {
       id: m.id,
       kind: m.def.id,
-      tier: m.tier,
+      tier: m.boss ? BOSS_STAT_TIER : m.tier,
       rank: m.rank,
       element: m.combatant.element,
       path: m.path,
@@ -811,6 +926,7 @@ export class CombatSim {
       hp: m.hp,
       maxHp: m.maxHp,
       ...(m.guard ? { guard: true as const } : {}),
+      ...(m.boss ? { boss: true as const } : {}),
     };
   }
 
@@ -856,6 +972,10 @@ export class CombatSim {
       if (m.state === "dead") {
         if (now >= m.respawnAt) {
           this.applyRank(m); // every respawn rolls its class again
+          if (this.bossEnabled && !this.bossAsked && !m.guard && !this.hasBoss && (this.pityKills >= bossPityKills(this.realm) || this.rand() < BOSS_SPAWN_CHANCE)) {
+            this.bossAsked = true;
+            events.push({ t: "boss_request" });
+          }
           m.hp = m.maxHp;
           m.damage.clear();
           m.state = "idle";
@@ -948,25 +1068,27 @@ export class CombatSim {
       return true;
     };
     const left = (id: string) => (m.skillReadyAt?.[id] ?? 0) <= now;
-    if (m.hp < m.maxHp * GUARD_SKILLS.mend.below && left("mend") && ready("mend", GUARD_SKILLS.mend.cdMs)) {
-      m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * GUARD_SKILLS.mend.fraction));
+    // The boss uses the same turn as a guard with its own numbers and without the buff (two attacks and a heal).
+    const sk = m.boss ? BOSS_SKILLS : GUARD_SKILLS;
+    if (m.hp < m.maxHp * sk.mend.below && left("mend") && ready("mend", sk.mend.cdMs)) {
+      m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * sk.mend.fraction));
       events.push({ t: "mon", monster: this.snapshot(m, now) });
       return null;
     }
-    if (now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", GUARD_SKILLS.ward.cdMs)) {
+    if (!m.boss && now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", GUARD_SKILLS.ward.cdMs)) {
       m.buffUntil = now + GUARD_SKILLS.ward.durationMs;
       return null;
     }
     const buff = now < (m.buffUntil ?? 0) ? 1 + GUARD_SKILLS.ward.attackPct / 100 : 1;
-    if (left("burst") && ready("burst", GUARD_SKILLS.burst.cdMs)) return GUARD_SKILLS.burst.power * buff;
-    if (left("slash") && ready("slash", GUARD_SKILLS.slash.cdMs)) return GUARD_SKILLS.slash.power * buff;
+    if (left("burst") && ready("burst", sk.burst.cdMs)) return sk.burst.power * buff;
+    if (left("slash") && ready("slash", sk.slash.cdMs)) return sk.slash.power * buff;
     return buff;
   }
 
   private monsterAttack(m: Monster, p: PlayerProfile, now: number, events: SimEvent[]): void {
     m.nextAttackAt = now + m.def.attackCooldownMs;
     let power = 1;
-    if (m.guard) {
+    if (m.guard || m.boss) {
       const turn = this.guardTurn(m, now, events);
       if (turn === null) return; // the turn went to a heal or the buff
       power = turn;
@@ -1186,6 +1308,12 @@ export class CombatSim {
     m.path = [mpos];
     events.push({ t: "mon_gone", id: m.id });
     for (const other of this.players.values()) if (other.targetId === m.id) other.targetId = null;
+    if (m.boss) {
+      this.monsters.delete(m.id);
+      this.payBoss(m, p, events);
+      return applied;
+    }
+    if (!m.guard) this.pityKills++;
     if (m.guard) {
       // A guard pays nothing: no EXP, no Linh Thạch, no loot, no quest credit. The killer's scores rise like for a white name.
       m.damage.clear();
@@ -1272,8 +1400,8 @@ export class CombatSim {
   }
 
   /** Gives the killer EXP (with their bonus) and applies any stage-ups. Linh Thạch drops are rolled by the caller. */
-  private reward(p: PlayerProfile, m: Monster): { stagesGained: number; gain: number } {
-    const gain = killExp({ realm: this.realm, tier: m.tier, rank: m.rank }, p.realm, p.expBonus);
+  private reward(p: PlayerProfile, m: Monster, scale = 1): { stagesGained: number; gain: number } {
+    const gain = Math.floor(killExp({ realm: this.realm, tier: m.tier, rank: m.rank }, p.realm, p.expBonus) * scale);
     const r = applyExp({ realm: p.realm, stage: p.stage, exp: p.exp, potentialPoints: 0 }, gain);
     p.exp = r.exp;
     p.expDirty = true;
@@ -1284,6 +1412,48 @@ export class CombatSim {
       this.recompute(p, true);
     }
     return { stagesGained: r.stagesGained, gain };
+  }
+
+  /**
+   * The boss died: its reward is split by bossShares among the players still here and alive. Each gets their share of the EXP and of
+   * the Linh Thạch pool; the items (BOSS_ITEM_ROUNDS rounds of Đại Yêu loot with better chances) each go whole to one sharing player,
+   * picked by share. The damage table is cleared and the room told, so it can release the claim and announce.
+   */
+  private payBoss(m: Monster, killer: PlayerProfile, events: SimEvent[]): void {
+    const shares = bossShares(m.damage, m.maxHp, killer.id, (id) => {
+      const q = this.players.get(id);
+      return !!q && !q.dead;
+    });
+    const items = new Map<string, LootDrop[]>();
+    for (let i = 0; i < BOSS_ITEM_ROUNDS; i++) {
+      const loot = rollLoot(m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
+      const book = rollBookDrop(m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      if (book) loot.push({ item: book, qty: 1 });
+      const pill = rollPillDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      if (pill) loot.push({ item: pill, qty: 1 });
+      for (const drop of loot) {
+        const to = pickByShare(shares, this.rand());
+        if (to) items.set(to, [...(items.get(to) ?? []), drop]);
+      }
+    }
+    const pool = rollLinhThachDrop(levelIndex(this.realm, m.tier), "rare2", 0, 0.5) * BOSS_LINH_MULT;
+    for (const { id, share } of shares) {
+      const q = this.players.get(id);
+      if (!q) continue;
+      const { stagesGained, gain } = this.reward(q, m, BOSS_EXP_MULT * share);
+      events.push({ t: "progress", playerId: id, stagesGained });
+      events.push({ t: "kill", playerId: id, rare: true });
+      events.push({ t: "refine", playerId: id, gain });
+      const linh = Math.floor(pool * share);
+      if (linh > 0) events.push({ t: "drop", playerId: id, amount: linh });
+      const mine = items.get(id);
+      if (mine && mine.length > 0) events.push({ t: "loot", playerId: id, drops: mine });
+      if (stagesGained > 0) events.push({ t: "hp", playerId: id, hp: q.hp, maxHp: q.maxHp });
+    }
+    events.push({ t: "boss_kill", killerId: killer.id, name: m.def.nameVi, shares });
+    m.damage.clear();
   }
 
   /** Death handling by the room: EXP penalty is applied to the working copy; the room then persists and transfers. */

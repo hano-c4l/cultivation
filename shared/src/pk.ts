@@ -129,7 +129,8 @@ export function applyPvpKill(killer: PkScores, victim: PkScores, victimSatNhan: 
     if (killerSatNhan === 0) next.hero += tier === 3 ? HERO_PER_RED : HERO_PER_ORANGE;
     else next.satNhan = Math.max(0, killerSatNhan - (tier === 3 ? SAT_NHAN_LOST_KILLING_RED : SAT_NHAN_LOST_KILLING_ORANGE));
   } else if (!selfDefense) {
-    next.satNhan = killerSatNhan + SAT_NHAN_PER_KILL;
+    // Sát nhân only rises while the killer has no hero points; a killer with hero points just loses them.
+    if (killer.hero <= 0) next.satNhan = killerSatNhan + SAT_NHAN_PER_KILL;
     next.hero = 0;
   }
   const dead: PkScores = {
@@ -140,9 +141,9 @@ export function applyPvpKill(killer: PkScores, victim: PkScores, victimSatNhan: 
   return { killer: next, victim: dead };
 }
 
-/** Killing a guard counts as killing a white name (without the self-defence exemption): sát khí and sát nhân both rise, the hero points go. */
+/** Killing a guard counts as killing a white name (without the self-defence exemption): sát khí rises and so does sát nhân (unless the killer had hero points, which just go). */
 export function applyGuardKill(killer: PkScores, killerSatNhan = killer.satNhan): PkScores {
-  return { satKhi: killer.satKhi + SAT_KHI_PER_KILL, satNhan: killerSatNhan + SAT_NHAN_PER_KILL, hero: 0 };
+  return { satKhi: killer.satKhi + SAT_KHI_PER_KILL, satNhan: killer.hero > 0 ? killerSatNhan : killerSatNhan + SAT_NHAN_PER_KILL, hero: 0 };
 }
 
 // ---- what a death costs by name colour (phase 2f, PR2) ----

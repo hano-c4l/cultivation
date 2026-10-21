@@ -163,6 +163,8 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
         middle.title = durabilityText(piece.dur, piece.max);
         middle.onclick = () => {
           inspecting = inspecting === slot ? null : slot;
+          // Closing the details closes the chooser of the same slot too.
+          if (inspecting === null && choosing === slot) choosing = null;
           render();
         };
       }
@@ -170,6 +172,8 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       const change = el("button", "eq-small", piece ? vi.equip.change : vi.equip.pick);
       change.onclick = () => {
         choosing = choosing === slot ? null : slot;
+        // Choosing a replacement shows what is worn now, like tapping the piece does.
+        if (choosing === slot && piece) inspecting = slot;
         render();
       };
       actions.append(change);

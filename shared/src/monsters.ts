@@ -32,6 +32,8 @@ export const MONSTERS: Readonly<Record<string, MonsterDef>> = {
   doi_u_minh: { id: "doi_u_minh", nameVi: "Dơi U Minh", element: "kim", hpMult: 1, attackMult: 1.2, defenseMult: 0.9, speed: 3.4, aggroRadius: 6, leashRadius: 8, attackRange: 1.3, attackCooldownMs: 1300, respawnMs: 15_000 },
   thi_quy: { id: "thi_quy", nameVi: "Thi Quỷ", element: "thuy", hpMult: 1.8, attackMult: 1.3, defenseMult: 1.6, speed: 2.2, aggroRadius: 5, leashRadius: 8, attackRange: 1.4, attackCooldownMs: 2000, respawnMs: 20_000 },
   ve_binh: { id: "ve_binh", nameVi: "Vệ Binh", element: "kim", hpMult: 3, attackMult: 2.5, defenseMult: 2, speed: 3, aggroRadius: 8, leashRadius: 12, attackRange: 1.4, attackCooldownMs: 1200, respawnMs: 60_000 },
+  huyet_lang_vuong: { id: "huyet_lang_vuong", nameVi: "Huyết Lang Vương", element: "moc", hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.6, attackCooldownMs: 1400, respawnMs: 0 },
+  quy_vuong: { id: "quy_vuong", nameVi: "U Minh Quỷ Vương", element: "thuy", hpMult: 1, attackMult: 1, defenseMult: 1, speed: 2.8, aggroRadius: 7, leashRadius: 12, attackRange: 1.6, attackCooldownMs: 1500, respawnMs: 0 },
   xich_thi: { id: "xich_thi", nameVi: "Xích Thi", element: "hoa", hpMult: 1.4, attackMult: 1.5, defenseMult: 1.2, speed: 2.8, aggroRadius: 5, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1700, respawnMs: 25_000 },
 };
 

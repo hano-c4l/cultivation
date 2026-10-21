@@ -1,3 +1,4 @@
+import { bossHolder, claimBoss, refreshBoss, releaseBoss } from "./boss";
 import { DurableObject } from "cloudflare:workers";
 import {
   BREAKTHROUGH_FAIL_EXP_LOSS,
@@ -121,7 +122,7 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
-import { DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { BOSSES, bossKillText, bossSpawnText, getMonsterDef, DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -241,6 +242,8 @@ function vitalsKey(v: { hp: number; mp: number; cd?: Record<string, number>; buf
 
 /** Moves are saved at most this often per room, so D1 writes stay low and the room can still hibernate. */
 const SAVE_DEBOUNCE_MS = 10_000;
+/** How often a room renews the claim on the boss it holds (the claim lapses after BOSS_CLAIM_TTL_MS without it). */
+const BOSS_REFRESH_MS = 60 * 60 * 1000;
 
 function baseOf(row: CharacterRow): BaseStats {
   return toCharacterSheet(row).base;
@@ -391,6 +394,10 @@ export class MapRoom extends DurableObject<Env> {
     const characterId = request.headers.get("x-char-id");
     const room = request.headers.get("x-room");
     if (!characterId || !room) return new Response("Forbidden", { status: 403 });
+    if (this.roomId !== room) {
+      this.roomId = room;
+      await this.ctx.storage.put("room", room);
+    }
 
     const lock = this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(characterId));
     // Claim first: the previous holder (any room) kicks its socket and saves before we read the row.
@@ -633,6 +640,13 @@ export class MapRoom extends DurableObject<Env> {
         return;
       case "bt_claim":
         return this.handleBreakthroughClaim(ws, state);
+      case "boss_remove":
+        if (state.admin) void this.removeBossNow().catch((err) => console.error("boss remove failed", err));
+        return;
+      case "boss_summon":
+        // GM only (the Worker sets the flag from the account role); the roll is skipped, the claim is not.
+        if (state.admin) void this.requestBoss().catch((err) => console.error("boss summon failed", err));
+        return;
       case "path_claim":
         return this.handlePathClaim(ws, state, msg.path);
       case "path_choose":
@@ -732,6 +746,7 @@ export class MapRoom extends DurableObject<Env> {
     ws.serializeAttachment(null);
     await this.settleBag(state.id);
     this.dropPlayer(state.id);
+    this.forgetQuarrels(state.id);
     this.broadcast({ t: "left", id: state.id }, ws);
     this.send(ws, { t: "transfer", map: toMap });
     await this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(state.id)).release(state.claimId);
@@ -892,6 +907,99 @@ export class MapRoom extends DurableObject<Env> {
 
   // --- combat -------------------------------------------------------------------------------------------------
 
+  /** Kills counted towards a boss that storage holds (so a sleep does not lose the count). */
+  private pityStored = 0;
+  /** When the claim of the boss in this room was last renewed (once an hour while it lives here). */
+  private bossRefreshedAt = 0;
+  private roomId: string | null = null;
+
+  /** This room's name ("forest:ch4"), kept in storage because only the join request carries it. */
+  private async roomName(): Promise<string | null> {
+    this.roomId ??= (await this.ctx.storage.get<string>("room")) ?? null;
+    return this.roomId;
+  }
+
+  /**
+   * Tries to put the map's boss into this room: it succeeds only when no other room of the map holds it (the claim in D1). Called when a spawn
+   * roll hits, when the kill counter runs out, and by the GM button. The pity counter starts again either way.
+   */
+  private async requestBoss(): Promise<void> {
+    const sim = this.sim;
+    const room = await this.roomName();
+    const mapId = room?.split(":")[0] as MapId | undefined;
+    if (!sim || !mapId || !room || !BOSSES[mapId]) return;
+    sim.bossAnswered();
+    if (sim.hasBoss || !(await claimBoss(this.env.DB, mapId, room))) return;
+    const snap = sim.spawnBoss(mapId, Date.now());
+    if (!snap) {
+      await releaseBoss(this.env.DB, mapId, room);
+      return;
+    }
+    this.bossRefreshedAt = Date.now();
+    this.broadcast({ t: "mon", monster: snap });
+    this.startTick();
+    const channel = room.split(":")[1]?.replace(/^ch/, "") ?? "";
+    await this.announce(bossSpawnText(getMonsterDef(snap.kind)?.nameVi ?? snap.kind, mapId, channel));
+  }
+
+  /** GM: the boss of this room goes (nobody could kill it): it leaves the map, the claim is released and nobody is paid. */
+  private async removeBossNow(): Promise<void> {
+    const sim = this.sim;
+    const room = await this.roomName();
+    const mapId = room?.split(":")[0];
+    if (!sim || !room || !mapId) return;
+    const gone = sim.removeBoss();
+    if (!gone) return;
+    this.broadcast({ t: "mon_gone", id: gone });
+    await releaseBoss(this.env.DB, mapId, room);
+    console.log("boss removed by a GM", room);
+  }
+
+  /** Renews the claim; if it is no longer this room's (it ran out and another channel took the map's boss), this room's boss goes. */
+  private async keepBoss(sim: CombatSim, now: number): Promise<void> {
+    const room = await this.roomName();
+    const mapId = room?.split(":")[0];
+    if (!room || !mapId) return;
+    try {
+      if (await refreshBoss(this.env.DB, mapId, room, now)) return;
+    } catch (err) {
+      console.error("boss refresh failed", room, err);
+      this.bossRefreshedAt = 0; // try again next tick
+      return;
+    }
+    const gone = sim.removeBoss();
+    if (gone) this.broadcast({ t: "mon_gone", id: gone });
+    console.warn("boss claim lost, boss removed", room);
+  }
+
+  /** The boss died: the claim goes back so a new one can appear in any channel, and everyone hears of it. */
+  private async bossFell(name: string, killer: string, sharers: number): Promise<void> {
+    const room = await this.roomName();
+    const mapId = room?.split(":")[0];
+    if (!room || !mapId) return;
+    // A claim left behind would bring the dead boss back at the next rebuild, so the release is retried like a ledger write.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await releaseBoss(this.env.DB, mapId, room);
+        break;
+      } catch (err) {
+        console.error("boss release failed", room, attempt, err);
+        await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
+      }
+    }
+    const channel = room.split(":")[1]?.replace(/^ch/, "") ?? "";
+    console.log("boss killed", room, "sharing", sharers);
+    await this.announce(bossKillText(name, mapId, channel, killer));
+  }
+
+  private async announce(text: string): Promise<void> {
+    try {
+      await this.env.CHAT_HUB.get(this.env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).announce(text);
+    } catch (err) {
+      console.error("announce failed", err);
+    }
+  }
+
   private ensureSim(mapId: MapId, ranks?: Record<string, string>): CombatSim | null {
     const map = getMap(mapId);
     if (map.safe && GUARDS[mapId].length === 0) return null;
@@ -933,6 +1041,17 @@ export class MapRoom extends DurableObject<Env> {
     if (this.sim) return; // another path created it while storage was read
     const sim = this.ensureSim(mapId, stored)!;
     this.ranksJson = stored ? JSON.stringify(stored) : null;
+    if (BOSSES[mapId]) {
+      sim.enableBoss((await this.ctx.storage.get<number>("pity")) ?? 0);
+      this.pityStored = sim.pity;
+      // The claim says which room holds the map's boss; if it is this one, the boss stands again (at full health: its health is not kept across a sleep).
+      const holder = await bossHolder(this.env.DB, mapId).catch(() => null);
+      const room = await this.roomName();
+      if (holder !== null && holder === room && !sim.hasBoss && sim.spawnBoss(mapId, Date.now())) {
+        this.bossRefreshedAt = Date.now();
+        await refreshBoss(this.env.DB, mapId, room, this.bossRefreshedAt).catch(() => false);
+      }
+    }
     try {
       const present = this.players().filter((p) => !p.transferring);
       const rows = await Promise.all(present.map((p) => getCharacterById(this.env.DB, p.id)));
@@ -978,6 +1097,7 @@ export class MapRoom extends DurableObject<Env> {
       this.alarm(),
       ...saves,
       json === this.ranksJson ? Promise.resolve() : this.ctx.storage.put("ranks", ranks).then(() => void (this.ranksJson = json)),
+      sim.pity === this.pityStored ? Promise.resolve() : this.ctx.storage.put("pity", sim.pity).then(() => void (this.pityStored = sim.pity)),
     ]);
     console.log("tick paused", "players", sim.playerCount);
   }
@@ -1049,6 +1169,13 @@ export class MapRoom extends DurableObject<Env> {
     await (this.bagQueues.get(characterId) ?? Promise.resolve());
   }
 
+  /** Dev-only (see /api/dev/boss-hp): leaves the boss with this much health so a smoke test can kill it. */
+  devBossHp(hp: number): boolean {
+    if (!this.sim?.hasBoss) return false;
+    this.sim.setBossHp(hp);
+    return true;
+  }
+
   /** Dev-only (see /api/dev/evict): imitates the runtime evicting a paused object, which wrangler dev does not do reliably. */
   devEvict(force = false): boolean {
     // `force` also stops a running tick: a room full of fighting players never pauses, but its caches must still be testable.
@@ -1099,6 +1226,10 @@ export class MapRoom extends DurableObject<Env> {
 
       const later: Promise<void>[] = [];
       for (const ev of sim.tick(started, positions, moving)) this.dispatch(ev, sockets, started, later);
+      if (sim.hasBoss && started - this.bossRefreshedAt > BOSS_REFRESH_MS) {
+        this.bossRefreshedAt = started;
+        later.push(this.keepBoss(sim, started));
+      }
       await Promise.all(later);
 
       const ms = Date.now() - started;
@@ -1191,6 +1322,12 @@ export class MapRoom extends DurableObject<Env> {
       }
       case "loot":
         this.enqueueLoot(ev.playerId, ev.drops);
+        return;
+      case "boss_request":
+        later.push(this.requestBoss().catch((err) => console.error("boss request failed", err)));
+        return;
+      case "boss_kill":
+        later.push(this.bossFell(ev.name, sockets.get(ev.killerId)?.state.name ?? "", ev.shares.length).catch((err) => console.error("boss release failed", err)));
         return;
       case "pvp_kill":
         later.push(this.settlePvpKill(ev.killerId, ev.victimId, sockets, now));
@@ -1719,6 +1856,7 @@ export class MapRoom extends DurableObject<Env> {
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
     if (!spot || spot.kind !== "quest") return this.send(ws, { t: "quest_error", reason: "far" });
+    if (this.satNhanOf(state, now) >= NAME_TIER_ORANGE_FROM) return this.send(ws, { t: "quest_error", reason: "murderer" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
@@ -1818,6 +1956,8 @@ export class MapRoom extends DurableObject<Env> {
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     const spot = npcNear(getMap(state.mapId), npcId, here.x, here.y);
     if (!spot) return this.send(ws, { t: "inv_error", reason: "far" });
+    // Orange and red names (sát nhân over 200) may not deal with any NPC.
+    if (this.satNhanOf(state, now) >= NAME_TIER_ORANGE_FROM) return this.send(ws, spot.kind === "quest" ? { t: "quest_error", reason: "murderer" } : { t: "inv_error", reason: "murderer" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
@@ -2989,6 +3129,18 @@ export class MapRoom extends DurableObject<Env> {
 
   private pkScoresOf(state: PlayerState, now: number): PkScores {
     return { satKhi: state.sk ?? 0, satNhan: this.satNhanOf(state, now), hero: state.ah ?? 0 };
+  }
+
+  /** The player went through a portal (to the town, say): every quarrel with them ends, and whoever stays gets the grey mark cleared. */
+  private forgetQuarrels(id: string): void {
+    this.sim?.forgetQuarrels(id);
+    for (const k of [...this.blows.keys()]) {
+      const [from, to] = k.split(">");
+      if (from !== id && to !== id) continue;
+      this.blows.delete(k);
+      const other = from === id ? to : from;
+      if (other) this.sendToCharacter(other, { t: "pk_clear", id });
+    }
   }
 
   /** Last time one player hit another (attacker>victim), for self-defence and the grey name. Small and short-lived. */

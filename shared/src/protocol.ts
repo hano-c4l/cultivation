@@ -90,6 +90,10 @@ export type ClientMessage =
   | { t: "bt_start"; pills: number }
   /** GM only: take the breakthrough pill for the realm to break out of (as many times as wanted). */
   | { t: "bt_claim" }
+  /** GM only: call the map's boss into this room now (it still has to be free: one boss per map). */
+  | { t: "boss_summon" }
+  /** GM only: take the boss of this room off the map (the players cannot kill it); its claim is released so a new one can appear. */
+  | { t: "boss_remove" }
   /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
   | { t: "bt_cancel" }
   /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
@@ -159,6 +163,8 @@ export interface MonsterSnapshot {
   maxHp: number;
   /** A vệ binh (guard): shown with its own name and colour, attackable only with the PK state on. */
   guard?: true;
+  /** The boss of the map (phase 2h): one at a time across the channels, drawn bigger and with its own name colour. */
+  boss?: true;
 }
 
 export interface PlayerSnapshot {
@@ -233,12 +239,12 @@ export type ServerMessage =
   | { t: "quest_progress"; quest: string; progress: number }
   /** A quest was handed in: the reward is already in the bag and the wallet. */
   | { t: "quest_done"; quest: string }
-  | { t: "quest_error"; reason: "level" | "claimed" | "far" | "locked" | "not_active" | "not_ready" | "full" | "busy" | "invalid" | "already" | "rate" | "owned" }
+  | { t: "quest_error"; reason: "level" | "claimed" | "far" | "locked" | "not_active" | "not_ready" | "full" | "busy" | "invalid" | "already" | "rate" | "owned" | "murderer" }
   /** A teleport talisman is being channelled for `ms`; the talisman is only used up when it completes. */
   | { t: "tp"; ms: number; item: string }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
   | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "other" }
-  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low"; retryMs?: number }
+  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -375,6 +381,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "bt_claim" };
     case "bt_start":
       return isInt(m.pills) && m.pills >= 1 && m.pills <= 9 ? { t: "bt_start", pills: m.pills } : null;
+    case "boss_remove":
+      return { t: "boss_remove" };
+    case "boss_summon":
+      return { t: "boss_summon" };
     case "bt_cancel":
       return { t: "bt_cancel" };
     case "conn_report":

@@ -63,9 +63,14 @@ describe("hero bonuses", () => {
 
 describe("killing a player", () => {
   it("a white name: +10 sát khí, +100 sát nhân, hero reset; the victim loses 50 sát khí", () => {
-    const r = applyPvpKill(scores(5, 0, 300), scores(80, 0, 0), 0, false);
+    const r = applyPvpKill(scores(5, 0, 0), scores(80, 0, 0), 0, false);
     expect(r.killer).toEqual(scores(15, 100, 0));
     expect(r.victim).toEqual(scores(30, 0, 0));
+  });
+
+  it("a killer with hero points loses them and gains no sát nhân", () => {
+    const r = applyPvpKill(scores(5, 0, 300), scores(80, 0, 0), 0, false);
+    expect(r.killer).toEqual(scores(15, 0, 0));
   });
 
   it("a yellow name counts like a white one, and the victim's own sát nhân drops by 50", () => {
@@ -101,7 +106,8 @@ describe("killing a player", () => {
 
 describe("killing a guard", () => {
   it("adds sát khí and sát nhân like a white name and resets the hero points", () => {
-    expect(applyGuardKill(scores(0, 0, 500))).toEqual(scores(10, 100, 0));
+    expect(applyGuardKill(scores(0, 0, 0))).toEqual(scores(10, 100, 0));
+    expect(applyGuardKill(scores(0, 0, 500))).toEqual(scores(10, 0, 0));
     expect(applyGuardKill(scores(10, 40, 0), 25)).toEqual(scores(20, 125, 0));
   });
 });

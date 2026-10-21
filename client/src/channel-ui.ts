@@ -2,7 +2,7 @@ import { vi } from "./locales/vi";
 
 export interface ChannelUi {
   /** Starts the bar in the middle of the screen: it fills over `ms`, with the seconds left under it. */
-  start(label: string, ms: number): void;
+  start(label: string, ms: number, variant?: "gold"): void;
   /** Hides it (the channel ended, broke or moved us). */
   stop(): void;
 }
@@ -31,19 +31,22 @@ export function initChannel(): ChannelUi {
   let endsAt = 0;
   let total = 1;
   const draw = () => {
+    // The server always ends a channel; if its message was lost, the bar must not sit at 0.0 forever.
+    if (Date.now() > endsAt + 8000) return stop();
     const remaining = Math.max(0, endsAt - Date.now());
     fill.style.width = `${Math.min(100, ((total - remaining) / total) * 100)}%`;
     left.textContent = vi.shop.channelLeft((remaining / 1000).toFixed(1));
   };
-  const stop = () => {
+  function stop(): void {
     if (timer) clearInterval(timer);
     timer = undefined;
     box.hidden = true;
-  };
+  }
 
   return {
-    start(label, ms) {
+    start(label, ms, variant) {
       stop();
+      box.classList.toggle("gold", variant === "gold");
       total = Math.max(1, ms);
       endsAt = Date.now() + total;
       title.textContent = label;
