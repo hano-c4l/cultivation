@@ -143,7 +143,7 @@ async function killOne() {
   const live = new Map(welcomeMons.map((m) => [m.id, m]));
   for (const m of c.log) if (m.t === "mon") live.set(m.monster.id, m.monster);
   const gone = new Set(c.log.filter((m) => m.t === "mon_gone").map((m) => m.id));
-  const prey = [...live.values()].find((m) => m.rank === "normal" && !gone.has(m.id)) ?? [...live.values()][0];
+  const prey = [...live.values()].find((m) => !m.guard && m.rank === "normal" && !gone.has(m.id)) ?? [...live.values()].find((m) => !m.guard);
   const mark = c.log.length;
   c.send({ t: "attack", id: prey.id });
   await c.wait((m) => m.t === "mon_gone" && m.id === prey.id, 60000, "monster dies");

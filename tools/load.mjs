@@ -91,7 +91,7 @@ async function client(i, account) {
     stats.joined++;
     const until = Date.now() + seconds * 1000;
     while (Date.now() < until) {
-      const ids = [...monsters.keys()];
+      const ids = [...monsters.values()].filter((m) => !m.guard).map((m) => m.id);
       if (ids.length > 0) {
         currentTarget = ids[Math.floor(Math.random() * ids.length)];
         c.send({ t: "attack", id: currentTarget });

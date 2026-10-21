@@ -4,6 +4,12 @@ import {
   REGEN_DELAY_MS,
   REGEN_PER_S,
   CLUSTERS,
+  GUARDS,
+  GUARD_KIND,
+  GUARD_REALM_BONUS,
+  GUARD_TIER,
+  NAME_TIER_RED_FROM,
+  decayedSatNhan,
   RANKS,
   applyExp,
   getRootGrade,
@@ -111,6 +117,9 @@ export interface ProfileSeed {
   realm: number;
   stage: number;
   exp: number;
+  /** Sát nhân as of `satNhanAt` (ms, the same clock as the ticks); it falls 5 a minute from there. Guards go for names of 501 and over. */
+  satNhan?: number;
+  satNhanAt?: number;
   /** PvP scores that matter to combat: sát khí adds damage, the hero points add maximum MP and drop chance (shared/src/pk.ts). */
   satKhi?: number;
   hero?: number;
@@ -201,9 +210,13 @@ interface Monster {
   nextAttackAt: number;
   lastRepathAt: number;
   respawnAt: number;
+  /** A vệ binh: fixed class and element, fights only red names and its attackers, pays nothing when killed. */
+  guard?: boolean;
 }
 
 export type SimEvent =
+  /** A guard was killed by `killerId`: no reward, but the killer's sát khí and sát nhân rise (applyGuardKill). */
+  | { t: "guard_kill"; killerId: string }
   | { t: "mon"; monster: MonsterSnapshot }
   | { t: "mon_gone"; id: string }
   | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; /** A player answering the player who hit them first. */ ret?: true }
@@ -341,6 +354,21 @@ export class CombatSim {
         this.monsters.set(id, m);
       }
     }
+    // The guards come after every cluster monster, so the ids of the clusters (and the ranks saved under them) never move.
+    const guardDef = getMonsterDef(GUARD_KIND);
+    for (const [sx, sy] of guardDef ? GUARDS[mapId] : []) {
+      const home = nearestStandablePoint(map, sx, sy, 2);
+      if (!home || !guardDef) continue;
+      const id = `m${this.nextMonsterId++}`;
+      const g: Monster = {
+        id, def: guardDef, tier: GUARD_TIER, rank: "normal", maxHp: 0,
+        combatant: { attack: 0, defense: 0, critRate: 5, dodgeRate: 0, element: guardDef.element },
+        damage: new Map(), home, hp: 0, state: "idle", path: [home], startedAt: now, targetId: null, nextAttackAt: 0, lastRepathAt: 0, respawnAt: 0, guard: true,
+      };
+      this.applyRank(g);
+      g.hp = g.maxHp;
+      this.monsters.set(id, g);
+    }
   }
 
   /**
@@ -348,6 +376,16 @@ export class CombatSim {
    * what the room kept across a sleep ("rare1|moc"; an older value is only the class, and then the species' own element stays).
    */
   private applyRank(m: Monster, saved?: string): void {
+    if (m.guard) {
+      // A guard never rerolls: normal class, its own element, one realm above the map and a fixed bậc.
+      const g = monsterStats(m.def, this.realm + GUARD_REALM_BONUS, GUARD_TIER, "normal");
+      m.rank = "normal";
+      m.combatant.element = m.def.element;
+      m.maxHp = g.maxHp;
+      m.combatant.attack = g.attack;
+      m.combatant.defense = g.defense;
+      return;
+    }
     const [savedRank, savedElement] = (saved ?? "").split("|");
     const known = savedRank !== undefined && savedRank in RANKS;
     m.rank = known ? (savedRank as MonsterRank) : rollRank(this.rand());
@@ -367,7 +405,7 @@ export class CombatSim {
   /** Current class of every monster, kept by the room across a sleep so a rebuilt sim cannot reroll rare monsters. */
   ranks(): Record<string, string> {
     const out: Record<string, string> = {};
-    for (const m of this.monsters.values()) out[m.id] = `${m.rank}|${m.combatant.element}`;
+    for (const m of this.monsters.values()) if (!m.guard) out[m.id] = `${m.rank}|${m.combatant.element}`;
     return out;
   }
 
@@ -385,7 +423,7 @@ export class CombatSim {
       const at = lastPoint(m.path);
       for (const [id, pos] of positions) {
         const profile = this.players.get(id);
-        if (profile && !profile.dead && dist(at, pos) <= m.def.aggroRadius) return false;
+        if (profile && !profile.dead && dist(at, pos) <= m.def.aggroRadius && this.wouldAggro(m, profile)) return false;
       }
     }
     for (const p of this.players.values()) {
@@ -642,7 +680,7 @@ export class CombatSim {
       target = targetId ?? p.targetId;
       const m = target ? this.monsters.get(target) : undefined;
       const q = target ? this.players.get(target) : undefined;
-      const monsterOk = !!m && m.state !== "dead";
+      const monsterOk = !!m && m.state !== "dead" && !(m.guard && !this.canAttackGuard(p));
       if (!target || (!monsterOk && !(q && this.pvpAllowed(p, q)))) return { ok: false, reason: "no_target" };
       p.targetId = target;
       p.lastRepathAt = Number.NEGATIVE_INFINITY;
@@ -680,6 +718,7 @@ export class CombatSim {
     } else {
       const m = this.monsters.get(targetId);
       if (!m || m.state === "dead") return false;
+      if (m.guard && !this.canAttackGuard(p)) return false;
     }
     p.pendingCast = null; // a new target cancels a waiting skill
     p.targetId = targetId;
@@ -722,11 +761,15 @@ export class CombatSim {
   }
 
   /** New sát khí and hero points of a player: the damage bonus and the maximum MP follow. */
-  setPk(id: string, scores: { satKhi: number; hero: number }): void {
+  setPk(id: string, scores: { satKhi: number; hero: number; satNhan?: number; satNhanAt?: number }): void {
     const p = this.players.get(id);
     if (!p) return;
     p.satKhi = scores.satKhi;
     p.hero = scores.hero;
+    if (scores.satNhan !== undefined) {
+      p.satNhan = scores.satNhan;
+      p.satNhanAt = scores.satNhanAt ?? this.clock;
+    }
     this.recompute(p, false);
   }
 
@@ -750,6 +793,7 @@ export class CombatSim {
       speed: m.def.speed,
       hp: m.hp,
       maxHp: m.maxHp,
+      ...(m.guard ? { guard: true as const } : {}),
     };
   }
 
@@ -812,7 +856,7 @@ export class CombatSim {
         let bestD = m.def.aggroRadius;
         for (const [id, p] of positions) {
           const profile = this.players.get(id);
-          if (!profile || profile.dead) continue;
+          if (!profile || profile.dead || !this.wouldAggro(m, profile)) continue;
           const d = dist(pos, p);
           if (d <= bestD) {
             bestD = d;
@@ -858,6 +902,22 @@ export class CombatSim {
         }
       }
     }
+  }
+
+  /** Whether a monster starts a chase on this player: any monster goes for anyone in range, a guard only for red names and the ones who hit it. */
+  private wouldAggro(m: Monster, p: PlayerProfile): boolean {
+    if (!m.guard) return true;
+    return m.damage.has(p.id) || this.satNhanNow(p) >= NAME_TIER_RED_FROM;
+  }
+
+  /** A player's sát nhân at the sim clock (the stored value less 5 a minute since it was set). */
+  private satNhanNow(p: PlayerProfile): number {
+    return decayedSatNhan(p.satNhan ?? 0, this.clock - (p.satNhanAt ?? this.clock));
+  }
+
+  /** Whether `p` may attack a guard: the PK state must be on and the player must not be under the newbie protection. */
+  private canAttackGuard(p: PlayerProfile): boolean {
+    return p.pkMode > 0 && !isPkProtected(p.realm, p.stage);
   }
 
   private monsterAttack(m: Monster, p: PlayerProfile, now: number, events: SimEvent[]): void {
@@ -1076,6 +1136,12 @@ export class CombatSim {
     m.path = [mpos];
     events.push({ t: "mon_gone", id: m.id });
     for (const other of this.players.values()) if (other.targetId === m.id) other.targetId = null;
+    if (m.guard) {
+      // A guard pays nothing: no EXP, no Linh Thạch, no loot, no quest credit. The killer's scores rise like for a white name.
+      m.damage.clear();
+      events.push({ t: "guard_kill", killerId: p.id });
+      return applied;
+    }
     // A normal monster pays whoever lands the last hit. A rare one pays its top contributor (70% damage share +
     // 30% last hit) among the players still here, which can be someone other than the killer.
     const winner =

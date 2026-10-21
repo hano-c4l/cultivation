@@ -161,6 +161,10 @@ describe("fighting a player", () => {
     const events = run(sim, 0, 2000);
     expect(events.filter((e) => e.t === "pvp_kill")).toEqual([{ t: "pvp_kill", killerId: "a", victimId: "b" }]);
     expect(events.filter((e) => e.t === "player_dead")).toEqual([{ t: "player_dead", playerId: "b", by: "a" }]);
+    // The room reads the victim's name tier when it handles `player_dead` and only then settles the scores on `pvp_kill` (see handleDeath), so this order matters.
+    const kinds = events.map((e) => e.t);
+    expect(kinds.indexOf("player_dead")).toBeGreaterThanOrEqual(0);
+    expect(kinds.indexOf("player_dead")).toBeLessThan(kinds.indexOf("pvp_kill"));
     expect(b.dead).toBe(true);
     expect(a.targetId).toBeNull();
     expect(a.exp).toBe(0);

@@ -1,4 +1,4 @@
-import { MASTERY_NEEDED, CLUSTERS, RANKS, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
+import { MASTERY_NEEDED, CLUSTERS, GUARDS, RANKS, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, skillContextOf, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -38,8 +38,8 @@ function run(sim: CombatSim, from: number, to: number, positions: Map<string, Ve
 
 describe("CombatSim", () => {
   it("spawns every configured monster on the forest map and none in town", () => {
-    expect(forestSim().monsterCount).toBe(CLUSTERS.forest.reduce((n, c) => n + c.count, 0));
-    expect(new CombatSim(getMap("cave"), "cave", noCrit, 0).monsterCount).toBe(CLUSTERS.cave.reduce((n, c) => n + c.count, 0));
+    expect(forestSim().monsterCount).toBe(CLUSTERS.forest.reduce((n, c) => n + c.count, 0) + GUARDS.forest.length);
+    expect(new CombatSim(getMap("cave"), "cave", noCrit, 0).monsterCount).toBe(CLUSTERS.cave.reduce((n, c) => n + c.count, 0) + GUARDS.cave.length);
     expect(new CombatSim(getMap("town"), "town", noCrit, 0).monsterCount).toBe(0);
   });
 

@@ -85,7 +85,12 @@ export type BagOp =
   /** Durability of a worn or carried piece changes from `from` to `to` (guarded: it must still be `from`). */
   | { op: "setdur"; id: string; from: number; to: number }
   /** Take a worn piece off into the mailbox, never expiring (the bag had no room). `mailId` names the new mail. */
-  | { op: "mailequip"; id: string; slot: EquipSlot; mailId: string; subject: string };
+  | { op: "mailequip"; id: string; slot: EquipSlot; mailId: string; subject: string }
+  /**
+   * The item (a bag stack or a worn piece) leaves its owner and reaches `to` by mail, never expiring (a PvP drop, docs/PHASE2.md 2f):
+   * the row is deleted and a copy with the id `newId` is created for `to`, in one batch. `qty` and the wear fields are what the row holds.
+   */
+  | { op: "give"; id: string; qty: number; type: string; dur?: number; max?: number; lv?: number; xp?: number; to: string; newId: string; mailId: string; subject: string };
 
 export function inBounds(pos: BagPos, bagTabs: number): boolean {
   return Number.isInteger(pos.tab) && Number.isInteger(pos.cell) && pos.tab >= 0 && pos.tab < bagTabs && pos.cell >= 0 && pos.cell < BAG_CELLS_PER_TAB;
@@ -173,6 +178,10 @@ export function applyBag(state: BagContents, ops: readonly BagOp[]): BagContents
         worn = worn.map((e) => (e.id === op.id ? { ...e, dur: op.to } : e));
         break;
       case "mailequip":
+        worn = worn.filter((e) => e.id !== op.id);
+        break;
+      case "give":
+        next = next.filter((i) => i.id !== op.id);
         worn = worn.filter((e) => e.id !== op.id);
         break;
     }

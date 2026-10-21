@@ -82,7 +82,7 @@ export const vi = {
     mailTitle: (n: number) => `Hòm thư (${n})`,
     mailEmpty: "Không có thư.",
     claim: "Nhận",
-    mailSubjects: { bag_full: "Túi đồ đầy", equip_removed: "Trang bị đã tháo ra", bag_resized: "Túi đồ đổi cỡ (8×8)" } as Record<string, string>,
+    mailSubjects: { pk_drop: "Chiến lợi phẩm PvP", bag_full: "Túi đồ đầy", equip_removed: "Trang bị đã tháo ra", bag_resized: "Túi đồ đổi cỡ (8×8)" } as Record<string, string>,
     noExpiry: "Không hết hạn",
     categories: { consumable: "Đan dược", material: "Nguyên liệu", equipment: "Trang bị", skill_book: "Bí tịch" } as Record<string, string>,
     learn: "Học",
@@ -255,6 +255,8 @@ export const vi = {
     safeTitle: "Trong thành không thể PvP.",
     scoresTitle: "Sát nhân (đổi màu tên, giảm 5 mỗi phút online) · Anh hùng (thưởng linh lực và tỉ lệ rơi đồ từ 200)",
     scores: (sn: number, ah: number) => `Sát nhân ${sn} · Anh hùng ${ah}`,
+    dropVictim: (item: string, qty: number, other: string) => `${other} đã giết bạn và lấy đi ${item}${qty > 1 ? ` × ${qty}` : ""}.`,
+    dropKiller: (item: string, qty: number, other: string) => `Bạn nhận được ${item}${qty > 1 ? ` × ${qty}` : ""} từ ${other}: xem hòm thư.`,
     changed: (sk: number, sn: number, ah: number) => `Điểm PvP: sát khí ${sk}, sát nhân ${sn}, anh hùng ${ah}.`,
     errors: {
       off: "Chế độ PK của bạn đang tắt, hoặc người đó không ở chế độ PK/Đồ sát: hãy chuyển sang PK hoặc Đồ sát (Đồ sát đánh được tất cả).",

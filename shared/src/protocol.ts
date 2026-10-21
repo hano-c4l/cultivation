@@ -157,6 +157,8 @@ export interface MonsterSnapshot {
   speed: number;
   hp: number;
   maxHp: number;
+  /** A vệ binh (guard): shown with its own name and colour, attackable only with the PK state on. */
+  guard?: true;
 }
 
 export interface PlayerSnapshot {
@@ -217,6 +219,10 @@ export type ServerMessage =
   | { t: "pk_score"; id: string; sn: number }
   /** The PK state of a player in the room changed (the tag after their name). */
   | { t: "pk_state"; id: string; mode: PkMode }
+  /** A player killed by another lost an item to the killer's mailbox: `role` says which side this message is for, `other` is the other player's name. */
+  | { t: "pk_drop"; role: "killer" | "victim"; item: string; qty: number; other: string }
+  /** A player killed by another lost an item to the killer's mailbox: `role` says which side this message is for, `other` is the other player's name. */
+  | { t: "pk_drop"; role: "killer" | "victim"; item: string; qty: number; other: string }
   /** A kill ended the quarrel with this player: forget that they attacked you (the grey name). */
   | { t: "pk_clear"; id: string }
   /** The quests a giver has (all enabled ones plus any the character is on) and the character's progress on them. */

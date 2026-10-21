@@ -121,7 +121,7 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
-import { GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { DEATH_DURABILITY_BY_TIER, applyGuardKill, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -275,6 +275,8 @@ function seedOf(row: CharacterRow, bag: BagState | undefined, skills: readonly S
     id: row.id,
     name: row.name,
     satKhi: row.sat_khi,
+    satNhan: row.sat_nhan,
+    satNhanAt: Date.now(),
     hero: row.anh_hung,
     potentialPoints: row.potential_points,
     element: row.spiritual_root,
@@ -930,7 +932,7 @@ export class MapRoom extends DurableObject<Env> {
         const skills = await this.getSkillRows(row.id).catch(() => [] as SkillRow[]);
         const catalog = await getConstitutionCatalog(this.env.DB).catch(() => DEFAULT_CATALOG);
         const live = present.find((s) => s.id === row.id);
-        sim.addPlayer({ ...seedOf(row, bag, skills, catalog), satKhi: live?.sk ?? row.sat_khi, hero: live?.ah ?? row.anh_hung });
+        sim.addPlayer({ ...seedOf(row, bag, skills, catalog), satKhi: live?.sk ?? row.sat_khi, hero: live?.ah ?? row.anh_hung, satNhan: live?.sn ?? row.sat_nhan, satNhanAt: live?.snAt ?? Date.now() });
         if (live?.pk) sim.setPkMode(row.id, live.pk);
       }
     } catch (err) {
@@ -1174,6 +1176,9 @@ export class MapRoom extends DurableObject<Env> {
       case "pvp_kill":
         later.push(this.settlePvpKill(ev.killerId, ev.victimId, sockets, now));
         return;
+      case "guard_kill":
+        later.push(this.settleGuardKill(ev.killerId, sockets, now));
+        return;
       case "kill": {
         const mapId = sockets.get(ev.playerId)?.state.mapId;
         if (mapId) later.push(this.noteKill(ev.playerId, mapId, ev.rare).catch((err) => console.error("quest kill failed", ev.playerId, err)));
@@ -1183,7 +1188,7 @@ export class MapRoom extends DurableObject<Env> {
         const entry = sockets.get(ev.playerId);
         const profile = this.sim?.getPlayer(ev.playerId);
         if (!entry || !profile) return;
-        later.push(this.handleDeath(entry.ws, entry.state, profile));
+        later.push(this.handleDeath(entry.ws, entry.state, profile, ev.by));
         return;
       }
       case "teleport": {
@@ -2366,7 +2371,7 @@ export class MapRoom extends DurableObject<Env> {
 
   /** Death: lose a little EXP (never a stage), then respawn in town through the normal handoff. */
   /** Death wear as one guarded batch under a one-time key, retried with the same key (a retry after a lost answer is "duplicate"). */
-  private wearGearOnDeath(ws: WebSocket, id: string, wearer: WearerCtx): void {
+  private wearGearOnDeath(ws: WebSocket, id: string, wearer: WearerCtx, fraction?: number): void {
     const key = `death:${crypto.randomUUID()}`;
     void this.bagTask(id, async () => {
       let removed: Array<{ item: { type: string }; reason: EquipBlock; mailed: boolean }> = [];
@@ -2375,7 +2380,7 @@ export class MapRoom extends DurableObject<Env> {
           const res = await this.mutateBag(
             id,
             (bag) => {
-              const r = planDeathWear({ items: bag.items, equipped: bag.equipped }, bag.tabs, wearer, () => crypto.randomUUID());
+              const r = planDeathWear({ items: bag.items, equipped: bag.equipped }, bag.tabs, wearer, () => crypto.randomUUID(), fraction);
               removed = r.removed;
               return r.ops.length > 0 ? { ops: r.ops } : null;
             },
@@ -2824,15 +2829,56 @@ export class MapRoom extends DurableObject<Env> {
     return loss;
   }
 
-  private async handleDeath(ws: WebSocket, state: PlayerState, profile: PlayerProfile): Promise<void> {
+  private async handleDeath(ws: WebSocket, state: PlayerState, profile: PlayerProfile, by?: string): Promise<void> {
+    // The name tier is read before anything awaits. The sim pushes `player_dead` before `pvp_kill`, and settlePvpKill (called right after this
+    // synchronous start) lowers the victim's sát nhân, so reading later would use the score after the kill. server/src/pvp.test.ts pins the order.
+    const tier = nameTier(this.satNhanOf(state, Date.now()));
     const expLost = expLostOnDeath(profile.exp);
     this.sim?.applyDeathPenalty(state.id, expLost);
+    // Killed by a player while yellow, orange or red: maybe one item goes to the killer's mailbox. It is done first (and awaited), so the wear
+    // below and the handoff, which waits for the bag queue, both see the bag without it.
+    if (by && tier >= 1) await this.dropToKiller(ws, state, by, tier);
     // Every worn piece wears down (whatever killed the character). Queued before the handoff, which waits for the bag
     // queue before the lock is released, so the town room reads the new durability.
-    this.wearGearOnDeath(ws, state.id, { gender: profile.gender, realm: profile.realm, stage: profile.stage, base: profile.base });
+    this.wearGearOnDeath(ws, state.id, { gender: profile.gender, realm: profile.realm, stage: profile.stage, base: profile.base }, DEATH_DURABILITY_BY_TIER[tier]);
     this.send(ws, { t: "died", expLost });
     const [sx, sy] = getMap("town").spawn;
     await this.handoff(ws, state, "town", sx + 0.5, sy + 0.5, true);
+  }
+
+  /**
+   * The PvP drop (docs/PHASE2.md 2f): with the chance of the victim's name tier, one bag stack or worn piece goes to the killer's mailbox (never
+   * expiring) in ONE batch (the victim's row is deleted and a copy is made for the killer), keyed once per kill so a retry cannot give two. The
+   * killer must still be in this room; if it left, nothing drops. Both sides are told.
+   */
+  private async dropToKiller(ws: WebSocket, victim: PlayerState, killerId: string, tier: NameTier): Promise<void> {
+    const killer = this.socketOf(killerId);
+    if (!killer) return;
+    const key = `pkdrop:${crypto.randomUUID()}`;
+    const ids = { newId: crypto.randomUUID(), mailId: crypto.randomUUID() };
+    // Local tests set PK_DROP_FORCE=1 (in .dev.vars) so the drop always happens; the real game rolls.
+    const roll = this.env.PK_DROP_FORCE === "1" ? 0 : Math.random();
+    const pick = Math.random();
+    let chosen: Extract<BagOp, { op: "give" }> | null = null;
+    let done = false;
+    await this.bagTask(victim.id, async () => {
+      const res = await this.mutateBag(
+        victim.id,
+        (bag) => {
+          chosen = planPkDrop({ items: bag.items, equipped: bag.equipped }, tier, roll, pick, killerId, ids, "pk_drop");
+          return chosen ? { ops: [chosen] } : null;
+        },
+        key,
+      );
+      if (!res.ok) return;
+      done = true;
+      this.sendBagDelta(victim.id, res.before, res.after, ws);
+    });
+    const gave = chosen as Extract<BagOp, { op: "give" }> | null;
+    if (!done || !gave) return;
+    this.send(ws, { t: "pk_drop", role: "victim", item: gave.type, qty: gave.qty, other: killer.state.name });
+    this.send(killer.ws, { t: "pk_drop", role: "killer", item: gave.type, qty: gave.qty, other: victim.name });
+    await this.sendMailList(killerId, killer.ws).catch((err) => console.error("mail list failed", killerId, err));
   }
 
   /** A teleport skill went off: the player stands at `to` from now on, and everyone (the player included) gets that as a new track. */
@@ -2935,7 +2981,7 @@ export class MapRoom extends DurableObject<Env> {
       // works with gets them too, so the victim's handoff, which writes that copy back, keeps them.
       this.patchState(entry.ws, apply);
       apply(entry.state);
-      this.sim?.setPk(entry.state.id, { satKhi: scores.satKhi, hero: scores.hero });
+      this.sim?.setPk(entry.state.id, { satKhi: scores.satKhi, hero: scores.hero, satNhan: scores.satNhan, satNhanAt: now });
       this.send(entry.ws, { t: "pk", mode: entry.state.pk ?? 0, satKhi: scores.satKhi, satNhan: Math.round(scores.satNhan), hero: scores.hero });
       this.broadcast({ t: "pk_score", id: entry.state.id, sn: Math.round(scores.satNhan) });
     }
@@ -2946,6 +2992,27 @@ export class MapRoom extends DurableObject<Env> {
     this.sendToCharacter(killerId, { t: "pk_clear", id: victimId });
     this.sendToCharacter(victimId, { t: "pk_clear", id: killerId });
     await Promise.all([killer, victim].map((e) => this.flushPk(e.state)));
+  }
+
+  /** A player killed a guard: sát khí and sát nhân rise like for a white name (applyGuardKill), written at once and sent like after a PvP kill. */
+  private async settleGuardKill(killerId: string, sockets: Map<string, { ws: WebSocket; state: PlayerState }>, now: number): Promise<void> {
+    const killer = sockets.get(killerId);
+    if (!killer) return;
+    const sn = this.satNhanOf(killer.state, now);
+    const r = applyGuardKill(this.pkScoresOf(killer.state, now), sn);
+    const apply = (s: PlayerState) => {
+      s.sk = r.satKhi;
+      s.sn = r.satNhan;
+      s.snAt = now;
+      s.ah = r.hero;
+      s.pkDirty = true;
+    };
+    this.patchState(killer.ws, apply);
+    apply(killer.state);
+    this.sim?.setPk(killerId, { satKhi: r.satKhi, hero: r.hero, satNhan: r.satNhan, satNhanAt: now });
+    this.send(killer.ws, { t: "pk", mode: killer.state.pk ?? 0, satKhi: r.satKhi, satNhan: Math.round(r.satNhan), hero: r.hero });
+    this.broadcast({ t: "pk_score", id: killerId, sn: Math.round(r.satNhan) });
+    await this.flushPk(killer.state);
   }
 
   private async handleAttack(ws: WebSocket, state: PlayerState, monsterId: string): Promise<void> {
