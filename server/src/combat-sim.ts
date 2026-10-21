@@ -24,6 +24,9 @@ import {
   BOSS_TIER,
   bossPityKills,
   bossShares,
+  bossStats,
+  BOSS_SKILLS,
+  BOSS_STAT_TIER,
   pickByShare,
   applyExp,
   getRootGrade,
@@ -535,11 +538,14 @@ export class CombatSim {
       respawnAt: 0,
       boss: true,
     };
-    const stats = monsterStats(def, this.realm, BOSS_TIER, "rare2");
+    const stats = bossStats(this.realm);
     m.maxHp = stats.maxHp;
     m.hp = stats.maxHp;
     m.combatant.attack = stats.attack;
     m.combatant.defense = stats.defense;
+    m.combatant.critRate = stats.critRate;
+    m.combatant.dodgeRate = stats.dodgeRate;
+    m.skillReadyAt = {};
     this.monsters.set(m.id, m);
     return this.snapshot(m, now);
   }
@@ -910,7 +916,7 @@ export class CombatSim {
     return {
       id: m.id,
       kind: m.def.id,
-      tier: m.tier,
+      tier: m.boss ? BOSS_STAT_TIER : m.tier,
       rank: m.rank,
       element: m.combatant.element,
       path: m.path,
@@ -1061,25 +1067,27 @@ export class CombatSim {
       return true;
     };
     const left = (id: string) => (m.skillReadyAt?.[id] ?? 0) <= now;
-    if (m.hp < m.maxHp * GUARD_SKILLS.mend.below && left("mend") && ready("mend", GUARD_SKILLS.mend.cdMs)) {
-      m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * GUARD_SKILLS.mend.fraction));
+    // The boss uses the same turn as a guard with its own numbers and without the buff (two attacks and a heal).
+    const sk = m.boss ? BOSS_SKILLS : GUARD_SKILLS;
+    if (m.hp < m.maxHp * sk.mend.below && left("mend") && ready("mend", sk.mend.cdMs)) {
+      m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * sk.mend.fraction));
       events.push({ t: "mon", monster: this.snapshot(m, now) });
       return null;
     }
-    if (now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", GUARD_SKILLS.ward.cdMs)) {
+    if (!m.boss && now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", GUARD_SKILLS.ward.cdMs)) {
       m.buffUntil = now + GUARD_SKILLS.ward.durationMs;
       return null;
     }
     const buff = now < (m.buffUntil ?? 0) ? 1 + GUARD_SKILLS.ward.attackPct / 100 : 1;
-    if (left("burst") && ready("burst", GUARD_SKILLS.burst.cdMs)) return GUARD_SKILLS.burst.power * buff;
-    if (left("slash") && ready("slash", GUARD_SKILLS.slash.cdMs)) return GUARD_SKILLS.slash.power * buff;
+    if (left("burst") && ready("burst", sk.burst.cdMs)) return sk.burst.power * buff;
+    if (left("slash") && ready("slash", sk.slash.cdMs)) return sk.slash.power * buff;
     return buff;
   }
 
   private monsterAttack(m: Monster, p: PlayerProfile, now: number, events: SimEvent[]): void {
     m.nextAttackAt = now + m.def.attackCooldownMs;
     let power = 1;
-    if (m.guard) {
+    if (m.guard || m.boss) {
       const turn = this.guardTurn(m, now, events);
       if (turn === null) return; // the turn went to a heal or the buff
       power = turn;

@@ -1,10 +1,11 @@
-import { MAX_BAG_TABS, MAX_LEDGER_AMOUNT, isCurrency, validSettingValue } from "@game/shared";
+import { CONSTITUTION_STATS, ELEMENT_TAGS, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
 import { getSession } from "./auth";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
 import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
+import { loadConstitutionCatalog, saveConstitutionCatalog } from "./constitution-catalog";
 
 /** Returns the admin's account id, or the error response to send (401 anonymous, 403 not an admin). */
 async function requireAdmin(request: Request, env: Env): Promise<string | Response> {
@@ -144,4 +145,20 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
   await setSetting(env.DB, key, body.value as number, admin);
   console.log("setting changed", admin, key, body.value);
   return json({ ok: true, settings: await allSettings(env.DB) });
+}
+
+/**
+ * The constitution catalogue for the admin screen (GET: every constitution, enabled or not, with its version) and the save (POST
+ * `{expectedVersion, constitutions}`: see saveConstitutionCatalog). Admin only; the server validates everything again.
+ */
+export async function adminConstitutions(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  if (request.method === "GET") return json({ ...(await loadConstitutionCatalog(env.DB)), vocabulary: { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS } });
+  const body = await readJson(request, 512 * 1024); // a whole catalogue is much bigger than the usual request
+  if (typeof body?.expectedVersion !== "number" || !Array.isArray(body?.constitutions)) return errorResponse("invalid_body", 400);
+  const result = await saveConstitutionCatalog(env.DB, body.expectedVersion, { version: body.expectedVersion, constitutions: body.constitutions as never });
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : 400);
+  console.log("constitution catalogue saved", admin, "version", result.version);
+  return json({ ok: true, ...(await loadConstitutionCatalog(env.DB)), vocabulary: { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS } });
 }

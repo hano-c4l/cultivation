@@ -2,7 +2,7 @@ import { vi } from "./locales/vi";
 
 export interface ChannelUi {
   /** Starts the bar in the middle of the screen: it fills over `ms`, with the seconds left under it. */
-  start(label: string, ms: number): void;
+  start(label: string, ms: number, variant?: "gold"): void;
   /** Hides it (the channel ended, broke or moved us). */
   stop(): void;
 }
@@ -44,8 +44,9 @@ export function initChannel(): ChannelUi {
   }
 
   return {
-    start(label, ms) {
+    start(label, ms, variant) {
       stop();
+      box.classList.toggle("gold", variant === "gold");
       total = Math.max(1, ms);
       endsAt = Date.now() + total;
       title.textContent = label;

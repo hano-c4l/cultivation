@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import {
   BOSSES,
+  BOSS_REALM_BONUS,
   equipmentInfo,
   MP_REGEN_PER_S,
   REGEN_PER_S,
@@ -868,7 +869,7 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(vi.breakthrough.started(msg.ratePct), "important");
         // Like channelling a talisman: standing still with nothing open, and a bar in the middle of the screen counts down.
         closeAllWindows();
-        this.channel.start(vi.breakthrough.barTitle(REALMS[(this.selfSheet?.realm ?? 0) + 1]?.nameVi ?? ""), msg.ms);
+        this.channel.start(vi.breakthrough.barTitle(REALMS[(this.selfSheet?.realm ?? 0) + 1]?.nameVi ?? ""), msg.ms, "gold");
         break;
       case "bt_end": {
         this.charPanel.breakthroughEnded();
@@ -1022,7 +1023,7 @@ export class GameScene extends Phaser.Scene {
     if (guard) return getMonsterDef(kind)?.nameVi ?? kind;
     const tag = isBossKind(kind) ? vi.rank.bossTag : RANKS[rank].tagVi;
     // The bậc shows as the realm tag and the bậc ("TC2"), like on gear.
-    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[this.map.realm ?? 0]?.shortVi ?? ""}${tier}${tag ? ` · ${tag}` : ""}`;
+    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[(this.map.realm ?? 0) + (isBossKind(kind) ? BOSS_REALM_BONUS : 0)]?.shortVi ?? ""}${tier}${tag ? ` · ${tag}` : ""}`;
   }
 
   /** Rare monsters have their own colours; normal ones are coloured by how their bậc compares to the player's level. */

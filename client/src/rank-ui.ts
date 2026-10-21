@@ -1,4 +1,4 @@
-import { REALMS, type ClientMessage } from "@game/shared";
+import { LEADERBOARDS, REALMS, type ClientMessage, type Leaderboard } from "@game/shared";
 import { api } from "./api";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
@@ -26,6 +26,7 @@ export function initRank(send: (msg: ClientMessage) => void, isAdmin: boolean): 
   document.body.append(toggle, panel);
   registerWindow("rank", panel, 6);
   let selfName = "";
+  let board: Leaderboard = "realm";
 
   function draw(body: HTMLElement | string): void {
     panel.replaceChildren();
@@ -44,25 +45,36 @@ export function initRank(send: (msg: ClientMessage) => void, isAdmin: boolean): 
       };
       head.append(gm);
     }
-    panel.append(head, typeof body === "string" ? el("div", "muted", body) : body);
+    const tabs = el("div", "eq-tabs");
+    for (const id of LEADERBOARDS) {
+      const b = el("button", id === board ? "active" : "sub", vi.rank.tabs[id]);
+      b.onclick = () => {
+        board = id;
+        void load();
+      };
+      tabs.append(b);
+    }
+    panel.append(head, tabs, typeof body === "string" ? el("div", "muted", body) : body);
   }
 
   async function load(): Promise<void> {
     draw(vi.rank.loading);
-    const r = await api.leaderboard();
+    const asked = board;
+    const r = await api.leaderboard(asked);
+    if (asked !== board) return; // another tab was picked meanwhile
     if (!r.ok || !r.data) return draw(vi.rank.failed);
     if (r.data.rows.length === 0) return draw(vi.rank.empty);
     const table = el("table");
     const header = el("tr");
-    for (const [text, cls] of [["#", "n"], [vi.rank.name, ""], [vi.rank.realm, ""], [vi.rank.exp, "n"]] as const) header.append(el("th", cls, text));
+    for (const [text, cls] of [["#", "n"], [vi.rank.name, ""], [vi.rank.realm, ""], [vi.rank.valueHeader[board] ?? "", "n"]] as const) header.append(el("th", cls, text));
     table.append(header);
     r.data.rows.forEach((row, i) => {
       const tr = el("tr", row.name === selfName ? "me" : undefined);
-      tr.append(el("td", "n", String(i + 1)), el("td", undefined, row.name), el("td", undefined, `${REALMS[row.realm]?.nameVi ?? ""} ${row.stage}`), el("td", "n", row.exp.toLocaleString("vi-VN")));
+      tr.append(el("td", "n", String(i + 1)), el("td", undefined, row.name), el("td", undefined, `${REALMS[row.realm]?.nameVi ?? ""} ${row.stage}`), el("td", "n", row.value.toLocaleString("vi-VN")));
       table.append(tr);
     });
     draw(table);
-    panel.append(el("div", "muted", vi.rank.note));
+    panel.append(el("div", "muted", `${vi.rank.notes[board] ?? ""} ${vi.rank.updated}`));
   }
 
   toggle.onclick = () => {

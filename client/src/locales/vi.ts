@@ -430,8 +430,16 @@ export const vi = {
     empty: "Chưa có ai trên bảng.",
     name: "Đạo hiệu",
     realm: "Cảnh giới",
-    exp: "Tu vi",
-    note: "Xếp theo cảnh giới, tầng rồi tu vi. Cập nhật mỗi phút; tu vi mới nhất có thể trễ vài giây.",
+    tabs: { realm: "Cảnh giới", power: "Võ lực", wealth: "Tài phú", gear: "Trang bị", artifact: "Pháp bảo" } as Record<string, string>,
+    valueHeader: { realm: "Tu vi", power: "Võ lực", wealth: "Linh Thạch", gear: "Điểm trang bị", artifact: "Điểm pháp bảo" } as Record<string, string>,
+    notes: {
+      realm: "Xếp theo cảnh giới, tầng rồi tu vi.",
+      power: "Võ lực = công kích + phòng thủ + sinh lực ÷ 10, tính từ chỉ số và trang bị đang mặc.",
+      wealth: "Chỉ tính Linh Thạch đang có (không tính Cống Hiến và Tiên Ngọc).",
+      gear: "Cộng điểm các món trang bị đang mặc (không tính pháp bảo): cảnh giới, bậc và phẩm càng cao càng nhiều điểm.",
+      artifact: "Cộng điểm các pháp bảo đang mặc, thêm điểm theo cấp luyện của pháp bảo bản mệnh.",
+    } as Record<string, string>,
+    updated: "Cập nhật mỗi phút; số liệu mới nhất có thể trễ vài giây.",
   },
   breakthrough: {
     barTitle: (realm: string) => `Đột phá · ${realm} Kỳ`,

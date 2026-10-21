@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_CATALOG, validateCatalog } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
-import { getConstitutionCatalog, loadConstitutionCatalog, resetConstitutionCatalogCache } from "./constitution-catalog";
+import { getConstitutionCatalog, loadConstitutionCatalog, resetConstitutionCatalogCache, saveConstitutionCatalog } from "./constitution-catalog";
 import { makeDb } from "./test-db";
 
 let db: D1Database;
@@ -83,5 +83,69 @@ describe("the cached getter", () => {
   it("with nothing cached and D1 failing it throws, so creation cannot roll from a made-up catalogue", async () => {
     const broken = { prepare: () => { throw new Error("D1 down"); } } as unknown as D1Database;
     await expect(getConstitutionCatalog(broken)).rejects.toThrow("D1 down");
+  });
+});
+
+describe("the admin save", () => {
+  const edit = async (fn: (c: Awaited<ReturnType<typeof loadConstitutionCatalog>>) => void) => {
+    const c = structuredClone(await loadConstitutionCatalog(db));
+    fn(c);
+    return c;
+  };
+
+  it("replaces the whole catalogue, bumps the version and is read back", async () => {
+    const v = (await loadConstitutionCatalog(db)).version;
+    const next = await edit((c) => {
+      c.constitutions.find((d) => d.id === "kiem_the")!.nameVi = "Kiếm Thể Mới";
+      c.constitutions.find((d) => d.id === "kiem_the")!.tiers[0]!.effects.push({ stat: "move_speed", targetKind: "all", targetTag: "", mode: "percent", value: 5 });
+      c.constitutions.push({ id: "moi", nameVi: "Mới", descVi: "", rollWeight: 10, isDefault: false, enabled: true, sortOrder: 99, tiers: [{ tier: 1, nameVi: "Một", rollWeight: 100, effects: [] }] });
+    });
+    const r = await saveConstitutionCatalog(db, v, next, 5);
+    expect(r).toEqual({ ok: true, version: v + 1 });
+    const back = await loadConstitutionCatalog(db);
+    expect(back.version).toBe(v + 1);
+    expect(back.constitutions.find((d) => d.id === "kiem_the")!.nameVi).toBe("Kiếm Thể Mới");
+    expect(back.constitutions.some((d) => d.id === "moi")).toBe(true);
+    expect(back.constitutions.find((d) => d.id === "kiem_the")!.tiers[0]!.effects.some((e) => e.stat === "move_speed")).toBe(true);
+  });
+
+  it("saves in few statements (D1 counts each statement of a batch against a per-invocation limit of 50 on the Free plan)", async () => {
+    const v = (await loadConstitutionCatalog(db)).version;
+    let statements = 0;
+    const real = db.batch.bind(db);
+    (db as { batch: typeof db.batch }).batch = ((list: unknown[]) => {
+      statements += list.length;
+      return real(list as never);
+    }) as typeof db.batch;
+    expect((await saveConstitutionCatalog(db, v, await edit(() => undefined))).ok).toBe(true);
+    expect(statements).toBeLessThan(15);
+    expect(statements).toBeGreaterThan(3);
+  });
+
+  it("a stale version is refused and changes nothing", async () => {
+    const v = (await loadConstitutionCatalog(db)).version;
+    const next = await edit((c) => void (c.constitutions[0]!.nameVi = "X"));
+    expect(await saveConstitutionCatalog(db, v - 1, next)).toMatchObject({ ok: false, error: "version_conflict" });
+    expect((await loadConstitutionCatalog(db)).constitutions[0]!.nameVi).not.toBe("X");
+  });
+
+  it("a version that changes between the check and the batch rolls the whole batch back", async () => {
+    const v = (await loadConstitutionCatalog(db)).version;
+    const next = await edit((c) => void (c.constitutions[0]!.nameVi = "Y"));
+    raw.exec("UPDATE config_versions SET version = version + 1 WHERE name = 'constitutions'"); // someone else saved just now
+    const r = await saveConstitutionCatalog(db, v, next);
+    expect(r).toMatchObject({ ok: false, error: "version_conflict" });
+    expect((await loadConstitutionCatalog(db)).constitutions[0]!.nameVi).not.toBe("Y");
+  });
+
+  it("refuses an invalid catalogue, a deleted constitution and a changed default", async () => {
+    const v = (await loadConstitutionCatalog(db)).version;
+    expect(await saveConstitutionCatalog(db, v, await edit((c) => void (c.constitutions[0]!.tiers[0]!.rollWeight += 1)))).toMatchObject({ ok: false, error: "invalid" });
+    expect(await saveConstitutionCatalog(db, v, await edit((c) => void c.constitutions.splice(0, 1)))).toMatchObject({ ok: false, error: "missing_constitution" });
+    const swapped = await edit((c) => {
+      for (const d of c.constitutions) d.isDefault = d.id === "kiem_the";
+    });
+    expect(await saveConstitutionCatalog(db, v, swapped)).toMatchObject({ ok: false });
+    expect(await saveConstitutionCatalog(db, v, { version: v, constitutions: "nonsense" as never })).toMatchObject({ ok: false, error: "invalid" });
   });
 });
