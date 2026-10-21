@@ -27,6 +27,9 @@ import {
   bossShares,
   bossStats,
   BOSS_SKILLS,
+  BOSS_CONE,
+  BOSS_REGEN_PER_S,
+  inCone,
   BOSS_STAT_TIER,
   pickByShare,
   applyExp,
@@ -237,6 +240,8 @@ interface Monster {
   /** Guards only: when each of its skills is ready again, and until when its buff lasts. */
   skillReadyAt?: Record<string, number>;
   buffUntil?: number;
+  /** When a boss last healed back at home (it heals once a second). */
+  lastRegenAt?: number;
 }
 
 export type SimEvent =
@@ -990,6 +995,13 @@ export class CombatSim {
       }
       const pos = this.position(m, now);
 
+      if (m.boss && m.state === "idle" && m.hp < m.maxHp && now - (m.lastRegenAt ?? 0) >= 1000) {
+        m.lastRegenAt = now;
+        m.hp = Math.min(m.maxHp, m.hp + Math.max(1, Math.round(m.maxHp * BOSS_REGEN_PER_S)));
+        if (m.hp >= m.maxHp) m.damage.clear(); // whole again: earlier damage no longer counts towards the reward
+        events.push({ t: "mon", monster: this.snapshot(m, now) });
+      }
+
       if (m.state === "idle") {
         let best: string | null = null;
         let bestD = m.def.aggroRadius;
@@ -1021,7 +1033,7 @@ export class CombatSim {
             m.startedAt = now;
             events.push({ t: "mon", monster: this.snapshot(m, now) });
           }
-          if (now >= m.nextAttackAt) this.monsterAttack(m, profile, now, events);
+          if (now >= m.nextAttackAt) this.monsterAttack(m, profile, now, events, positions);
         } else if (now - m.lastRepathAt >= REPATH_MS && dist(lastPoint(m.path), target) > REPATH_DISTANCE) {
           if (this.walk(m, pos, target, now)) events.push({ t: "mon", monster: this.snapshot(m, now) });
           else m.lastRepathAt = now;
@@ -1031,8 +1043,11 @@ export class CombatSim {
       if (m.state === "return") {
         if (dist(pos, m.home) < 0.3) {
           m.state = "idle";
-          m.hp = m.maxHp;
-          m.damage.clear(); // healed to full: earlier damage no longer counts towards the reward
+          // A boss heals back gradually (see BOSS_REGEN_PER_S) and keeps its damage table meanwhile; everything else is whole at once.
+          if (!m.boss) {
+            m.hp = m.maxHp;
+            m.damage.clear(); // healed to full: earlier damage no longer counts towards the reward
+          }
           m.path = [m.home];
           m.startedAt = now;
           events.push({ t: "mon", monster: this.snapshot(m, now) });
@@ -1063,7 +1078,7 @@ export class CombatSim {
    * What a guard does with this turn: heals itself when hurt, raises its attack, or picks one of its two attack skills, in that order, each on
    * its own cooldown; otherwise a plain attack. Returns the attack power multiplier, or null when the turn went to the heal or the buff.
    */
-  private guardTurn(m: Monster, now: number, events: SimEvent[]): number | null {
+  private guardTurn(m: Monster, now: number, events: SimEvent[]): number | null | "cone" {
     const ready = (id: string, cd: number): boolean => {
       if (now < (m.skillReadyAt?.[id] ?? 0)) return false;
       (m.skillReadyAt ??= {})[id] = now + cd;
@@ -1072,6 +1087,8 @@ export class CombatSim {
     const left = (id: string) => (m.skillReadyAt?.[id] ?? 0) <= now;
     // The boss uses the same turn as a guard with its own numbers and without the buff (two attacks and a heal).
     const sk = m.boss ? BOSS_SKILLS : GUARD_SKILLS;
+    // The boss's special cone first: only in the last quarter of its HP, on a long cooldown.
+    if (m.boss && m.hp < m.maxHp * BOSS_CONE.below && left("cone") && ready("cone", BOSS_CONE.cdMs)) return "cone";
     if (m.hp < m.maxHp * sk.mend.below && left("mend") && ready("mend", sk.mend.cdMs)) {
       m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * sk.mend.fraction));
       events.push({ t: "mon", monster: this.snapshot(m, now) });
@@ -1087,15 +1104,34 @@ export class CombatSim {
     return buff;
   }
 
-  private monsterAttack(m: Monster, p: PlayerProfile, now: number, events: SimEvent[]): void {
+  private monsterAttack(m: Monster, p: PlayerProfile, now: number, events: SimEvent[], positions?: ReadonlyMap<string, Vec2>): void {
     m.nextAttackAt = now + m.def.attackCooldownMs;
     let power = 1;
     if (m.guard || m.boss) {
       const turn = this.guardTurn(m, now, events);
       if (turn === null) return; // the turn went to a heal or the buff
+      if (turn === "cone") return this.bossCone(m, p, now, events, positions);
       power = turn;
     }
     const attacker = power === 1 ? m.combatant : { ...m.combatant, attack: Math.max(1, Math.round(m.combatant.attack * power)) };
+    this.hurtPlayer(m, p, attacker, now, events);
+  }
+
+  /** The boss's cone: everyone alive inside it (towards `focus`, the player it is fighting) takes a hit of BOSS_CONE.power times its attack. */
+  private bossCone(m: Monster, focus: PlayerProfile, now: number, events: SimEvent[], positions?: ReadonlyMap<string, Vec2>): void {
+    const from = this.position(m, now);
+    const aim = positions?.get(focus.id);
+    const attacker = { ...m.combatant, attack: Math.max(1, Math.round(m.combatant.attack * BOSS_CONE.power)) };
+    if (!aim || !positions) return this.hurtPlayer(m, focus, attacker, now, events);
+    for (const [id, at] of positions) {
+      const target = this.players.get(id);
+      if (!target || target.dead) continue;
+      if (inCone(at[0] - from[0], at[1] - from[1], aim[0] - from[0], aim[1] - from[1], BOSS_CONE.range, BOSS_CONE.halfAngleDeg)) this.hurtPlayer(m, target, attacker, now, events);
+    }
+  }
+
+  /** One hit from a monster on a player: damage, the events, a retaliation and death. */
+  private hurtPlayer(m: Monster, p: PlayerProfile, attacker: Combatant, now: number, events: SimEvent[]): void {
     const hit = computeDamage(attacker, p.stats, this.rand);
     p.hp = Math.max(0, p.hp - hit.damage);
     this.settleMp(p, now); // regeneration up to this hit is kept; it pauses from here

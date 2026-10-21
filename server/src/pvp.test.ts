@@ -279,6 +279,52 @@ describe("the map boss", () => {
     expect(sim.spawnBoss("forest", 0)).toMatchObject({ tier: 2, boss: true });
   });
 
+  it("below a quarter of its HP the boss hits everyone in a cone in front of it, and not those behind or beside", () => {
+    const { sim, a, b } = forest();
+    const c = sim.addPlayer(seed("c", { realm: 0, stage: 9, base: { ...startingStats("kim", 0).base, canCot: 3000 } }));
+    const snap = sim.spawnBoss("forest", 0)!;
+    const bp = snap.path[0]!;
+    // a is the target, b stands a little to the side but inside the cone, c is behind the boss.
+    const pos = new Map<string, Vec2>([["a", [bp[0] + 1, bp[1]]], ["b", [bp[0] + 3, bp[1] + 1]], ["c", [bp[0] - 2, bp[1]]]]);
+    sim.setMonsterHp(snap.id, 1_000);
+    const before = { a: a.hp, b: b.hp, c: c.hp };
+    sim.setTarget("a", snap.id);
+    const events = run(sim, 0, 1_500, pos);
+    const hitBy = (id: string) => events.filter((e) => e.t === "hit" && e.from === snap.id && e.to === id);
+    expect(hitBy("a").length).toBeGreaterThan(0);
+    expect(a.hp).toBeLessThan(before.a);
+    // The cone fires on the first act (the boss is below 25%) and costs a and b one hit each of the same big size.
+    expect(hitBy("b").length).toBeGreaterThan(0);
+    expect(hitBy("c").length).toBe(0);
+  });
+
+  it("does not use the cone while above a quarter of its HP", () => {
+    const { sim } = forest();
+    const snap = sim.spawnBoss("forest", 0)!;
+    const bp = snap.path[0]!;
+    const pos = new Map<string, Vec2>([["a", [bp[0] + 1, bp[1]]], ["b", [bp[0] + 3, bp[1] + 1]]]);
+    sim.setTarget("a", snap.id);
+    const events = run(sim, 0, 1_500, pos);
+    expect(events.filter((e) => e.t === "hit" && e.from === snap.id && e.to === "b").length).toBe(0);
+  });
+
+  it("heals back gradually after it walked home, keeping its damage table until whole", () => {
+    const { sim } = forest();
+    const snap = sim.spawnBoss("forest", 0)!;
+    const bp = snap.path[0]!;
+    sim.setMonsterHp(snap.id, 100);
+    // Nobody around: it is idle at home with 100 HP.
+    const lonely = new Map<string, Vec2>();
+    run(sim, 0, 2_100, lonely);
+    const mid = sim.snapshots(2_100).find((m) => m.boss)!;
+    expect(mid.hp).toBeGreaterThan(100);
+    expect(mid.hp).toBeLessThan(mid.maxHp);
+    run(sim, 2_200, 60_000, lonely);
+    const end = sim.snapshots(60_000).find((m) => m.boss)!;
+    expect(end.hp).toBe(end.maxHp);
+    expect(bp).toBeDefined();
+  });
+
   it("dies for good and pays its sharers: EXP, Linh Thạch and the claim release event", () => {
     const { sim, a, b } = forest();
     const snap = sim.spawnBoss("forest", 0)!;
