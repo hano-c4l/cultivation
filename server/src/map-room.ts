@@ -131,9 +131,9 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
-import { BOSSES, bossKillText, bossSpawnText, getMonsterDef, DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { BOSS_REGEN_PER_S, BOSSES, bossKillText, bossSpawnText, getMonsterDef, DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
-import { savePkScores } from "./characters";
+import { saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
@@ -267,7 +267,7 @@ function baseOf(row: CharacterRow): BaseStats {
 /** Who is wearing the gear: requirements are judged against the character without it. */
 function wearerOfRow(row: CharacterRow, catalog?: ConstitutionCatalog): WearerCtx {
   const affinity = catalog ? gearAffinity(parseRoots(row.roots, row.spiritual_root), constitutionEffects(catalog, row.constitution, row.constitution_tier)) : undefined;
-  return { gender: row.gender, realm: row.realm, stage: row.stage, base: baseOf(row), affinity };
+  return { gender: row.gender, realm: row.realm, stage: row.stage, base: baseOf(row), affinity, mounted: row.mounted === 1 };
 }
 
 /** Weapon family of the worn weapon, or null (no weapon, a broken one, or one without a family). */
@@ -515,6 +515,7 @@ export class MapRoom extends DurableObject<Env> {
         mapId,
         path: [position],
         startedAt: Date.now(),
+        mounted: row.mounted === 1 && bagNow.equipped.some((e) => e.slot === "flight") ? true : undefined,
         speed: walkSpeed(baseOf(row), equipmentBonus(bagNow.equipped, wearerOfRow(row)).moveSpeed),
         lastMoveAt: 0,
         dirty: false,
@@ -965,10 +966,22 @@ export class MapRoom extends DurableObject<Env> {
       return;
     }
     this.bossRefreshedAt = Date.now();
+    this.forgetBossState(); // a new boss is whole
     this.broadcast({ t: "mon", monster: snap });
     this.startTick();
     const channel = room.split(":")[1]?.replace(/^ch/, "") ?? "";
     await this.announce(bossSpawnText(getMonsterDef(snap.kind)?.nameVi ?? snap.kind, mapId, channel));
+  }
+
+  /** The boss's health and damage table are kept while the room has no sim (everyone left or died), so it heals by the clock instead of coming back whole. */
+  private saveBossState(sim: CombatSim | null | undefined): void {
+    const state = sim?.bossState();
+    if (!state) return;
+    this.ctx.waitUntil(this.ctx.storage.put("boss", { ...state, at: Date.now() }).then(() => undefined));
+  }
+
+  private forgetBossState(): void {
+    this.ctx.waitUntil(this.ctx.storage.delete("boss").then(() => undefined));
   }
 
   /** GM: the boss of this room goes (nobody could kill it): it leaves the map, the claim is released and nobody is paid. */
@@ -980,6 +993,7 @@ export class MapRoom extends DurableObject<Env> {
     const gone = sim.removeBoss();
     if (!gone) return;
     this.broadcast({ t: "mon_gone", id: gone });
+    this.forgetBossState();
     await releaseBoss(this.env.DB, mapId, room);
     console.log("boss removed by a GM", room);
   }
@@ -1016,6 +1030,7 @@ export class MapRoom extends DurableObject<Env> {
         await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
       }
     }
+    this.forgetBossState();
     const channel = room.split(":")[1]?.replace(/^ch/, "") ?? "";
     console.log("boss killed", room, "sharing", sharers);
     await this.announce(bossKillText(name, mapId, channel, killer));
@@ -1077,6 +1092,12 @@ export class MapRoom extends DurableObject<Env> {
       const holder = await bossHolder(this.env.DB, mapId).catch(() => null);
       const room = await this.roomName();
       if (holder !== null && holder === room && !sim.hasBoss && sim.spawnBoss(mapId, Date.now())) {
+        // It stands where it was left, with the health it had, healed by the time that passed (BOSS_REGEN_PER_S of its maximum each second).
+        const kept = await this.ctx.storage.get<{ frac: number; damage: Record<string, number>; at: number }>("boss");
+        if (kept && Number.isFinite(kept.frac) && Number.isFinite(kept.at)) {
+          const healed = kept.frac + (BOSS_REGEN_PER_S * Math.max(0, Date.now() - kept.at)) / 1000;
+          sim.restoreBoss(healed, healed >= 1 ? {} : kept.damage);
+        }
         this.bossRefreshedAt = Date.now();
         await refreshBoss(this.env.DB, mapId, room, this.bossRefreshedAt).catch(() => false);
       }
@@ -1125,6 +1146,7 @@ export class MapRoom extends DurableObject<Env> {
     await Promise.all([
       this.alarm(),
       ...saves,
+      Promise.resolve(this.saveBossState(sim)),
       json === this.ranksJson ? Promise.resolve() : this.ctx.storage.put("ranks", ranks).then(() => void (this.ranksJson = json)),
       sim.pity === this.pityStored ? Promise.resolve() : this.ctx.storage.put("pity", sim.pity).then(() => void (this.pityStored = sim.pity)),
     ]);
@@ -1149,6 +1171,7 @@ export class MapRoom extends DurableObject<Env> {
     }
     // Judged by the sockets, not the sim: after a sleep the sim may be gone while the last players leave.
     if (this.players().length === 0) {
+      this.saveBossState(this.sim);
       if (this.tickTimer) clearInterval(this.tickTimer);
       this.tickTimer = null;
       this.sim = null;
@@ -1592,11 +1615,29 @@ export class MapRoom extends DurableObject<Env> {
       if (fresh?.mounted && (!w || !flight || !info || equipBlock(info, flight.slot as EquipSlot, flight.dur, w))) {
         fresh.mounted = false;
         ws.serializeAttachment(fresh);
+        await saveMounted(this.env.DB, id, false).catch((err) => console.error("save mounted failed", id, err));
         this.send(ws, { t: "mounted", on: false });
         this.broadcast({ t: "path", player: this.snapshot(fresh) });
       }
     }
     await this.refreshSpeed(ws);
+  }
+
+  /** Gets off at once (a breakthrough starts, or the character died): the flag is saved and the speed and stats follow. */
+  private async forceDismount(id: string): Promise<void> {
+    const sock = this.socketOf(id);
+    if (!sock?.state.mounted) {
+      await saveMounted(this.env.DB, id, false).catch(() => undefined);
+      return;
+    }
+    const { ws } = sock;
+    const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? sock.state;
+    fresh.mounted = false;
+    ws.serializeAttachment(fresh);
+    await saveMounted(this.env.DB, id, false).catch((err) => console.error("save mounted failed", id, err));
+    this.send(ws, { t: "mounted", on: false });
+    this.broadcast({ t: "path", player: this.snapshot(fresh) });
+    this.applyGear(id, await this.getBag(id), ws); // also settles the speed
   }
 
   /** Get on or off the flight pháp bảo. Stats and speed follow at once. */
@@ -1622,6 +1663,7 @@ export class MapRoom extends DurableObject<Env> {
     if (fresh.transferring) return;
     fresh.mounted = on;
     ws.serializeAttachment(fresh);
+    await saveMounted(this.env.DB, fresh.id, on).catch((err) => console.error("save mounted failed", fresh.id, err));
     this.send(ws, { t: "mounted", on });
     // The riding flag rides on the snapshot, so other players see it too.
     this.broadcast({ t: "path", player: this.snapshot(fresh) });
@@ -1652,7 +1694,7 @@ export class MapRoom extends DurableObject<Env> {
   /** Who is wearing: the live profile when there is one, otherwise the saved row. */
   private async wearerOf(id: string): Promise<WearerCtx | null> {
     const p = this.sim?.getPlayer(id);
-    if (p) return { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity };
+    if (p) return { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity, mounted: this.isMounted(id) };
     const row = await getCharacterById(this.env.DB, id);
     return row ? wearerOfRow(row) : null;
   }
@@ -2844,6 +2886,7 @@ export class MapRoom extends DurableObject<Env> {
       this.bags.delete(id);
       return this.btError(ws, "busy");
     }
+    await this.forceDismount(id); // the breakthrough begins on foot (nothing is lost if it was refused above)
     const ratePct = breakthroughRate(def, pills, ready.overflowBonus);
     const active: ActiveBreakthrough = { startedAt, endsAt: startedAt + def.durationMs, from: realm, ratePct };
     this.patchState(ws, (s) => {
@@ -3199,6 +3242,7 @@ export class MapRoom extends DurableObject<Env> {
     // queue before the lock is released, so the town room reads the new durability.
     this.wearGearOnDeath(ws, state.id, { gender: profile.gender, realm: profile.realm, stage: profile.stage, base: profile.base }, DEATH_DURABILITY_BY_TIER[tier]);
     this.send(ws, { t: "died", expLost });
+    await this.forceDismount(state.id); // back in town on foot
     const [sx, sy] = getMap("town").spawn;
     await this.handoff(ws, state, "town", sx + 0.5, sy + 0.5, true);
   }

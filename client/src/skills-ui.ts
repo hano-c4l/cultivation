@@ -12,6 +12,7 @@ import {
   type EquippedItem,
   type SkillContext,
   skillContextFor,
+  skillDisplayName,
   PATHS,
   type SkillDef,
   type SkillSource,
@@ -114,7 +115,7 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
     const title = el("b");
     if (s.element) title.append(elementDot(s.element)); // a skill bound to an element shows it; a flexible one is given one on the hotbar
     // A gear skill carries the piece's realm and bậc ("LK4"), so pieces of one kind can be told apart.
-    title.append(s.nameVi, el("span", `sk-tag ${realmClass(ctx.realm)}`, `${REALMS[ctx.realm]?.shortVi ?? ""}${s.source === "gear" ? (ctx.tier ?? 1) : ""}`));
+    title.append(skillDisplayName(s), el("span", `sk-tag ${realmClass(ctx.realm)}`, `${REALMS[ctx.realm]?.shortVi ?? ""}${s.source === "gear" ? (ctx.tier ?? 1) : ""}`));
     const meta: string[] = [vi.skills.grades[ctx.grade] ?? ""];
     // A path skill also says which level of its path it belongs to ("Kiếm Ý").
     if (s.source === "path" && s.path && (s.path in PATHS)) meta.push(PATHS[s.path as keyof typeof PATHS].levels[s.pathLevel ?? 0]?.nameVi ?? "");
@@ -145,13 +146,13 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
         for (const e of elements) {
           const b = el("button", "sk-small sk-el");
           b.append(elementDot(e), vi.skills.elementNames[e] ?? e);
-          b.onclick = () => deps.beginAssign(`s:${s.id}:${e}`, `${s.nameVi} (${vi.skills.elementNames[e] ?? e})`);
+          b.onclick = () => deps.beginAssign(`s:${s.id}:${e}`, `${skillDisplayName(s)} (${vi.skills.elementNames[e] ?? e})`);
           actions.append(b);
         }
       } else {
         const value = s.flex && elements[0] ? `s:${s.id}:${elements[0]}` : `s:${s.id}`;
         const assign = el("button", "sk-small", vi.skills.assign);
-        assign.onclick = () => deps.beginAssign(value, s.nameVi);
+        assign.onclick = () => deps.beginAssign(value, skillDisplayName(s));
         actions.append(assign);
       }
     }

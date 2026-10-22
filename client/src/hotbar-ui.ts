@@ -1,4 +1,4 @@
-import { HOTBAR_SLOTS, REALMS, getItemDef, getSkill, parseSkillSlot, type ClientMessage, type SkillContext, type SkillDef } from "@game/shared";
+import { HOTBAR_SLOTS, REALMS, getItemDef, getSkill, parseSkillSlot, skillDisplayName, type ClientMessage, type SkillContext, type SkillDef } from "@game/shared";
 import { realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
 
@@ -61,7 +61,7 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
       const slotSkill = parseSkillSlot(v);
       if (slotSkill) {
         const skill = getSkill(slotSkill.id);
-        b.append(el("span", "hb-name", skill?.nameVi ?? slotSkill.id));
+        b.append(el("span", "hb-name", skill ? skillDisplayName(skill) : slotSkill.id));
         // The element the skill is used with (its own, or the one picked when it was put here) shows in the corner, like on gear.
         const element = skill?.element ?? slotSkill.element;
         if (element) b.append(el("span", `elem-dot hb-elem elem-${element}`));
@@ -71,7 +71,7 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
           b.classList.add(`hb-grade-${Math.min(Math.max(ctx.grade, 0), 4)}`);
           b.append(el("span", `hb-tag ${realmClass(ctx.realm)}`, `${REALMS[ctx.realm]?.shortVi ?? ""}${skill.source === "gear" ? (ctx.tier ?? 1) : ""}`));
           const cost = deps.mpCostOf(skill);
-          b.title = `${skill.nameVi} · ${vi.skills.mp(cost)}`;
+          b.title = `${skillDisplayName(skill)} · ${vi.skills.mp(cost)}`;
           if (!usable.has(skill.id) || deps.getMp() < cost) b.classList.add("dim");
           const left = (readyAt.get(skill.id) ?? 0) - Date.now();
           if (left > 0) {

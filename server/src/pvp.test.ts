@@ -325,6 +325,44 @@ describe("the map boss", () => {
     expect(bp).toBeDefined();
   });
 
+  it("keeps its health and damage table when put back (the room slept) and forgets a player who died", () => {
+    const { sim, a } = forest();
+    const snap = sim.spawnBoss("forest", 0)!;
+    const bp = snap.path[0]!;
+    sim.setMonsterHp(snap.id, 1_000);
+    const kept = sim.bossState()!;
+    expect(kept.frac).toBeGreaterThan(0);
+    expect(kept.frac).toBeLessThan(0.2);
+    // A new sim (the room woke): the boss stands again with the saved health and the damage that was done.
+    const next = new CombatSim(getMap("forest"), "forest", noCrit, 0);
+    next.addPlayer(seed("a", { realm: 0, stage: 9 }));
+    next.spawnBoss("forest", 0);
+    next.restoreBoss(kept.frac, { a: 500, b: 700 });
+    const back = next.bossState()!;
+    expect(back.frac).toBeCloseTo(kept.frac, 5);
+    expect(back.damage).toEqual({ a: 500, b: 700 });
+    // A whole boss keeps nothing, and the fraction is clamped.
+    next.restoreBoss(5, {});
+    expect(next.bossState()!.frac).toBe(1);
+    expect(next.bossState()!.damage).toEqual({});
+    expect(bp).toBeDefined();
+    expect(a.dead).toBe(false);
+  });
+
+  it("a player the boss kills no longer counts towards its damage table", () => {
+    const sim = new CombatSim(getMap("forest"), "forest", noCrit, 0);
+    const frail = sim.addPlayer(seed("a", { realm: 0, stage: 9 }));
+    const snap = sim.spawnBoss("forest", 0)!;
+    const bp = snap.path[0]!;
+    sim.restoreBoss(0.5, { a: 300, b: 200 });
+    frail.hp = 1;
+    sim.setTarget("a", snap.id);
+    run(sim, 0, 4_000, new Map<string, Vec2>([["a", [bp[0] + 1, bp[1]]]]));
+    expect(frail.dead).toBe(true);
+    expect(sim.bossState()!.damage.a).toBeUndefined(); // died: reset
+    expect(sim.bossState()!.damage.b).toBe(200); // still counts
+  });
+
   it("dies for good and pays its sharers: EXP, Linh Thạch and the claim release event", () => {
     const { sim, a, b } = forest();
     const snap = sim.spawnBoss("forest", 0)!;

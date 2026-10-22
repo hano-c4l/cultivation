@@ -186,13 +186,6 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
         const off = el("button", "eq-small", vi.equip.unequip);
         off.onclick = () => send({ t: "eq_unequip", slot });
         actions.append(off);
-        if (isAdmin && piece.dur !== undefined && piece.max !== undefined && piece.dur > 0 && piece.dur < piece.max) {
-          const cost = repairCost(equipmentInfo(piece.type)?.grade ?? 1, piece.max - piece.dur);
-          const fix = el("button", "eq-small", vi.equip.repairShort(cost));
-          fix.title = vi.equip.repair(cost);
-          fix.onclick = () => send({ t: "eq_repair", slot });
-          actions.append(fix);
-        }
       }
       row.append(middle, tier, durability, actions);
       panel.append(row);
