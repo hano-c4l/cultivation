@@ -1,5 +1,6 @@
 import type { BagItem, BagOp } from "./inventory";
 import type { MonsterRank } from "./monsters";
+import { tuning } from "./tuning";
 
 /**
  * The blacksmith (Thợ Rèn): upgrades gear and pháp bảo from +0 to +ENHANCE_MAX and repairs durability. Every number here is a placeholder
@@ -15,20 +16,24 @@ export interface EnhanceLevelDef {
   successPct: number;
   /** Percent of the piece's stats this level adds (levels add up: +1 is 10%, +2 is 20% ...). */
   statPct: number;
-  /** Percent added to the next attempt's chance after each failure of this step, up to MAX_PITY_PCT. */
+  /** Percent added to the next attempt's chance after each failure of this step, up to the tuning's maxPityPct. */
   failBonusPct: number;
   /** A failure of this step costs one level (unless a Hộ Cấp Phù is used). */
   dropOnFail: boolean;
   /** Pieces of the realm's ore this step takes. */
   materials: number;
-  /** Linh Thạch of this step = ENHANCE_LINH_BASE[realm of the piece] x this. */
+  /** Linh Thạch of this step = the realm's Linh Thạch base x this. */
   linhMult: number;
 }
 
-/** The most a run of failures adds to the chance of the next attempt. */
-export const MAX_PITY_PCT = 30;
-/** Linh Thạch per unit of `linhMult`, by the realm of the piece. */
-export const ENHANCE_LINH_BASE: readonly number[] = [100, 1_000, 10_000, 100_000];
+/** Linh Thạch per unit of `linhMult` for a piece of this realm, and the most a run of failures adds to the next attempt's chance (both from the tuning, `enhanceCost`). */
+function linhBase(realm: number): number {
+  const list = tuning().enhanceCost.linhBase;
+  return list[realm] ?? list[list.length - 1]!;
+}
+export function maxPityPct(): number {
+  return tuning().enhanceCost.maxPityPct;
+}
 
 export const DEFAULT_ENHANCE_TABLE: readonly EnhanceLevelDef[] = [
   { level: 1, successPct: 90, statPct: 10, failBonusPct: 5, dropOnFail: false, materials: 1, linhMult: 1 },
@@ -95,7 +100,10 @@ export function smithOreFor(realm: number): string | undefined {
 }
 /** The scroll that keeps the level on a failed step that would cost one (sold by the merchant for Tiên Ngọc). */
 export const KEEP_LEVEL_ITEM = "ren_giu_cap";
-export const KEEP_LEVEL_PRICE_TIEN_NGOC = 50;
+/** Its price in Tiên Ngọc (tuning `keepLevel`). */
+export function keepLevelPrice(): number {
+  return tuning().keepLevel.priceTienNgoc;
+}
 
 export interface UpgradeCost {
   ore: string;
@@ -111,15 +119,14 @@ export function upgradeCost(realm: number, level: number, pity: number): Upgrade
   const step = enhanceStep(level + 1);
   const ore = smithOreFor(realm);
   if (!step || !ore) return undefined;
-  const base = ENHANCE_LINH_BASE[realm] ?? ENHANCE_LINH_BASE[ENHANCE_LINH_BASE.length - 1]!;
-  return { ore, materials: step.materials, linhThach: Math.round(base * step.linhMult), chancePct: Math.min(100, step.successPct + Math.min(MAX_PITY_PCT, Math.max(0, pity))), step };
+  return { ore, materials: step.materials, linhThach: Math.round(linhBase(realm) * step.linhMult), chancePct: Math.min(100, step.successPct + Math.min(maxPityPct(), Math.max(0, pity))), step };
 }
 
 export interface UpgradeOutcome {
   success: boolean;
   /** The level after the attempt. */
   level: number;
-  /** The extra chance kept for the next attempt (resets to 0 on success; grows with each failure up to MAX_PITY_PCT). */
+  /** The extra chance kept for the next attempt (resets to 0 on success; grows with each failure up to the tuning's maxPityPct). */
   pity: number;
   /** A level was lost. */
   dropped: boolean;
@@ -130,7 +137,7 @@ export interface UpgradeOutcome {
 /** Resolves one attempt from a uniform [0, 1) roll. */
 export function resolveUpgrade(level: number, pity: number, chancePct: number, step: EnhanceLevelDef, useScroll: boolean, roll: number): UpgradeOutcome {
   if (roll * 100 < chancePct) return { success: true, level: level + 1, pity: 0, dropped: false, scrollUsed: false };
-  const nextPity = Math.min(MAX_PITY_PCT, pity + step.failBonusPct);
+  const nextPity = Math.min(maxPityPct(), pity + step.failBonusPct);
   if (!step.dropOnFail || level <= 0) return { success: false, level, pity: nextPity, dropped: false, scrollUsed: false };
   if (useScroll) return { success: false, level, pity: nextPity, dropped: false, scrollUsed: true };
   return { success: false, level: level - 1, pity: nextPity, dropped: true, scrollUsed: false };
@@ -153,19 +160,12 @@ export function planConsume(bag: readonly BagItem[], type: string, qty: number):
   return ops;
 }
 
-/** Chance and size of the ore a kill drops (only monsters of the map's own realm; guards drop nothing). */
-export const ORE_DROP: Readonly<Record<MonsterRank, { chance: number; min: number; max: number }>> = {
-  normal: { chance: 0.2, min: 1, max: 1 },
-  rare1: { chance: 0.6, min: 1, max: 3 },
-  rare2: { chance: 1, min: 2, max: 5 },
-};
-
 /** The ore dropped by one kill, or null. Draws exactly two numbers, after every other roll of the kill (so seeded sequences stay stable). */
 export function rollOreDrop(mapRealm: number, rank: MonsterRank, rand: () => number, chanceMult = 1): { item: string; qty: number } | null {
   const chanceRoll = rand();
   const qtyRoll = rand();
   const ore = smithOreFor(mapRealm);
-  const cfg = ORE_DROP[rank];
+  const cfg = tuning().oreDrop[rank];
   if (!ore || chanceRoll >= cfg.chance * chanceMult) return null;
   return { item: ore, qty: cfg.min + Math.floor(qtyRoll * (cfg.max - cfg.min + 1)) };
 }
@@ -178,8 +178,10 @@ export function refineOreFor(realm: number): string | undefined {
   return REFINE_ORES[realm];
 }
 
-/** Placeholder rules of one refining: the ore it takes, the Linh Thạch (as a share of ENHANCE_LINH_BASE of the realm) and how likely each stat is to be rolled. */
-export const REFINE_RULES = { materials: 2, linhShare: 1, statChance: 0.5 } as const;
+/** The rules of one refining (tuning `refine`): the ore it takes, the Linh Thạch (as a share of the realm's Linh Thạch base) and how likely each stat is to be rolled. */
+export function refineRules(): { materials: number; linhShare: number; statChance: number } {
+  return tuning().refine;
+}
 
 export interface RefineCost {
   ore: string;
@@ -190,23 +192,16 @@ export interface RefineCost {
 export function refineCost(realm: number): RefineCost | undefined {
   const ore = refineOreFor(realm);
   if (!ore) return undefined;
-  const base = ENHANCE_LINH_BASE[realm] ?? ENHANCE_LINH_BASE[ENHANCE_LINH_BASE.length - 1]!;
-  return { ore, materials: REFINE_RULES.materials, linhThach: Math.round(base * REFINE_RULES.linhShare) };
+  const rules = refineRules();
+  return { ore, materials: rules.materials, linhThach: Math.round(linhBase(realm) * rules.linhShare) };
 }
-
-/** Refining ore of a kill: rarer than the smith's ore, because refining never costs anything and is hard to fail. */
-export const REFINE_DROP: Readonly<Record<MonsterRank, { chance: number; min: number; max: number }>> = {
-  normal: { chance: 0.04, min: 1, max: 1 },
-  rare1: { chance: 0.15, min: 1, max: 2 },
-  rare2: { chance: 0.4, min: 1, max: 3 },
-};
 
 /** The refining ore dropped by one kill, or null. Draws exactly two numbers, after the smith's ore roll. */
 export function rollRefineDrop(mapRealm: number, rank: MonsterRank, rand: () => number, chanceMult = 1): { item: string; qty: number } | null {
   const chanceRoll = rand();
   const qtyRoll = rand();
   const ore = refineOreFor(mapRealm);
-  const cfg = REFINE_DROP[rank];
+  const cfg = tuning().refineDrop[rank];
   if (!ore || chanceRoll >= cfg.chance * chanceMult) return null;
   return { item: ore, qty: cfg.min + Math.floor(qtyRoll * (cfg.max - cfg.min + 1)) };
 }

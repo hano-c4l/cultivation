@@ -3,6 +3,7 @@
 // Usage: node tools/guard-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1, ENABLE_DEV_GRANT=1 and PK_DROP_FORCE=1 (the PvP item drop always succeeds) in .dev.vars. Never run it against preview or production.
+import { CAVE_ARRIVAL, FOREST_ARRIVAL, FOREST_E_ARRIVAL, T, TOWN_ARRIVAL } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -84,7 +85,7 @@ async function makePlayer(tag, map, x, y, satNhan = 0) {
 }
 
 // --- a white name in town sees the guards at the gate (the room has no simulation, they are static) and is left alone ---
-const w = await makePlayer("W", "town", 20.5, 35.5);
+const w = await makePlayer("W", "town", ...TOWN_ARRIVAL);
 const cw = await connect(w.cookie);
 const townGuards = cw.welcome.monsters.filter((m) => m.guard);
 check("the town welcome lists the guards at the gate", townGuards.length === 2 && townGuards.every((g) => g.kind === "ve_binh"), JSON.stringify(cw.welcome.monsters));
@@ -92,7 +93,7 @@ await sleep(3000);
 check("a white name beside them is not attacked", !cw.log.some((m) => m.t === "hit" && m.to === w.id));
 
 // --- an orange name entering the town gate is attacked: the room starts its simulation for the guards ---
-const o = await makePlayer("O", "town", 20.5, 35.5, 300);
+const o = await makePlayer("O", "town", ...TOWN_ARRIVAL, 300);
 const co = await connect(o.cookie);
 await sleep(300);
 check("the orange name and the guards are in the room's simulation (guards listed)", co.welcome.monsters.filter((m) => m.guard).length === 2);
@@ -103,27 +104,32 @@ co.ws.close();
 cw.ws.close();
 
 // --- the forest has guards at both gates, the cave at its gate ---
-const f = await makePlayer("F", "forest", 20.5, 12.5);
+// (A combat map only tells a player about what is near them, so each gate is checked from its own arrival point.)
+const f = await makePlayer("F", "forest", ...FOREST_ARRIVAL);
 const cf = await connect(f.cookie);
-check("the forest has four guards (the two gates)", cf.welcome.monsters.filter((m) => m.guard).length === 4);
+check("the forest has two guards at the north gate", cf.welcome.monsters.filter((m) => m.guard).length === 2);
 cf.ws.close();
-const c2 = await makePlayer("C", "cave", 10.5, 20.5);
+const fe = await makePlayer("G", "forest", ...FOREST_E_ARRIVAL);
+const cfe = await connect(fe.cookie);
+check("the forest has two guards at the east gate", cfe.welcome.monsters.filter((m) => m.guard).length === 2);
+cfe.ws.close();
+const c2 = await makePlayer("C", "cave", ...CAVE_ARRIVAL);
 const cc = await connect(c2.cookie);
-check("the cave has two guards at its gate", cc.welcome.monsters.filter((m) => m.guard).length === 2);
+check("the cave has two guards at its west gate", cc.welcome.monsters.filter((m) => m.guard).length === 2);
 cc.ws.close();
 
 // --- orange and red names may not deal with NPCs (the merchant and the elder), a white name beside them may ---
-const m1 = await makePlayer("M", "town", 24.5, 17.5, 300);
+const m1 = await makePlayer("M", "town", 24.5 + T, 17.5 + T, 300);
 const cm = await connect(m1.cookie);
 let rr = await after(cm, { t: "npc_open", npc: "merchant" }, 1000);
 check("an orange name beside the merchant is refused", rr.some((m) => m.t === "inv_error" && m.reason === "murderer") && !rr.some((m) => m.t === "shop"), JSON.stringify(rr));
 cm.ws.close();
-const e1 = await makePlayer("E", "town", 17.5, 17.5, 300);
+const e1 = await makePlayer("E", "town", 17.5 + T, 17.5 + T, 300);
 const ce = await connect(e1.cookie);
 rr = await after(ce, { t: "npc_open", npc: "elder" }, 1000);
 check("an orange name beside the elder is refused", rr.some((m) => m.t === "quest_error" && m.reason === "murderer") && !rr.some((m) => m.t === "quests"), JSON.stringify(rr));
 ce.ws.close();
-const w2 = await makePlayer("V", "town", 24.5, 17.5, 0);
+const w2 = await makePlayer("V", "town", 24.5 + T, 17.5 + T, 0);
 const cv = await connect(w2.cookie);
 rr = await after(cv, { t: "npc_open", npc: "merchant" }, 1000);
 check("a white name beside the merchant gets the shop", rr.some((m) => m.t === "shop"), JSON.stringify(rr.map((m) => m.t)));

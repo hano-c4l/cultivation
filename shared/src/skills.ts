@@ -127,6 +127,14 @@ function elementBookSkill(root: SpiritualRoot): SkillDef {
   return { id: `${root}_3`, nameVi: `Vạn ${n} Diệt Thế`, descVi: `Tuyệt kỹ hệ ${n}, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 1, grade: 3, mpCost: 24, cooldownMs: 10_000, range: 6, power: 2.6, learn: { realm: 1, stage: 1 } };
 }
 
+/** The strongest skill of each element for Kim Đan (`${root}_4`) and Nguyên Anh (`${root}_5`), learned from a bí tịch sold in the second town. */
+function elementBookSkillHigh(root: SpiritualRoot, realm: 2 | 3): SkillDef {
+  const n = ELEMENT_NAMES[root];
+  return realm === 2
+    ? { id: `${root}_4`, nameVi: `Cửu Thiên ${n} Chấn`, descVi: `Tuyệt kỹ hệ ${n} của Kim Đan, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 2, grade: 3, mpCost: 42, cooldownMs: 11_000, range: 6, power: 3.4, learn: { realm: 2, stage: 1 } }
+    : { id: `${root}_5`, nameVi: `Thái Cổ ${n} Diệt`, descVi: `Tuyệt kỹ hệ ${n} của Nguyên Anh, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 3, grade: 4, mpCost: 64, cooldownMs: 12_000, range: 7, power: 4.6, learn: { realm: 3, stage: 1 } };
+}
+
 /**
  * Skills that come with worn pháp bảo. Ordinary pháp bảo give one attack of their own element. The pháp bảo bản mệnh gives
  * stronger ones (a heavy strike of its element, a guard and a heal), and the pháp bảo phi hành gives movement skills: a short
@@ -206,6 +214,12 @@ export const SKILLS: readonly SkillDef[] = [
   { id: "cuong_than", nameVi: "Cuồng Thần Thuật", descVi: "Tăng công kích trong 15 giây, học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 0, grade: 1, mpCost: 20, cooldownMs: 30_000, range: 0, power: 0.25, buff: { stat: "attack", durationMs: 15_000 }, learn: { realm: 0, stage: 5 } },
   { id: "ngu_kiem_tram", nameVi: "Ngự Kiếm Trảm", descVi: "Ngự kiếm chém xa; phải cầm kiếm. Học từ bí tịch.", kind: "attack", source: "learned", element: null, realm: 0, grade: 2, mpCost: 30, cooldownMs: 8000, range: 7, power: 3.2, weapon: "kiem", learn: { realm: 0, stage: 7 } },
   ...SPIRITUAL_ROOTS.map(elementBookSkill),
+  // Kim Đan and Nguyên Anh (bí tịch of the second town): the strongest skill of each element, and a guard, a heal and a battle cry.
+  ...SPIRITUAL_ROOTS.map((r) => elementBookSkillHigh(r, 2)),
+  ...SPIRITUAL_ROOTS.map((r) => elementBookSkillHigh(r, 3)),
+  { id: "ho_the_kd", nameVi: "Kim Chung Hộ Thể", descVi: "Kim Đan: dựng chuông vàng quanh thân, tăng mạnh phòng thủ trong 20 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 2, grade: 3, mpCost: 50, cooldownMs: 45_000, range: 0, power: 0.5, buff: { stat: "defense", durationMs: 20_000 }, learn: { realm: 2, stage: 3 } },
+  { id: "hoi_nguyen_kd", nameVi: "Hồi Nguyên Quyết", descVi: "Kim Đan: vận kim đan chữa thương, hồi nhiều sinh lực. Học từ bí tịch.", kind: "heal", source: "learned", element: null, realm: 2, grade: 3, mpCost: 60, cooldownMs: 30_000, range: 0, power: 0.55, learn: { realm: 2, stage: 5 } },
+  { id: "cuong_than_na", nameVi: "Nguyên Anh Chiến Hống", descVi: "Nguyên Anh: gầm vang chiến ý, tăng mạnh công kích trong 20 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 3, grade: 4, mpCost: 80, cooldownMs: 40_000, range: 0, power: 0.5, buff: { stat: "attack", durationMs: 20_000 }, learn: { realm: 3, stage: 3 } },
 ];
 
 const BY_ID = new Map(SKILLS.map((s) => [s.id, s]));

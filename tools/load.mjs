@@ -1,3 +1,4 @@
+import { TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
 // Local load test: N clients in one forest room, all hunting, then reads the room's tick metrics.
 // Usage: node tools/load.mjs [baseWsUrl] [clients] [seconds]   (default ws://localhost:8787 50 30)
 // Registers throwaway accounts, so it only runs against localhost with DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1
@@ -69,8 +70,8 @@ async function client(i, account) {
     let c = open(reg.cookie);
     await c.opened;
     await c.wait((m) => m.t === "welcome");
-    c.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
-    await sleep(5800);
+    c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 1 });
+    await sleep(10500);
     c.send({ t: "portal" });
     await c.wait((m) => m.t === "transfer");
     await sleep(400);

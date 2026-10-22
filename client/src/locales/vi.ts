@@ -8,7 +8,7 @@ export const vi = {
   kicked: "Tài khoản đăng nhập ở nơi khác.",
   title: "Tu Tiên Giới",
   transferring: "Đang chuyển bản đồ…",
-  maps: { town: "Thanh Vân Thành (an toàn)", forest: "Hắc Mộc Lâm", cave: "U Minh Động" } as Record<string, string>,
+  maps: { town: "Thanh Vân Thành (an toàn)", forest: "Hắc Mộc Lâm", cave: "U Minh Động", town2: "Thiên Hà Thành (an toàn)", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên" } as Record<string, string>,
   chat: {
     placeholder: "Nói gì đó… (Enter)",
     targetPlaceholder: "Gửi cho…",
@@ -318,7 +318,7 @@ export const vi = {
       invalid: "Mục tiêu không hợp lệ.",
     } as Record<string, string>,
   },
-  npcs: { merchant: "Thương nhân", smith: "Thợ Rèn", elder: "Trưởng Lão", path_kiem: "Kiếm Đạo Sư", path_thuat: "Thuật Đạo Sư", path_dan: "Đan Đạo Sư" } as Record<string, string>,
+  npcs: { merchant: "Thương nhân", smith: "Thợ Rèn", elder: "Trưởng Lão", merchant2: "Thương nhân", smith2: "Thợ Rèn", elder2: "Trưởng Lão", path_kiem: "Kiếm Đạo Sư", path_thuat: "Thuật Đạo Sư", path_dan: "Đan Đạo Sư" } as Record<string, string>,
   quests: {
     title: "Nhiệm vụ",
     none: "Hiện chưa có nhiệm vụ nào để nhận hay đang làm.",

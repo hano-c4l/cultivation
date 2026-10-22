@@ -3,7 +3,7 @@ import { equipmentBonus, equipmentInfo, scaledStats, type EquippedItem } from ".
 import { getItemDef } from "./items";
 import { getMap, npcNear } from "./map";
 import { STAT_KEYS, type BaseStats } from "./progression-data";
-import { DEFAULT_ENHANCE_TABLE, ENHANCE_MAX, enhanceStatMult, KEEP_LEVEL_ITEM, MAX_PITY_PCT, planConsume, resolveUpgrade, rollOreDrop, setEnhanceTable, SMITH_ORES, upgradeCost } from "./smith";
+import { DEFAULT_ENHANCE_TABLE, ENHANCE_MAX, enhanceStatMult, KEEP_LEVEL_ITEM, maxPityPct, planConsume, resolveUpgrade, rollOreDrop, setEnhanceTable, SMITH_ORES, upgradeCost } from "./smith";
 import { merchantOffers } from "./shop";
 import { isStandable } from "./map";
 
@@ -54,7 +54,7 @@ describe("the cost and the chance of a step", () => {
 
   it("add the bonus built up by failures, but never more than the cap", () => {
     expect(upgradeCost(0, 5, 10)!.chancePct).toBe(DEFAULT_ENHANCE_TABLE[5]!.successPct + 10);
-    expect(upgradeCost(0, 5, 999)!.chancePct).toBe(DEFAULT_ENHANCE_TABLE[5]!.successPct + MAX_PITY_PCT);
+    expect(upgradeCost(0, 5, 999)!.chancePct).toBe(DEFAULT_ENHANCE_TABLE[5]!.successPct + maxPityPct());
   });
 });
 
@@ -66,7 +66,7 @@ describe("resolving an attempt", () => {
 
   it("from +1 to +5 a failure keeps the level and builds the bonus", () => {
     expect(resolveUpgrade(2, 0, 50, stepOf(3), false, 0.9)).toEqual({ success: false, level: 2, pity: 5, dropped: false, scrollUsed: false });
-    expect(resolveUpgrade(4, 28, 50, stepOf(5), false, 0.9).pity).toBe(MAX_PITY_PCT);
+    expect(resolveUpgrade(4, 28, 50, stepOf(5), false, 0.9).pity).toBe(maxPityPct());
   });
 
   it("from +6 up a failure costs a level, unless the scroll is used (and then the scroll is spent)", () => {
@@ -200,7 +200,10 @@ describe("refining (tinh luyện)", () => {
   });
 
   it("costs the refining ore of the realm and drops rarer than the smith's ore", async () => {
-    const { refineCost, rollRefineDrop, REFINE_DROP, ORE_DROP, REFINE_ORES } = await import("./smith");
+    const { refineCost, rollRefineDrop, REFINE_ORES } = await import("./smith");
+    const { tuning } = await import("./tuning");
+    const ORE_DROP = tuning().oreDrop;
+    const REFINE_DROP = tuning().refineDrop;
     expect(refineCost(0)).toMatchObject({ ore: "tl_lk", materials: 2 });
     expect(refineCost(2)!.ore).toBe("tl_kd");
     expect(refineCost(9)).toBeUndefined();
@@ -210,5 +213,18 @@ describe("refining (tinh luyện)", () => {
     expect(n).toBe(2);
     expect(rollRefineDrop(9, "normal", () => 0)).toBeNull();
     for (const ore of REFINE_ORES) expect(getItemDef(ore)?.category).toBe("material");
+  });
+});
+
+describe("tuning", () => {
+  it("setTuning installs valid groups and keeps the default of a bad or missing one", async () => {
+    const { setTuning, resetTuning, tuning, DEFAULT_TUNING } = await import("./tuning");
+    setTuning({ keepLevel: { priceTienNgoc: 99 }, bossRegen: { perSecond: 7 }, refine: { materials: 3, linhShare: 2, statChance: 0.25 } });
+    expect(tuning().keepLevel.priceTienNgoc).toBe(99);
+    expect(tuning().bossRegen).toEqual(DEFAULT_TUNING.bossRegen); // 7 is out of range
+    expect(tuning().refine.materials).toBe(3);
+    expect(merchantOffers("male", "town").find((o) => o.item === KEEP_LEVEL_ITEM)!.price).toBe(99);
+    resetTuning();
+    expect(merchantOffers("male", "town").find((o) => o.item === KEEP_LEVEL_ITEM)!.price).toBe(50);
   });
 });

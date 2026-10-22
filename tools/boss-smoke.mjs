@@ -3,6 +3,7 @@
 // Usage: node tools/boss-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1, ENABLE_DEV_GRANT=1 and PK_DROP_FORCE=1 (the PvP item drop always succeeds) in .dev.vars. Never run it against preview or production.
+import { FOREST_BOSS, FOREST_BY_WOLVES } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -88,7 +89,7 @@ async function makePlayer(tag, map, x, y, satNhan = 0, admin = false) {
 sql("DELETE FROM world_boss");
 const bossIn = (c) => c.log.find((m) => m.t === "mon" && m.monster.boss);
 
-const gm = await makePlayer("A", "forest", 20.5, 12.5, 0, true);
+const gm = await makePlayer("A", "forest", ...FOREST_BY_WOLVES, 0, true);
 CH = 3;
 const chatLog = [];
 const chat = new WebSocket(`${base}/ws/chat`, { headers: { Cookie: gm.cookie } });
@@ -98,7 +99,7 @@ chat.addEventListener("message", (ev) => {
 await new Promise((res) => chat.addEventListener("open", res));
 const c1 = await connect(gm.cookie);
 check("no boss at the start", !c1.welcome.monsters.some((m) => m.boss));
-const plain = await makePlayer("P", "forest", 20.5, 12.5);
+const plain = await makePlayer("P", "forest", ...FOREST_BY_WOLVES);
 const cp = await connect(plain.cookie);
 cp.send({ t: "boss_summon" });
 await sleep(1500);
@@ -116,7 +117,7 @@ check("the boss is a few levels above the map (bậc 2 of the next realm) with a
 
 // Another channel of the same map is refused.
 CH = 4;
-const gm2 = await makePlayer("B", "forest", 20.5, 12.5, 0, true);
+const gm2 = await makePlayer("B", "forest", ...FOREST_BY_WOLVES, 0, true);
 const c2 = await connect(gm2.cookie);
 c2.send({ t: "boss_summon" });
 await sleep(1500);
@@ -132,7 +133,7 @@ check("after the room slept the welcome lists the boss again", c3.welcome.monste
 const bossId = c3.welcome.monsters.find((m) => m.boss)?.id;
 
 // Kill it: a second character beside it, the boss left with 1 HP by the dev hook (local only).
-const k = await makePlayer("K", "forest", 27.5, 30.5);
+const k = await makePlayer("K", "forest", FOREST_BOSS[0] + 1, FOREST_BOSS[1]);
 const ck = await connect(k.cookie);
 const hook = await fetch(`${httpBase}/api/dev/boss-hp?room=forest:3&hp=1`).then((r) => r.json());
 check("the dev hook left the boss on 1 HP", hook.ok === true, JSON.stringify(hook));

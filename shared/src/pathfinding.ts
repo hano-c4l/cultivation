@@ -50,6 +50,10 @@ export function positionAlongPath(path: readonly Vec2[], elapsedMs: number, spee
   return { x: last[0], y: last[1], moving: false };
 }
 
+/** The most cells one search expands before it gives up. */
+const MAX_EXPANSIONS = 60_000;
+let scratch = { size: 0, g: new Float32Array(0), parent: new Int32Array(0), seen: new Uint32Array(0), closed: new Uint32Array(0), gen: 0 };
+
 /** Navigation grids per map: a fine cell is navigable when a whole body centred on it is clear of obstacles. */
 const navCache = new WeakMap<MapData, Uint8Array>();
 
@@ -109,9 +113,16 @@ export function findNavPath(map: MapData, from: Vec2, to: Vec2): Vec2[] | null {
   const goal = e[1] * cw + e[0];
   const size = cw * ch;
 
-  const g = new Float32Array(size).fill(Infinity);
-  const parent = new Int32Array(size).fill(-1);
-  const closed = new Uint8Array(size);
+  // Scratch arrays are reused between searches (one thread, searches never overlap) and made valid again by bumping a generation number, so
+  // a search costs what it visits, not the size of the map (a large map has hundreds of thousands of cells).
+  if (scratch.size < size) scratch = { size, g: new Float32Array(size), parent: new Int32Array(size), seen: new Uint32Array(size), closed: new Uint32Array(size), gen: 0 };
+  const sc = scratch;
+  const gen = ++sc.gen;
+  const g = sc.g;
+  const parent = sc.parent;
+  const seen = sc.seen;
+  const closed = sc.closed;
+  const gOf = (i: number) => (seen[i] === gen ? g[i]! : Infinity);
   const gx = e[0];
   const gy = e[1];
   const heuristic = (cx: number, cy: number) => {
@@ -158,32 +169,40 @@ export function findNavPath(map: MapData, from: Vec2, to: Vec2): Vec2[] | null {
     return top;
   };
 
+  seen[start] = gen;
   g[start] = 0;
+  parent[start] = -1;
   push(heuristic(s[0], s[1]), start);
+  // A search that would visit more cells than this gives up and reports no route: the goal is walled off (an unreachable goal makes A* visit its
+  // whole region), and a map is big enough for that to be a lot of cells. Never a partial route: the caller would walk it through the obstacles.
+  let budget = MAX_EXPANSIONS;
   while (heapF.length > 0) {
     const cur = pop();
-    if (closed[cur]) continue;
+    if (closed[cur] === gen) continue;
     if (cur === goal) break;
-    closed[cur] = 1;
+    closed[cur] = gen;
     const cx = cur % cw;
     const cy = (cur - cx) / cw;
     const cg = g[cur]!;
+    if (--budget <= 0) return null;
     for (const [dx, dy] of DIRS) {
       const nx = cx + dx;
       const ny = cy + dy;
       if (nx < 0 || ny < 0 || nx >= cw || ny >= ch) continue;
       const ni = ny * cw + nx;
-      if (nav[ni] !== 1 || closed[ni]) continue;
+      if (nav[ni] !== 1 || closed[ni] === gen) continue;
       const diagonal = dx !== 0 && dy !== 0;
       if (diagonal && (nav[cy * cw + nx] !== 1 || nav[ny * cw + cx] !== 1)) continue;
       const ng = cg + (diagonal ? SQRT2 : 1);
-      if (ng < g[ni]!) {
+      if (ng < gOf(ni)) {
+        seen[ni] = gen;
         g[ni] = ng;
         parent[ni] = cur;
         push(ng + heuristic(nx, ny), ni);
       }
     }
   }
+  if (seen[goal] !== gen) return null;
   if (parent[goal] === -1 && goal !== start) return null;
 
   const cells: Vec2[] = [];

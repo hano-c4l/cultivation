@@ -2,6 +2,10 @@
 // chat, portals, potential point allocation, monsters and combat (the EXP grant step needs ENABLE_DEV_GRANT=1 in .dev.vars, skipped otherwise).
 // Usage: node tools/smoke.mjs [baseWsUrl]   (default ws://localhost:8787)
 // Registers throwaway accounts, so it only runs against local dev and preview, never production.
+import { CAVE_ARRIVAL, CAVE_BY_BATS, FOREST_ARRIVAL, FOREST_E_GATE, FOREST_N_GATE, TOWN_ARRIVAL, TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
+
+/** How long a walk of this length takes (about 3 tiles a second at the slowest) and a margin. */
+const walkMs = (a, b) => (Math.hypot(a[0] - b[0], a[1] - b[1]) / 3) * 1000 + 1500;
 const base = process.argv[2] ?? "ws://localhost:8787";
 const httpBase = base.replace(/^ws/, "http");
 const host = new URL(httpBase).host;
@@ -105,9 +109,9 @@ const wb = await b.wait((m) => m.t === "welcome");
 await a.wait((m) => m.t === "joined" && m.player.name === B.name);
 assert(true, "A sees B join (Vietnamese diacritics preserved)");
 
-a.send({ t: "move", x: 26.37, y: 5.61, fx: 20.5, fy: 20.5, seq: 1 });
+a.send({ t: "move", x: 51.37, y: 30.61, fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 1 });
 const pathMsg = await b.wait((m) => m.t === "path" && m.player.id === A.character.id);
-assert(pathMsg.player.path.at(-1).join() === "26.37,5.61", "B receives A's path ending at the exact click point (not a tile centre)");
+assert(pathMsg.player.path.at(-1).join() === "51.37,30.61", "B receives A's path ending at the exact click point (not a tile centre)");
 assert(pathMsg.player.path.length <= 4, "path is smoothed into a few straight segments instead of per-tile hops");
 const ack1 = await a.wait((m) => m.t === "ack" && m.seq === 1);
 assert(ack1.player === undefined, "accepted move acks without a track (mover keeps its prediction)");
@@ -117,13 +121,13 @@ await a.wait((m) => m.t === "pong");
 assert(true, "plain-string ping is auto-answered with pong");
 
 await sleep(150);
-a.send({ t: "move", x: 26.5, y: 10.5, fx: 20.5, fy: 20.5, seq: 2 }); // pond tile, blocked
+a.send({ t: "move", x: 51.5, y: 35.5, fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 2 }); // pond tile, blocked
 const ack2 = await a.wait((m) => m.t === "ack" && m.seq === 2);
 assert(ack2.player !== undefined, "rejected move acks with the authoritative track");
 assert(b.inbox.filter((m) => m.t === "path").length === 1, "blocked target is not broadcast");
 
 await sleep(150);
-a.send({ t: "move", x: 26.5, y: 5.5, fx: 2.5, fy: 2.5, seq: 3 }); // claimed start far from server position
+a.send({ t: "move", x: 51.5, y: 30.5, fx: 2.5, fy: 2.5, seq: 3 }); // claimed start far from server position
 const ack3 = await a.wait((m) => m.t === "ack" && m.seq === 3);
 assert(ack3.player !== undefined && ack3.player.path[0].join() !== "2.5,2.5", "implausible start tile is overridden by the server");
 
@@ -183,7 +187,7 @@ const C = await newPlayer("c");
 const c = connect(C.cookie, 1);
 await c.opened;
 const wc = await c.wait((m) => m.t === "welcome");
-assert(wc.map === "town" && wc.players.at(-1).path[0].join() === "20.5,20.5", "new character starts in town at the spawn");
+assert(wc.map === "town" && wc.players.at(-1).path[0].join() === TOWN_SPAWN.join(), "new character starts in town at the spawn");
 c.send({ t: "chat", text: "  xin   chào đạo hữu " });
 const heard = await b.wait((m) => m.t === "chat" && m.id === C.character.id);
 assert(heard.text === "xin chào đạo hữu" && heard.name === C.name, "chat is normalized and reaches the other player in the room");
@@ -201,9 +205,9 @@ assert((await c.wait((m) => m.t === "chat" && m.text === "*** ** hello")) !== un
 c.send({ t: "portal" }); // far from any portal: must be ignored
 await sleep(1000);
 assert(!c.inbox.some((m) => m.t === "transfer"), "portal request far from a portal is ignored");
-c.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
+c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1);
-await sleep(5500); // ~18 tiles at 4 tiles/s
+await sleep(walkMs(TOWN_SPAWN, TOWN_GATE));
 c.send({ t: "portal" });
 const moved = await c.wait((m) => m.t === "transfer");
 assert(moved.map === "forest", "standing on the south gate transfers to the forest");
@@ -211,7 +215,7 @@ await sleep(500);
 const c2 = connect(C.cookie, 1);
 await c2.opened;
 const wc2 = await c2.wait((m) => m.t === "welcome");
-assert(wc2.map === "forest" && wc2.players[0].path[0].join() === "20.5,3.5", "reconnect lands in the forest at the arrival tile");
+assert(wc2.map === "forest" && wc2.players[0].path[0].join() === FOREST_ARRIVAL.join(), "reconnect lands in the forest at the arrival tile");
 const bChats = b.inbox.filter((m) => m.t === "chat").length;
 await sleep(600);
 c2.send({ t: "chat", text: "chào rừng" });
@@ -219,16 +223,16 @@ await c2.wait((m) => m.t === "chat" && m.text === "chào rừng");
 await sleep(500);
 assert(b.inbox.filter((m) => m.t === "chat").length === bChats, "chat does not leak to a player on another map");
 await sleep(150);
-c2.send({ t: "move", x: 20.5, y: 1.5, fx: 20.5, fy: 3.5, seq: 1 });
+c2.send({ t: "move", x: FOREST_N_GATE[0], y: FOREST_N_GATE[1], fx: FOREST_ARRIVAL[0], fy: FOREST_ARRIVAL[1], seq: 1 });
 await c2.wait((m) => m.t === "ack" && m.seq === 1);
-await sleep(1000);
+await sleep(walkMs(FOREST_ARRIVAL, FOREST_N_GATE));
 c2.send({ t: "portal" });
 assert((await c2.wait((m) => m.t === "transfer")).map === "town", "return portal leads back to town");
 await sleep(500);
 const c3 = connect(C.cookie, 1);
 await c3.opened;
 const wc3 = await c3.wait((m) => m.t === "welcome");
-assert(wc3.map === "town" && wc3.players.find((p) => p.id === C.character.id).path[0].join() === "20.5,36.5", "return trip lands at the town arrival tile");
+assert(wc3.map === "town" && wc3.players.find((p) => p.id === C.character.id).path[0].join() === TOWN_ARRIVAL.join(), "return trip lands at the town arrival tile");
 
 // --- progression: allocate potential points, overspend rejected, persisted across reconnect ---
 const sheet0 = wc3.character;
@@ -265,16 +269,17 @@ let d = connect(D.cookie, 5);
 await d.opened;
 let wd = await d.wait((m) => m.t === "welcome");
 assert(wd.monsters.every((m) => m.guard) && wd.hp > 0 && wd.maxHp >= wd.hp, "town has no monsters (only its guards) and the welcome carries hp");
-d.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
+d.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 1 });
 await d.wait((m) => m.t === "ack" && m.seq === 1);
-await sleep(5500);
+await sleep(walkMs(TOWN_SPAWN, TOWN_GATE));
 d.send({ t: "portal" });
 await d.wait((m) => m.t === "transfer");
 await sleep(500);
 d = connect(D.cookie, 5);
 await d.opened;
 wd = await d.wait((m) => m.t === "welcome");
-assert(wd.map === "forest" && wd.monsters.filter((m) => !m.guard).length === 9 && wd.monsters.filter((m) => !m.guard).every((m) => m.tier === 1 || m.tier === 4 || m.tier === 7) && wd.monsters.filter((m) => m.guard).length === 4, "the forest welcome lists 3 clusters of 3 monsters at bậc 1, 4 and 7, and 4 guards");
+assert(wd.map === "forest" && wd.monsters.some((m) => !m.guard) && wd.monsters.every((m) => m.tier >= 1 && m.tier <= 9) && wd.monsters.some((m) => m.guard), "the forest welcome lists the monsters near the arrival (area of interest) and the guards at the gate");
+assert(wd.monsters.filter((m) => !m.guard).length < 52, "the welcome of a big map does not list every monster of it");
 // Rare ranks are rolled at random, so hunt a normal bậc-1 monster to keep the test deterministic.
 const prey = wd.monsters.find((m) => !m.guard && m.rank === "normal" && m.tier === 1) ?? wd.monsters.find((m) => !m.guard);
 d.send({ t: "attack", id: prey.id });
@@ -294,9 +299,9 @@ const stageBeforeDeath = wd.character.stage;
 
 // Walk to the cave and stand next to its monsters until they kill us.
 const here = wd.players.find((p) => p.id === D.character.id).path[0];
-d.send({ t: "move", x: 46.5, y: 24.5, fx: here[0], fy: here[1], seq: 1 });
+d.send({ t: "move", x: FOREST_E_GATE[0], y: FOREST_E_GATE[1], fx: here[0], fy: here[1], seq: 1 });
 await d.wait((m) => m.t === "ack" && m.seq === 1);
-await sleep((Math.hypot(46.5 - here[0], 24.5 - here[1]) / 4) * 1000 + 5000);
+await sleep(walkMs(here, FOREST_E_GATE));
 d.send({ t: "portal" });
 const toCave = await d.wait((m) => m.t === "transfer", 8000, "east gate transfer to the cave");
 assert(toCave.map === "cave", "the east gate leads to the cave (and the walk there was survivable)");
@@ -304,8 +309,8 @@ await sleep(500);
 d = connect(D.cookie, 5);
 await d.opened;
 wd = await d.wait((m) => m.t === "welcome");
-assert(wd.map === "cave" && wd.monsters.filter((m) => !m.guard).length === 9, "the cave welcome lists its monsters");
-d.send({ t: "move", x: 14.5, y: 20.5, fx: 3.5, fy: 20.5, seq: 1 });
+assert(wd.map === "cave" && wd.monsters.some((m) => !m.guard), "the cave welcome lists the monsters near the arrival");
+d.send({ t: "move", x: CAVE_BY_BATS[0], y: CAVE_BY_BATS[1], fx: CAVE_ARRIVAL[0], fy: CAVE_ARRIVAL[1], seq: 1 });
 const died = await d.wait((m) => m.t === "died", 90000, "dying to cave monsters");
 assert(died.expLost >= 0 && died.expLost <= expBeforeDeath, "death costs a little EXP, never more than owned");
 assert((await d.wait((m) => m.t === "transfer", 5000)).map === "town", "death sends the player to town");

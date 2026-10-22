@@ -27,8 +27,8 @@ import {
   bossShares,
   bossStats,
   BOSS_SKILLS,
-  BOSS_CONE,
-  BOSS_REGEN_PER_S,
+  bossCone,
+  bossRegenPerS,
   inCone,
   BOSS_STAT_TIER,
   pickByShare,
@@ -359,7 +359,7 @@ export class CombatSim {
     /** Classes to restore after the room slept, by monster id; without them every monster rolls its class. */
     ranks?: Readonly<Record<string, string>>,
   ) {
-    this.realm = map.realm ?? 0;
+    this.realm = map.realm ?? map.guardRealm ?? 0;
     for (const cluster of CLUSTERS[mapId]) {
       const def = getMonsterDef(cluster.kind);
       if (!def) continue;
@@ -1024,7 +1024,7 @@ export class CombatSim {
 
       if (m.boss && m.state === "idle" && m.hp < m.maxHp && now - (m.lastRegenAt ?? 0) >= 1000) {
         m.lastRegenAt = now;
-        m.hp = Math.min(m.maxHp, m.hp + Math.max(1, Math.round(m.maxHp * BOSS_REGEN_PER_S)));
+        m.hp = Math.min(m.maxHp, m.hp + Math.max(1, Math.round(m.maxHp * bossRegenPerS())));
         if (m.hp >= m.maxHp) m.damage.clear(); // whole again: earlier damage no longer counts towards the reward
         events.push({ t: "mon", monster: this.snapshot(m, now) });
       }
@@ -1070,7 +1070,7 @@ export class CombatSim {
       if (m.state === "return") {
         if (dist(pos, m.home) < 0.3) {
           m.state = "idle";
-          // A boss heals back gradually (see BOSS_REGEN_PER_S) and keeps its damage table meanwhile; everything else is whole at once.
+          // A boss heals back gradually (see bossRegenPerS) and keeps its damage table meanwhile; everything else is whole at once.
           if (!m.boss) {
             m.hp = m.maxHp;
             m.damage.clear(); // healed to full: earlier damage no longer counts towards the reward
@@ -1115,7 +1115,7 @@ export class CombatSim {
     // The boss uses the same turn as a guard with its own numbers and without the buff (two attacks and a heal).
     const sk = m.boss ? BOSS_SKILLS : GUARD_SKILLS;
     // The boss's special cone first: only in the last quarter of its HP, on a long cooldown.
-    if (m.boss && m.hp < m.maxHp * BOSS_CONE.below && left("cone") && ready("cone", BOSS_CONE.cdMs)) return "cone";
+    if (m.boss && m.hp < m.maxHp * bossCone().below && left("cone") && ready("cone", bossCone().cdMs)) return "cone";
     if (m.hp < m.maxHp * sk.mend.below && left("mend") && ready("mend", sk.mend.cdMs)) {
       m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * sk.mend.fraction));
       events.push({ t: "mon", monster: this.snapshot(m, now) });
@@ -1144,16 +1144,16 @@ export class CombatSim {
     this.hurtPlayer(m, p, attacker, now, events);
   }
 
-  /** The boss's cone: everyone alive inside it (towards `focus`, the player it is fighting) takes a hit of BOSS_CONE.power times its attack. */
+  /** The boss's cone: everyone alive inside it (towards `focus`, the player it is fighting) takes a hit of bossCone().power times its attack. */
   private bossCone(m: Monster, focus: PlayerProfile, now: number, events: SimEvent[], positions?: ReadonlyMap<string, Vec2>): void {
     const from = this.position(m, now);
     const aim = positions?.get(focus.id);
-    const attacker = { ...m.combatant, attack: Math.max(1, Math.round(m.combatant.attack * BOSS_CONE.power)) };
+    const attacker = { ...m.combatant, attack: Math.max(1, Math.round(m.combatant.attack * bossCone().power)) };
     if (!aim || !positions) return this.hurtPlayer(m, focus, attacker, now, events);
     for (const [id, at] of positions) {
       const target = this.players.get(id);
       if (!target || target.dead) continue;
-      if (inCone(at[0] - from[0], at[1] - from[1], aim[0] - from[0], aim[1] - from[1], BOSS_CONE.range, BOSS_CONE.halfAngleDeg)) this.hurtPlayer(m, target, attacker, now, events);
+      if (inCone(at[0] - from[0], at[1] - from[1], aim[0] - from[0], aim[1] - from[1], bossCone().range, bossCone().halfAngleDeg)) this.hurtPlayer(m, target, attacker, now, events);
     }
   }
 
@@ -1401,7 +1401,7 @@ export class CombatSim {
     if (drop > 0) events.push({ t: "drop", playerId: winner.id, amount: drop });
     // The hero points of the winner raise the chance of every item roll (the rolls themselves are drawn in the same order).
     const dropMult = 1 + heroBonus(winner.hero ?? 0).dropPct / 100;
-    const loot = rollLoot(m.rank, this.rand, dropMult);
+    const loot = rollLoot(m.rank, this.rand, dropMult, this.realm);
     // Drawn after every other roll of the kill, so the sequence of the older rolls does not change.
     const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand, dropMult);
     if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
@@ -1498,7 +1498,7 @@ export class CombatSim {
     });
     const items = new Map<string, LootDrop[]>();
     for (let i = 0; i < BOSS_ITEM_ROUNDS; i++) {
-      const loot = rollLoot(m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const loot = rollLoot(m.rank, this.rand, BOSS_ITEM_CHANCE_MULT, this.realm);
       const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
       if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
       const book = rollBookDrop(m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);

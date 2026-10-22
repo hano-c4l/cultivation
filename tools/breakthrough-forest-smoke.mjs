@@ -3,6 +3,7 @@
 // room's working copy and D1 agreeing after the character leaves (the simulation keeps its own EXP and stage, so a stale save would show here).
 // Usage: node tools/breakthrough-forest-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints: local only, needs DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1.
+import { FOREST_ARRIVAL, FOREST_BY_WOLVES } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -81,9 +82,9 @@ async function makeChar(tag, x, y) {
 }
 const rowOf = (id) => sql(`SELECT realm, stage, exp, potential_points, bt_started_at FROM characters WHERE id = '${id}'`)[0];
 
-// B stands next to the wolves (cluster at 20.5, 14.5): they come for it. A stands at the entrance, far from every monster.
-const b = await makeChar("Bi", 20.5, 15.5);
-const a = await makeChar("An", 20.5, 4.5);
+// B stands next to the wolves (the first group of the forest): they come for it. A stands at the entrance, far from every monster.
+const b = await makeChar("Bi", ...FOREST_BY_WOLVES);
+const a = await makeChar("An", ...FOREST_ARRIVAL);
 
 const cb = await connect(b.cookie);
 check("B is in the forest at stage 9", cb.welcome.map === "forest" && cb.welcome.character.stage === 9);

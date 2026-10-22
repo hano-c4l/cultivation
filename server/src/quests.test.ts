@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { DAILY_QUESTS, DEFAULT_QUESTS, EXTRA_QUESTS, SEED_QUESTS, planAdd, questStatus, type QuestDef } from "@game/shared";
+import { DAILY_QUESTS, DEFAULT_QUESTS, EXTRA_QUESTS, HIGH_DAILY_QUESTS, SEED_QUESTS, planAdd, questStatus, type QuestDef } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { commitBagOps, loadBag } from "./inventory";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestCatalog, loadQuestProgress, pathItemKey, planConsume, planTurnIn, resetQuestCache, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -43,7 +43,7 @@ describe("the catalogue", () => {
   it("is seeded with the default chain, valid, and later edits are kept", async () => {
     const first = await loadQuestCatalog(db);
     expect(first.defs.map((d) => d.id).sort()).toEqual(SEED_QUESTS.map((d) => d.id).sort());
-    expect(DEFAULT_QUESTS.length + EXTRA_QUESTS.length + DAILY_QUESTS.length).toBe(SEED_QUESTS.length);
+    expect(DEFAULT_QUESTS.length + EXTRA_QUESTS.length + DAILY_QUESTS.length + HIGH_DAILY_QUESTS.length).toBe(SEED_QUESTS.length);
     raw.exec("UPDATE quests SET enabled = 0 WHERE id = 'newbie_3'");
     raw.exec("UPDATE quests SET def = json_set(def, '$.rewards.linhThach', 777) WHERE id = 'newbie_2'");
     resetQuestCache();

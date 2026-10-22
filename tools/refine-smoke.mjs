@@ -1,3 +1,4 @@
+import { T, TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
 // Local test of the pháp bảo bản mệnh: it trains on its own EXP while worn (kills in the forest), the EXP is saved,
 // the character's EXP is not touched by it, and a flight artifact fits its own slot.
 // Usage: node tools/refine-smoke.mjs [ws://localhost:8787]
@@ -80,7 +81,7 @@ await c.wait((m) => m.t === "mounted" && m.on === true, 5000, "mounted on");
 await c.wait((m) => m.t === "path" && m.player.id === charId && m.player.mounted === true, 5000, "mounted path");
 const rideSpeed = speedOf((m) => m.t === "path" && m.player.id === charId);
 check("riding is faster than walking", rideSpeed > footSpeed, `${footSpeed} -> ${rideSpeed}`);
-c.send({ t: "move", x: 20.5, y: 30.5, fx: 20.5, fy: 20.5, seq: 90 });
+c.send({ t: "move", x: 20.5 + T, y: 30.5 + T, fx: 20.5 + T, fy: 20.5 + T, seq: 90 });
 await c.wait((m) => m.t === "ack" && m.seq === 90);
 await sleep(700);
 c.send({ t: "mount", on: false });
@@ -91,9 +92,9 @@ check("getting off mid-walk drops the speed and keeps walking", landed && landed
 c.send({ t: "mount", on: false });
 
 // To the forest and a kill.
-c.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
+c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1);
-await sleep(5500);
+await sleep(10500);
 c.send({ t: "portal" });
 await c.wait((m) => m.t === "transfer");
 await sleep(500);
@@ -105,6 +106,7 @@ await c.wait((m) => m.t === "mon_gone" && m.id === prey.id, 40000, "monster dies
 const stats = await c.wait((m) => m.t === "stats" && m.character.exp > 0, 5000, "stats after the kill");
 const eq = await c.wait((m) => m.t === "eq" && m.items.some((e) => e.slot === "bonded" && (e.xp ?? 0) > 0), 20000, "the artifact's EXP");
 const bonded = eq.items.find((e) => e.slot === "bonded");
+const killLog = c.log;
 check("the kill trained the pháp bảo bản mệnh with its own EXP", bonded.xp > 0 && bonded.lv !== undefined, `xp ${bonded.xp}`);
 c.ws.close();
 await sleep(800);
@@ -112,7 +114,10 @@ c = await connect(reg.cookie, 7);
 const back = c.welcome.equipped.find((e) => e.slot === "bonded");
 check("the training is saved", back?.xp >= bonded.xp && back.lv === bonded.lv, `xp ${back?.xp}`);
 // Same amounts, separate streams: the character kept every point of its own EXP, and the artifact got the same number.
-check("the artifact got as much EXP as the character (and the character lost none)", back.xp === c.welcome.character.exp && c.welcome.character.exp >= stats.character.exp, `artifact ${back.xp}, character ${c.welcome.character.exp}`);
+// Compared right after the kill: the rest of the group may kill the character while this test waits and reconnects (a death costs 10% of the character's EXP, not the artifact's).
+// (The artifact's EXP is sent a moment after the kills, so it is read against the character's sheet as it stood just before that message.)
+const sheetThen = killLog.slice(0, killLog.indexOf(eq)).filter((m) => m.t === "stats").at(-1);
+check("the artifact got as much EXP as the character from the kills", bonded.xp === sheetThen.character.exp, `artifact ${bonded.xp}, character ${sheetThen.character.exp}`);
 c.ws.close();
 console.log(failures === 0 ? "refine smoke passed" : `${failures} check(s) failed`);
 process.exit(failures === 0 ? 0 : 1);

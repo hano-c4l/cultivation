@@ -9,6 +9,7 @@ import { isPathId, type PathError, type PathId } from "./paths";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
 import type { EnhanceLevelDef } from "./smith";
+import type { Tuning } from "./tuning";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type Carry, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
@@ -226,7 +227,7 @@ export type ServerMessage =
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
   /** The merchant's stock for today: units this character can still buy of each offer that has a daily limit. */
-  | { t: "shop"; npc: string; left: Record<string, number> }
+  | { t: "shop"; npc: string; left: Record<string, number>; tuning: Tuning }
   /** A trade went through: `total` Linh Thạch paid (buy) or received (sell). */
   | { t: "shop_ok"; op: "buy" | "sell"; item: string; qty: number; total: number }
   /** A multi-item sale went through: `count` stacks sold for `total` Linh Thạch. */
@@ -235,6 +236,10 @@ export type ServerMessage =
   | { t: "pk"; mode: PkMode; satKhi: number; satNhan: number; hero: number }
   /** A PvP command was refused: the PK switch is off, the map is safe, or someone is under the newbie protection. */
   | { t: "pk_error"; reason: "off" | "safe" | "protected" | "invalid" }
+  /** How many players are in the room (a combat map only tells a player about those near them, so the count cannot be taken from the list). */
+  | { t: "online"; n: number }
+  /** The server lost its record of what this client has been shown (the room was rebuilt): forget every monster, they are sent again as they come into view. */
+  | { t: "mon_reset" }
   /** The sát nhân of a player changed (a kill or a death): everyone in the room recolours the name. */
   | { t: "pk_score"; id: string; sn: number }
   /** The PK state of a player in the room changed (the tag after their name). */
@@ -282,7 +287,7 @@ export type ServerMessage =
   /** A repair was paid for. */
   | { t: "repaired"; cost: number }
   /** The blacksmith's window: the upgrade rules and the extra success chance (percent) each of your pieces has built up from failures. */
-  | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number> }
+  | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number>; tuning: Tuning }
   /** The outcome of a refining: what each stat gained (empty: nothing rose this time). */
   | { t: "smith_refined"; id: string; gains: Record<string, number> }
   /** The outcome of an upgrade: the piece, whether it worked, its level now, whether a level was lost or a Hộ Cấp Phù used, and its new bonus chance. */
