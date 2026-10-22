@@ -53,12 +53,12 @@ const COLUMNS =
   "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, roots, bt_started_at, paths, sat_khi, sat_nhan, anh_hung, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
-export function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
-  return db.prepare(`SELECT ${COLUMNS} FROM characters WHERE account_id = ?`).bind(accountId).first<CharacterRow>();
+export async function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
+  return withRealRoot(await db.prepare(`SELECT ${COLUMNS} FROM characters WHERE account_id = ?`).bind(accountId).first<CharacterRow>());
 }
 
-export function getCharacterById(db: D1Database, id: string): Promise<CharacterRow | null> {
-  return db.prepare(`SELECT ${COLUMNS} FROM characters WHERE id = ?`).bind(id).first<CharacterRow>();
+export async function getCharacterById(db: D1Database, id: string): Promise<CharacterRow | null> {
+  return withRealRoot(await db.prepare(`SELECT ${COLUMNS} FROM characters WHERE id = ?`).bind(id).first<CharacterRow>());
 }
 
 /** One skill a character was given (see migration 0016): root skills of each realm and skills learned from a bí tịch. */
@@ -162,6 +162,18 @@ export async function saveCharacterProgress(db: D1Database, id: string, progress
     .run();
 }
 
+/**
+ * `spiritual_root` has a CHECK for the five plain elements, so a mutant character (Lôi, Băng, Phong) keeps a stand-in there
+ * (see STAND_IN_ROOT) and its real element is the first of `roots`. Rows are read through this so the rest of the code sees it.
+ */
+export function withRealRoot<T extends CharacterRow | null>(row: T): T {
+  if (!row) return row;
+  return { ...row, spiritual_root: parseRoots(row.roots, row.spiritual_root)[0]! };
+}
+
+/** The plain element stored in `spiritual_root` for a mutant main element (it only has to satisfy the CHECK). */
+export const STAND_IN_ROOT: Record<string, SpiritualRoot> = { loi: "thuy", bang: "thuy", phong: "kim" };
+
 /** Shape sent to the client; never exposes account ids. */
 export function toCharacterSheet(c: CharacterRow): CharacterSheet {
   const base = {} as BaseStats;
@@ -206,7 +218,8 @@ export async function allocatePoints(db: D1Database, id: string, points: Partial
         `WHERE id = ? AND potential_points >= ? RETURNING ${COLUMNS}`,
     )
     .bind(...binds, total, Date.now(), id, total)
-    .first<CharacterRow>();
+    .first<CharacterRow>()
+    .then(withRealRoot);
 }
 
 /**
@@ -229,7 +242,8 @@ export async function grantExp(db: D1Database, id: string, gain: number): Promis
           `WHERE id = ? AND realm = ? AND stage = ? AND exp = ? RETURNING ${COLUMNS}`,
       )
       .bind(next.stage, next.exp, addedPoints, Date.now(), id, row.realm, row.stage, row.exp)
-      .first<CharacterRow>();
+      .first<CharacterRow>()
+      .then(withRealRoot);
     if (updated) return updated;
   }
   throw new Error("grantExp: too many concurrent updates");

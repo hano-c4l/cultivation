@@ -32,7 +32,7 @@ export interface Portal {
 export interface NpcSpot {
   id: string;
   /** What the NPC does: sells and buys (merchant) or gives quests (quest). */
-  kind: "merchant" | "quest";
+  kind: "merchant" | "quest" | "smith";
   /** Position in tile units (continuous). */
   x: number;
   y: number;
@@ -242,6 +242,7 @@ function buildTown(): MapData {
     npcs: [
       { id: "merchant", kind: "merchant", x: 23.5, y: 17.5 },
       { id: "elder", kind: "quest", x: 16.5, y: 17.5 },
+      { id: "smith", kind: "smith", x: 19.5, y: 20.5 },
       { id: "path_kiem", kind: "quest", x: 22.5, y: 24.5 },
       { id: "path_thuat", kind: "quest", x: 25.5, y: 24.5 },
       { id: "path_dan", kind: "quest", x: 28.5, y: 24.5 },

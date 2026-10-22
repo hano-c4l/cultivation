@@ -283,16 +283,16 @@ describe("element and weapon family", () => {
     }
   });
 
-  it("do not change the stats, and the name has no realm or bậc (they are a tag)", () => {
+  it("do not change the stats, and the name is the set and the kind, without the realm or bậc (they are a tag)", () => {
     const a = equipmentInfo("eq.weapon.u.0.2.1")!;
     const b = equipmentInfo("eq.weapon.u.0.2.1.hoa.kiem")!;
     expect(b.stats).toEqual(a.stats);
-    expect(b.nameVi).toBe("Phi Kiếm");
+    expect(b.nameVi).toBe("Bạch Thi Phi Kiếm");
     expect(equipTierTag(b)).toBe("LK2");
     expect(equipTierTag(equipmentInfo("eq.robe.m.1.4.1")!)).toBe("TC4");
   });
 
-  it("drops carry one of the five elements, and weapons a family", () => {
+  it("drops carry one of the five elements (or, rarely, a mutant one), and weapons a family", () => {
     const seen = new Set<string>();
     for (let t = 0; t < 400; t++) {
       let s = t + 7;
@@ -300,11 +300,11 @@ describe("element and weapon family", () => {
       const drop = rollEquipmentDrop(0, 4, "rare2", rand);
       if (!drop) continue;
       const info = equipmentInfo(drop.type)!;
-      expect(["kim", "moc", "thuy", "hoa", "tho"]).toContain(info.element);
+      expect(["kim", "moc", "thuy", "hoa", "tho", "loi", "bang", "phong"]).toContain(info.element);
       expect(info.kind === "weapon" ? info.weaponType !== null : info.weaponType === null).toBe(true);
       seen.add(info.element!);
     }
-    expect(seen.size).toBe(5);
+    for (const el of ["kim", "moc", "thuy", "hoa", "tho"]) expect(seen.has(el)).toBe(true);
   });
 });
 
@@ -360,8 +360,8 @@ describe("pháp bảo bản mệnh and pháp bảo phi hành", () => {
   const flight = "eq.flight.u.0.1.2.moc";
 
   it("have their own slot each, one piece per slot", () => {
-    expect(equipmentInfo(bonded)).toMatchObject({ kind: "bonded", nameVi: "Pháp Bảo Bản Mệnh" });
-    expect(equipmentInfo(flight)).toMatchObject({ kind: "flight", nameVi: "Pháp Bảo Phi Hành" });
+    expect(equipmentInfo(bonded)).toMatchObject({ kind: "bonded", nameVi: expect.stringContaining("Pháp Bảo Bản Mệnh") });
+    expect(equipmentInfo(flight)).toMatchObject({ kind: "flight", nameVi: expect.stringContaining("Pháp Bảo Phi Hành") });
     const st: BagContents = { items: [bagItem("b", bonded, 0, 0, 100), bagItem("f", flight, 0, 1, 100)], equipped: [] };
     const a = planEquip(st, 1, { tab: 0, cell: 0 }, undefined, maleWearer);
     expect(a.ok && a.ops[0]).toMatchObject({ op: "equip", slot: "bonded" });
@@ -370,9 +370,12 @@ describe("pháp bảo bản mệnh and pháp bảo phi hành", () => {
     expect(planEquip(st, 1, { tab: 0, cell: 0 }, "flight", maleWearer)).toEqual({ ok: false, error: "slot" });
   });
 
-  it("the flight artifact gives speed (a stat that is shown but does not move anyone yet)", () => {
+  it("the flight artifact gives speed, but only while its wearer rides it", () => {
     expect(equipmentInfo(flight)!.stats.moveSpeed).toBeGreaterThan(0);
-    expect(equipmentBonus([{ id: "f", type: flight, slot: "flight", dur: 100, max: 100 }], maleWearer).moveSpeed).toBeGreaterThan(0);
+    const worn = [{ id: "f", type: flight, slot: "flight" as const, dur: 100, max: 100 }];
+    expect(equipmentBonus(worn, maleWearer).moveSpeed).toBe(0);
+    expect(equipmentBonus(worn, { ...maleWearer, mounted: false }).moveSpeed).toBe(0);
+    expect(equipmentBonus(worn, { ...maleWearer, mounted: true }).moveSpeed).toBeGreaterThan(0);
     const plain = deriveStats(base(), 0, 5, 1);
     const fast = deriveStats(base(), 0, 5, 1, { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 10 });
     expect(fast.moveSpeed).toBeGreaterThan(plain.moveSpeed);

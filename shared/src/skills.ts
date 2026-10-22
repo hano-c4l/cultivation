@@ -1,5 +1,5 @@
 import type { SpiritualRoot } from "./character";
-import { SPIRITUAL_ROOTS } from "./character";
+import { ALL_ROOTS, SPIRITUAL_ROOTS } from "./character";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
 import { RATE_CAP, getRootGrade, levelIndex, type Element } from "./progression";
@@ -66,7 +66,7 @@ export interface SkillDef {
   pathLevel?: number;
 }
 
-const ELEMENT_NAMES: Record<SpiritualRoot, string> = { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ" };
+const ELEMENT_NAMES: Record<SpiritualRoot, string> = { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ", loi: "Lôi", bang: "Băng", phong: "Phong" };
 
 /** A root skill before it is given a realm: the same template exists in every realm, stronger in the higher ones. */
 interface SkillTemplate {
@@ -134,7 +134,7 @@ function elementBookSkill(root: SpiritualRoot): SkillDef {
  */
 function gearSkills(): SkillDef[] {
   const out: SkillDef[] = [];
-  for (const root of SPIRITUAL_ROOTS) {
+  for (const root of ALL_ROOTS) {
     const n = ELEMENT_NAMES[root];
     // One skill for each of the four pháp bảo slots (a piece in each slot gives its own, at that piece's strength), so two
     // pieces of the same element both show and cool down on their own.
@@ -383,7 +383,7 @@ export function parseSkillSlot(v: string): { id: string; element: SpiritualRoot 
   if (!v.startsWith("s:")) return null;
   const [id, el] = v.slice(2).split(":");
   if (!id) return null;
-  return { id, element: el && (SPIRITUAL_ROOTS as readonly string[]).includes(el) ? (el as SpiritualRoot) : null };
+  return { id, element: el && (ALL_ROOTS as readonly string[]).includes(el) ? (el as SpiritualRoot) : null };
 }
 
 /** Parses the stored hotbar JSON; anything malformed becomes an empty bar, and a slot holding a skill that no longer exists becomes empty. */

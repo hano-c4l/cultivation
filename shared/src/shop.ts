@@ -1,6 +1,7 @@
 import { gearStyleOf, type Gender } from "./gender";
 import { equipmentInfo, makeEquipmentId, GENDERED_KINDS, WEAPON_TYPES, type EquipKind } from "./equipment-data";
 import { getItemDef } from "./items";
+import { KEEP_LEVEL_ITEM, KEEP_LEVEL_PRICE_TIEN_NGOC } from "./smith";
 import { SPIRITUAL_ROOTS } from "./character";
 import { levelIndex } from "./progression";
 import { bookItemId, getSkill } from "./skills";
@@ -58,8 +59,10 @@ export interface ShopOffer {
   category: Exclude<ShopCategory, "all">;
   /** Element of the item (see shopElementOf), when it has one: the window can filter by it. */
   element: string | null;
-  /** Linh Thạch for one. */
+  /** The price of one, in Linh Thạch unless `currency` says otherwise. */
   price: number;
+  /** Paid in Tiên Ngọc instead of Linh Thạch (the Hộ Cấp Phù). */
+  currency?: "tien_ngoc";
   /** Most one character may buy per day; absent means unlimited. */
   dailyLimit?: number;
 }
@@ -124,6 +127,7 @@ const PLAIN_OFFERS: readonly ShopOffer[] = [
   offer("duong_huyet_dan", itemValue("duong_huyet_dan"), 30),
   offer("dai_hoi_huyet_dan", itemValue("dai_hoi_huyet_dan"), 20),
   offer("ngo_dao_dan", itemValue("ngo_dao_dan"), 2),
+  { ...offer(KEEP_LEVEL_ITEM, KEEP_LEVEL_PRICE_TIEN_NGOC), currency: "tien_ngoc" },
 ];
 
 /** Skill books on sale (bí tịch): the two basic ones of Luyện Khí and the strongest skill of each element (Trúc Cơ). Unlimited: a skill can only be learned once. */

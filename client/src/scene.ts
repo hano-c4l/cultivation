@@ -51,12 +51,13 @@ import { setCatalog } from "./constitution-store";
 import { itemTierText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initShop, type ShopUi } from "./shop-ui";
+import { initSmith, type SmithUi } from "./smith-ui";
 import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
-import { GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
+import { setGearSetNames, GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
 import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
@@ -65,13 +66,14 @@ import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { vi } from "./locales/vi";
+import { isMounted, setMounted } from "./wearer";
 import { Net } from "./net";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
 
 /** The element icon in front of a monster's name: the same colours as the element dots on gear and skills (index.html .elem-*). */
-const ELEMENT_DOT: Record<string, number> = { kim: 0xfbc02d, moc: 0x43a047, thuy: 0x1e88e5, hoa: 0xe53935, tho: 0x8d6e63 };
-const ELEMENT_COLOR: Record<string, number> = { kim: 0xe0e0e0, moc: 0x4caf50, thuy: 0x2196f3, hoa: 0xff5722, tho: 0x9c7a5b };
+const ELEMENT_DOT: Record<string, number> = { kim: 0xfbc02d, moc: 0x43a047, thuy: 0x1e88e5, hoa: 0xe53935, tho: 0x8d6e63, loi: 0x7e57c2, bang: 0x4dd0e1, phong: 0x80cbc4 };
+const ELEMENT_COLOR: Record<string, number> = { kim: 0xe0e0e0, moc: 0x4caf50, thuy: 0x2196f3, hoa: 0xff5722, tho: 0x9c7a5b, loi: 0x9575cd, bang: 0x80deea, phong: 0xa5d6a7 };
 /** A click within this many screen pixels of a monster (around its body) targets it instead of walking. */
 const MONSTER_PICK_PX = 34;
 
@@ -101,6 +103,9 @@ interface Actor {
   /** The "PK" tag after the name: brown for PK, red for Đồ sát (hidden when off). */
   tag: Phaser.GameObjects.Text;
   pk: PkMode;
+  /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
+  mounted: boolean;
+  cloud?: Phaser.GameObjects.Ellipse;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
   snAt: number;
@@ -176,6 +181,8 @@ export class GameScene extends Phaser.Scene {
   private inventory!: InventoryUi;
   private equipment!: EquipmentUi;
   private shop!: ShopUi;
+  private smith!: SmithUi;
+  private linhThach = 0;
   private quests!: QuestUi;
   private pk!: PkUi;
   private channel!: ChannelUi;
@@ -199,6 +206,8 @@ export class GameScene extends Phaser.Scene {
   private charPanel!: CharacterPanel;
   private vitals!: VitalsUi;
   private hud!: HTMLElement;
+  private mountBtn!: HTMLButtonElement;
+  private flightWorn = false;
   private ping = 0;
   private pingSentAt = 0;
   private moveSeq = 0;
@@ -214,6 +223,11 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.hud = document.getElementById("hud")!;
+    this.mountBtn = document.createElement("button");
+    this.mountBtn.hidden = true;
+    this.mountBtn.style.cssText = "position:fixed;top:44px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:12px;border:1px solid #bfeeff;background:rgba(40,110,150,.85);color:#e8faff;font-size:13px;z-index:20;cursor:pointer";
+    this.mountBtn.onclick = () => this.net.send({ t: "mount", on: !isMounted() });
+    document.body.append(this.mountBtn);
     this.drawMap();
     this.marker = this.add.graphics().setDepth(1);
     this.chat = initChat((channel, text, to) => {
@@ -243,8 +257,9 @@ export class GameScene extends Phaser.Scene {
       pillCount: () => this.inventory.list().filter((i) => getItemDef(i.type)?.masteryPills !== undefined).reduce((n, i) => n + i.qty, 0),
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
-    this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list());
+    this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list(), this.registry.get("isAdmin") === true);
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
+    this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }));
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
     this.channel = initChannel();
@@ -269,6 +284,11 @@ export class GameScene extends Phaser.Scene {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && this.aiming) this.endAim();
+      const a = document.activeElement;
+      const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
+      if (!typing && (ev.key === "m" || ev.key === "M") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && this.selfId) {
+        this.net.send({ t: "mount", on: !isMounted() });
+      }
     });
 
     // Channel picks which Durable Object (and so which Cloudflare data centre) serves us; override with ?ch=N.
@@ -489,7 +509,9 @@ export class GameScene extends Phaser.Scene {
       // One NPC window at a time (both would otherwise open on the same spot).
       this.shop.close();
       this.quests.close();
+      this.smith.close();
       if (npc.kind === "quest") this.quests.open(npc.id);
+      else if (npc.kind === "smith") this.smith.open(npc.id);
       else this.shop.open(npc.id, this.map.id);
       return;
     }
@@ -512,6 +534,7 @@ export class GameScene extends Phaser.Scene {
     this.lastMoveSentAt = now;
     this.shop.close(); // walking away from an NPC closes its window
     this.quests.close();
+    this.smith.close();
     this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
     const c = toScreen(tx, ty);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
@@ -535,6 +558,10 @@ export class GameScene extends Phaser.Scene {
     switch (msg.t) {
       case "welcome":
         this.selfId = msg.self;
+        setGearSetNames(msg.gearSets); // the live names of the gear sets
+        setMounted(false); // a new room starts on foot
+        this.flightWorn = msg.equipped.some((e) => e.slot === "flight");
+        this.refreshMountBtn();
         this.hitMeAt.clear(); // a new room starts without quarrels
         this.endAim();
         this.colo = msg.colo;
@@ -562,6 +589,7 @@ export class GameScene extends Phaser.Scene {
         this.selfSheet = msg.character;
         this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
         this.vitals.setWallet(msg.wallet);
+        this.linhThach = msg.wallet.linh_thach;
         this.inventory.setBag(msg.bag);
         this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
@@ -603,11 +631,14 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(vi.combat.died(msg.expLost), "important");
         break;
       case "wallet":
+        if (msg.currency === "linh_thach") this.linhThach = msg.balance;
         this.vitals.setBalance(msg.currency, msg.balance);
+        this.smith.refresh();
         if (msg.gained) this.chat.system(vi.chat.gainedCurrency(msg.gained, vi.economy.currency[msg.currency]));
         break;
       case "stats": {
         const before = this.selfSheet;
+        this.smith.setSheet(msg.character);
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
         this.shop.setSheet(msg.character);
@@ -640,6 +671,14 @@ export class GameScene extends Phaser.Scene {
         this.upsertActor([msg.player]);
         this.refreshHud();
         break;
+      case "mounted":
+        if (msg.error) this.chat.system(vi.mount.errors[msg.error] ?? msg.error);
+        this.applyMounted(msg.on);
+        {
+          const me = this.actors.get(this.selfId);
+          if (me) this.setActorMounted(me, msg.on);
+        }
+        break;
       case "ack":
         // Only corrections carry a track; an accepted move keeps the local prediction untouched.
         if (msg.player) this.upsertActor([msg.player]);
@@ -662,6 +701,7 @@ export class GameScene extends Phaser.Scene {
       case "inv":
         if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items, tabPrice: msg.tabPrice });
         else this.inventory.applyDelta(msg.tabs, msg.items, msg.removed);
+        this.smith.refresh();
         this.charPanel.refresh();
         this.equipment.refresh();
         this.shop.refresh();
@@ -670,6 +710,8 @@ export class GameScene extends Phaser.Scene {
         this.skillsUi.refresh(); // the pill count
         break;
       case "eq": {
+        this.flightWorn = msg.items.some((e) => e.slot === "flight");
+        this.refreshMountBtn();
         // The pháp bảo bản mệnh reaching a new training level is worth a line.
         const bonded = msg.items.find((e) => e.slot === "bonded");
         const level = bonded ? bondedLevel(bonded) : undefined;
@@ -678,6 +720,7 @@ export class GameScene extends Phaser.Scene {
         }
         this.bondedLv = level;
         this.equipment.setEquipped(msg.items);
+        this.smith.setEquipped(msg.items);
         this.inventory.setEquipped(msg.items);
         this.charPanel.setEquipped(msg.items);
         this.worn = msg.items;
@@ -749,6 +792,18 @@ export class GameScene extends Phaser.Scene {
       case "shop":
         this.shop.setStock(msg.npc, msg.left);
         break;
+      case "smith":
+        this.smith.setRules(msg.npc, msg.levels, msg.pity);
+        break;
+      case "smith_result": {
+        const owned = [...this.worn, ...this.inventory.list()].find((x) => x.id === msg.id);
+        const name = owned ? (getItemDef(owned.type)?.nameVi ?? owned.type) : "";
+        const text = msg.success ? vi.smith.success(name, msg.level) : msg.dropped ? vi.smith.failedDropped(name, msg.level) : msg.scrollUsed ? vi.smith.failedKept(name, msg.level) : vi.smith.failed(name, msg.level);
+        this.chat.system(text, msg.success ? undefined : "warning");
+        this.smith.notify(text, msg.success);
+        this.smith.setPity(msg.id, msg.pity);
+        break;
+      }
       case "shop_ok": {
         const name = getItemDef(msg.item)?.nameVi ?? msg.item;
         const text = msg.op === "buy" ? vi.shop.bought(name, msg.qty, msg.total) : vi.shop.sold(name, msg.qty, msg.total);
@@ -860,7 +915,10 @@ export class GameScene extends Phaser.Scene {
           if (this.inventory.rejected("wait", msg.retryMs)) this.chat.system(vi.inventory.sortBlocked(Math.max(1, Math.ceil((msg.retryMs ?? 5000) / 1000))), "warning");
           break;
         }
-        if (msg.reason === "murderer") this.shop.ban(vi.inventory.errors.murderer!);
+        if (msg.reason === "murderer") {
+          this.shop.ban(vi.inventory.errors.murderer!);
+          this.smith.ban(vi.inventory.errors.murderer!);
+        }
         // Rate-limit refusals are silent: they only happen when commands are sent faster than a person taps.
         this.inventory.rejected(msg.reason);
         if (msg.reason !== "rate") this.chat.system(vi.inventory.errors[msg.reason] ?? vi.inventory.errors.invalid!, "error");
@@ -932,13 +990,14 @@ export class GameScene extends Phaser.Scene {
           .text(0, 0, p.name, { fontFamily: FONT, fontSize: "13px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
           .setOrigin(0.5, 1);
         const tag = this.add.text(0, 0, "PK", { fontFamily: FONT, fontSize: "10px", fontStyle: "bold", color: "#c68642", stroke: "#000000", strokeThickness: 2 }).setOrigin(0, 1).setResolution(3).setVisible(false);
-        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, tag, pk: 0, sn: 0, snAt: 0 };
+        actor = { id: p.id, path: p.path, startedAt: 0, speed: p.speed, offX: 0, offY: 0, offAt: 0, body, label, tag, pk: 0, mounted: false, sn: 0, snAt: 0 };
         this.actors.set(p.id, actor);
       }
       const now = performance.now();
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
+      this.setActorMounted(actor, p.mounted === true);
       this.recolorName(actor, now);
       if (isNew) {
         actor.path = p.path;
@@ -957,6 +1016,7 @@ export class GameScene extends Phaser.Scene {
     actor.body.destroy();
     actor.label.destroy();
     actor.tag.destroy();
+    actor.cloud?.destroy();
     this.actors.delete(id);
   }
 
@@ -1074,6 +1134,32 @@ export class GameScene extends Phaser.Scene {
     actor.tag.setVisible(mode > 0 && actor.id !== this.selfId).setColor(mode === 2 ? "#ff5252" : "#c68642");
   }
 
+  /** Draws (or removes) the cloud under a rider; for yourself it also keeps the badge and the gear-stat views in step. */
+  private setActorMounted(actor: Actor, on: boolean): void {
+    if (actor.mounted === on) return;
+    actor.mounted = on;
+    if (on && !actor.cloud) actor.cloud = this.add.ellipse(0, 0, 40, 16, 0x9fe8ff, 0.75).setStrokeStyle(2, 0xffffff, 0.8);
+    actor.cloud?.setVisible(on);
+    if (actor.id === this.selfId && isMounted() !== on) this.applyMounted(on);
+  }
+
+  /** The button is there while a flight pháp bảo is worn (or you are riding): it says what a press does. */
+  private refreshMountBtn(): void {
+    const on = isMounted();
+    this.mountBtn.hidden = !(on || this.flightWorn);
+    this.mountBtn.textContent = on ? vi.mount.badge : vi.mount.ride;
+  }
+
+  /** Your own riding state changed: badge, stat views and the line in the system chat. */
+  private applyMounted(on: boolean): void {
+    if (isMounted() === on) return;
+    setMounted(on);
+    this.refreshMountBtn();
+    this.charPanel.refresh();
+    this.equipment.refresh();
+    this.chat.system(on ? vi.mount.on : vi.mount.off);
+  }
+
   private recolorName(actor: Actor, now: number): void {
     const color = this.nameColorOf(actor, now);
     actor.label.setColor(color === "gray" ? "#9e9e9e" : color === 3 ? "#ff5252" : color === 2 ? "#ff9800" : color === 1 ? "#ffd54a" : "#ffffff");
@@ -1139,12 +1225,13 @@ export class GameScene extends Phaser.Scene {
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
-      actor.body.setPosition(s.x, s.y - 17);
-      actor.label.setPosition(s.x, s.y - 38);
+      actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
+      if (actor.cloud) actor.cloud.setPosition(s.x, s.y - 4).setDepth(10 + pos.x + pos.y - 0.1);
+      actor.label.setPosition(s.x, s.y - (actor.mounted ? 46 : 38));
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       actor.label.setDepth(depth + 0.1);
-      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - 39).setDepth(depth + 0.1);
+      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - (actor.mounted ? 47 : 39)).setDepth(depth + 0.1);
     }
 
     for (const m of this.monsters.values()) {

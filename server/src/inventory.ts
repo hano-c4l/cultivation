@@ -1,4 +1,4 @@
-import { MAIL_ITEM_EXPIRY_MS, START_BAG_TABS, carried, firstFreeCell, stackLimit, type BagItem, type BagOp, type EquippedItem, type EquipSlot, type MailView } from "@game/shared";
+import { MAIL_ITEM_EXPIRY_MS, START_BAG_TABS, parseRolledStats, type Carry, type RolledStats, carried, firstFreeCell, stackLimit, type BagItem, type BagOp, type EquippedItem, type EquipSlot, type MailView } from "@game/shared";
 
 /**
  * D1 side of the bag. The room plans changes against its in-memory copy (shared/src/inventory.ts) and this module
@@ -19,6 +19,10 @@ export interface MailItem {
   /** Gear: durability the new item starts with. */
   dur?: number;
   max?: number;
+  /** Gear: the stats rolled for it. */
+  rs?: RolledStats;
+  /** Gear: its upgrade level. */
+  en?: number;
   /** True: the mail never expires (gear that cannot be handed to the bag). */
   permanent?: boolean;
 }
@@ -41,11 +45,16 @@ interface BagRow {
   max_durability: number | null;
   refine_level: number | null;
   refine_exp: number | null;
+  rolled_stats: string | null;
+  enhance_level: number;
 }
 
-/** Wear and training fields of a row, in the shape the room and the client use. */
-function wearOf(r: { durability: number | null; max_durability: number | null; refine_level?: number | null; refine_exp?: number | null }): { dur?: number; max?: number; lv?: number; xp?: number } {
+/** Wear, training, rolled-stat and upgrade fields of a row, in the shape the room and the client use. */
+function wearOf(r: { durability: number | null; max_durability: number | null; refine_level?: number | null; refine_exp?: number | null; rolled_stats?: string | null; enhance_level?: number | null }): Carry {
+  const rs = r.rolled_stats ? parseRolledStats(r.rolled_stats) : undefined;
   return {
+    ...(rs ? { rs } : {}),
+    ...(r.enhance_level ? { en: r.enhance_level } : {}),
     ...(r.durability !== null && r.max_durability !== null ? { dur: r.durability, max: r.max_durability } : {}),
     ...(r.refine_level != null ? { lv: r.refine_level } : {}),
     ...(r.refine_exp != null ? { xp: r.refine_exp } : {}),
@@ -62,7 +71,7 @@ export async function loadBag(db: D1Database, characterId: string): Promise<BagS
     db.prepare("SELECT bag_tabs FROM characters WHERE id = ?").bind(characterId).first<{ bag_tabs: number }>(),
     db
       .prepare(
-        "SELECT id, item_type, bag_tab, cell, qty, equip_slot, durability, max_durability, refine_level, refine_exp FROM item_instances " +
+        "SELECT id, item_type, bag_tab, cell, qty, equip_slot, durability, max_durability, refine_level, refine_exp, rolled_stats, enhance_level FROM item_instances " +
           "WHERE owner_character_id = ? AND (cell IS NOT NULL OR equip_slot IS NOT NULL)",
       )
       .bind(characterId)
@@ -166,8 +175,8 @@ export function opStatements(db: D1Database, characterId: string, op: BagOp, now
     case "add":
       return [
         db
-          .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, durability, max_durability, refine_level, refine_exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-          .bind(op.id, characterId, op.type, op.qty, op.tab, op.cell, op.dur ?? null, op.max ?? null, op.lv ?? null, op.xp ?? null, now),
+          .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, durability, max_durability, refine_level, refine_exp, rolled_stats, enhance_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(op.id, characterId, op.type, op.qty, op.tab, op.cell, op.dur ?? null, op.max ?? null, op.lv ?? null, op.xp ?? null, op.rs ? JSON.stringify(op.rs) : null, op.en ?? 0, now),
       ];
     case "equip":
       return [
@@ -207,8 +216,8 @@ export function opStatements(db: D1Database, characterId: string, op: BagOp, now
         guard(db, characterId, op.id, { qty: op.qty }),
         db.prepare("DELETE FROM item_instances WHERE id = ? AND owner_character_id = ?").bind(op.id, characterId),
         db
-          .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, durability, max_durability, refine_level, refine_exp, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-          .bind(op.newId, op.to, op.type, op.qty, op.dur ?? null, op.max ?? null, op.lv ?? null, op.xp ?? null, now),
+          .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, durability, max_durability, refine_level, refine_exp, rolled_stats, enhance_level, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(op.newId, op.to, op.type, op.qty, op.dur ?? null, op.max ?? null, op.lv ?? null, op.xp ?? null, op.rs ? JSON.stringify(op.rs) : null, op.en ?? 0, now),
         db
           .prepare("INSERT INTO mailbox (id, character_id, subject, body, item_id, expires_at, created_at) VALUES (?, ?, ?, '', ?, NULL, ?)")
           .bind(op.mailId, op.to, op.subject, op.newId, now),
@@ -276,8 +285,8 @@ export async function commitBagOps(
     const itemId = crypto.randomUUID();
     statements.push(
       db
-        .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, durability, max_durability, created_at) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?)")
-        .bind(itemId, characterId, m.type, m.qty, m.dur ?? null, m.max ?? null, now),
+        .prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, durability, max_durability, rolled_stats, enhance_level, created_at) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?)")
+        .bind(itemId, characterId, m.type, m.qty, m.dur ?? null, m.max ?? null, m.rs ? JSON.stringify(m.rs) : null, m.en ?? 0, now),
       db
         .prepare("INSERT INTO mailbox (id, character_id, subject, body, item_id, expires_at, created_at) VALUES (?, ?, ?, '', ?, ?, ?)")
         .bind(crypto.randomUUID(), characterId, m.subject, itemId, m.permanent ? null : now + MAIL_ITEM_EXPIRY_MS, now),
@@ -301,7 +310,7 @@ export interface MailEntry {
   body: string;
   currency: string | null;
   amount: number;
-  item: { type: string; qty: number; dur?: number; max?: number; lv?: number; xp?: number } | null;
+  item: ({ type: string; qty: number } & Carry) | null;
   /** Epoch ms, or null when it never expires. */
   expiresAt: number | null;
 }
@@ -310,12 +319,12 @@ export interface MailEntry {
 export async function listMail(db: D1Database, characterId: string, now = Date.now()): Promise<MailEntry[]> {
   const { results } = await db
     .prepare(
-      "SELECT m.id, m.subject, m.body, m.currency, m.amount, m.expires_at, i.item_type, i.qty, i.durability, i.max_durability, i.refine_level, i.refine_exp " +
+      "SELECT m.id, m.subject, m.body, m.currency, m.amount, m.expires_at, i.item_type, i.qty, i.durability, i.max_durability, i.refine_level, i.refine_exp, i.rolled_stats, i.enhance_level " +
         "FROM mailbox m LEFT JOIN item_instances i ON i.id = m.item_id " +
         "WHERE m.character_id = ? AND m.claimed_at IS NULL AND (m.expires_at IS NULL OR m.expires_at > ?) ORDER BY m.created_at, m.id",
     )
     .bind(characterId, now)
-    .all<{ id: string; subject: string; body: string; currency: string | null; amount: number; expires_at: number | null; item_type: string | null; qty: number | null; durability: number | null; max_durability: number | null; refine_level: number | null; refine_exp: number | null }>();
+    .all<{ id: string; subject: string; body: string; currency: string | null; amount: number; expires_at: number | null; item_type: string | null; qty: number | null; durability: number | null; max_durability: number | null; refine_level: number | null; refine_exp: number | null; rolled_stats: string | null; enhance_level: number | null }>();
   return results.map((r) => ({
     id: r.id,
     subject: r.subject,
@@ -363,11 +372,11 @@ export type ClaimItemResult =
 export async function claimMailItem(db: D1Database, characterId: string, mailId: string, bag: BagState, now = Date.now()): Promise<ClaimItemResult> {
   const mail = await db
     .prepare(
-      "SELECT m.item_id, m.claimed_at, m.expires_at, i.item_type, i.qty, i.durability, i.max_durability, i.refine_level, i.refine_exp FROM mailbox m LEFT JOIN item_instances i ON i.id = m.item_id " +
+      "SELECT m.item_id, m.claimed_at, m.expires_at, i.item_type, i.qty, i.durability, i.max_durability, i.refine_level, i.refine_exp, i.rolled_stats, i.enhance_level FROM mailbox m LEFT JOIN item_instances i ON i.id = m.item_id " +
         "WHERE m.id = ? AND m.character_id = ?",
     )
     .bind(mailId, characterId)
-    .first<{ item_id: string | null; claimed_at: number | null; expires_at: number | null; item_type: string | null; qty: number | null; durability: number | null; max_durability: number | null }>();
+    .first<{ item_id: string | null; claimed_at: number | null; expires_at: number | null; item_type: string | null; qty: number | null; durability: number | null; max_durability: number | null; refine_level: number | null; refine_exp: number | null; rolled_stats: string | null; enhance_level: number | null }>();
   if (!mail) return { status: "not_found" };
   // A claimed mail no longer points at its item, so this is checked first.
   if (mail.claimed_at !== null) return { status: "already_claimed" };

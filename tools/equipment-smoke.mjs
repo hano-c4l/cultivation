@@ -132,17 +132,17 @@ c.ws.close();
 await sleep(500);
 sql(`UPDATE item_instances SET durability = 50 WHERE owner_character_id = '${charId}' AND equip_slot = 'hat'`);
 c = await connect(reg.cookie);
-r = await after(c, { t: "eq_repair", slot: "all" });
+r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 check("repair without Linh Thạch is refused", r.some((m) => m.t === "inv_error" && m.reason === "funds"));
 sql(`INSERT INTO currency_balances (character_id, currency, balance) VALUES ('${charId}', 'linh_thach', 1000)`);
 sql(`INSERT INTO currency_ledger (character_id, currency, delta, reason, actor, idempotency_key, created_at) VALUES ('${charId}', 'linh_thach', 1000, 'test', 'smoke', 'eq-smoke-${run}', 0)`);
-r = await after(c, { t: "eq_repair", slot: "all" });
+r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 const rep = r.find((m) => m.t === "repaired");
 check("repairing 50 lost points of a Hạ phẩm hat costs 50 Linh Thạch", rep?.cost === 50);
 check("the wallet shows the debit", r.some((m) => m.t === "wallet" && m.balance === 950));
 check("the hat is whole again", sql(`SELECT durability FROM item_instances WHERE owner_character_id = '${charId}' AND equip_slot = 'hat'`)[0].durability === 100);
 check("ledger and balance agree", sql(`SELECT (SELECT SUM(delta) FROM currency_ledger WHERE character_id = '${charId}') AS l, (SELECT balance FROM currency_balances WHERE character_id = '${charId}') AS b`)[0].l === 950);
-r = await after(c, { t: "eq_repair", slot: "all" });
+r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 check("nothing left to repair", r.some((m) => m.t === "inv_error" && m.reason === "nothing"));
 
 // --- a worn piece that is broken comes off at join ---
@@ -155,7 +155,7 @@ await sleep(400);
 check("the player is told", c.log.some((m) => m.t === "eq_removed" && m.items[0].reason === "broken"));
 r = await after(c, { t: "eq_equip", tab: 0, cell: cellOf(c, "eq.weapon.u.0.1.1").cell });
 check("a broken piece cannot be worn again", r.some((m) => m.t === "inv_error" && m.reason === "broken"));
-r = await after(c, { t: "eq_repair", slot: "weapon" });
+r = await after(c, { t: "smith_repair", npc: "smith", slot: "weapon" });
 check("a broken piece is not repaired (not even by slot)", r.some((m) => m.t === "inv_error"));
 
 // --- death wears every worn piece by 5%; a piece that breaks comes off and the dying socket is told ---

@@ -66,8 +66,17 @@ import {
   parseHotbar,
   applyBag,
   applyRefineExp,
+  currentGearSetNames,
+  smithRealmOf,
+  STAGES_PER_REALM,
+  KEEP_LEVEL_ITEM,
+  planConsume,
+  resolveUpgrade,
+  upgradeCost,
+  equipBlock,
   equipmentBonus,
   equipmentInfo,
+  walkSpeed,
   levelIndex,
   refineLevelOf,
   newDurability,
@@ -163,6 +172,9 @@ import {
 import { CombatSim, staticGuardSnapshots, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
 import { getSetting } from "./settings";
+import { applyElementSettings } from "./element-settings";
+import { getGearMaster, rollGear } from "./gear-master";
+import { getEnhanceTable, loadPity } from "./enhance";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
 interface PlayerState {
@@ -177,6 +189,9 @@ interface PlayerState {
   path: Vec2[];
   startedAt: number;
   speed: number;
+  /** Riding the flight pháp bảo (kept per connection: a map change gets off). */
+  mounted?: boolean;
+  lastMountAt?: number;
   lastMoveAt: number;
   /** Last bag command, to rate-limit them (each one is a D1 write). */
   lastInvAt?: number;
@@ -398,6 +413,9 @@ export class MapRoom extends DurableObject<Env> {
       this.roomId = room;
       await this.ctx.storage.put("room", room);
     }
+    await applyElementSettings(this.env.DB).catch((err) => console.error("element settings unavailable", err));
+    await getGearMaster(this.env.DB); // installs the gear set names (never throws)
+    await getEnhanceTable(this.env.DB); // installs the blacksmith rules (never throws)
 
     const lock = this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(characterId));
     // Claim first: the previous holder (any room) kicks its socket and saves before we read the row.
@@ -497,7 +515,7 @@ export class MapRoom extends DurableObject<Env> {
         mapId,
         path: [position],
         startedAt: Date.now(),
-        speed: BASE_SPEED,
+        speed: walkSpeed(baseOf(row), equipmentBonus(bagNow.equipped, wearerOfRow(row)).moveSpeed),
         lastMoveAt: 0,
         dirty: false,
         chatTimes: [],
@@ -532,6 +550,7 @@ export class MapRoom extends DurableObject<Env> {
         equipped: bagNow.equipped,
         skills: profile && sim ? sim.skillsOf(profile) : availableSkills((skills ?? []).map((r) => r.skill_id), gearSkillIds(bagNow.equipped)),
         skillStates: stateOfRows(skills ?? []),
+        gearSets: currentGearSetNames().map((r) => [...r]),
         hotbar,
         cd: profile && sim ? sim.cooldownsLeft(profile, Date.now()) : Object.fromEntries(Object.entries(away.cooldowns).map(([k, t]) => [k, t - Date.now()])),
         mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
@@ -579,6 +598,10 @@ export class MapRoom extends DurableObject<Env> {
     if (typeof raw !== "string") return;
     const msg = parseClientMessage(raw);
     if (!msg) return;
+    // The tuning is in this isolate's memory: a room that woke on this message reads it again (cached, cheap).
+    await applyElementSettings(this.env.DB).catch(() => undefined);
+    await getGearMaster(this.env.DB);
+    await getEnhanceTable(this.env.DB);
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state || state.transferring) return;
 
@@ -593,7 +616,7 @@ export class MapRoom extends DurableObject<Env> {
         // Only map chat belongs on this socket; a client that sends the others here is ignored.
         return msg.channel === "map" ? this.handleChat(ws, state, msg.text) : undefined;
       case "allocate":
-        return this.handleAllocate(ws, state, msg.points);
+        return this.handleAllocate(ws, state, msg.points).then(() => this.refreshSpeed(ws));
       case "attack":
         return this.handleAttack(ws, state, msg.id);
       case "pk_mode":
@@ -606,10 +629,15 @@ export class MapRoom extends DurableObject<Env> {
       case "inv_expand":
       case "mail_claim":
         return this.handleInventory(ws, state, msg);
+      case "mount":
+        return this.handleMount(ws, state, msg.on);
       case "eq_equip":
       case "eq_unequip":
       case "eq_repair":
         return this.handleEquipment(ws, state, msg);
+      case "smith_upgrade":
+      case "smith_repair":
+        return this.handleSmith(ws, state, msg);
       case "npc_open":
       case "shop_buy":
       case "shop_sell":
@@ -680,7 +708,8 @@ export class MapRoom extends DurableObject<Env> {
       state.moveBudget ?? MOVE_BUDGET_CAP,
       now - (state.moveBudgetAt ?? now),
       Math.hypot(msg.fx - here.x, msg.fy - here.y),
-      MAX_DESYNC_TILES,
+      MAX_DESYNC_TILES * Math.max(1, state.speed / BASE_SPEED),
+      state.speed / BASE_SPEED,
     );
     const claimedOk = spent.accepted && isStandable(map, msg.fx, msg.fy);
     // A claim that was refused (too far, or not standable) is not charged.
@@ -1519,8 +1548,90 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  private isMounted(id: string): boolean {
+    return !!this.socketOf(id)?.state.mounted;
+  }
+
+  /**
+   * Re-derives the walking speed (stats, riding, and later buffs and items). A change while walking re-plans the path from
+   * where the character is now at the new speed and tells everyone, so nobody's track runs at the wrong speed.
+   */
+  private async refreshSpeed(ws: WebSocket): Promise<void> {
+    const first = ws.deserializeAttachment() as PlayerState | null;
+    if (!first || first.transferring) return;
+    const w = await this.wearerOf(first.id);
+    const bag = await this.getBag(first.id);
+    const state = ws.deserializeAttachment() as PlayerState | null;
+    if (!w || !state || state.transferring) return;
+    const speed = walkSpeed(w.base, equipmentBonus(bag.equipped, { ...w, mounted: state.mounted }).moveSpeed);
+    if (speed === state.speed) return;
+    const now = Date.now();
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const dest = state.path[state.path.length - 1];
+    const rest = here.moving && dest ? findSmoothPath(getMap(state.mapId), [here.x, here.y], dest) : null;
+    state.path = rest ?? [[here.x, here.y]];
+    state.startedAt = now;
+    state.speed = speed;
+    state.dirty = true;
+    ws.serializeAttachment(state);
+    // Everyone, the mover included: its own client swaps to the new track and speed.
+    this.broadcast({ t: "path", player: this.snapshot(state) });
+  }
+
+  /** Gets off when the flight pháp bảo is gone, broken or no longer allowed, then settles the speed. */
+  private async syncMount(id: string): Promise<void> {
+    const sock = this.socketOf(id);
+    if (!sock) return;
+    const { ws, state } = sock;
+    if (state.mounted) {
+      const w = await this.wearerOf(id);
+      const bag = await this.getBag(id);
+      const flight = bag.equipped.find((e) => e.slot === "flight");
+      const info = flight ? equipmentInfo(flight.type) : undefined;
+      const fresh = ws.deserializeAttachment() as PlayerState | null;
+      if (fresh?.mounted && (!w || !flight || !info || equipBlock(info, flight.slot as EquipSlot, flight.dur, w))) {
+        fresh.mounted = false;
+        ws.serializeAttachment(fresh);
+        this.send(ws, { t: "mounted", on: false });
+        this.broadcast({ t: "path", player: this.snapshot(fresh) });
+      }
+    }
+    await this.refreshSpeed(ws);
+  }
+
+  /** Get on or off the flight pháp bảo. Stats and speed follow at once. */
+  private async handleMount(ws: WebSocket, state: PlayerState, on: boolean): Promise<void> {
+    const now = Date.now();
+    if (now - (state.lastMountAt ?? 0) < 500) return;
+    state.lastMountAt = now;
+    ws.serializeAttachment(state);
+    if (!on) {
+      if (!state.mounted) return this.send(ws, { t: "mounted", on: false });
+    } else {
+      if (state.mounted) return this.send(ws, { t: "mounted", on: true });
+      if (state.bt || state.tp) return this.send(ws, { t: "mounted", on: false, error: "busy" });
+      const w = await this.wearerOf(state.id);
+      const bag = await this.getBag(state.id);
+      const flight = bag.equipped.find((e) => e.slot === "flight");
+      const info = flight ? equipmentInfo(flight.type) : undefined;
+      if (!w || !flight || !info) return this.send(ws, { t: "mounted", on: false, error: "no_flight" });
+      const block = equipBlock(info, flight.slot as EquipSlot, flight.dur, w);
+      if (block) return this.send(ws, { t: "mounted", on: false, error: block === "broken" ? "broken" : "requirements" });
+    }
+    const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+    if (fresh.transferring) return;
+    fresh.mounted = on;
+    ws.serializeAttachment(fresh);
+    this.send(ws, { t: "mounted", on });
+    // The riding flag rides on the snapshot, so other players see it too.
+    this.broadcast({ t: "path", player: this.snapshot(fresh) });
+    const bag = await this.getBag(fresh.id);
+    this.applyGear(fresh.id, bag, ws); // also settles the speed (syncMount)
+  }
+
   /** Worn gear changed (or wore down): the combat stats follow, in a combat map. In town the next join recomputes them. */
   private applyGear(id: string, bag: BagState, direct?: WebSocket): void {
+    void this.syncMount(id).catch((err) => console.error("mount sync failed", id, err));
     const p = this.sim?.getPlayer(id);
     if (!p || !this.sim) {
       // In town there is no profile, but the skills that pháp bảo grant still follow what is worn.
@@ -1531,7 +1642,7 @@ export class MapRoom extends DurableObject<Env> {
       return;
     }
     const before = this.sim.skillsOf(p).join(",");
-    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity }), weaponFamily(bag.equipped), gearSkillInfo(bag.equipped));
+    this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity, mounted: this.isMounted(id) }), weaponFamily(bag.equipped), gearSkillInfo(bag.equipped));
     this.sendToCharacter(id, { t: "hp", hp: p.hp, maxHp: p.maxHp }, direct);
     // Pháp bảo grant skills while worn: the list changes when one is put on, taken off or breaks.
     const skills = this.sim.skillsOf(p);
@@ -1541,7 +1652,7 @@ export class MapRoom extends DurableObject<Env> {
   /** Who is wearing: the live profile when there is one, otherwise the saved row. */
   private async wearerOf(id: string): Promise<WearerCtx | null> {
     const p = this.sim?.getPlayer(id);
-    if (p) return { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base };
+    if (p) return { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity };
     const row = await getCharacterById(this.env.DB, id);
     return row ? wearerOfRow(row) : null;
   }
@@ -1580,12 +1691,14 @@ export class MapRoom extends DurableObject<Env> {
   private enqueueLoot(characterId: string, drops: LootDrop[]): void {
     const key = `loot:${crypto.randomUUID()}`;
     void this.bagTask(characterId, async () => {
+      // Gear gets its stats rolled once, here, so a retry of the same loot key creates the same pieces.
+      const rolled: LootDrop[] = await Promise.all(drops.map(async (d) => (d.rs || d.dur === undefined ? d : { ...d, rs: await rollGear(this.env.DB, d.item) })));
       const plan = (bag: BagState) => {
         let items = bag.items;
         const ops: BagOp[] = [];
         const mail: MailItem[] = [];
-        for (const d of drops) {
-          const wear = d.dur !== undefined && d.max !== undefined ? { dur: d.dur, max: d.max } : undefined;
+        for (const d of rolled) {
+          const wear = d.dur !== undefined && d.max !== undefined ? { dur: d.dur, max: d.max, ...(d.rs ? { rs: d.rs } : {}) } : undefined;
           const p = planAdd(items, bag.tabs, d.item, d.qty, () => crypto.randomUUID(), wear);
           if (p) {
             ops.push(...p);
@@ -1966,6 +2079,7 @@ export class MapRoom extends DurableObject<Env> {
         // Opening any NPC counts as talking to it (a talk quest may be waiting for that).
         await this.noteTalk(id, npcId).catch((err) => console.error("quest talk failed", id, err));
         if (spot.kind === "quest") return this.sendQuests(ws, id, npcId);
+        if (spot.kind === "smith") return this.sendSmith(ws, id, npcId);
       }
       if (spot.kind !== "merchant") return;
       const wearer = await this.wearerOf(id);
@@ -1992,22 +2106,24 @@ export class MapRoom extends DurableObject<Env> {
     }
     const bag = await this.getBag(id);
     const max = equipmentInfo(offer.item)?.maxDurability;
-    const ops = planAdd(bag.items, bag.tabs, offer.item, qty, () => crypto.randomUUID(), max != null ? { dur: max, max } : undefined);
+    const rs = max != null ? await rollGear(this.env.DB, offer.item) : undefined;
+    const ops = planAdd(bag.items, bag.tabs, offer.item, qty, () => crypto.randomUUID(), max != null ? { dur: max, max, ...(rs ? { rs } : {}) } : undefined);
     if (!ops) return this.resync(ws, id, "full");
     const total = offer.price * qty;
+    const currency = offer.currency ?? "linh_thach";
     const extra = [
       ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now)),
       ...(offer.dailyLimit !== undefined ? limitStatements(this.env.DB, id, offer.id, qty, offer.dailyLimit, now) : []),
     ];
     try {
-      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -total, reason: "shop_buy", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency, delta: -total, reason: "shop_buy", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
       if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
       const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
       this.bags.set(id, after);
       this.sendBagDelta(id, bag, after);
-      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+      this.sendToCharacter(id, { t: "wallet", currency, balance: r.balance });
       this.sendToCharacter(id, { t: "shop_ok", op: "buy", item: offer.item, qty, total });
       await sendStock();
     } catch (err) {
@@ -2090,6 +2206,8 @@ export class MapRoom extends DurableObject<Env> {
   private handleEquipment(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "eq_equip" | "eq_unequip" | "eq_repair" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    // Players repair at the blacksmith; this command is the GM's shortcut (the button is only shown to admins, the server is what decides).
+    if (msg.t === "eq_repair" && !state.admin) return this.send(ws, { t: "inv_error", reason: "forbidden" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
@@ -2112,6 +2230,82 @@ export class MapRoom extends DurableObject<Env> {
       if (res.reason === "invalid") return this.resync(ws, id, refusal ?? "invalid");
       return this.resync(ws, id, "busy");
     });
+  }
+
+  /** The blacksmith's window: the upgrade rules and the bonus chance each of the character's pieces has built up. */
+  private async sendSmith(ws: WebSocket, id: string, npcId: string): Promise<void> {
+    const [levels, pity] = await Promise.all([getEnhanceTable(this.env.DB), loadPity(this.env.DB, id)]);
+    this.send(ws, { t: "smith", npc: npcId, levels, pity });
+  }
+
+  /** Blacksmith commands: upgrading a piece and repairing. Same checks as the merchant (close enough, no murderers, rate limit). */
+  private handleSmith(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "smith_upgrade" | "smith_repair" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "smith") return this.send(ws, { t: "inv_error", reason: "far" });
+    if (this.satNhanOf(state, now) >= NAME_TIER_ORANGE_FROM) return this.send(ws, { t: "inv_error", reason: "murderer" });
+    if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      if (msg.t === "smith_repair") return this.repairGear(ws, id, msg.slot);
+      return this.smithUpgrade(ws, id, msg);
+    });
+  }
+
+  /**
+   * One upgrade attempt. The Linh Thạch, the ore, a Hộ Cấp Phù when it saves a level, and the new level and bonus chance of the piece are
+   * written in ONE batch (guarded on the level the piece had), so a failure never takes a cost without its result or the other way round.
+   */
+  private async smithUpgrade(ws: WebSocket, id: string, msg: Extract<ClientMessage, { t: "smith_upgrade" }>): Promise<void> {
+    await getEnhanceTable(this.env.DB);
+    const bag = await this.getBag(id);
+    const piece = msg.slot ? bag.equipped.find((e) => e.slot === msg.slot) : bag.items.find((i) => i.tab === msg.tab && i.cell === msg.cell);
+    const info = piece ? equipmentInfo(piece.type) : undefined;
+    if (!piece || !info) return this.resync(ws, id, "smith_item");
+    const level = piece.en ?? 0;
+    const row = await this.env.DB.prepare("SELECT enhance_level, enhance_bonus FROM item_instances WHERE id = ? AND owner_character_id = ?").bind(piece.id, id).first<{ enhance_level: number; enhance_bonus: number }>();
+    if (!row || row.enhance_level !== level) {
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+    const cost = upgradeCost(smithRealmOf(info, info.kind === "bonded" ? refineLevelOf(info, piece.lv) : undefined, STAGES_PER_REALM), level, row.enhance_bonus);
+    if (!cost) return this.send(ws, { t: "inv_error", reason: "smith_max" });
+    const ore = planConsume(bag.items, cost.ore, cost.materials);
+    if (!ore) return this.send(ws, { t: "inv_error", reason: "smith_mats" });
+    const wantScroll = msg.protect && cost.step.dropOnFail;
+    const scroll = wantScroll ? planConsume(bag.items, KEEP_LEVEL_ITEM, 1) : [];
+    if (!scroll) return this.send(ws, { t: "inv_error", reason: "smith_scroll" });
+    const roll = crypto.getRandomValues(new Uint32Array(1))[0]! / 4294967296;
+    const out = resolveUpgrade(level, row.enhance_bonus, cost.chancePct, cost.step, wantScroll, roll);
+    const ops = [...ore, ...(out.scrollUsed ? scroll : [])];
+    const now = Date.now();
+    const extra = [
+      this.env.DB.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM item_instances WHERE id = ? AND owner_character_id = ? AND enhance_level = ? AND enhance_bonus = ?)").bind(piece.id, id, level, row.enhance_bonus),
+      ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now)),
+      this.env.DB.prepare("UPDATE item_instances SET enhance_level = ?, enhance_bonus = ? WHERE id = ? AND owner_character_id = ?").bind(out.level, out.pity, piece.id, id),
+    ];
+    try {
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -cost.linhThach, reason: "smith_upgrade", actor: "system", idempotencyKey: `smith:${crypto.randomUUID()}` }, extra);
+      if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+      if (r.status !== "applied") return this.resync(ws, id, "busy");
+      // Reload: the level of a worn piece changes the stats, so the gear refresh follows.
+      this.bags.delete(id);
+      const fresh = await this.getBag(id);
+      this.send(ws, { t: "inv", full: true, tabs: fresh.tabs, items: fresh.items, removed: [], tabPrice: await getSetting(this.env.DB, "bag_tab_price") });
+      this.send(ws, { t: "eq", items: fresh.equipped });
+      this.applyGear(id, fresh, ws);
+      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+      this.send(ws, { t: "smith_result", id: piece.id, success: out.success, level: out.level, dropped: out.dropped, scrollUsed: out.scrollUsed, pity: out.pity });
+    } catch (err) {
+      // A failed guard means the cached bag was stale: nothing was written, so reload and let the player retry.
+      if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("smith upgrade failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
   }
 
   /**
@@ -3272,7 +3466,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {

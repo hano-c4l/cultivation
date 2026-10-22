@@ -1,9 +1,17 @@
 /** Five elements (ngũ hành). A character's spiritual root decides their element. */
 export const SPIRITUAL_ROOTS = ["kim", "moc", "thuy", "hoa", "tho"] as const;
-export type SpiritualRoot = (typeof SPIRITUAL_ROOTS)[number];
+/** Mutant elements (biến dị): Lôi, Băng, Phong. Only a single-element root can have one; monsters never roll them. */
+export const MUTANT_ROOTS = ["loi", "bang", "phong"] as const;
+/** Every element a character, a skill or a piece of gear can have. */
+export const ALL_ROOTS = [...SPIRITUAL_ROOTS, ...MUTANT_ROOTS] as const;
+export type SpiritualRoot = (typeof ALL_ROOTS)[number];
 
 export function isSpiritualRoot(value: unknown): value is SpiritualRoot {
-  return typeof value === "string" && (SPIRITUAL_ROOTS as readonly string[]).includes(value);
+  return typeof value === "string" && (ALL_ROOTS as readonly string[]).includes(value);
+}
+
+export function isMutantRoot(value: unknown): boolean {
+  return typeof value === "string" && (MUTANT_ROOTS as readonly string[]).includes(value);
 }
 
 export const NAME_MIN_LENGTH = 2;

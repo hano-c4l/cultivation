@@ -1,4 +1,4 @@
-import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
+import { ALL_ROOTS, type SpiritualRoot } from "./character";
 import type { Vec2 } from "./map";
 import { isCombatTargetId, isMonsterId, type HitKind } from "./combat";
 import type { BreakthroughEnd, BreakthroughError } from "./breakthrough";
@@ -8,8 +8,9 @@ import { isPkMode, type PkMode } from "./pk";
 import { isPathId, type PathError, type PathId } from "./paths";
 import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
+import type { EnhanceLevelDef } from "./smith";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
-import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type BagPos, type SortMode } from "./inventory";
+import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type Carry, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
 import { HOTBAR_SLOTS, HOTBAR_SLOT_PATTERN } from "./skills";
 import { parseAllocation, type CharacterSheet } from "./progression";
@@ -75,7 +76,12 @@ export type ClientMessage =
   | { t: "eq_equip"; tab: number; cell: number; slot?: EquipSlot }
   | { t: "eq_unequip"; slot: EquipSlot }
   /** Repair one worn piece, or all of them, for Linh Thạch. */
+  /** GM only: repair worn pieces from anywhere. Players repair at the blacksmith (smith_repair). */
   | { t: "eq_repair"; slot: EquipSlot | "all" }
+  /** Blacksmith: upgrade one piece, worn (`slot`) or in the bag (`tab`, `cell`); `protect` spends a Hộ Cấp Phù when it would save a level. */
+  | { t: "smith_upgrade"; npc: string; slot?: EquipSlot; tab?: number; cell?: number; protect: boolean }
+  /** Blacksmith: repair one worn piece or all of them for Linh Thạch. */
+  | { t: "smith_repair"; npc: string; slot: EquipSlot | "all" }
   /** Use a skill. `target` is the monster to hit (attack skills; omitted: the current target). Heals and buffs need none. */
   | { t: "cast"; skill: string; target?: string; x?: number; y?: number; el?: SpiritualRoot }
   /** Set one hotbar slot: "" (empty), "s:<skill id>" or "i:<item type>". One slot per message, one D1 write. */
@@ -96,6 +102,8 @@ export type ClientMessage =
   | { t: "boss_remove" }
   /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
   | { t: "bt_cancel" }
+  /** Get on (true) or off (false) the flight pháp bảo. Its stats and speed only count while riding. */
+  | { t: "mount"; on: boolean }
   /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
   | { t: "conn_report"; code: number; reason: string; clean: boolean; downMs: number }
   /** Take a path item (a placeholder for the NPC quest): one per path per character. */
@@ -134,7 +142,7 @@ export type SkillStateView = Record<string, { lv: number; xp: number }>;
 export interface MailView {
   id: string;
   subject: string;
-  item: { type: string; qty: number; dur?: number; max?: number; lv?: number; xp?: number } | null;
+  item: ({ type: string; qty: number } & Carry) | null;
   expiresInMs: number | null;
 }
 
@@ -178,10 +186,12 @@ export interface PlayerSnapshot {
   path: Vec2[];
   ageMs: number;
   speed: number;
+  /** Riding the flight pháp bảo (left out when on foot). */
+  mounted?: true;
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][] }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
@@ -195,6 +205,8 @@ export type ServerMessage =
   | { t: "chat_error"; reason: "rate" | "invalid" | "offline" | "forbidden" }
   /** Current character sheet; sent after every allocation attempt (also when it was rejected). */
   | { t: "stats"; character: CharacterSheet }
+  /** Whether you are riding the flight pháp bảo now (also sent when it comes off by itself), or why getting on failed. */
+  | { t: "mounted"; on: boolean; error?: "no_flight" | "broken" | "busy" | "requirements" }
   /** A monster appeared or changed its path. */
   | { t: "mon"; monster: MonsterSnapshot }
   | { t: "mon_gone"; id: string }
@@ -244,7 +256,7 @@ export type ServerMessage =
   | { t: "tp"; ms: number; item: string }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
   | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "other" }
-  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer"; retryMs?: number }
+  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -267,6 +279,10 @@ export type ServerMessage =
   | { t: "eq_worn" }
   /** A repair was paid for. */
   | { t: "repaired"; cost: number }
+  /** The blacksmith's window: the upgrade rules and the extra success chance (percent) each of your pieces has built up from failures. */
+  | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number> }
+  /** The outcome of an upgrade: the piece, whether it worked, its level now, whether a level was lost or a Hộ Cấp Phù used, and its new bonus chance. */
+  | { t: "smith_result"; id: string; success: boolean; level: number; dropped: boolean; scrollUsed: boolean; pity: number }
   /** The receiving character died; a transfer to town follows. */
   | { t: "died"; expLost: number }
   /** A breakthrough started: it ends in `ms` unless interrupted, with `ratePct` percent chance. */
@@ -362,7 +378,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (typeof m.skill !== "string" || !/^[a-z0-9_]{1,32}$/.test(m.skill)) return null;
       // An attack skill without a fixed element says which of the character's elements to use.
       if (m.el !== undefined) {
-        if (typeof m.el !== "string" || !(SPIRITUAL_ROOTS as readonly string[]).includes(m.el)) return null;
+        if (typeof m.el !== "string" || !(ALL_ROOTS as readonly string[]).includes(m.el)) return null;
         const el = m.el as SpiritualRoot;
         if (m.target === undefined) return { t: "cast", skill: m.skill, el };
         return isCombatTargetId(m.target) ? { t: "cast", skill: m.skill, target: m.target, el } : null;
@@ -387,6 +403,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "boss_summon" };
     case "bt_cancel":
       return { t: "bt_cancel" };
+    case "mount":
+      if (typeof m.on !== "boolean") return null;
+      return { t: "mount", on: m.on };
     case "conn_report":
       return isInt(m.code) && typeof m.reason === "string" && typeof m.clean === "boolean" && isInt(m.downMs)
         ? { t: "conn_report", code: m.code, reason: m.reason.slice(0, 80), clean: m.clean, downMs: Math.min(Math.max(m.downMs, 0), 86_400_000) }
@@ -410,6 +429,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isEquipSlot(m.slot) ? { t: "eq_unequip", slot: m.slot } : null;
     case "eq_repair":
       return m.slot === "all" || isEquipSlot(m.slot) ? { t: "eq_repair", slot: m.slot as EquipSlot | "all" } : null;
+    case "smith_upgrade": {
+      if (!isNpcId(m.npc) || typeof m.protect !== "boolean") return null;
+      if (m.slot !== undefined) return isEquipSlot(m.slot) ? { t: "smith_upgrade", npc: m.npc, slot: m.slot, protect: m.protect } : null;
+      return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) ? { t: "smith_upgrade", npc: m.npc, tab: m.tab, cell: m.cell, protect: m.protect } : null;
+    }
+    case "smith_repair":
+      return isNpcId(m.npc) && (m.slot === "all" || isEquipSlot(m.slot)) ? { t: "smith_repair", npc: m.npc, slot: m.slot as EquipSlot | "all" } : null;
     case "npc_open":
       return isNpcId(m.npc) ? { t: "npc_open", npc: m.npc } : null;
     case "shop_buy":

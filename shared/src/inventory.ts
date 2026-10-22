@@ -1,4 +1,4 @@
-import { type EquipSlot, type EquippedItem } from "./equipment-data";
+import { type EquipSlot, type EquippedItem, type RolledStats } from "./equipment-data";
 import { ITEM_RARITIES, getItemDef } from "./items";
 
 /**
@@ -38,11 +38,27 @@ export interface BagItem {
   /** Pháp bảo bản mệnh: trained level and EXP (see refineExpNeeded). */
   lv?: number;
   xp?: number;
+  /** Equipment: the stats rolled when it was made (see RolledStats); absent on older pieces. */
+  rs?: RolledStats;
+  /** Equipment: the upgrade level from the blacksmith (+1..+10); absent means +0. */
+  en?: number;
 }
 
-/** The wear and training fields of an item that must travel with it between the bag, the slots and the mailbox. */
-export function carried(x: { dur?: number; max?: number; lv?: number; xp?: number }): { dur?: number; max?: number; lv?: number; xp?: number } {
+/** What travels with an item between the bag, the slots and the mailbox: wear, training and rolled stats. */
+export interface Carry {
+  dur?: number;
+  max?: number;
+  lv?: number;
+  xp?: number;
+  rs?: RolledStats;
+  en?: number;
+}
+
+/** The wear, training and rolled-stat fields of an item that must travel with it between the bag, the slots and the mailbox. */
+export function carried(x: Carry): Carry {
   return {
+    ...(x.rs ? { rs: x.rs } : {}),
+    ...(x.en ? { en: x.en } : {}),
     ...(x.dur !== undefined && x.max !== undefined ? { dur: x.dur, max: x.max } : {}),
     ...(x.lv !== undefined ? { lv: x.lv } : {}),
     ...(x.xp !== undefined ? { xp: x.xp } : {}),
@@ -65,7 +81,7 @@ export interface BagPos {
  * (the row must still look like `expected`), so a stale plan fails instead of duplicating or destroying items.
  */
 export type BagOp =
-  | { op: "add"; id: string; type: string; tab: number; cell: number; qty: number; dur?: number; max?: number; lv?: number; xp?: number }
+  | ({ op: "add"; id: string; type: string; tab: number; cell: number; qty: number } & Carry)
   | { op: "setqty"; id: string; from: number; to: number }
   /** Deletes the whole row; `qty` is what the row must still hold for the write to be accepted. */
   | { op: "remove"; id: string; qty: number }
@@ -90,7 +106,7 @@ export type BagOp =
    * The item (a bag stack or a worn piece) leaves its owner and reaches `to` by mail, never expiring (a PvP drop, docs/PHASE2.md 2f):
    * the row is deleted and a copy with the id `newId` is created for `to`, in one batch. `qty` and the wear fields are what the row holds.
    */
-  | { op: "give"; id: string; qty: number; type: string; dur?: number; max?: number; lv?: number; xp?: number; to: string; newId: string; mailId: string; subject: string };
+  | ({ op: "give"; id: string; qty: number; type: string; to: string; newId: string; mailId: string; subject: string } & Carry);
 
 export function inBounds(pos: BagPos, bagTabs: number): boolean {
   return Number.isInteger(pos.tab) && Number.isInteger(pos.cell) && pos.tab >= 0 && pos.tab < bagTabs && pos.cell >= 0 && pos.cell < BAG_CELLS_PER_TAB;
@@ -199,7 +215,7 @@ export function applyOps(bag: readonly BagItem[], ops: readonly BagOp[]): BagIte
  * Plans adding `qty` of an item: first onto existing stacks (reading order), then into free cells. Returns null when
  * the whole quantity does not fit, in which case nothing is planned (the caller sends the item by mail instead).
  */
-export function planAdd(bag: readonly BagItem[], bagTabs: number, type: string, qty: number, newId: () => string, wear?: { dur: number; max: number }): BagOp[] | null {
+export function planAdd(bag: readonly BagItem[], bagTabs: number, type: string, qty: number, newId: () => string, wear?: { dur: number; max: number; rs?: RolledStats }): BagOp[] | null {
   const limit = stackLimit(type);
   if (!Number.isInteger(qty) || qty <= 0) return null;
   const ops: BagOp[] = [];
@@ -219,7 +235,7 @@ export function planAdd(bag: readonly BagItem[], bagTabs: number, type: string, 
       const next = cells.next();
       if (next.done) return null;
       const put = Math.min(left, limit);
-      ops.push({ op: "add", id: newId(), type, tab: next.value.tab, cell: next.value.cell, qty: put, ...(wear ? { dur: wear.dur, max: wear.max } : {}) });
+      ops.push({ op: "add", id: newId(), type, tab: next.value.tab, cell: next.value.cell, qty: put, ...(wear ? { dur: wear.dur, max: wear.max, ...(wear.rs ? { rs: wear.rs } : {}) } : {}) });
       left -= put;
     }
   }

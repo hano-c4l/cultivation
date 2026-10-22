@@ -4,6 +4,7 @@ import { PATH_IDS, PATHS } from "./paths";
 import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
+import { KEEP_LEVEL_ITEM, SMITH_ORES } from "./smith";
 import { BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId } from "./skills";
 
 /**
@@ -85,7 +86,27 @@ const PATH_ITEMS: Record<string, ItemDef> = Object.fromEntries(
   }),
 );
 
+/** The ore the blacksmith needs, one kind per realm; it only drops from the monsters of that realm. */
+const SMITH_ITEMS: Record<string, ItemDef> = {
+  ...Object.fromEntries(
+    SMITH_ORES.map((id, realm) => [
+      id,
+      { id, nameVi: `Tinh Thiết ${REALMS[realm]?.nameVi ?? ""}`, descVi: `Nguyên liệu để Thợ Rèn nâng cấp trang bị và pháp bảo cảnh giới ${REALMS[realm]?.nameVi ?? ""}. Chỉ rơi từ quái cảnh giới này.`, category: "material", maxStack: 99, rarity: "uncommon", grade: Math.min(MAX_ITEM_GRADE, realm + 1) } satisfies ItemDef,
+    ]),
+  ),
+  [KEEP_LEVEL_ITEM]: {
+    id: KEEP_LEVEL_ITEM,
+    nameVi: "Hộ Cấp Phù",
+    descVi: "Dùng khi nâng cấp ở Thợ Rèn (từ +6 trở lên): nếu thất bại thì giữ nguyên cấp cường hóa, không bị rớt. Chỉ mất phù khi thật sự cứu được một cấp. Bán bằng Tiên Ngọc.",
+    category: "material",
+    maxStack: 99,
+    rarity: "epic",
+    grade: 3,
+  },
+};
+
 export const ITEMS: Readonly<Record<string, ItemDef>> = {
+  ...SMITH_ITEMS,
   ...BOOKS,
   ...BREAKTHROUGH_PILLS,
   ...PATH_ITEMS,
@@ -210,6 +231,8 @@ export interface LootDrop {
   /** Equipment: current and maximum durability of the dropped piece (absent for pieces that never wear out). */
   dur?: number;
   max?: number;
+  /** Equipment: the stats rolled for this piece (filled in by the server when the drop is paid out). */
+  rs?: Partial<Record<"attack" | "defense" | "maxHp" | "critRate" | "dodgeRate" | "moveSpeed", number>>;
 }
 
 /** Items dropped by one kill. `rand` returns uniform [0, 1); two numbers are drawn per entry (chance, quantity). */

@@ -1,7 +1,7 @@
 import {
   MASTERY_NEEDED,
   REALMS,
-  SPIRITUAL_ROOTS,
+  ALL_ROOTS,
   effectiveSkill,
   gearSkillInfo,
   getItemDef,
@@ -102,7 +102,7 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
   }
 
   function elementsOf(): SpiritualRoot[] {
-    const roots = (sheet?.roots ?? []).filter((r): r is SpiritualRoot => (SPIRITUAL_ROOTS as readonly string[]).includes(r));
+    const roots = (sheet?.roots ?? []).filter((r): r is SpiritualRoot => (ALL_ROOTS as readonly string[]).includes(r));
     return roots.length > 0 ? roots : sheet ? [sheet.spiritualRoot] : [];
   }
 
@@ -211,7 +211,7 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
   document.addEventListener("keydown", (ev) => {
     const a = document.activeElement;
     const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
-    if (!typing && (ev.key === "k" || ev.key === "K") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !toggle.hidden) {
+    if (!typing && (ev.key === "v" || ev.key === "V") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !toggle.hidden) {
       panel.hidden = !panel.hidden;
       render();
     }
