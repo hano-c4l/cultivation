@@ -403,7 +403,7 @@ Ghi chú thiết kế ban đầu của 2i:
 - **Chưa làm:** (kỹ năng đặc biệt của boss: đã làm ở 2j, nón khi dưới 25% máu); bộ đếm giết chung giữa các kênh; lưu máu boss qua giấc ngủ; hiện máu boss cho cả thế giới; admin chỉnh bảng thưởng; area-of-interest.
 
 ## 2j. Đợt hoàn thiện sau 2i (2026-10-22): tốc độ, cưỡi pháp bảo, hệ biến dị, boss, bảng master, Thợ Rèn
-Làm trong 5 PR (nhánh `features_speed-ride`, `features_elements-mutant`, `features_boss-cone`, `features_item-master`, `features_blacksmith`), đã merge và deploy **preview**; **production chưa có** (cần `db:migrate:remote` cho `0027` và `0028` trước). Mọi con số là giá trị tạm.
+Làm trong 5 PR (nhánh `features_speed-ride`, `features_elements-mutant`, `features_boss-cone`, `features_item-master`, `features_blacksmith`), đã merge và deploy **preview**, rồi lên **production** cùng ngày (2026-10-22; `db:migrate:remote` cho `0027` và `0028` chạy trước, kiểm lại bằng `wrangler d1 migrations list DB --remote`). Mọi con số là giá trị tạm.
 
 ### Tốc độ di chuyển và cưỡi pháp bảo phi hành (PR1)
 - **Một chỗ tính tốc độ:** `effectiveSpeed(tốc độ gốc, [% cộng thêm])` ở `shared/src/movement.ts` (kẹp 1 đến 12 ô/giây); `walkSpeed(chỉ số gốc, % của đồ, [% khác])` ở `shared/src/progression.ts`. Buff và vật phẩm tăng tốc sau này chỉ cần thêm một số vào danh sách. Tốc độ gốc `BASE_SPEED` 4 ô/giây nhân `1 + Thân Pháp × 0,01`: **từ nay Thân Pháp làm đi nhanh thật** (trước đó mọi người đi đúng 4).
