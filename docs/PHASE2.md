@@ -477,7 +477,7 @@ Tất cả đã ở preview rồi production; chỉ `0029` là migration.
 - Test: `shared/src/smith.test.ts` (nhóm tinh luyện), `shared/src/speed-gear.test.ts`, `server/src/pvp.test.ts` (boss giữ máu, người chết rời bảng), `tools/mount-smoke.mjs` (cưỡi giữ qua bản đồ và nối lại, giày, tin `path` không gửi ngược lúc xuống khi đang đi), `tools/smith-smoke.mjs` (tinh luyện).
 
 ## 2k. Mở rộng thế giới (2026-10-23 đến 24, PR `features_world-expansion`, migration `0030`)
-Đã lên preview; chưa lên production. Mọi con số là giá trị tạm.
+Đã lên preview rồi production (2026-10-24; `db:migrate:remote` cho `0030` chạy trước). Mọi con số là giá trị tạm.
 
 ### Hằng số 2j vào D1 (bảng `game_tuning`)
 - Bảng `game_tuning` (`name`, `value` JSON, `updated_at`, `updated_by`), mỗi nhóm số một dòng; gieo từ mặc định trong code lúc đọc lần đầu (`INSERT OR IGNORE`), cache 30 giây, đọc lại khi `config_versions.tuning` đổi (`server/src/tuning.ts`, `getTuning`). Nhóm hỏng hoặc thiếu thì dùng mặc định. Màn admin **chưa làm**.
@@ -514,7 +514,7 @@ Tất cả đã ở preview rồi production; chỉ `0029` là migration.
 - `homeExpCap` tăng vì quái bậc 9 có mặt (Luyện Khí: 98 lên 138).
 
 ## 2l. Đợt hoàn thiện sau 2k (2026-10-24, PR `features_world-polish`, migration `0031`)
-Đã lên preview khi PR này merge; chưa lên production. Giá trị tạm.
+Đã lên preview rồi production (2026-10-24; `db:migrate:remote` cho `0031` chạy trước), cùng đợt đòn đánh thường. Giá trị tạm.
 
 ### Cửa hàng, nhiệm vụ đan đột phá
 - Thương nhân Thanh Vân Thành bán trang bị Luyện Khí và Trúc Cơ (bậc 1–2, Hạ phẩm), như Thiên Hà Thành (`gearRealms: [0, 1]`). Chưa mở rộng tới bậc 9.
