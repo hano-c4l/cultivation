@@ -3,6 +3,7 @@
 // Usage: node tools/daily-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
+import { T } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -91,7 +92,7 @@ const id = created.data.character.id;
 sql(`UPDATE accounts SET role='admin' WHERE email='dq-${run}@example.test'`);
 sql(`UPDATE characters SET realm = 1, stage = 9, exp = 0 WHERE id = '${id}'`);
 for (const q of ["newbie_1","newbie_2","newbie_3"]) sql(`INSERT OR IGNORE INTO character_quests (character_id, quest_id, state, progress, accepted_at, done_at) VALUES ('${id}', '${q}', 'done', 1, 0, 0)`);
-sql(`UPDATE characters SET map_id = 'town', x = 18.5, y = 16.5 WHERE id = '${id}'`);
+sql(`UPDATE characters SET map_id = 'town', x = ${18.5 + T}, y = ${16.5 + T} WHERE id = '${id}'`);
 await sleep(3000);
 let c = await connect(reg.cookie);
 let r = await after(c, { t: "bt_claim" });

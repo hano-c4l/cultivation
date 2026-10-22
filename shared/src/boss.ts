@@ -1,6 +1,8 @@
 import { fullGearStats, type GuardStats } from "./guards";
-import type { MapId } from "./map";
+import { MAP_SIZE, screenToTile, type MapId } from "./map";
 import { deriveStats, levelIndex, startingStats } from "./progression";
+import { REALMS } from "./progression-data";
+import { tuning } from "./tuning";
 
 /**
  * Map bosses (phase 2h). One boss per map across all channels (its claim lives in D1, table `world_boss`), never respawning once killed,
@@ -13,17 +15,17 @@ export const BOSS_SPAWN_CHANCE = 0.001;
  * "Pity": kills counted in one room since its last boss request; reaching the number asks for the boss for sure. The docs hold two
  * proposals (500/1500 and the rarer 100/1000 the owner mentioned): this is the first, by the map's realm.
  */
-export const BOSS_PITY_KILLS: Readonly<Record<number, number>> = { 0: 500, 1: 1500 };
+export const BOSS_PITY_KILLS: Readonly<Record<number, number>> = { 0: 500, 1: 1500, 2: 2500, 3: 4000 };
 export const BOSS_PITY_DEFAULT = 1500;
 /** A claim older than this is treated as lost (a room that never came back), so a map cannot stay without a boss forever. */
 export const BOSS_CLAIM_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** The species of the boss of each map (see MONSTERS) and its bậc: the highest of the realm, so a group is needed. */
-export const BOSSES: Readonly<Record<MapId, string | null>> = { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong" };
+export const BOSSES: Readonly<Record<MapId, string | null>> = { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang" };
 /** The bậc the boss pays out at (EXP and drops follow it, as for any monster): the top of the map's realm. */
 export const BOSS_TIER = 9;
 /** Where the boss stands (tile units): away from the three monster clusters and the guards of its map, so it is found, not stumbled into. */
-export const BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { town: null, forest: [26.5, 30.5], cave: [30.5, 8.5] };
+export const BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { town: null, forest: screenToTile(MAP_SIZE.forest, 20, 9), cave: screenToTile(MAP_SIZE.cave, 40, 0), town2: null, kimdan: screenToTile(MAP_SIZE.kimdan, 0, 6), nguyenanh: screenToTile(MAP_SIZE.nguyenanh, 0, 6) };
 /**
  * Its fighting strength is a few levels above the map's, like a vệ binh: a character `BOSS_REALM_BONUS` realm above the map's, at bậc
  * `BOSS_STAT_TIER`, in a full set of top-grade gear, with its points spent and `BOSS_HP_MULT` times the maximum HP. Placeholder values.
@@ -45,17 +47,21 @@ export const BOSS_SKILLS = {
 } as const;
 
 /**
- * The boss's special skill: a cone in front of it (towards the player it is fighting) that hits every player inside, with a long cooldown,
+ * The boss's special skill (numbers in the tuning, `bossCone`): a cone in front of it (towards the player it is fighting) that hits every player inside, with a long cooldown,
  * and only once its HP is below `below` of the maximum. `halfAngleDeg` is half the opening of the cone. Placeholder numbers.
  */
-export const BOSS_CONE = { power: 2.2, cdMs: 25_000, below: 0.25, range: 4.5, halfAngleDeg: 45 } as const;
+export function bossCone(): { power: number; cdMs: number; below: number; range: number; halfAngleDeg: number } {
+  return tuning().bossCone;
+}
 
 /**
  * Unlike an ordinary monster, a boss that has lost its fight (everybody dead or out of reach) and walked home does not jump back to full
- * HP: it heals this fraction of its maximum HP per second, so players who died can run back and carry on. Its damage table is kept until
+ * HP: it heals a fraction of its maximum HP per second (tuning `bossRegen`, 0.02 by default), so players who died can run back and carry on. Its damage table is kept until
  * it is full again. Back to full from nothing in 50 seconds.
  */
-export const BOSS_REGEN_PER_S = 0.02;
+export function bossRegenPerS(): number {
+  return tuning().bossRegen.perSecond;
+}
 
 /** Whether a point at offset (dx, dy) from the boss lies inside its cone when it faces (fx, fy); true at the boss's own spot. */
 export function inCone(dx: number, dy: number, fx: number, fy: number, range: number, halfAngleDeg: number): boolean {
@@ -67,7 +73,7 @@ export function inCone(dx: number, dy: number, fx: number, fy: number, range: nu
 }
 
 export function bossStats(mapRealm: number): GuardStats {
-  const realm = mapRealm + BOSS_REALM_BONUS;
+  const realm = Math.min(mapRealm + BOSS_REALM_BONUS, REALMS.length - 1); // the top realm has none above it
   const base = startingStats("kim", 1).base;
   const lv = levelIndex(realm, BOSS_STAT_TIER);
   base.canCot += lv * BOSS_POINTS_PER_LEVEL;
@@ -125,7 +131,7 @@ export function pickByShare(shares: readonly BossShare[], roll: number): string 
 }
 
 /** Where players read about the boss: the map's name and the channel number (a boss lives in one channel only). */
-const BOSS_MAP_NAMES: Readonly<Record<string, string>> = { forest: "Hắc Mộc Lâm", cave: "U Minh Động" };
+const BOSS_MAP_NAMES: Readonly<Record<string, string>> = { forest: "Hắc Mộc Lâm", cave: "U Minh Động", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên" };
 
 export function bossSpawnText(bossName: string, mapId: string, channel: string): string {
   return `${bossName} đã xuất hiện ở ${BOSS_MAP_NAMES[mapId] ?? mapId}, kênh ${channel}!`;

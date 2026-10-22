@@ -3,6 +3,7 @@
 // Usage: node tools/admin-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1, ENABLE_DEV_GRANT=1 and PK_DROP_FORCE=1 (the PvP item drop always succeeds) in .dev.vars. Never run it against preview or production.
+import { TOWN_SPAWN } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -87,8 +88,8 @@ async function makePlayer(tag, map, x, y, satNhan = 0, admin = false) {
 
 
 const get = (path, cookie) => fetch(httpBase + path, { headers: cookie ? { Cookie: cookie } : {} });
-const plain = await makePlayer("P", "town", 20.5, 20.5);
-const gm = await makePlayer("G", "town", 20.5, 20.5, 0, true);
+const plain = await makePlayer("P", "town", ...TOWN_SPAWN);
+const gm = await makePlayer("G", "town", ...TOWN_SPAWN, 0, true);
 
 check("the ranking needs a login", (await get("/api/leaderboard")).status === 401);
 for (const b of ["realm", "power", "wealth", "gear", "artifact"]) {

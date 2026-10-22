@@ -37,7 +37,9 @@ import {
   findSmoothPath,
   getMap,
   isCellWalkable,
+  inPlayRect,
   isMapId,
+  playRectPixels,
   portalNear,
   positionAlongPath,
   type MapData,
@@ -47,6 +49,7 @@ import {
   equipmentBonus,
   walkSpeed,
   type EquipStatKey,
+  setTuning,
 } from "@game/shared";
 import { initCharacterPanel, type CharacterPanel } from "./character-ui";
 import { initChat, type ChatUi } from "./chat-ui";
@@ -169,6 +172,32 @@ function applyTrack(actor: Actor, path: Vec2[], startedAt: number, speed: number
   actor.offAt = now;
 }
 
+/** Pixel size of one texture of obstacles (kept under the 4096 limit of small GPUs, and not too many textures for a big map). */
+const CHUNK = 1024;
+
+
+/**
+ * The repeating ground pattern: 64 x 32 px holding two tiles of the checker, so it lines up with the isometric grid when tiled (the tile whose top
+ * vertex is at world (0, 0) is the even one; its pattern x is the world x plus half a tile).
+ */
+function ensureGroundTexture(scene: Phaser.Scene, palette: MapData["palette"]): string {
+  const key = `ground-${palette.groundA.toString(16)}-${palette.groundB.toString(16)}`;
+  if (scene.textures.exists(key)) return key;
+  const g = scene.make.graphics({}, false);
+  const tile = (cx: number, cy: number, color: number) => {
+    const pts = [new Phaser.Math.Vector2(cx, cy - TILE_H / 2), new Phaser.Math.Vector2(cx + TILE_W / 2, cy), new Phaser.Math.Vector2(cx, cy + TILE_H / 2), new Phaser.Math.Vector2(cx - TILE_W / 2, cy)];
+    g.fillStyle(color, 1);
+    g.lineStyle(1, 0x000000, 0.18);
+    g.fillPoints(pts, true);
+    g.strokePoints(pts, true);
+  };
+  tile(TILE_W / 2, TILE_H / 2, palette.groundA);
+  for (const [cx, cy] of [[0, 0], [TILE_W, 0], [0, TILE_H], [TILE_W, TILE_H]] as const) tile(cx, cy, palette.groundB);
+  g.generateTexture(key, TILE_W, TILE_H);
+  g.destroy();
+  return key;
+}
+
 export class GameScene extends Phaser.Scene {
   private map: MapData = getMap("town");
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
@@ -178,6 +207,8 @@ export class GameScene extends Phaser.Scene {
   private selfSheet: CharacterSheet | null = null;
   private lastAttackSentAt = 0;
   private selfId = "";
+  /** Players in the room as the server last counted them (a combat map only lists those near you); null until it says. */
+  private online: number | null = null;
   private net!: Net;
   private chatNet!: Net;
   private chat!: ChatUi;
@@ -284,7 +315,9 @@ export class GameScene extends Phaser.Scene {
 
     const camera = this.cameras.main;
     const center = toScreen(this.map.spawn[0] + 0.5, this.map.spawn[1] + 0.5);
+    this.applyCameraBounds();
     camera.centerOn(center.x, center.y);
+    this.scale.on("resize", () => this.applyCameraBounds());
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.handleClick(pointer));
     document.addEventListener("keydown", (ev) => {
@@ -348,37 +381,43 @@ export class GameScene extends Phaser.Scene {
     for (const obj of this.mapObjects) obj.destroy();
     this.mapObjects = [];
 
-    // Draw the ground once into a texture: the fine collision cells can add up to thousands of polygons, and
-    // replaying them every frame (Canvas renderer) would be wasteful for a static map.
-    const g = this.make.graphics({}, false);
-    for (let y = 0; y < this.map.height; y++) {
-      for (let x = 0; x < this.map.width; x++) {
-        const p = toScreen(x, y);
-        g.fillStyle((x + y) % 2 === 0 ? 0x3d5a3a : 0x38553a, 1);
-        g.lineStyle(1, 0x000000, 0.18);
-        const pts = this.diamond(p.x, p.y);
-        g.fillPoints(pts, true);
-        g.strokePoints(pts, true);
-      }
-    }
-    // Obstacles: every blocked collision cell, so trees, pillars, ponds and fences show their real shape.
-    g.fillStyle(0x5a4a3a, 1);
+    // The ground is one repeating pattern over the map's rectangle (the map is far too big for a texture of its own). Obstacles are every blocked
+    // collision cell inside the rectangle, drawn once into textures of CHUNK pixels, so trees, pillars, ponds and fences show their real shape.
+    const rect = playRectPixels(this.map);
+    const groundKey = ensureGroundTexture(this, this.map.palette);
+    const ground = this.add.tileSprite(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0, groundKey).setOrigin(0, 0).setDepth(0);
+    ground.tilePositionX = (((rect.x0 + TILE_W / 2) % TILE_W) + TILE_W) % TILE_W;
+    ground.tilePositionY = ((rect.y0 % TILE_H) + TILE_H) % TILE_H;
+    this.mapObjects.push(ground);
+
     const cw = this.map.width * CELLS_PER_TILE;
     const ch = this.map.height * CELLS_PER_TILE;
+    const half = TILE_W / (2 * CELLS_PER_TILE);
+    const buckets = new Map<string, Array<[number, number]>>();
     for (let cy = 0; cy < ch; cy++) {
       for (let cx = 0; cx < cw; cx++) {
         if (isCellWalkable(this.map, cx, cy)) continue;
+        if (!inPlayRect(this.map, (cx + 0.5) / CELLS_PER_TILE, (cy + 0.5) / CELLS_PER_TILE)) continue; // void: never drawn
         const p = toScreen(cx / CELLS_PER_TILE, cy / CELLS_PER_TILE);
-        g.fillPoints(this.diamond(p.x, p.y, 1 / CELLS_PER_TILE), true);
+        const key = `${Math.floor((p.x - rect.x0) / CHUNK)},${Math.floor((p.y - rect.y0) / CHUNK)}`;
+        let list = buckets.get(key);
+        if (!list) buckets.set(key, (list = []));
+        list.push([p.x, p.y]);
       }
     }
-    const minX = -this.map.height * (TILE_W / 2);
-    const texW = (this.map.width + this.map.height) * (TILE_W / 2) + 2;
-    const texH = (this.map.width + this.map.height) * (TILE_H / 2) + TILE_H + 2;
-    const ground = this.add.renderTexture(minX, 0, texW, texH).setOrigin(0, 0).setDepth(0);
-    ground.draw(g, -minX, 0);
-    g.destroy();
-    this.mapObjects.push(ground);
+    for (const [key, cells] of buckets) {
+      const [kx, ky] = key.split(",").map(Number) as [number, number];
+      // The texture overlaps its neighbours by one cell so a diamond straddling the seam is whole.
+      const ox = rect.x0 + kx * CHUNK - half;
+      const oy = rect.y0 + ky * CHUNK;
+      const g = this.make.graphics({}, false);
+      g.fillStyle(this.map.palette.obstacle, 1);
+      for (const [x, y] of cells) g.fillPoints(this.diamond(x - ox, y - oy, 1 / CELLS_PER_TILE), true);
+      const tex = this.add.renderTexture(ox, oy, CHUNK + 2 * half, CHUNK + TILE_H / CELLS_PER_TILE).setOrigin(0, 0).setDepth(0.1);
+      tex.draw(g, 0, 0);
+      g.destroy();
+      this.mapObjects.push(tex);
+    }
 
     for (const portal of this.map.portals) {
       const p = toScreen(portal.x, portal.y);
@@ -432,6 +471,21 @@ export class GameScene extends Phaser.Scene {
     this.shop.close();
     this.quests.close();
     this.drawMap();
+    this.applyCameraBounds();
+  }
+
+  /**
+   * Keeps the view inside the map's rectangle so the black beyond it is never shown. A map smaller than the window (in either direction) can
+   * not fill it, so the bounds grow to the window around the map's centre and the map sits in the middle.
+   */
+  private applyCameraBounds(): void {
+    const cam = this.cameras.main;
+    const r = playRectPixels(this.map);
+    const w = Math.max(r.x1 - r.x0, cam.width / cam.zoom);
+    const h = Math.max(r.y1 - r.y0, cam.height / cam.zoom);
+    const cx = (r.x0 + r.x1) / 2;
+    const cy = (r.y0 + r.y1) / 2;
+    cam.setBounds(cx - w / 2, cy - h / 2, w, h);
   }
 
   /** The realm, grade and mastery level a skill works at for this character (the same inputs the server uses). */
@@ -578,6 +632,7 @@ export class GameScene extends Phaser.Scene {
         this.switchMap(msg.map);
         this.pk.setSafe(this.map.safe);
         this.clearActors();
+        this.online = null;
         this.upsertActor(msg.players);
         for (const m of msg.monsters) this.upsertMonster(m);
         this.syncRankContext();
@@ -626,6 +681,13 @@ export class GameScene extends Phaser.Scene {
         break;
       case "mon_gone":
         this.removeMonster(msg.id);
+        break;
+      case "mon_reset":
+        for (const id of [...this.monsters.keys()]) this.removeMonster(id);
+        break;
+      case "online":
+        this.online = msg.n;
+        this.refreshHud();
         break;
       case "hit":
         this.showHit(msg);
@@ -800,9 +862,11 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       case "shop":
+        setTuning(msg.tuning as unknown as Record<string, unknown>);
         this.shop.setStock(msg.npc, msg.left);
         break;
       case "smith":
+        setTuning(msg.tuning as unknown as Record<string, unknown>);
         this.smith.setRules(msg.npc, msg.levels, msg.pity);
         break;
       case "smith_result": {
@@ -995,7 +1059,7 @@ export class GameScene extends Phaser.Scene {
   private refreshHud(): void {
     const realm = this.map.realm === null ? "" : ` (${REALMS[this.map.realm]?.nameVi ?? ""})`;
     const where = `${vi.maps[this.map.id] ?? this.map.id}${realm}`;
-    this.hud.textContent = `${where} · ${vi.connected(this.actors.size, this.ping, this.colo)} · ${vi.hint}`;
+    this.hud.textContent = `${where} · ${vi.connected(this.online ?? this.actors.size, this.ping, this.colo)} · ${vi.hint}`;
   }
 
   private upsertActor(players: PlayerSnapshot[]): void {

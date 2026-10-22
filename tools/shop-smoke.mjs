@@ -3,6 +3,7 @@
 // Usage: node tools/shop-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
+import { FOREST_ARRIVAL, FOREST_BY_WOLVES, T } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const sql = (q) => execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", `"${q}"`], { stdio: "ignore", shell: true });
@@ -104,7 +105,7 @@ r = await after(c, { t: "shop_buy", npc: "merchant", offer: "hoi_huyet_dan", qty
 check("buying from far away is refused and nothing is charged", r.some((m) => m.t === "inv_error" && m.reason === "far") && balanceOf(c) === 5000);
 
 // --- walk next to the merchant ---
-c.send({ t: "move", x: 22.5, y: 18.5, fx: 20.5, fy: 20.5, seq: 1 });
+c.send({ t: "move", x: 22.5 + T, y: 18.5 + T, fx: 20.5 + T, fy: 20.5 + T, seq: 1 });
 await sleep(2500);
 r = await after(c, { t: "npc_open", npc: "merchant" });
 const stock = r.find((m) => m.t === "shop");
@@ -176,18 +177,18 @@ check("selling the same cells again changes nothing", r.some((m) => m.t === "inv
 // --- the talisman takes you home from the forest ---
 c.ws.close();
 await sleep(800);
-sql(`UPDATE characters SET map_id = 'forest', x = 20.5, y = 3.5 WHERE id = '${charId}'`);
+sql(`UPDATE characters SET map_id = 'forest', x = ${FOREST_ARRIVAL[0]}, y = ${FOREST_ARRIVAL[1]} WHERE id = '${charId}'`);
 const f = await connect(reg.cookie);
 check("the character now stands in the forest", f.welcome.map === "forest");
 r = await after(f, { t: "hotbar_set", slot: 0, v: "i:ttp_town" });
 check("a talisman on the hotbar is not rejected", !r.some((m) => m.t === "hotbar" && m.slots?.[0] !== "i:ttp_town"), JSON.stringify(r.map((m) => m.t)));
 r = await after(f, { t: "use_type", type: "ttp_town" }, 600);
 check("using the talisman starts a 5 second channel and spends nothing yet", r.some((m) => m.t === "tp" && m.ms === 5000) && countOf(f, "ttp_town") === 2, JSON.stringify(r.map((m) => m.t)));
-r = await after(f, { t: "move", x: 21.5, y: 5.5, fx: 20.5, fy: 3.5, seq: 1 }, 600);
+r = await after(f, { t: "move", x: FOREST_ARRIVAL[0] + 1, y: FOREST_ARRIVAL[1] + 2, fx: FOREST_ARRIVAL[0], fy: FOREST_ARRIVAL[1], seq: 1 }, 600);
 check("moving breaks the channel and the talisman is kept", r.some((m) => m.t === "tp_end" && m.ok === false && m.reason === "moved") && countOf(f, "ttp_town") === 2, JSON.stringify(r.map((m) => m.t)));
 await sleep(5500);
 check("a broken channel does not complete later", !f.log.some((m) => m.t === "transfer"));
-f.send({ t: "move", x: 20.5, y: 6.5, fx: 21.5, fy: 5.5, seq: 2 });
+f.send({ t: "move", x: FOREST_ARRIVAL[0], y: FOREST_ARRIVAL[1] + 3, fx: FOREST_ARRIVAL[0] + 1, fy: FOREST_ARRIVAL[1] + 2, seq: 2 });
 await sleep(200);
 r = await after(f, { t: "use_type", type: "ttp_town" }, 400);
 check("a talisman cannot be used while still walking", r.some((m) => m.t === "inv_error" && m.reason === "moving") && !r.some((m) => m.t === "tp"), JSON.stringify(r.map((m) => m.t)));
@@ -209,7 +210,7 @@ check("the bag and the wallet are the same after reconnecting", countOf(c, "ngo_
 // --- being hit breaks the channel, and the talisman is kept ---
 c.ws.close();
 await sleep(800);
-sql(`UPDATE characters SET map_id = 'forest', x = 20.5, y = 15.5 WHERE id = '${charId}'`);
+sql(`UPDATE characters SET map_id = 'forest', x = ${FOREST_BY_WOLVES[0]}, y = ${FOREST_BY_WOLVES[1]} WHERE id = '${charId}'`);
 const h = await connect(reg.cookie);
 await after(h, { t: "use_type", type: "ttp_town" }, 300);
 const brokeByHit = await h.wait((m) => m.t === "tp_end", 20000, "tp_end by a hit").catch(() => null);

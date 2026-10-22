@@ -286,17 +286,44 @@ export const EXTRA_QUESTS: readonly QuestDef[] = [
     objective: { kind: "collect", item: "linh_thao", qty: 20, also: [{ item: "thu_cot", qty: 10 }, { item: "yeu_dan", qty: 3 }] },
     rewards: { items: [{ item: BREAKTHROUGHS[0]?.pill ?? "", qty: 1 }] },
   },
+  // The second town's elder (Kim Đan and Nguyên Anh): the one-time breakthrough pills, like the one of the first town's elder.
+  {
+    id: "breakthrough_2",
+    chain: "breakthrough",
+    seq: 2,
+    giver: "elder2",
+    titleVi: "Đan Đột Phá Kim Đan",
+    descVi: "Kết đan là cửa ải lớn của Trúc Cơ. Mang đến 60 Linh Thảo, 30 Thú Cốt và 12 Yêu Đan, ta sẽ luyện cho con một viên Đan Đột Phá Kim Đan. Chỉ làm được một lần.",
+    enabled: true,
+    requires: null,
+    minRealm: 1,
+    objective: { kind: "collect", item: "linh_thao", qty: 60, also: [{ item: "thu_cot", qty: 30 }, { item: "yeu_dan", qty: 12 }] },
+    rewards: { items: [{ item: BREAKTHROUGHS[1]?.pill ?? "", qty: 1 }] },
+  },
+  {
+    id: "breakthrough_3",
+    chain: "breakthrough",
+    seq: 3,
+    giver: "elder2",
+    titleVi: "Đan Đột Phá Nguyên Anh",
+    descVi: "Phá đan thành anh còn khó hơn nhiều. Mang đến 40 Yêu Đan, 25 Tinh Thiết Kim Đan và 10 Tinh Hoa Kim Đan, ta sẽ luyện cho con một viên Đan Đột Phá Nguyên Anh. Chỉ làm được một lần.",
+    enabled: true,
+    requires: "breakthrough_2",
+    minRealm: 2,
+    objective: { kind: "collect", item: "yeu_dan", qty: 40, also: [{ item: "ren_kd", qty: 25 }, { item: "tl_kd", qty: 10 }] },
+    rewards: { items: [{ item: BREAKTHROUGHS[2]?.pill ?? "", qty: 1 }] },
+  },
 ];
 
 /**
  * Daily quests of the Trưởng Lão (phase 2e-B PR3): they open after the first steps of the newbie chain and can be done once a day
  * (Vietnam time). They pay Cống Hiến as well as Linh Thạch. Placeholder values.
  */
-const daily = (id: string, seq: number, titleVi: string, descVi: string, requires: string, minRealm: number, objective: QuestObjective, rewards: QuestRewards): QuestDef => ({
+const daily = (id: string, seq: number, titleVi: string, descVi: string, requires: string | null, minRealm: number, objective: QuestObjective, rewards: QuestRewards, giver = "elder"): QuestDef => ({
   id,
   chain: "daily",
   seq,
-  giver: "elder",
+  giver,
   titleVi,
   descVi,
   enabled: true,
@@ -313,5 +340,14 @@ export const DAILY_QUESTS: readonly QuestDef[] = [
   daily("daily_cave", 3, "Thám hiểm U Minh Động", "Từ Trúc Cơ trở đi, mỗi ngày hạ 20 con quái ở U Minh Động.", "newbie_6", 1, { kind: "kill", count: 20, map: "cave" }, { linhThach: 400, congHien: 20 }),
 ];
 
+/**
+ * Daily quests of the second town's elder (Kim Đan and Nguyên Anh). Kept apart from DAILY_QUESTS, which migration 0024 wrote into D1: these
+ * are added to an existing catalogue by the server's lazy seeding (INSERT OR IGNORE), without a migration.
+ */
+export const HIGH_DAILY_QUESTS: readonly QuestDef[] = [
+  daily("daily_kimdan", 4, "Trấn thủ Xích Diễm Sơn", "Từ Kim Đan trở đi, mỗi ngày hạ 25 con quái ở Xích Diễm Sơn để giữ yên vùng đất quanh thành.", null, 2, { kind: "kill", count: 25, map: "kimdan" }, { linhThach: 3_000, congHien: 40 }, "elder2"),
+  daily("daily_nguyenanh", 5, "Trấn thủ Vạn Cổ Hàn Uyên", "Từ Nguyên Anh trở đi, mỗi ngày hạ 25 con quái ở Vạn Cổ Hàn Uyên.", null, 3, { kind: "kill", count: 25, map: "nguyenanh" }, { linhThach: 30_000, congHien: 80 }, "elder2"),
+];
+
 /** Everything the server seeds into an empty catalogue, in order. */
-export const SEED_QUESTS: readonly QuestDef[] = [...DEFAULT_QUESTS, ...EXTRA_QUESTS, ...DAILY_QUESTS];
+export const SEED_QUESTS: readonly QuestDef[] = [...DEFAULT_QUESTS, ...EXTRA_QUESTS, ...DAILY_QUESTS, ...HIGH_DAILY_QUESTS];

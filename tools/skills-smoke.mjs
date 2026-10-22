@@ -2,6 +2,7 @@
 // hotbar (set, saved, restored), reading a bí tịch (level check, consumed once, already-known refused) and a potion slot.
 // Usage: node tools/skills-smoke.mjs [ws://localhost:8787]
 // Registers a throwaway account and uses dev-only endpoints: local only, needs DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1.
+import { FOREST_N_GATE, TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -167,9 +168,9 @@ r = await after(c, { t: "skill_boost", skill: "hoi_0" }, 600);
 check("a skill already at its top level (the top level of its grade) refuses the pill and keeps it", r.some((m) => m.t === "inv_error" && m.reason === "not_needed") && pills() === 1, `${pills()}`);
 
 // Forest: cast an attack, a heal and a buff.
-c.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
+c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1);
-await sleep(5500);
+await sleep(10500);
 c.send({ t: "portal" });
 await c.wait((m) => m.t === "transfer");
 await sleep(500);
@@ -208,9 +209,9 @@ check("... and the mastery earned is kept (written when the player left)", (c.we
 check("... and HP is what it was, not full by default", c.welcome.hp > 0 && c.welcome.hp <= c.welcome.maxHp);
 
 // Back in town (no simulation there) the stored HP, MP and cooldowns still show, and keep regenerating.
-c.send({ t: "move", x: 20.5, y: 1.5, fx: c.welcome.players.find((p) => p.id === charId).path[0][0], fy: c.welcome.players.find((p) => p.id === charId).path[0][1], seq: 5 });
+c.send({ t: "move", x: FOREST_N_GATE[0], y: FOREST_N_GATE[1], fx: c.welcome.players.find((p) => p.id === charId).path[0][0], fy: c.welcome.players.find((p) => p.id === charId).path[0][1], seq: 5 });
 await c.wait((m) => m.t === "ack" && m.seq === 5);
-await sleep(4500);
+await sleep(9000);
 c.send({ t: "portal" });
 await c.wait((m) => m.t === "transfer", 8000, "the north gate");
 c.ws.close();
@@ -224,9 +225,9 @@ c.ws.close();
 await sleep(500);
 // Walk back to the forest for the eviction step below.
 c = await connect(reg.cookie, 2);
-c.send({ t: "move", x: 20.5, y: 38.5, fx: c.welcome.players.find((p) => p.id === charId).path[0][0], fy: c.welcome.players.find((p) => p.id === charId).path[0][1], seq: 6 });
+c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: c.welcome.players.find((p) => p.id === charId).path[0][0], fy: c.welcome.players.find((p) => p.id === charId).path[0][1], seq: 6 });
 await c.wait((m) => m.t === "ack" && m.seq === 6);
-await sleep(5500);
+await sleep(10500);
 c.send({ t: "portal" });
 await c.wait((m) => m.t === "transfer", 8000, "the south gate");
 await sleep(500);

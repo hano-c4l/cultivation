@@ -1,5 +1,5 @@
 import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
-import { MAP_IDS, getMap, type MapId } from "./map";
+import { CAVE_CHAMBERS, FOREST_GLADES, KIMDAN_GLADES, MAP_IDS, MAP_REALM, MAP_SIZE, NGUYENANH_GLADES, screenToTile, type MapId } from "./map";
 import { levelIndex, monsterBaseExp } from "./progression";
 
 /**
@@ -34,6 +34,14 @@ export const MONSTERS: Readonly<Record<string, MonsterDef>> = {
   ve_binh: { id: "ve_binh", nameVi: "Vệ Binh", element: "kim", hpMult: 3, attackMult: 2.5, defenseMult: 2, speed: 3, aggroRadius: 8, leashRadius: 12, attackRange: 1.4, attackCooldownMs: 1200, respawnMs: 60_000 },
   huyet_lang_vuong: { id: "huyet_lang_vuong", nameVi: "Huyết Lang Vương", element: "moc", hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.6, attackCooldownMs: 1400, respawnMs: 0 },
   quy_vuong: { id: "quy_vuong", nameVi: "U Minh Quỷ Vương", element: "thuy", hpMult: 1, attackMult: 1, defenseMult: 1, speed: 2.8, aggroRadius: 7, leashRadius: 12, attackRange: 1.6, attackCooldownMs: 1500, respawnMs: 0 },
+  hoa_dien_lang: { id: "hoa_dien_lang", nameVi: "Hỏa Diễm Lang", element: "hoa", hpMult: 1, attackMult: 1.1, defenseMult: 1, speed: 3, aggroRadius: 6, leashRadius: 9, attackRange: 1.3, attackCooldownMs: 1400, respawnMs: 20_000 },
+  nham_giap_thu: { id: "nham_giap_thu", nameVi: "Nham Giáp Thú", element: "tho", hpMult: 1.8, attackMult: 1.2, defenseMult: 1.7, speed: 2.4, aggroRadius: 5, leashRadius: 8, attackRange: 1.4, attackCooldownMs: 1900, respawnMs: 25_000 },
+  liet_hoa_xa: { id: "liet_hoa_xa", nameVi: "Liệt Hỏa Xà", element: "hoa", hpMult: 1.3, attackMult: 1.5, defenseMult: 1.1, speed: 3.4, aggroRadius: 6, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1300, respawnMs: 25_000 },
+  hoa_long_vuong: { id: "hoa_long_vuong", nameVi: "Xích Diễm Long Vương", element: "hoa", hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.8, attackCooldownMs: 1400, respawnMs: 0 },
+  bang_phong_hac: { id: "bang_phong_hac", nameVi: "Băng Phong Hạc", element: "thuy", hpMult: 1, attackMult: 1.2, defenseMult: 1, speed: 3.6, aggroRadius: 7, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1300, respawnMs: 20_000 },
+  han_thi_ma: { id: "han_thi_ma", nameVi: "Hàn Thi Ma", element: "thuy", hpMult: 1.9, attackMult: 1.3, defenseMult: 1.8, speed: 2.3, aggroRadius: 5, leashRadius: 8, attackRange: 1.5, attackCooldownMs: 2000, respawnMs: 25_000 },
+  tuyet_yeu_hau: { id: "tuyet_yeu_hau", nameVi: "Tuyết Yêu Hầu", element: "kim", hpMult: 1.4, attackMult: 1.6, defenseMult: 1.2, speed: 3.2, aggroRadius: 6, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1500, respawnMs: 25_000 },
+  bang_hoang: { id: "bang_hoang", nameVi: "Băng Hoàng", element: "thuy", hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.8, attackCooldownMs: 1500, respawnMs: 0 },
   xich_thi: { id: "xich_thi", nameVi: "Xích Thi", element: "hoa", hpMult: 1.4, attackMult: 1.5, defenseMult: 1.2, speed: 2.8, aggroRadius: 5, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1700, respawnMs: 25_000 },
 };
 
@@ -45,12 +53,19 @@ export const MONSTERS: Readonly<Record<string, MonsterDef>> = {
 export const GUARD_KIND = "ve_binh";
 export const GUARD_REALM_BONUS = 1;
 export const GUARD_TIER = 3;
-/** Guard positions per map (tile units, snapped to standable ground by the server): beside the arrival point, off the lane. */
+/**
+ * Guard positions per map (tile units, snapped to standable ground by the server): beside the arrival point, off the lane. Written in screen
+ * units (see PlayRect) and converted, so they follow the map's layout.
+ */
+const guardSpots = (map: MapId, units: readonly (readonly [number, number])[]): readonly (readonly [number, number])[] => units.map(([px, py]) => screenToTile(MAP_SIZE[map], px, py));
 export const GUARDS: Readonly<Record<MapId, readonly (readonly [number, number])[]>> = {
   // Every portal has them on its arrival side: town (from the forest), forest (from the town and from the cave), cave (from the forest).
-  town: [[18.5, 35.5], [21.5, 35.5]],
-  forest: [[19.5, 5.5], [22.5, 5.5], [43.5, 22.5], [43.5, 25.5]],
-  cave: [[5.5, 19.5], [5.5, 22.5]],
+  town: guardSpots("town", [[-4, 17], [4, 17]]),
+  forest: guardSpots("forest", [[-4, -33], [4, -33], [67, -4], [67, 4]]),
+  cave: guardSpots("cave", [[-82, -4], [-82, 4], [82, -4], [82, 4]]),
+  town2: guardSpots("town2", [[-38, -3], [-38, 3], [38, -11], [38, -5], [38, 5], [38, 11]]),
+  kimdan: guardSpots("kimdan", [[-72, -4], [-72, 4]]),
+  nguyenanh: guardSpots("nguyenanh", [[-77, -4], [-77, 4]]),
 };
 
 export function getMonsterDef(kind: string): MonsterDef | undefined {
@@ -124,20 +139,25 @@ export interface Cluster {
   count: number;
 }
 
-/** Cluster layout per map. More clusters (and bigger maps) are added here as the world grows. The safe town has none. */
-/** Forest clusters stay off the east lane (the only way to the cave) so low-level players can still walk through. */
+/**
+ * Cluster layout per map: one group per glade/chamber of the map (their spots are in map.ts), with the bậc and species given by index. More
+ * groups (and bigger maps) are added by extending both lists. The safe town has none. Monsters stand on a ring of `radius` tiles around a group's centre.
+ */
+function groupsOf(map: MapId, spots: readonly (readonly [number, number])[], tiers: readonly number[], kinds: readonly string[], radius: number, count: number): Cluster[] {
+  return spots.map(([px, py], i) => {
+    const [x, y] = screenToTile(MAP_SIZE[map], px, py);
+    return { tier: tiers[i]!, kind: kinds[i]!, x, y, radius, count };
+  });
+}
+
+/** Forest groups stay off the east-west road and the lane from the north gate (the only way to the cave) so low-level players can still walk through. */
 export const CLUSTERS: Readonly<Record<MapId, readonly Cluster[]>> = {
   town: [],
-  forest: [
-    { tier: 1, kind: "soi_rung", x: 20.5, y: 14.5, radius: 1.8, count: 3 },
-    { tier: 4, kind: "heo_rung", x: 8.5, y: 12.5, radius: 1.5, count: 3 },
-    { tier: 7, kind: "bao_dem", x: 34.5, y: 12.5, radius: 1.5, count: 3 },
-  ],
-  cave: [
-    { tier: 1, kind: "doi_u_minh", x: 12.5, y: 20.5, radius: 1.3, count: 3 },
-    { tier: 4, kind: "thi_quy", x: 22.5, y: 20.5, radius: 1.3, count: 3 },
-    { tier: 7, kind: "xich_thi", x: 33.5, y: 20.5, radius: 1.3, count: 3 },
-  ],
+  forest: groupsOf("forest", FOREST_GLADES, [1, 1, 2, 3, 3, 4, 4, 5, 6, 7, 7, 8, 9], [...Array<string>(5).fill("soi_rung"), ...Array<string>(4).fill("heo_rung"), ...Array<string>(4).fill("bao_dem")], 2, 4),
+  cave: groupsOf("cave", CAVE_CHAMBERS, [1, 2, 3, 4, 5, 6, 7, 9], ["doi_u_minh", "doi_u_minh", "doi_u_minh", "thi_quy", "thi_quy", "thi_quy", "xich_thi", "xich_thi"], 2, 5),
+  town2: [],
+  kimdan: groupsOf("kimdan", KIMDAN_GLADES, [1, 1, 2, 3, 3, 4, 5, 5, 6, 7, 7, 8, 9, 9], [...Array<string>(5).fill("hoa_dien_lang"), ...Array<string>(4).fill("nham_giap_thu"), ...Array<string>(5).fill("liet_hoa_xa")], 2, 5),
+  nguyenanh: groupsOf("nguyenanh", NGUYENANH_GLADES, [1, 1, 2, 3, 3, 4, 5, 5, 6, 7, 7, 8, 9, 9], [...Array<string>(5).fill("bang_phong_hac"), ...Array<string>(4).fill("han_thi_ma"), ...Array<string>(5).fill("tuyet_yeu_hau")], 2, 5),
 };
 
 /** The positions of a cluster's monsters (before snapping to standable ground). */
@@ -156,7 +176,7 @@ export function clusterSlots(c: Cluster): [number, number][] {
 export function homeExpCap(realm: number, rank: MonsterRank): number | undefined {
   let best = 0;
   for (const id of MAP_IDS) {
-    if (getMap(id).realm !== realm) continue;
+    if (MAP_REALM[id] !== realm) continue;
     for (const c of CLUSTERS[id]) best = Math.max(best, monsterBaseExp(realm, c.tier));
   }
   return best > 0 ? best * RANKS[rank].expMult : undefined;

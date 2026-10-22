@@ -71,7 +71,7 @@ import {
   parseRolledStats,
   refineCost,
   refineStats,
-  REFINE_RULES,
+  refineRules,
   smithRealmOf,
   STAGES_PER_REALM,
   KEEP_LEVEL_ITEM,
@@ -135,8 +135,11 @@ import {
   type MapData,
   type ServerMessage,
   type Vec2,
+  type MonsterSnapshot,
+  type ViewEntity,
+  diffView,
 } from "@game/shared";
-import { BOSS_REGEN_PER_S, BOSSES, bossKillText, bossSpawnText, getMonsterDef, DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { bossRegenPerS, BOSSES, bossKillText, bossSpawnText, getMonsterDef, DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -180,6 +183,7 @@ import { getSetting } from "./settings";
 import { applyElementSettings } from "./element-settings";
 import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
+import { getTuning } from "./tuning";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
 interface PlayerState {
@@ -339,6 +343,9 @@ function sheetOf(p: PlayerProfile): CharacterSheet {
   };
 }
 
+/** The area of interest is brought up to date once every this many ticks (every half second at 10 Hz). */
+const AOI_EVERY_TICKS = 5;
+
 export class MapRoom extends DurableObject<Env> {
   private colo: string | null = null;
   /** Monsters and fights; exists only while someone is in a non-safe map (the room is empty otherwise). */
@@ -421,6 +428,7 @@ export class MapRoom extends DurableObject<Env> {
     await applyElementSettings(this.env.DB).catch((err) => console.error("element settings unavailable", err));
     await getGearMaster(this.env.DB); // installs the gear set names (never throws)
     await getEnhanceTable(this.env.DB); // installs the blacksmith rules (never throws)
+    await getTuning(this.env.DB); // installs the 2j balance numbers (never throws)
 
     const lock = this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(characterId));
     // Claim first: the previous holder (any room) kicks its socket and saves before we read the row.
@@ -527,11 +535,12 @@ export class MapRoom extends DurableObject<Env> {
         chatTimes: [],
       };
       server.serializeAttachment(state);
-      // Includes the joining player so the client gets its own authoritative snapshot.
-      const players = this.players().map((p) => this.snapshot(p));
       const sim = this.sim;
       const profile = sim ? (sim.getPlayer(row.id) ?? sim.addPlayer(seedOf(row, bagNow, skills ?? [], constitutions))) : undefined;
       if (sim) this.startTick();
+      // Includes the joining player so the client gets its own authoritative snapshot; on a combat map only those near them.
+      const view = this.welcomeView(state, Date.now());
+      const players = view.players;
       const derived = withPaths(deriveStats(baseOf(row), row.realm, row.stage, row.root_grade, equipmentBonus(bagNow.equipped, wearerOfRow(row, constitutions)), parseRoots(row.roots, row.spiritual_root).length), parsePaths(row.paths));
       const maxHp = profile?.maxHp ?? derived.maxHp;
       // In town there is no profile: what the character left the fight with still counts (and keeps regenerating from now on).
@@ -546,7 +555,7 @@ export class MapRoom extends DurableObject<Env> {
         colo,
         character: toCharacterSheet(row),
         // A safe map has no simulation until a coloured name is in it, but its guards are always there to see.
-        monsters: sim?.snapshots(Date.now()) ?? (map.safe ? staticGuardSnapshots(mapId) : []),
+        monsters: sim ? view.monsters : map.safe ? staticGuardSnapshots(mapId) : [],
         hp: profile?.hp ?? away.hp,
         maxHp,
         wallet,
@@ -568,7 +577,9 @@ export class MapRoom extends DurableObject<Env> {
       void this.sendQuestActive(row.id).catch((err) => console.error("quest list failed", row.id, err));
       this.sendPk(server, state);
       if (removedAtJoin.length > 0) this.send(server, { t: "eq_removed", items: removedAtJoin.map((r) => ({ type: r.item.type, reason: r.reason, mailed: r.mailed })) });
-      this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
+      if (this.aoiActive()) this.refreshAoi(Date.now());
+      else this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
+      this.announceOnline();
       return new Response(null, { status: 101, webSocket: client });
     } catch (err) {
       this.bags.delete(characterId);
@@ -596,7 +607,7 @@ export class MapRoom extends DurableObject<Env> {
       } catch {
         // Already closed.
       }
-      this.broadcast({ t: "left", id: state.id }, ws);
+      this.playerGone(state.id, ws);
     }
   }
 
@@ -608,6 +619,7 @@ export class MapRoom extends DurableObject<Env> {
     await applyElementSettings(this.env.DB).catch(() => undefined);
     await getGearMaster(this.env.DB);
     await getEnhanceTable(this.env.DB);
+    await getTuning(this.env.DB);
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state || state.transferring) return;
 
@@ -732,7 +744,7 @@ export class MapRoom extends DurableObject<Env> {
     state.dirty = true;
     ws.serializeAttachment(state);
     // Others get the new path; the mover only gets the track back if its start tile was overridden.
-    this.broadcast({ t: "path", player: this.snapshot(state) }, ws);
+    this.broadcastAbout([state.id], { t: "path", player: this.snapshot(state) }, ws);
     this.send(ws, claimedOk ? { t: "ack", seq: msg.seq } : { t: "ack", seq: msg.seq, player: this.snapshot(state) });
     if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(now + SAVE_DEBOUNCE_MS);
   }
@@ -783,7 +795,7 @@ export class MapRoom extends DurableObject<Env> {
     await this.settleBag(state.id);
     this.dropPlayer(state.id);
     this.forgetQuarrels(state.id);
-    this.broadcast({ t: "left", id: state.id }, ws);
+    this.playerGone(state.id, ws);
     this.send(ws, { t: "transfer", map: toMap });
     await this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(state.id)).release(state.claimId);
     try {
@@ -900,7 +912,7 @@ export class MapRoom extends DurableObject<Env> {
   private async handleLeave(ws: WebSocket): Promise<void> {
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state) return; // already evicted or never joined
-    this.broadcast({ t: "left", id: state.id }, ws);
+    this.playerGone(state.id, ws);
     await this.failBreakthroughOnExit(ws, state, "left");
     // Keep the attachment until the save finished: a claim arriving meanwhile must still find this
     // socket in evictCharacter() and wait for a save before the new room reads the character row.
@@ -973,7 +985,7 @@ export class MapRoom extends DurableObject<Env> {
     }
     this.bossRefreshedAt = Date.now();
     this.forgetBossState(); // a new boss is whole
-    this.broadcast({ t: "mon", monster: snap });
+    this.refreshAoi(Date.now()); // the boss is in view of everyone
     this.startTick();
     const channel = room.split(":")[1]?.replace(/^ch/, "") ?? "";
     await this.announce(bossSpawnText(getMonsterDef(snap.kind)?.nameVi ?? snap.kind, mapId, channel));
@@ -998,7 +1010,8 @@ export class MapRoom extends DurableObject<Env> {
     if (!sim || !room || !mapId) return;
     const gone = sim.removeBoss();
     if (!gone) return;
-    this.broadcast({ t: "mon_gone", id: gone });
+    this.broadcastAbout([gone], { t: "mon_gone", id: gone });
+    this.forgetEntity(gone);
     this.forgetBossState();
     await releaseBoss(this.env.DB, mapId, room);
     console.log("boss removed by a GM", room);
@@ -1017,7 +1030,10 @@ export class MapRoom extends DurableObject<Env> {
       return;
     }
     const gone = sim.removeBoss();
-    if (gone) this.broadcast({ t: "mon_gone", id: gone });
+    if (gone) {
+      this.broadcastAbout([gone], { t: "mon_gone", id: gone });
+      this.forgetEntity(gone);
+    }
     console.warn("boss claim lost, boss removed", room);
   }
 
@@ -1098,10 +1114,10 @@ export class MapRoom extends DurableObject<Env> {
       const holder = await bossHolder(this.env.DB, mapId).catch(() => null);
       const room = await this.roomName();
       if (holder !== null && holder === room && !sim.hasBoss && sim.spawnBoss(mapId, Date.now())) {
-        // It stands where it was left, with the health it had, healed by the time that passed (BOSS_REGEN_PER_S of its maximum each second).
+        // It stands where it was left, with the health it had, healed by the time that passed (bossRegenPerS() of its maximum each second).
         const kept = await this.ctx.storage.get<{ frac: number; damage: Record<string, number>; at: number }>("boss");
         if (kept && Number.isFinite(kept.frac) && Number.isFinite(kept.at)) {
-          const healed = kept.frac + (BOSS_REGEN_PER_S * Math.max(0, Date.now() - kept.at)) / 1000;
+          const healed = kept.frac + (bossRegenPerS() * Math.max(0, Date.now() - kept.at)) / 1000;
           sim.restoreBoss(healed, healed >= 1 ? {} : kept.damage);
         }
         this.bossRefreshedAt = Date.now();
@@ -1128,7 +1144,14 @@ export class MapRoom extends DurableObject<Env> {
     }
     this.wakes++;
     console.log("sim rebuilt", mapId, "players", sim.playerCount, "ranks restored", !!stored);
-    for (const monster of sim.snapshots(Date.now())) this.broadcast({ t: "mon", monster });
+    if (this.aoiActive()) {
+      // What each client was shown is no longer on record: they drop their monsters and are told about the ones in view again.
+      this.aoi.clear();
+      this.broadcast({ t: "mon_reset" });
+      this.refreshAoi(Date.now());
+    } else {
+      for (const monster of sim.snapshots(Date.now())) this.broadcast({ t: "mon", monster });
+    }
     this.startTick();
   }
 
@@ -1243,6 +1266,7 @@ export class MapRoom extends DurableObject<Env> {
     }
     if (this.tickTimer || !this.sim) return false;
     this.sim = null;
+    this.roomId = null; // a real eviction forgets this too (it is read back from storage when needed)
     this.ranksJson = null;
     // A real eviction loses every in-memory copy, not just the simulation.
     this.bags.clear();
@@ -1253,6 +1277,7 @@ export class MapRoom extends DurableObject<Env> {
     this.questRows.clear();
     this.questDirty.clear();
     this.vitalKeys.clear();
+    this.aoi.clear();
     return true;
   }
 
@@ -1289,6 +1314,7 @@ export class MapRoom extends DurableObject<Env> {
         later.push(this.keepBoss(sim, started));
       }
       await Promise.all(later);
+      if (++this.aoiTicks % AOI_EVERY_TICKS === 0) this.refreshAoi(started);
 
       const ms = Date.now() - started;
       const t = this.tickStat;
@@ -1311,11 +1337,12 @@ export class MapRoom extends DurableObject<Env> {
   ): void {
     switch (ev.t) {
       case "mon":
-        return this.broadcast({ t: "mon", monster: ev.monster });
+        return this.broadcastAbout([ev.monster.id], { t: "mon", monster: ev.monster });
       case "mon_gone":
-        return this.broadcast({ t: "mon_gone", id: ev.id });
+        this.broadcastAbout([ev.id], { t: "mon_gone", id: ev.id });
+        return this.forgetEntity(ev.id);
       case "hit": {
-        this.broadcast({ t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}) });
+        this.broadcastAbout([ev.from, ev.to], { t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}) });
         // Anything that attacks a character in the middle of a breakthrough (hit or miss) breaks it.
         // Who hit whom among the players: a player that hit you in the last 3 minutes is a self-defence kill, and shows grey on your screen.
         // An answer to a blow is not an attack of its own and does not count.
@@ -1615,7 +1642,7 @@ export class MapRoom extends DurableObject<Env> {
       ws.serializeAttachment(state);
     }
     // Everyone is told; a mover that predicted the change itself (and was believed) is not, or its own track would jump.
-    this.broadcast({ t: "path", player: this.snapshot(state) }, opts.quiet && accepted ? ws : undefined);
+    this.broadcastAbout([state.id], { t: "path", player: this.snapshot(state) }, opts.quiet && accepted ? ws : undefined);
   }
 
   /** Gets off when the flight pháp bảo is gone, broken or no longer allowed, then settles the speed. */
@@ -2149,7 +2176,7 @@ export class MapRoom extends DurableObject<Env> {
       if (spot.kind !== "merchant") return;
       const wearer = await this.wearerOf(id);
       if (!wearer) return;
-      const sendStock = async () => this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, state.mapId, await getPurchased(this.env.DB, id, Date.now())) });
+      const sendStock = async () => this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, state.mapId, await getPurchased(this.env.DB, id, Date.now())), tuning: await getTuning(this.env.DB) });
       if (msg.t === "npc_open") return sendStock();
       if (msg.t === "shop_buy") return this.shopBuy(ws, id, wearer.gender, state.mapId, msg.offer, msg.qty, sendStock);
       if (msg.t === "shop_sell_many") return this.shopSellMany(ws, id, msg.cells);
@@ -2299,8 +2326,8 @@ export class MapRoom extends DurableObject<Env> {
 
   /** The blacksmith's window: the upgrade rules and the bonus chance each of the character's pieces has built up. */
   private async sendSmith(ws: WebSocket, id: string, npcId: string): Promise<void> {
-    const [levels, pity] = await Promise.all([getEnhanceTable(this.env.DB), loadPity(this.env.DB, id)]);
-    this.send(ws, { t: "smith", npc: npcId, levels, pity });
+    const [levels, pity, tune] = await Promise.all([getEnhanceTable(this.env.DB), loadPity(this.env.DB, id), getTuning(this.env.DB)]);
+    this.send(ws, { t: "smith", npc: npcId, levels, pity, tuning: tune });
   }
 
   /** Blacksmith commands: upgrading a piece and repairing. Same checks as the merchant (close enough, no murderers, rate limit). */
@@ -2395,7 +2422,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!canRefine(piece.type, current)) return this.send(ws, { t: "inv_error", reason: "smith_full" });
     const ore = planConsume(bag.items, cost.ore, cost.materials);
     if (!ore) return this.send(ws, { t: "inv_error", reason: "smith_mats" });
-    const result = refineStats(piece.type, current, Math.random, REFINE_RULES.statChance, (key) => master.stats.get(key));
+    const result = refineStats(piece.type, current, Math.random, refineRules().statChance, (key) => master.stats.get(key));
     if (!result) return this.resync(ws, id, "smith_item");
     const now = Date.now();
     const extra = [
@@ -3315,8 +3342,9 @@ export class MapRoom extends DurableObject<Env> {
     this.wearGearOnDeath(ws, state.id, { gender: profile.gender, realm: profile.realm, stage: profile.stage, base: profile.base }, DEATH_DURABILITY_BY_TIER[tier]);
     this.send(ws, { t: "died", expLost });
     await this.forceDismount(state.id); // back in town on foot
-    const [sx, sy] = getMap("town").spawn;
-    await this.handoff(ws, state, "town", sx + 0.5, sy + 0.5, true);
+    const home = getMap(state.mapId).home; // the town nearest to where the character died
+    const [sx, sy] = getMap(home).spawn;
+    await this.handoff(ws, state, home, sx + 0.5, sy + 0.5, true);
   }
 
   /**
@@ -3397,7 +3425,7 @@ export class MapRoom extends DurableObject<Env> {
     apply(state);
     this.sim?.setPk(state.id, { satKhi: state.sk ?? 0, hero: state.ah ?? 0, satNhan: next, satNhanAt: now });
     this.send(ws, { t: "pk", mode: state.pk ?? 0, satKhi: state.sk ?? 0, satNhan: Math.round(next), hero: state.ah ?? 0 });
-    this.broadcast({ t: "pk_score", id: state.id, sn: Math.round(next) });
+    this.broadcastAbout([state.id], { t: "pk_score", id: state.id, sn: Math.round(next) });
     void this.flushPk(state);
   }
 
@@ -3410,7 +3438,7 @@ export class MapRoom extends DurableObject<Env> {
     state.moveBudgetAt = now;
     ws.serializeAttachment(state);
     const snap = this.snapshot(state);
-    this.broadcast({ t: "path", player: snap }, ws);
+    this.broadcastAbout([snap.id], { t: "path", player: snap }, ws);
     this.send(ws, { t: "path", player: snap });
   }
 
@@ -3426,7 +3454,7 @@ export class MapRoom extends DurableObject<Env> {
     state.dirty = true;
     ws.serializeAttachment(state);
     const snap = this.snapshot(state);
-    this.broadcast({ t: "path", player: snap }, ws);
+    this.broadcastAbout([snap.id], { t: "path", player: snap }, ws);
     this.send(ws, { t: "path", player: snap });
   }
 
@@ -3469,7 +3497,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!next) return;
     this.sim?.setPkMode(state.id, mode);
     this.sendPk(ws, next);
-    this.broadcast({ t: "pk_state", id: state.id, mode }, ws);
+    this.broadcastAbout([state.id], { t: "pk_state", id: state.id, mode }, ws);
   }
 
   private sendPk(ws: WebSocket, state: PlayerState, now = Date.now()): void {
@@ -3515,7 +3543,7 @@ export class MapRoom extends DurableObject<Env> {
       apply(entry.state);
       this.sim?.setPk(entry.state.id, { satKhi: scores.satKhi, hero: scores.hero, satNhan: scores.satNhan, satNhanAt: now });
       this.send(entry.ws, { t: "pk", mode: entry.state.pk ?? 0, satKhi: scores.satKhi, satNhan: Math.round(scores.satNhan), hero: scores.hero });
-      this.broadcast({ t: "pk_score", id: entry.state.id, sn: Math.round(scores.satNhan) });
+      this.broadcastAbout([entry.state.id], { t: "pk_score", id: entry.state.id, sn: Math.round(scores.satNhan) });
     }
     this.blows.delete(`${killerId}>${victimId}`);
     this.blows.delete(`${victimId}>${killerId}`);
@@ -3543,7 +3571,7 @@ export class MapRoom extends DurableObject<Env> {
     apply(killer.state);
     this.sim?.setPk(killerId, { satKhi: r.satKhi, hero: r.hero, satNhan: r.satNhan, satNhanAt: now });
     this.send(killer.ws, { t: "pk", mode: killer.state.pk ?? 0, satKhi: r.satKhi, satNhan: Math.round(r.satNhan), hero: r.hero });
-    this.broadcast({ t: "pk_score", id: killerId, sn: Math.round(r.satNhan) });
+    this.broadcastAbout([killerId], { t: "pk_score", id: killerId, sn: Math.round(r.satNhan) });
     await this.flushPk(killer.state);
   }
 
@@ -3570,6 +3598,123 @@ export class MapRoom extends DurableObject<Env> {
     if (state.tp) await this.interruptTalisman(state.id, "moved");
     profile.lastAttackMsgAt = now;
     sim.setTarget(state.id, monsterId);
+  }
+
+  // ---- Area of interest (combat maps): who has been told about whom ----
+
+  /** The ids each connected player has been told about (players and monsters near them). Lost when the object is evicted; a rebuild starts over. */
+  private aoi = new Map<string, Set<string>>();
+  private aoiTicks = 0;
+
+  /** Whether this room filters what it sends by distance: combat maps do; a town keeps telling everyone everything (it sleeps, so it keeps no such record). */
+  private aoiActive(): boolean {
+    const id = this.aoiMapId();
+    return id !== null && !getMap(id).safe;
+  }
+
+  /** The map of this room. `roomId` is only known once something has read it (it is lost when the object is evicted), so the players' own record of the map is the fallback. */
+  private aoiMapId(): MapId | null {
+    const id = this.roomId?.split(":")[0] ?? this.players()[0]?.mapId;
+    return id && isMapId(id) ? id : null;
+  }
+
+  /** Sends a message about these entities (players or monsters) only to the players who know of one of them, and to those it is about. Everyone in a town. */
+  private broadcastAbout(ids: readonly string[], msg: ServerMessage, except?: WebSocket): void {
+    if (!this.aoiActive()) return this.broadcast(msg, except);
+    const data = JSON.stringify(msg);
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === except) continue;
+      const s = ws.deserializeAttachment() as PlayerState | null;
+      if (!s) continue;
+      const known = this.aoi.get(s.id);
+      if (!ids.includes(s.id) && !ids.some((id) => known?.has(id))) continue;
+      try {
+        ws.send(data);
+      } catch {
+        // Ignore dead sockets.
+      }
+    }
+  }
+
+  /** A player left the room (closed, kicked or went through a portal): those who knew of them are told, and the records forget them. */
+  private playerGone(id: string, ws: WebSocket): void {
+    this.broadcastAbout([id], { t: "left", id }, ws);
+    this.forgetEntity(id);
+    this.aoi.delete(id);
+    this.announceOnline(ws);
+  }
+
+  /** An entity is gone for good: nobody needs to remember it. */
+  private forgetEntity(id: string): void {
+    for (const known of this.aoi.values()) known.delete(id);
+  }
+
+  /** The entities of the room as the area of interest sees them: players that are not on their way out, live monsters, the boss visible to all. */
+  private viewEntities(now: number): { list: ViewEntity[]; players: Map<string, PlayerSnapshot>; monsters: Map<string, MonsterSnapshot> } {
+    const list: ViewEntity[] = [];
+    const players = new Map<string, PlayerSnapshot>();
+    const monsters = new Map<string, MonsterSnapshot>();
+    for (const s of this.players()) {
+      if (s.transferring) continue;
+      const p = positionAlongPath(s.path, now - s.startedAt, s.speed);
+      list.push({ id: s.id, pos: [p.x, p.y] });
+      players.set(s.id, this.snapshot(s));
+    }
+    for (const m of this.sim?.snapshots(now) ?? []) {
+      const p = positionAlongPath(m.path, m.ageMs, m.speed);
+      list.push({ id: m.id, pos: [p.x, p.y], ...(m.boss ? { always: true as const } : {}) });
+      monsters.set(m.id, m);
+    }
+    return { list, players, monsters };
+  }
+
+  /** Brings every player's picture up to date: tells them about what came into view and what left it. Run a few times a second and after a join. */
+  private refreshAoi(now: number): void {
+    const mapId = this.aoiMapId();
+    if (!mapId || getMap(mapId).safe) return;
+    const map = getMap(mapId);
+    const { list, players, monsters } = this.viewEntities(now);
+    const positions = new Map(list.map((e) => [e.id, e.pos]));
+    const live = new Set<string>();
+    for (const ws of this.ctx.getWebSockets()) {
+      const s = ws.deserializeAttachment() as PlayerState | null;
+      const here = s && !s.transferring ? positions.get(s.id) : undefined;
+      if (!s || !here) continue;
+      live.add(s.id);
+      let known = this.aoi.get(s.id);
+      if (!known) this.aoi.set(s.id, (known = new Set()));
+      const { enter, leave } = diffView(map, s.id, here, known, list);
+      for (const id of leave) this.send(ws, isMonsterId(id) ? { t: "mon_gone", id } : { t: "left", id });
+      for (const id of enter) {
+        const p = players.get(id);
+        const m = monsters.get(id);
+        if (p) this.send(ws, { t: "joined", player: p });
+        else if (m) this.send(ws, { t: "mon", monster: m });
+      }
+    }
+    for (const id of [...this.aoi.keys()]) if (!live.has(id)) this.aoi.delete(id);
+  }
+
+  /** What a joining player is told in their welcome: themselves, the players near them and the monsters near them (and the boss). Fills their record. */
+  private welcomeView(self: PlayerState, now: number): { players: PlayerSnapshot[]; monsters: MonsterSnapshot[] } {
+    const { list, players, monsters } = this.viewEntities(now);
+    const me = players.get(self.id);
+    if (!this.aoiActive()) return { players: [...players.values()], monsters: [...monsters.values()] };
+    const here = list.find((e) => e.id === self.id)?.pos ?? [self.path[0]![0], self.path[0]![1]];
+    const known = new Set<string>();
+    diffView(getMap(self.mapId), self.id, here as Vec2, known, list);
+    this.aoi.set(self.id, known);
+    return {
+      players: [...(me ? [me] : []), ...[...known].flatMap((id) => players.get(id) ?? [])],
+      monsters: [...known].flatMap((id) => monsters.get(id) ?? []),
+    };
+  }
+
+  /** Tells everyone in the room how many players it holds (the list they see is only those near them). `leaving` is a socket that is about to go. */
+  private announceOnline(leaving?: WebSocket): void {
+    let n = 0;
+    for (const ws of this.ctx.getWebSockets()) if (ws !== leaving && ws.deserializeAttachment()) n++;
+    this.broadcast({ t: "online", n }, leaving);
   }
 
   private players(): PlayerState[] {

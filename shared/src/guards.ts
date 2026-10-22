@@ -1,6 +1,7 @@
 import { EQUIP_KINDS, KIND_SLOTS, GENDERED_KINDS, emptyEquipStats, equipmentInfo, makeEquipmentId, type EquipStats } from "./equipment-data";
 import { GUARD_REALM_BONUS, GUARD_TIER } from "./monsters";
 import { deriveStats, levelIndex, startingStats } from "./progression";
+import { REALMS } from "./progression-data";
 
 /**
  * Stats of a vệ binh (phase 2f): a character one realm above the map's, at bậc `GUARD_TIER`, wearing a FULL set of top-grade gear of
@@ -33,7 +34,7 @@ export function fullGearStats(realm: number, tier: number, grade: number): Equip
 }
 
 export function guardStats(mapRealm: number): GuardStats {
-  const realm = mapRealm + GUARD_REALM_BONUS;
+  const realm = Math.min(mapRealm + GUARD_REALM_BONUS, REALMS.length - 1); // the top realm has none above it
   const base = startingStats("kim", 1).base;
   const lv = levelIndex(realm, GUARD_TIER);
   base.canCot += lv * GUARD_POINTS_PER_LEVEL;

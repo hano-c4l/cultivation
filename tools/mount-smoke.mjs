@@ -1,3 +1,4 @@
+import { TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
 // Local test of riding the flight pháp bảo and of boots: the speed rises when worn, riding is kept across a map change and a reconnect,
 // a refused breakthrough does not get you off, and the flight pháp bảo roll their speed in the range of their realm.
 // Usage: node tools/mount-smoke.mjs [ws://localhost:8787]
@@ -98,9 +99,9 @@ c = await connect(reg.cookie);
 check("riding is kept after reconnecting", selfOf(c.welcome).mounted === true && selfOf(c.welcome).speed === ride, `${selfOf(c.welcome).speed}`);
 
 // Kept across a map change (the portal of the town).
-c.send({ t: "move", x: 20.5, y: 38.5, fx: selfOf(c.welcome).path[0][0], fy: selfOf(c.welcome).path[0][1], seq: 1 });
+c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: selfOf(c.welcome).path[0][0], fy: selfOf(c.welcome).path[0][1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1, 5000, "ack");
-await sleep(4500);
+await sleep(10500);
 c.send({ t: "portal" });
 await c.wait((m) => m.t === "transfer", 8000, "transfer");
 await sleep(500);
@@ -119,7 +120,7 @@ check("being on foot is kept after reconnecting", !selfOf(c.welcome).mounted && 
 c.send({ t: "mount", on: true });
 await c.wait((m) => m.t === "mounted" && m.on === true, 5000, "mounted again");
 await sleep(700);
-const start = [...c.log].reverse().find((m) => m.t === "path" && m.player.id === charId)?.player.path[0] ?? [20.5, 20.5];
+const start = [...c.log].reverse().find((m) => m.t === "path" && m.player.id === charId)?.player.path[0] ?? TOWN_SPAWN;
 c.send({ t: "move", x: start[0] + 4, y: start[1], fx: start[0], fy: start[1], seq: 77 });
 await c.wait((m) => m.t === "ack" && m.seq === 77, 5000, "walk ack");
 await sleep(800);
