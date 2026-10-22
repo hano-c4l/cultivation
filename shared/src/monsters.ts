@@ -140,8 +140,9 @@ export interface Cluster {
 }
 
 /**
- * Cluster layout per map: one group per glade/chamber of the map (their spots are in map.ts), with the bậc and species given by index. More
- * groups (and bigger maps) are added by extending both lists. The safe town has none. Monsters stand on a ring of `radius` tiles around a group's centre.
+ * Cluster layout per map: one group per glade/chamber of the map (their spots are in map.ts). On the lattice maps the bậc follows the distance from
+ * where the character arrives (the nearest ninth of the groups is bậc 1, the farthest bậc 9) and the species follows the bậc (the first three, the
+ * middle three, the last three). More groups (and bigger maps) are added by extending the lists. The safe towns have none.
  */
 function groupsOf(map: MapId, spots: readonly (readonly [number, number])[], tiers: readonly number[], kinds: readonly string[], radius: number, count: number): Cluster[] {
   return spots.map(([px, py], i) => {
@@ -150,14 +151,32 @@ function groupsOf(map: MapId, spots: readonly (readonly [number, number])[], tie
   });
 }
 
+/** The bậc (1..9) of each spot by its rank in distance from `origin` (screen units): even bands of nearest to farthest. */
+export function tiersByDistance(spots: readonly (readonly [number, number])[], origin: readonly [number, number]): number[] {
+  const order = spots.map((s, i) => ({ i, d: Math.hypot(s[0] - origin[0], s[1] - origin[1]) })).sort((a, b) => a.d - b.d || a.i - b.i);
+  const tiers = new Array<number>(spots.length).fill(1);
+  order.forEach((o, rank) => {
+    tiers[o.i] = 1 + Math.min(8, Math.floor((rank * 9) / spots.length));
+  });
+  return tiers;
+}
+
+/** Three species for a map, one for each third of the bậc range. */
+const speciesByTier = (tiers: readonly number[], kinds: readonly [string, string, string]): string[] => tiers.map((t) => kinds[t <= 3 ? 0 : t <= 6 ? 1 : 2]);
+
+const FOREST_TIERS = tiersByDistance(FOREST_GLADES, [0, -34]);
+const CAVE_TIERS = tiersByDistance(CAVE_CHAMBERS, [-84, 0]);
+const KIMDAN_TIERS = tiersByDistance(KIMDAN_GLADES, [-74, 0]);
+const NGUYENANH_TIERS = tiersByDistance(NGUYENANH_GLADES, [-79, 0]);
+
 /** Forest groups stay off the east-west road and the lane from the north gate (the only way to the cave) so low-level players can still walk through. */
 export const CLUSTERS: Readonly<Record<MapId, readonly Cluster[]>> = {
   town: [],
-  forest: groupsOf("forest", FOREST_GLADES, [1, 1, 2, 3, 3, 4, 4, 5, 6, 7, 7, 8, 9], [...Array<string>(5).fill("soi_rung"), ...Array<string>(4).fill("heo_rung"), ...Array<string>(4).fill("bao_dem")], 2, 4),
-  cave: groupsOf("cave", CAVE_CHAMBERS, [1, 2, 3, 4, 5, 6, 7, 9], ["doi_u_minh", "doi_u_minh", "doi_u_minh", "thi_quy", "thi_quy", "thi_quy", "xich_thi", "xich_thi"], 2, 5),
+  forest: groupsOf("forest", FOREST_GLADES, FOREST_TIERS, speciesByTier(FOREST_TIERS, ["soi_rung", "heo_rung", "bao_dem"]), 2, 4),
+  cave: groupsOf("cave", CAVE_CHAMBERS, CAVE_TIERS, speciesByTier(CAVE_TIERS, ["doi_u_minh", "thi_quy", "xich_thi"]), 2, 3),
   town2: [],
-  kimdan: groupsOf("kimdan", KIMDAN_GLADES, [1, 1, 2, 3, 3, 4, 5, 5, 6, 7, 7, 8, 9, 9], [...Array<string>(5).fill("hoa_dien_lang"), ...Array<string>(4).fill("nham_giap_thu"), ...Array<string>(5).fill("liet_hoa_xa")], 2, 5),
-  nguyenanh: groupsOf("nguyenanh", NGUYENANH_GLADES, [1, 1, 2, 3, 3, 4, 5, 5, 6, 7, 7, 8, 9, 9], [...Array<string>(5).fill("bang_phong_hac"), ...Array<string>(4).fill("han_thi_ma"), ...Array<string>(5).fill("tuyet_yeu_hau")], 2, 5),
+  kimdan: groupsOf("kimdan", KIMDAN_GLADES, KIMDAN_TIERS, speciesByTier(KIMDAN_TIERS, ["hoa_dien_lang", "nham_giap_thu", "liet_hoa_xa"]), 2, 4),
+  nguyenanh: groupsOf("nguyenanh", NGUYENANH_GLADES, NGUYENANH_TIERS, speciesByTier(NGUYENANH_TIERS, ["bang_phong_hac", "han_thi_ma", "tuyet_yeu_hau"]), 2, 4),
 };
 
 /** The positions of a cluster's monsters (before snapping to standable ground). */

@@ -27,6 +27,8 @@ export interface Tuning {
   bossCone: { power: number; cdMs: number; below: number; range: number; halfAngleDeg: number };
   /** The boss heals this fraction of its maximum HP per second once it has walked home from a lost fight. */
   bossRegen: { perSecond: number };
+  /** The teleport array in the middle of a main town: Linh Thạch = base + perUnit x the distance between the two towns on the world map (see waygate.ts). */
+  waygate: { base: number; perUnit: number };
 }
 
 export type TuningGroup = keyof Tuning;
@@ -47,6 +49,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   enhanceCost: { linhBase: [100, 1_000, 10_000, 100_000], maxPityPct: 30 },
   bossCone: { power: 2.2, cdMs: 25_000, below: 0.25, range: 4.5, halfAngleDeg: 45 },
   bossRegen: { perSecond: 0.02 },
+  waygate: { base: 500, perUnit: 40 },
 };
 
 export const TUNING_GROUPS = Object.keys(DEFAULT_TUNING) as TuningGroup[];
@@ -60,6 +63,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   enhanceCost: "Chi phí nâng cấp: Linh Thạch cơ bản theo cảnh giới, giới hạn cộng dồn thất bại",
   bossCone: "Kỹ năng nón của boss",
   bossRegen: "Tốc độ hồi máu của boss khi về chỗ cũ",
+  waygate: "Truyền tống trận: giá cơ bản và giá mỗi đơn vị khoảng cách giữa hai thành (Linh Thạch)",
 };
 
 const num = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
@@ -96,6 +100,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return num(value.power, 0, 100) && int(value.cdMs, 0, 3_600_000) && num(value.below, 0, 1) && num(value.range, 0, 50) && num(value.halfAngleDeg, 0, 180);
     case "bossRegen":
       return num(value.perSecond, 0, 1);
+    case "waygate":
+      return int(value.base, 0, 100_000_000) && num(value.perUnit, 0, 1_000_000);
     default:
       return false;
   }

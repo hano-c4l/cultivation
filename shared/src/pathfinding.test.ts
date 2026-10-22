@@ -144,7 +144,7 @@ describe("free movement", () => {
 
   it("works on the forest map with scattered trees (every segment clear, destination exact)", () => {
     const start: Vec2 = mapPoint(forest, 0, -34);
-    const goal: Vec2 = mapPoint(forest, 50, 29.3);
+    const goal: Vec2 = mapPoint(forest, 50, 0.7);
     const path = findSmoothPath(forest, start, goal)!;
     expect(path[0]).toEqual(start);
     expect(path.at(-1)).toEqual(goal);
@@ -153,13 +153,13 @@ describe("free movement", () => {
 
   it("finds a route across the whole forest quickly enough for the server and client to run per click", () => {
     const t0 = performance.now();
-    for (let i = 0; i < 5; i++) expect(findSmoothPath(forest, mapPoint(forest, 0, -34), [mapPoint(forest, 50, 29.3)[0] + i * 0.01, mapPoint(forest, 50, 29.3)[1]])).not.toBeNull();
+    for (let i = 0; i < 5; i++) expect(findSmoothPath(forest, mapPoint(forest, 0, -34), [mapPoint(forest, 50, 0.7)[0] + i * 0.01, mapPoint(forest, 50, 0.7)[1]])).not.toBeNull();
     const perCall = (performance.now() - t0) / 5;
     expect(perCall).toBeLessThan(150);
   });
 
   it("nav path cells are all standable", () => {
-    const cells = findNavPath(forest, mapPoint(forest, 0, -34), mapPoint(forest, 50, 29.3))!;
+    const cells = findNavPath(forest, mapPoint(forest, 0, -34), mapPoint(forest, 50, 0.7))!;
     expect(cells.every(([x, y]) => pointClear(forest, x, y, BODY_RADIUS))).toBe(true);
   });
 });

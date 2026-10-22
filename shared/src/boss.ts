@@ -24,8 +24,8 @@ export const BOSS_CLAIM_TTL_MS = 24 * 60 * 60 * 1000;
 export const BOSSES: Readonly<Record<MapId, string | null>> = { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang" };
 /** The bậc the boss pays out at (EXP and drops follow it, as for any monster): the top of the map's realm. */
 export const BOSS_TIER = 9;
-/** Where the boss stands (tile units): away from the three monster clusters and the guards of its map, so it is found, not stumbled into. */
-export const BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { town: null, forest: screenToTile(MAP_SIZE.forest, 20, 9), cave: screenToTile(MAP_SIZE.cave, 40, 0), town2: null, kimdan: screenToTile(MAP_SIZE.kimdan, 0, 6), nguyenanh: screenToTile(MAP_SIZE.nguyenanh, 0, 6) };
+/** Where the boss stands when no random spot could be found (tile units): the middle of the map, off the monster groups and the guards (see CombatSim.spawnBoss, which picks a random spot). */
+export const BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { town: null, forest: screenToTile(MAP_SIZE.forest, 0, 0), cave: screenToTile(MAP_SIZE.cave, 0, 0), town2: null, kimdan: screenToTile(MAP_SIZE.kimdan, 0, 0), nguyenanh: screenToTile(MAP_SIZE.nguyenanh, 0, 0) };
 /**
  * Its fighting strength is a few levels above the map's, like a vệ binh: a character `BOSS_REALM_BONUS` realm above the map's, at bậc
  * `BOSS_STAT_TIER`, in a full set of top-grade gear, with its points spent and `BOSS_HP_MULT` times the maximum HP. Placeholder values.

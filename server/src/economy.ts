@@ -19,29 +19,33 @@ export type CurrencyResult =
   | { status: "insufficient" };
 
 /**
+ * The three statements of one currency change: ledger INSERT, make sure the balance row exists, balance UPDATE ... RETURNING. Run them in ONE
+ * batch (with whatever else must happen together, such as a move to another map): the ledger's UNIQUE idempotency key and the balance CHECK
+ * make the batch throw and roll back as a whole on a duplicate or an overdraft. The balance is the result of the third statement.
+ */
+export function currencyStatements(db: D1Database, c: CurrencyChange): D1PreparedStatement[] {
+  if (!Number.isInteger(c.delta) || c.delta === 0 || Math.abs(c.delta) > MAX_LEDGER_AMOUNT) throw new Error("invalid ledger delta");
+  if (!c.idempotencyKey) throw new Error("idempotency key required");
+  return [
+    db
+      .prepare("INSERT INTO currency_ledger (character_id, currency, delta, reason, actor, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(c.characterId, c.currency, c.delta, c.reason, c.actor, c.idempotencyKey, Date.now()),
+    // Ensure the row exists (balance 0) so the UPDATE below always matches and its CHECK can fire. An upsert
+    // would not do: SQLite checks the proposed INSERT row (a negative delta) before it resolves the conflict.
+    db.prepare("INSERT OR IGNORE INTO currency_balances (character_id, currency, balance) VALUES (?, ?, 0)").bind(c.characterId, c.currency),
+    db.prepare("UPDATE currency_balances SET balance = balance + ? WHERE character_id = ? AND currency = ? RETURNING balance").bind(c.delta, c.characterId, c.currency),
+  ];
+}
+
+/**
  * Applies one currency change as a single D1 batch: ledger INSERT, then balance update. A statement that changes
  * zero rows does NOT roll a batch back, so both failure modes are made to throw instead: the ledger's UNIQUE
  * idempotency key (duplicate) and the balance CHECK (balance >= 0, which also catches a debit on a missing row).
  * The batch then rolls back and the ledger and balance stay consistent.
  */
 export async function applyCurrencyDelta(db: D1Database, c: CurrencyChange, extra: D1PreparedStatement[] = []): Promise<CurrencyResult> {
-  if (!Number.isInteger(c.delta) || c.delta === 0 || Math.abs(c.delta) > MAX_LEDGER_AMOUNT) throw new Error("invalid ledger delta");
-  if (!c.idempotencyKey) throw new Error("idempotency key required");
   try {
-    const results = await db.batch<{ balance: number }>([
-      db
-        .prepare(
-          "INSERT INTO currency_ledger (character_id, currency, delta, reason, actor, idempotency_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(c.characterId, c.currency, c.delta, c.reason, c.actor, c.idempotencyKey, Date.now()),
-      // Ensure the row exists (balance 0) so the UPDATE below always matches and its CHECK can fire. An upsert
-      // would not do: SQLite checks the proposed INSERT row (a negative delta) before it resolves the conflict.
-      db.prepare("INSERT OR IGNORE INTO currency_balances (character_id, currency, balance) VALUES (?, ?, 0)").bind(c.characterId, c.currency),
-      db
-        .prepare("UPDATE currency_balances SET balance = balance + ? WHERE character_id = ? AND currency = ? RETURNING balance")
-        .bind(c.delta, c.characterId, c.currency),
-      ...extra,
-    ]);
+    const results = await db.batch<{ balance: number }>([...currencyStatements(db, c), ...extra]);
     // Logged so `wrangler tail` shows the real D1 write cost of a ledger change (docs/PHASE1.md, economy notes).
     console.log("ledger rows_written", c.reason, results.reduce((n, r) => n + (r.meta?.rows_written ?? 0), 0));
     const balance = results[2]?.results[0]?.balance;

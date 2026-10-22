@@ -1,4 +1,4 @@
-import { getMap, rollLoot, startingStats, type Vec2 } from "@game/shared";
+import { getMap, inPlayRect, isStandable, rollLoot, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -274,6 +274,33 @@ describe("the map boss", () => {
     }
   });
 
+  it("appears at a random spot each time (standable, away from gates and guards), and where it was left when the room woke", () => {
+    const spots = new Set<string>();
+    let seed = 7;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    for (const id of ["forest", "cave", "kimdan", "nguyenanh"] as const) {
+      const map = getMap(id);
+      for (let i = 0; i < 6; i++) {
+        const sim = new CombatSim(map, id, rnd, 0);
+        const at = sim.spawnBoss(id, 0)!.path[0]!;
+        spots.add(`${id}:${at.join()}`);
+        expect(isStandable(map, at[0], at[1])).toBe(true);
+        expect(inPlayRect(map, at[0], at[1])).toBe(true);
+        for (const p of map.portals) expect(Math.hypot(at[0] - p.x - 0.5, at[1] - p.y - 0.5)).toBeGreaterThanOrEqual(24);
+        // It also stays put through a sleep: the spot is part of what the room keeps.
+        const kept = sim.bossState()!;
+        const again = new CombatSim(map, id, rnd, 0).spawnBoss(id, 0, kept.home)!;
+        expect(again.path[0]).toEqual(kept.home);
+      }
+    }
+    expect(spots.size).toBeGreaterThan(18); // 4 maps x 6: almost every appearance is somewhere else
+    // With a random source that keeps giving the same number the map's fixed spot is used rather than looping.
+    expect(new CombatSim(getMap("forest"), "forest", () => 0.5, 0).spawnBoss("forest", 0)).not.toBeNull();
+  });
+
   it("is a realm above the map at bậc 2 (a map of Luyện Khí gets a Trúc Cơ 2 boss)", () => {
     const sim = new CombatSim(getMap("forest"), "forest", noCrit, 0);
     expect(sim.spawnBoss("forest", 0)).toMatchObject({ tier: 2, boss: true });
@@ -296,6 +323,9 @@ describe("the map boss", () => {
     // The cone fires on the first act (the boss is below 25%) and costs a and b one hit each of the same big size.
     expect(hitBy("b").length).toBeGreaterThan(0);
     expect(hitBy("c").length).toBe(0);
+    // Everyone who sees it is told the shape: where the boss stands, the point it faced, the reach and the opening.
+    const cone = events.find((e) => e.t === "cone");
+    expect(cone).toMatchObject({ t: "cone", monsterId: snap.id, range: 4.5, halfAngleDeg: 45 });
   });
 
   it("does not use the cone while above a quarter of its HP", () => {

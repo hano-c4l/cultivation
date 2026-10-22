@@ -1,0 +1,7 @@
+-- The one-time breakthrough pill quests of the elders are now offered only from stage 9 of the previous realm (Luyện Khí 9 for the Trúc Cơ pill,
+-- Trúc Cơ 9 for Kim Đan, Kim Đan 9 for Nguyên Anh). Seeding never overwrites rows, so the stored definitions are updated here (rows that do not
+-- exist yet are seeded from the new definitions); a test checks they match the seed.
+UPDATE quests SET def = json_set(def, '$.minRealm', 0, '$.minStage', 9, '$.descVi', 'Đột phá lên Trúc Cơ cần Đan Đột Phá. Cần đã đạt Luyện Khí tầng 9. Mang đến 20 Linh Thảo, 10 Thú Cốt và 3 Yêu Đan, ta sẽ luyện cho con một viên. Chỉ làm được một lần.'), updated_at = 0 WHERE id = 'breakthrough_1';
+UPDATE quests SET def = json_set(def, '$.minRealm', 1, '$.minStage', 9, '$.descVi', 'Kết đan là cửa ải lớn của Trúc Cơ. Cần đã đạt Trúc Cơ tầng 9. Mang đến 60 Linh Thảo, 30 Thú Cốt và 12 Yêu Đan, ta sẽ luyện cho con một viên Đan Đột Phá Kim Đan. Chỉ làm được một lần.'), updated_at = 0 WHERE id = 'breakthrough_2';
+UPDATE quests SET def = json_set(def, '$.minRealm', 2, '$.minStage', 9, '$.descVi', 'Phá đan thành anh còn khó hơn nhiều. Cần đã đạt Kim Đan tầng 9. Mang đến 40 Yêu Đan, 25 Tinh Thiết Kim Đan và 10 Tinh Hoa Kim Đan, ta sẽ luyện cho con một viên Đan Đột Phá Nguyên Anh. Chỉ làm được một lần.'), updated_at = 0 WHERE id = 'breakthrough_3';
+UPDATE config_versions SET version = version + 1, updated_at = 0 WHERE name = 'quests';

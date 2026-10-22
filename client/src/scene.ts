@@ -60,6 +60,8 @@ import { initShop, type ShopUi } from "./shop-ui";
 import { initSmith, type SmithUi } from "./smith-ui";
 import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
+import { initWaygate, type WaygateUi } from "./waygate-ui";
+import { Effects } from "./fx";
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
@@ -172,6 +174,8 @@ function applyTrack(actor: Actor, path: Vec2[], startedAt: number, speed: number
   actor.offAt = now;
 }
 
+/** Radius (tiles) of the teleport array drawn on the ground and of the click that opens it. */
+const WAYGATE_RADIUS = 1.3;
 /** Pixel size of one texture of obstacles (kept under the 4096 limit of small GPUs, and not too many textures for a big map). */
 const CHUNK = 1024;
 
@@ -220,6 +224,8 @@ export class GameScene extends Phaser.Scene {
   private quests!: QuestUi;
   private pk!: PkUi;
   private channel!: ChannelUi;
+  private waygate!: WaygateUi;
+  private fx!: Effects;
   private rank!: RankUi;
   /** When each player last hit you (performance.now): they show grey to you for 3 minutes unless their name is orange or red. */
   private hitMeAt = new Map<string, number>();
@@ -299,6 +305,8 @@ export class GameScene extends Phaser.Scene {
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
     this.channel = initChannel();
+    this.waygate = initWaygate((msg) => this.net.send(msg));
+    this.fx = new Effects(this, (id) => this.screenPosOf(id));
     this.rank = initRank((msg) => this.net.send(msg), this.registry.get("isAdmin") === true);
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
@@ -441,6 +449,22 @@ export class GameScene extends Phaser.Scene {
 
     for (const npc of this.map.npcs) {
       const p = toScreen(npc.x, npc.y);
+      if (npc.kind === "waygate") {
+        // A magic circle on the ground (nothing blocks it: characters arrive standing on it).
+        const g = this.add.graphics().setDepth(0.4);
+        const rx = WAYGATE_RADIUS * TILE_W * 0.5;
+        const ry = WAYGATE_RADIUS * TILE_H * 0.5;
+        g.lineStyle(3, 0x7b61ff, 0.95).strokeEllipse(p.x, p.y, rx * 2, ry * 2);
+        g.lineStyle(2, 0xd9ccff, 0.9).strokeEllipse(p.x, p.y, rx * 1.35, ry * 1.35);
+        g.fillStyle(0x7b61ff, 0.22).fillEllipse(p.x, p.y, rx * 1.9, ry * 1.9);
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          g.fillStyle(0xe8e0ff, 0.9).fillCircle(p.x + Math.cos(a) * rx * 0.67, p.y + Math.sin(a) * ry * 0.67, 2.5);
+        }
+        const label = this.add.text(p.x, p.y - ry - 4, vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#e8e0ff", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(p.y + 2);
+        this.mapObjects.push(g, label);
+        continue;
+      }
       // Placeholder figure (a robe and a head) standing on the NPC's spot, like the other placeholder art.
       const body = this.add.graphics().setDepth(p.y + 1);
       body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
@@ -470,6 +494,7 @@ export class GameScene extends Phaser.Scene {
     this.map = getMap(mapId);
     this.shop.close();
     this.quests.close();
+    this.waygate.close();
     this.drawMap();
     this.applyCameraBounds();
   }
@@ -536,6 +561,7 @@ export class GameScene extends Phaser.Scene {
     // The figure stands up from its spot, so a click on its body lands on a ground tile behind it: test the drawn box too.
     const npc = this.map.npcs.find((n) => {
       const p = toScreen(n.x, n.y);
+      if (n.kind === "waygate") return Math.hypot(tx - n.x, ty - n.y) <= WAYGATE_RADIUS; // a circle on the ground, nothing stands up from it
       return Math.hypot(tx - n.x, ty - n.y) <= 1 || (Math.abs(world.x - p.x) <= 18 && world.y >= p.y - 52 && world.y <= p.y + 10);
     });
     if (npc) {
@@ -569,8 +595,10 @@ export class GameScene extends Phaser.Scene {
       this.shop.close();
       this.quests.close();
       this.smith.close();
+      this.waygate.close();
       if (npc.kind === "quest") this.quests.open(npc.id);
       else if (npc.kind === "smith") this.smith.open(npc.id);
+      else if (npc.kind === "waygate") this.waygate.open(npc.id);
       else this.shop.open(npc.id, this.map.id);
       return;
     }
@@ -594,6 +622,7 @@ export class GameScene extends Phaser.Scene {
     this.shop.close(); // walking away from an NPC closes its window
     this.quests.close();
     this.smith.close();
+    this.waygate.close();
     this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
     const c = toScreen(tx, ty);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
@@ -651,6 +680,7 @@ export class GameScene extends Phaser.Scene {
         this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
         this.vitals.setWallet(msg.wallet);
         this.linhThach = msg.wallet.linh_thach;
+        this.waygate.setBalance(this.linhThach);
         this.inventory.setBag(msg.bag);
         this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
@@ -701,7 +731,10 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(vi.combat.died(msg.expLost), "important");
         break;
       case "wallet":
-        if (msg.currency === "linh_thach") this.linhThach = msg.balance;
+        if (msg.currency === "linh_thach") {
+          this.linhThach = msg.balance;
+          this.waygate.setBalance(this.linhThach);
+        }
         this.vitals.setBalance(msg.currency, msg.balance);
         this.smith.refresh();
         if (msg.gained) this.chat.system(vi.chat.gainedCurrency(msg.gained, vi.economy.currency[msg.currency]));
@@ -861,6 +894,21 @@ export class GameScene extends Phaser.Scene {
           else this.chat.system(vi.inventory.picked(name, it.qty));
         }
         break;
+      case "fx":
+        this.fx.skill(msg.id, msg.skill, msg.to, msg.x !== undefined && msg.y !== undefined ? toScreen(msg.x, msg.y) : undefined, msg.el);
+        break;
+      case "fx_cone": {
+        const from = toScreen(msg.x, msg.y);
+        const aim = toScreen(msg.ax, msg.ay);
+        this.fx.coneFrom(from, aim, msg.range, msg.half);
+        break;
+      }
+      case "fx_channel":
+        this.fx.channel(msg.id, msg.what, msg.on, msg.ok);
+        break;
+      case "waygate":
+        this.waygate.setDests(msg.npc, msg.dests);
+        break;
       case "shop":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
         this.shop.setStock(msg.npc, msg.left);
@@ -968,7 +1016,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "tp": {
         // The note above the hotbar counts down the channel; the server ends it (tp_end or the transfer).
-        const name = getItemDef(msg.item)?.nameVi ?? msg.item;
+        const name = msg.item === "waygate" ? vi.waygate.channelName : (getItemDef(msg.item)?.nameVi ?? msg.item);
         this.chat.system(vi.shop.channel(name, Math.round(msg.ms / 1000)));
         // Channelling is standing still, with nothing open: every window closes, and a bar in the middle of the screen counts down.
         closeAllWindows();
@@ -1096,6 +1144,7 @@ export class GameScene extends Phaser.Scene {
   private removeActor(id: string): void {
     const actor = this.actors.get(id);
     if (!actor) return;
+    this.fx.forget(id);
     actor.body.destroy();
     actor.label.destroy();
     actor.tag.destroy();
@@ -1103,7 +1152,24 @@ export class GameScene extends Phaser.Scene {
     this.actors.delete(id);
   }
 
+  /** Where an actor (a player or a monster) stands on screen right now, or null when it is not here: effects follow it. */
+  private screenPosOf(id: string): { x: number; y: number } | null {
+    const now = performance.now();
+    const actor = this.actors.get(id);
+    if (actor) {
+      const p = currentPos(actor, now);
+      return toScreen(p.x, p.y);
+    }
+    const m = this.monsters.get(id);
+    if (m) {
+      const p = positionAlongPath(m.path, now - m.startedAt, m.speed);
+      return toScreen(p.x, p.y);
+    }
+    return null;
+  }
+
   private clearActors(): void {
+    this.fx?.clear();
     for (const id of [...this.actors.keys()]) this.removeActor(id);
     for (const id of [...this.monsters.keys()]) this.removeMonster(id);
     this.targetId = null;
@@ -1331,6 +1397,7 @@ export class GameScene extends Phaser.Scene {
 
   update(): void {
     const now = performance.now();
+    this.fx.update(now);
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);

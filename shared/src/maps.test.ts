@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BOSS_SPOTS } from "./boss";
 import { MAPS_NPC_IDS, MAP_IDS, MAP_REALM, MAP_SIZE, getMap, inPlayRect, isStandable, lineClear, mapPoint, nearestStandablePoint, playRectPixels, portalNear, screenToTile, tileToScreenUnit, type MapData, type Vec2 } from "./map";
-import { CLUSTERS, GUARDS, clusterSlots } from "./monsters";
+import { CAVE_CHAMBERS, FOREST_GLADES, KIMDAN_GLADES, NGUYENANH_GLADES } from "./map";
+import { CLUSTERS, GUARDS, clusterSlots, tiersByDistance } from "./monsters";
 import { findSmoothPath } from "./pathfinding";
 
 /** A spot the server could put something on: standable ground within `reach` tiles of it, inside the rectangle. */
@@ -103,7 +104,7 @@ describe("the world of two towns", () => {
     expect(getMap("town2").portals.map((p) => p.toMap).sort()).toEqual(["cave", "kimdan", "nguyenanh"]);
     expect(getMap("kimdan").realm).toBe(2);
     expect(getMap("nguyenanh").realm).toBe(3);
-    expect(getMap("town2").npcs.map((n) => n.id).sort()).toEqual(["elder2", "merchant2", "path_dan", "path_kiem", "path_thuat", "smith2"]);
+    expect(getMap("town2").npcs.map((n) => n.id).sort()).toEqual(["elder2", "merchant2", "path_dan", "path_kiem", "path_thuat", "smith2", "waygate2"]);
   });
 });
 
@@ -114,5 +115,32 @@ describe("what is known without building a map", () => {
       expect(getMap(id).realm, id).toBe(MAP_REALM[id]);
     }
     expect([...MAPS_NPC_IDS].sort()).toEqual([...new Set(MAP_IDS.flatMap((id) => getMap(id).npcs.map((n) => n.id)))].sort());
+  });
+});
+
+describe("the monster groups are spread evenly", () => {
+  const sets = { forest: FOREST_GLADES, cave: CAVE_CHAMBERS, kimdan: KIMDAN_GLADES, nguyenanh: NGUYENANH_GLADES } as const;
+  for (const [id, spots] of Object.entries(sets)) {
+    it(`${id}: no two groups close together and no wide stretch of standable ground without one`, () => {
+      const map = getMap(id as keyof typeof sets);
+      let closest = Infinity;
+      for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++) closest = Math.min(closest, Math.hypot(spots[i]![0] - spots[j]![0], spots[i]![1] - spots[j]![1]));
+      expect(closest, "closest pair (screen units)").toBeGreaterThanOrEqual(18);
+      let farthest = 0;
+      for (let px = -map.rect.halfW + 3; px < map.rect.halfW - 3; px += 4) {
+        for (let py = -map.rect.halfH + 3; py < map.rect.halfH - 3; py += 4) {
+          const [x, y] = screenToTile(map.width, px, py);
+          if (!isStandable(map, x, y)) continue;
+          farthest = Math.max(farthest, Math.min(...spots.map(([a, b]) => Math.hypot(a - px, b - py))));
+        }
+      }
+      expect(farthest, "farthest standable ground from a group (screen units)").toBeLessThanOrEqual(40);
+    });
+  }
+
+  it("the bậc runs from 1 to 9 in even bands by distance from the arrival", () => {
+    const tiers = tiersByDistance(FOREST_GLADES, [0, -34]);
+    for (let t = 1; t <= 9; t++) expect(tiers.filter((x) => x === t).length).toBeGreaterThanOrEqual(1);
+    expect(Math.max(...tiers.map((_, i) => tiers.filter((x) => x === tiers[i]).length))).toBeLessThanOrEqual(3);
   });
 });

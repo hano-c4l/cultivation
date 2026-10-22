@@ -139,7 +139,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { bossRegenPerS, BOSSES, bossKillText, bossSpawnText, getMonsterDef, DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, BOSSES, bossKillText, bossSpawnText, getMonsterDef, DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -161,7 +161,7 @@ import {
   type CharacterRow,
 } from "./characters";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { applyCurrencyDelta, getWallet } from "./economy";
+import { applyCurrencyDelta, currencyStatements, getWallet } from "./economy";
 import {
   addBagTabStatements,
   claimMailItem,
@@ -230,7 +230,7 @@ interface PlayerState {
   /** The scores changed since they were last written (they are also written when the character leaves while it has sát nhân to decay). */
   pkDirty?: boolean;
   /** A teleport talisman being channelled: when it completes, which talisman and where it leads. Any move, attack or hit breaks it. */
-  tp?: { endsAt: number; item: string; to: MapId };
+  tp?: { endsAt: number; item: string; to: MapId; /** A teleport array trip: the Linh Thạch it costs (taken in the batch that moves the character). */ fee?: number };
 }
 
 /** What a running breakthrough needs to be finished later: when it started (the D1 marker), when it ends, and the chance fixed at the start. */
@@ -657,6 +657,8 @@ export class MapRoom extends DurableObject<Env> {
       case "smith_refine":
       case "smith_repair":
         return this.handleSmith(ws, state, msg);
+      case "waygate_go":
+        return void this.startWaygate(ws, state, msg);
       case "npc_open":
       case "shop_buy":
       case "shop_sell":
@@ -1113,9 +1115,12 @@ export class MapRoom extends DurableObject<Env> {
       // The claim says which room holds the map's boss; if it is this one, the boss stands again (at full health: its health is not kept across a sleep).
       const holder = await bossHolder(this.env.DB, mapId).catch(() => null);
       const room = await this.roomName();
-      if (holder !== null && holder === room && !sim.hasBoss && sim.spawnBoss(mapId, Date.now())) {
+      // It stands where it was left (the spot is kept with its health), or at a random spot when it has just appeared.
+      const keptBoss = await this.ctx.storage.get<{ frac: number; damage: Record<string, number>; at: number; home?: Vec2 }>("boss");
+      const keptHome = keptBoss?.home && Number.isFinite(keptBoss.home[0]) && Number.isFinite(keptBoss.home[1]) ? keptBoss.home : undefined;
+      if (holder !== null && holder === room && !sim.hasBoss && sim.spawnBoss(mapId, Date.now(), keptHome)) {
         // It stands where it was left, with the health it had, healed by the time that passed (bossRegenPerS() of its maximum each second).
-        const kept = await this.ctx.storage.get<{ frac: number; damage: Record<string, number>; at: number }>("boss");
+        const kept = keptBoss;
         if (kept && Number.isFinite(kept.frac) && Number.isFinite(kept.at)) {
           const healed = kept.frac + (bossRegenPerS() * Math.max(0, Date.now() - kept.at)) / 1000;
           sim.restoreBoss(healed, healed >= 1 ? {} : kept.damage);
@@ -1387,6 +1392,17 @@ export class MapRoom extends DurableObject<Env> {
         if (entry) this.send(entry.ws, { t: "cast_ok", skill: ev.skill, cdMs: ev.cdMs });
         return;
       }
+      case "fx":
+        return this.broadcastAbout([ev.playerId, ...(ev.target ? [ev.target] : [])], {
+          t: "fx",
+          id: ev.playerId,
+          skill: ev.skill,
+          ...(ev.target ? { to: ev.target } : {}),
+          ...(ev.dest ? { x: ev.dest[0], y: ev.dest[1] } : {}),
+          ...(ev.element ? { el: ev.element } : {}),
+        });
+      case "cone":
+        return this.broadcastAbout([ev.monsterId], { t: "fx_cone", id: ev.monsterId, x: ev.at[0], y: ev.at[1], ax: ev.aim[0], ay: ev.aim[1], range: ev.range, half: ev.halfAngleDeg });
       case "cast_fail": {
         const entry = sockets.get(ev.playerId);
         if (entry) this.send(entry.ws, { t: "cast_error", skill: ev.skill, reason: ev.reason });
@@ -1998,6 +2014,7 @@ export class MapRoom extends DurableObject<Env> {
     const p = parsePaths(row?.paths);
     const owned = new Set<string>([...(p.main ? [p.main] : []), ...p.subs]);
     const realm = this.sim?.getPlayer(id)?.realm ?? row?.realm ?? 0;
+    const stage = this.sim?.getPlayer(id)?.stage ?? row?.stage ?? 1;
     // Only what can be taken or is being done: no finished quests, no locked ones, no path quest for a path the character already has,
     // and no path quest below the realm it needs (the NPC then says which realm that is).
     let need: number | undefined;
@@ -2009,6 +2026,8 @@ export class MapRoom extends DurableObject<Env> {
         need = Math.max(need ?? 0, d.minRealm);
         return false;
       }
+      // A quest with a stage requirement (the breakthrough pill ones) is not shown until the character has reached it.
+      if (d.minStage !== undefined && !meetsQuestLevel(d, realm, stage)) return false;
       return true;
     };
     const mine = defs.filter((d) => d.giver === npcId && offered(d));
@@ -2082,8 +2101,9 @@ export class MapRoom extends DurableObject<Env> {
     if (!def.enabled) return this.send(ws, { t: "quest_error", reason: "invalid" });
     if (questStatus(def, rows) === "locked") return this.send(ws, { t: "quest_error", reason: "locked" });
     if (def.minRealm !== undefined) {
-      const realm = this.sim?.getPlayer(id)?.realm ?? (await getCharacterById(this.env.DB, id))?.realm ?? 0;
-      if (realm < def.minRealm) return this.send(ws, { t: "quest_error", reason: "level" });
+      const live = this.sim?.getPlayer(id);
+      const row = live ? undefined : await getCharacterById(this.env.DB, id);
+      if (!meetsQuestLevel(def, live?.realm ?? row?.realm ?? 0, live?.stage ?? row?.stage ?? 1)) return this.send(ws, { t: "quest_error", reason: "level" });
     }
     // A path item that was already given (the old claim button) blocks the path quest: say so now, not after the materials were gathered.
     if (def.path && (await this.ownedPaths(id)).has(def.path)) return this.send(ws, { t: "quest_error", reason: "owned" });
@@ -2172,6 +2192,7 @@ export class MapRoom extends DurableObject<Env> {
         await this.noteTalk(id, npcId).catch((err) => console.error("quest talk failed", id, err));
         if (spot.kind === "quest") return this.sendQuests(ws, id, npcId);
         if (spot.kind === "smith") return this.sendSmith(ws, id, npcId);
+        if (spot.kind === "waygate") return this.sendWaygate(ws, state.mapId, npcId);
       }
       if (spot.kind !== "merchant") return;
       const wearer = await this.wearerOf(id);
@@ -2751,6 +2772,43 @@ export class MapRoom extends DurableObject<Env> {
     if (hp !== null && hp !== undefined && p) this.sendToCharacter(id, { t: "hp", hp, maxHp: p.maxHp });
   }
 
+  /** The destinations of a teleport array and their prices. */
+  private sendWaygate(ws: WebSocket, mapId: MapId, npcId: string): void {
+    if (!isWaygateTown(mapId)) return;
+    this.send(ws, { t: "waygate", npc: npcId, dests: waygateDestinations(mapId) });
+  }
+
+  /**
+   * A trip through the teleport array: the same channel as a talisman (TALISMAN_CAST_MS, broken by moving, casting or a hit), but what it
+   * spends is Linh Thạch, taken in the batch that moves the character (finishTalisman), at the price the server works out. The wallet is checked
+   * here too so a poor character is told before it stands still for five seconds.
+   */
+  private async startWaygate(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "waygate_go" }>): Promise<void> {
+    const now = Date.now();
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "waygate" || !isWaygateTown(state.mapId)) return void this.send(ws, { t: "inv_error", reason: "far" });
+    const to = msg.to as MapId;
+    if (!isWaygateTown(to) || to === state.mapId) return void this.send(ws, { t: "inv_error", reason: "invalid" });
+    if (this.satNhanOf(state, now) >= NAME_TIER_ORANGE_FROM) return void this.send(ws, { t: "inv_error", reason: "murderer" });
+    if (state.bt) return void this.send(ws, { t: "inv_error", reason: "breaking" });
+    if (state.tp) return void this.send(ws, { t: "inv_error", reason: "busy" });
+    if (this.isMoving(state)) return void this.send(ws, { t: "inv_error", reason: "moving" });
+    if (this.sim?.getPlayer(state.id)?.dead === true) return void this.send(ws, { t: "inv_error", reason: "not_needed" });
+    const price = waygatePrice(state.mapId, to);
+    const wallet = await getWallet(this.env.DB, state.id).catch(() => null);
+    if (!wallet || wallet.linh_thach < price) return void this.send(ws, { t: "tp_end", ok: false, reason: "money" });
+    const fresh = ws.deserializeAttachment() as PlayerState | null;
+    if (!fresh || fresh.transferring || fresh.tp || fresh.bt) return;
+    const endsAt = Date.now() + TALISMAN_CAST_MS;
+    this.patchState(ws, (s) => {
+      s.tp = { endsAt, item: "waygate", to, fee: price };
+    });
+    this.sim?.clearTarget(state.id);
+    this.send(ws, { t: "tp", ms: TALISMAN_CAST_MS, item: "waygate" });
+    await this.scheduleAlarmAt(endsAt);
+  }
+
   /**
    * A teleport talisman starts a channel of TALISMAN_CAST_MS: nothing is spent yet. Moving, attacking, casting or being hit
    * breaks it and the talisman stays in the bag; when the time is up the alarm completes it (finishTalisman), which spends
@@ -2799,6 +2857,7 @@ export class MapRoom extends DurableObject<Env> {
       delete s.tp;
     });
     if (this.sim?.getPlayer(id)?.dead === true) return void this.send(ws, { t: "tp_end", ok: false, reason: "dead" });
+    if (tp.fee !== undefined) return this.finishWaygate(ws, id, tp.to, tp.fee, tp.endsAt);
     for (let attempt = 0; attempt < 2; attempt++) {
       let ops: BagOp[] | null = null;
       await this.bagTask(id, async () => {
@@ -2818,6 +2877,22 @@ export class MapRoom extends DurableObject<Env> {
       if (!again || again.transferring) return;
     }
     this.send(ws, { t: "tp_end", ok: false, reason: "other" });
+  }
+
+  /**
+   * The channel of a teleport array ran its time: the Linh Thạch fee and the move are ONE batch (the ledger entry and the balance CHECK are
+   * in handoff's `before`), so the fee is never taken without the trip or the other way round. A key per use keeps a retry from charging twice.
+   */
+  private async finishWaygate(ws: WebSocket, id: string, to: MapId, fee: number, endsAt: number): Promise<void> {
+    const wallet = await getWallet(this.env.DB, id).catch(() => null);
+    if (!wallet || wallet.linh_thach < fee) return void this.send(ws, { t: "tp_end", ok: false, reason: "money" });
+    const fresh = ws.deserializeAttachment() as PlayerState | null;
+    if (!fresh || fresh.id !== id || fresh.transferring || fresh.bt || fresh.tp || this.isMoving(fresh)) return;
+    const spawn = getMap(to).spawn;
+    const before = currencyStatements(this.env.DB, { characterId: id, currency: "linh_thach", delta: -fee, reason: "waygate", actor: "system", idempotencyKey: `waygate:${id}:${endsAt}` });
+    if (await this.handoff(ws, fresh, to, spawn[0] + 0.5, spawn[1] + 0.5, false, before)) return; // the socket is closed: the client sees the transfer
+    const again = ws.deserializeAttachment() as PlayerState | null;
+    if (again && !again.transferring) this.send(ws, { t: "tp_end", ok: false, reason: "other" });
   }
 
   /** True while the character's walk has not reached its last point. */
@@ -3735,6 +3810,11 @@ export class MapRoom extends DurableObject<Env> {
       ws.send(JSON.stringify(msg));
     } catch {
       // Socket already closing; ignore.
+    }
+    // Everyone who sees the player sees the long channels (breakthrough, teleport) start and end: every start and end passes through here.
+    if (msg.t === "bt" || msg.t === "bt_end" || msg.t === "tp" || msg.t === "tp_end") {
+      const id = (ws.deserializeAttachment() as PlayerState | null)?.id;
+      if (id) this.broadcastAbout([id], { t: "fx_channel", id, what: msg.t === "bt" || msg.t === "bt_end" ? "bt" : "tp", on: msg.t === "bt" || msg.t === "tp", ...(msg.t === "bt_end" || msg.t === "tp_end" ? { ok: msg.ok } : {}) });
     }
   }
 

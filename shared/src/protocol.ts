@@ -10,6 +10,7 @@ import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
 import type { EnhanceLevelDef } from "./smith";
 import type { Tuning } from "./tuning";
+import { isWaygateTown, type WaygateDest } from "./waygate";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type Carry, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
@@ -119,6 +120,8 @@ export type ClientMessage =
   | { t: "path_drop"; path: PathId }
   /** Talk to an NPC (the server checks the distance); a merchant answers with its stock left. */
   | { t: "npc_open"; npc: string }
+  /** Use the teleport array of a town to go to another main town (the server prices the trip and takes the Linh Thạch when the channel ends). */
+  | { t: "waygate_go"; npc: string; to: string }
   /** Buy `qty` of one of the merchant's offers (named by id, priced by the server). */
   | { t: "shop_buy"; npc: string; offer: string; qty: number }
   /** Sell `qty` from the stack at (tab, cell) to the merchant. */
@@ -261,8 +264,16 @@ export type ServerMessage =
   | { t: "quest_error"; reason: "level" | "claimed" | "far" | "locked" | "not_active" | "not_ready" | "full" | "busy" | "invalid" | "already" | "rate" | "owned" | "murderer" }
   /** A teleport talisman is being channelled for `ms`; the talisman is only used up when it completes. */
   | { t: "tp"; ms: number; item: string }
+  /** A skill went off (drawn for everyone who sees the caster): `id` cast `skill` at `to` (a monster or player), or to the point x,y (a teleport), in element `el`. */
+  | { t: "fx"; id: string; skill: string; to?: string; x?: number; y?: number; el?: string }
+  /** The boss struck in a cone from (x, y) towards (ax, ay): reach in tiles and half the opening in degrees. */
+  | { t: "fx_cone"; id: string; x: number; y: number; ax: number; ay: number; range: number; half: number }
+  /** A player started (`on`) or ended a long channel: a breakthrough ("bt") or a teleport ("tp": talisman or array). `ok` says how it ended. */
+  | { t: "fx_channel"; id: string; what: "bt" | "tp"; on: boolean; ok?: boolean }
+  /** The destinations of a teleport array with their prices (sent when it is opened). */
+  | { t: "waygate"; npc: string; dests: WaygateDest[] }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
-  | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "other" }
+  | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "money" | "other" }
   | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
@@ -453,6 +464,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isNpcId(m.npc) && (m.slot === "all" || isEquipSlot(m.slot)) ? { t: "smith_repair", npc: m.npc, slot: m.slot as EquipSlot | "all" } : null;
     case "npc_open":
       return isNpcId(m.npc) ? { t: "npc_open", npc: m.npc } : null;
+    case "waygate_go":
+      return isNpcId(m.npc) && isWaygateTown(m.to) ? { t: "waygate_go", npc: m.npc, to: m.to } : null;
     case "shop_buy":
       return isNpcId(m.npc) && typeof m.offer === "string" && /^[a-z0-9_.]{1,60}$/.test(m.offer) && isInt(m.qty) && m.qty >= 1 && m.qty <= MAX_SHOP_QTY
         ? { t: "shop_buy", npc: m.npc, offer: m.offer, qty: m.qty }
