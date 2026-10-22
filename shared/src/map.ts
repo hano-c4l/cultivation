@@ -31,8 +31,8 @@ export interface Portal {
 /** A non-player character standing at a fixed spot. Names and talk live in the client locale. */
 export interface NpcSpot {
   id: string;
-  /** What the NPC does: sells and buys (merchant) or gives quests (quest). */
-  kind: "merchant" | "quest" | "smith";
+  /** What the NPC does: sells and buys (merchant), gives quests (quest), upgrades gear (smith) or carries one to another town (waygate: a teleport array drawn on the ground, nothing to stand beside). */
+  kind: "merchant" | "quest" | "smith" | "waygate";
   /** Position in tile units (continuous). */
   x: number;
   y: number;
@@ -305,19 +305,30 @@ function spot(size: number, px: number, py: number): [number, number] {
   return [t.x, t.y];
 }
 
-/** Where monster groups stand on each combat map, in screen units (see CLUSTERS in monsters.ts, which gives each its bậc and species by index). */
-export const FOREST_GLADES: readonly (readonly [number, number])[] = [
-  [-16, -22], [16, -22], [-40, -14], [40, -14], [-62, -20], [-56, 14], [-30, 22], [-4, 26], [26, 24], [50, 16], [60, -22], [-62, 28], [50, 30],
-];
-export const KIMDAN_GLADES: readonly (readonly [number, number])[] = [
-  [-56, -18], [-56, 18], [-34, -26], [-34, 26], [-14, -14], [-12, 16], [8, -28], [10, 28], [30, -12], [34, 14], [52, -26], [54, 26], [68, -10], [68, 12],
-];
-export const NGUYENANH_GLADES: readonly (readonly [number, number])[] = [
-  [-60, -20], [-60, 20], [-38, -30], [-38, 28], [-16, -16], [-14, 18], [8, -32], [10, 30], [32, -14], [36, 16], [56, -28], [58, 28], [72, -12], [72, 14],
-];
-export const CAVE_CHAMBERS: readonly (readonly [number, number])[] = [
-  [-70, 13], [-50, -13], [-30, 13], [-10, -13], [10, 13], [30, -13], [50, 13], [70, -13],
-];
+/**
+ * Where monster groups stand, in screen units: an even lattice over the map (two rows each side of the road, the outer rows shifted by half a step the
+ * way bricks are laid), so no stretch of the map is left empty and no two groups stand close. `skip` leaves out spots that would sit on a lane or a gate.
+ * Written as a function so the layout is the same wherever it is read from (the map builder carves a glade at each spot, the monster list stands a group on it).
+ */
+function latticeGlades(cols: readonly number[], inner: number, outer: number, shift: number, maxPx: number, skip: (px: number, py: number) => boolean = () => false): readonly (readonly [number, number])[] {
+  const out: Array<readonly [number, number]> = [];
+  for (const py of [-outer, -inner, inner, outer]) {
+    // The outer rows are shifted, the upper one to the right and the lower one to the left, so the gaps at the two ends balance out.
+    const dx = Math.abs(py) === outer ? (py < 0 ? shift : -shift) : 0;
+    for (const c of cols) {
+      const px = c + dx;
+      if (Math.abs(px) > maxPx || skip(px, py)) continue;
+      out.push([px, py]);
+    }
+  }
+  return out;
+}
+
+/** Where monster groups stand on each combat map, in screen units (see CLUSTERS in monsters.ts, which gives each its bậc and species by distance from the arrival). */
+export const FOREST_GLADES: readonly (readonly [number, number])[] = latticeGlades([-52, -26, 0, 26, 52], 13, 27, 13, 62, (px, py) => py === -13 && px === 0); // the lane from the north gate runs through the middle
+export const KIMDAN_GLADES: readonly (readonly [number, number])[] = latticeGlades([-52, -26, 0, 26, 52], 13, 27, 13, 62);
+export const NGUYENANH_GLADES: readonly (readonly [number, number])[] = latticeGlades([-54, -27, 0, 27, 54], 14, 29, 13, 66);
+export const CAVE_CHAMBERS: readonly (readonly [number, number])[] = [-70, -50, -30, -10, 10, 30, 50, 70].flatMap((px) => [[px, -13], [px, 13]] as const);
 
 const TOWN_RECT: PlayRect = { halfW: 45, halfH: 22.5 };
 const TOWN_SIZE = TOWN_RECT.halfW + 2 * TOWN_RECT.halfH;
@@ -378,7 +389,8 @@ function buildTown(): MapData {
     npcs: [
       { id: "merchant", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
       { id: "elder", kind: "quest", x: 16.5 + o, y: 17.5 + o },
-      { id: "smith", kind: "smith", x: 19.5 + o, y: 20.5 + o },
+      { id: "smith", kind: "smith", x: 15.5 + o, y: 20.5 + o },
+      { id: "waygate", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
       { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
       { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
       { id: "path_dan", kind: "quest", x: 28.5 + o, y: 24.5 + o },
@@ -423,7 +435,8 @@ function buildTown2(): MapData {
     npcs: [
       { id: "merchant2", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
       { id: "elder2", kind: "quest", x: 16.5 + o, y: 17.5 + o },
-      { id: "smith2", kind: "smith", x: 19.5 + o, y: 20.5 + o },
+      { id: "smith2", kind: "smith", x: 15.5 + o, y: 20.5 + o },
+      { id: "waygate2", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
       // The same three masters as the first town, with the same ids: their quests and rewards are the same wherever they stand.
       { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
       { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
@@ -551,7 +564,7 @@ const BUILDERS: Readonly<Record<MapId, () => MapData>> = {
 const built = new Map<MapId, MapData>();
 
 /** Every NPC id on any map (quests name their giver and talk targets from this set; a test checks it against the maps). */
-export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2"]);
+export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2"]);
 
 export function getMap(id: MapId): MapData {
   let map = built.get(id);

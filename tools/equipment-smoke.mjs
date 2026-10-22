@@ -3,7 +3,7 @@
 // Usage: node tools/equipment-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
-import { CAVE_ARRIVAL, CAVE_BY_BATS, FOREST_E_GATE, TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
+import { CAVE_ARRIVAL, CAVE_BY_BATS, FOREST_E_GATE, TOWN_GATE, TOWN_SMITH_NEAR } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -132,6 +132,8 @@ check("worn gear is still worn after reconnecting", ["hat", "ring1", "weapon"].e
 c.ws.close();
 await sleep(500);
 sql(`UPDATE item_instances SET durability = 50 WHERE owner_character_id = '${charId}' AND equip_slot = 'hat'`);
+sql(`UPDATE characters SET map_id = 'town', x = ${TOWN_SMITH_NEAR[0]}, y = ${TOWN_SMITH_NEAR[1]} WHERE id = '${charId}'`); // beside the blacksmith, a few tiles from the spawn
+await sleep(2500);
 c = await connect(reg.cookie);
 r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 check("repair without Linh Thạch is refused", r.some((m) => m.t === "inv_error" && m.reason === "funds"));
@@ -164,7 +166,7 @@ c.ws.close();
 await sleep(500);
 sql(`UPDATE item_instances SET durability = 3 WHERE owner_character_id = '${charId}' AND equip_slot = 'hat'`);
 c = await connect(reg.cookie);
-c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 1 });
+c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SMITH_NEAR[0], fy: TOWN_SMITH_NEAR[1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1);
 await sleep(10500);
 c.send({ t: "portal" });

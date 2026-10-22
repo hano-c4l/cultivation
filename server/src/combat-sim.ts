@@ -71,6 +71,8 @@ import {
   elementTuning,
   topContributor,
   findSmoothPath,
+  inPlayRect,
+  screenToTile,
   isStandable,
   getMonsterDef,
   lineClear,
@@ -266,6 +268,10 @@ export type SimEvent =
   /** MP changed (spent, or settled when hit); the client regenerates it from the snapshot. */
   | { t: "mp"; playerId: string; mp: number; maxMp: number; regenInMs: number }
   | { t: "cast_ok"; playerId: string; skill: string; cdMs: number }
+  /** A skill went off, for everyone who can see it: who cast it, at what (a monster or player id) or where (a teleport's destination), in which element. */
+  | { t: "fx"; playerId: string; skill: string; target?: string; dest?: Vec2; element?: string }
+  /** The boss struck in a cone: where it stands, the point it faced, the reach (tiles) and half the opening (degrees). */
+  | { t: "cone"; monsterId: string; at: Vec2; aim: Vec2; range: number; halfAngleDeg: number }
   | { t: "cast_fail"; playerId: string; skill: string; reason: "mp" | "cooldown" | "no_target" | "weapon" | "unknown" | "range" | "blocked" }
   /** A teleport went off: the room moves the player to `to` (it owns the player's position). */
   | { t: "teleport"; playerId: string; to: Vec2 }
@@ -342,6 +348,10 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
  * Monsters, targets and fights for one map room. Pure logic: it never touches sockets or D1, so it can be tested and
  * the room only has to deliver the events it returns. Time is passed in; randomness is injected.
  */
+/** Tries at finding a random spot for the boss, and how far (tiles) it must stand from every portal and guard. */
+const BOSS_SPOT_TRIES = 20;
+const BOSS_MIN_GATE_DIST = 25;
+
 export class CombatSim {
   private monsters = new Map<string, Monster>();
   private players = new Map<string, PlayerProfile>();
@@ -521,13 +531,40 @@ export class CombatSim {
     this.pityKills = 0;
   }
 
-  /** Puts the map's boss on the ground at the home of the highest-bậc cluster, at full health, with a freshly rolled element. Null when it cannot (already one, no boss for this map). */
-  spawnBoss(mapId: MapId, now: number): MonsterSnapshot | null {
+  /**
+   * A place for the boss to appear: a random spot of the map (each time it comes it is somewhere else). It must be standable ground inside the
+   * map's rectangle, reachable on foot from where characters arrive, and well away from every portal and guard. After a few tries (or when the
+   * random numbers keep giving the same spot) it settles for the fixed spot of the map.
+   */
+  private randomBossHome(mapId: MapId): Vec2 | null {
+    const { halfW, halfH } = this.map.rect;
+    const arrive: Vec2 = [this.map.spawn[0] + 0.5, this.map.spawn[1] + 0.5];
+    for (let attempt = 0; attempt < BOSS_SPOT_TRIES; attempt++) {
+      const px = (this.rand() * 2 - 1) * (halfW - 10);
+      const py = (this.rand() * 2 - 1) * (halfH - 8);
+      const [x, y] = screenToTile(this.map.width, px, py);
+      const home = nearestStandablePoint(this.map, x, y, 2);
+      if (!home || !inPlayRect(this.map, home[0], home[1])) continue;
+      if (this.map.portals.some((p) => dist(home, [p.x + 0.5, p.y + 0.5]) < BOSS_MIN_GATE_DIST)) continue;
+      if ((GUARDS[mapId] ?? []).some((g) => dist(home, [g[0], g[1]]) < BOSS_MIN_GATE_DIST)) continue;
+      const path = findSmoothPath(this.map, arrive, home);
+      const end = path?.[path.length - 1];
+      if (!end || dist(end, home) > 0.6) continue;
+      return home;
+    }
+    const spot = BOSS_SPOTS[mapId];
+    return spot ? nearestStandablePoint(this.map, spot[0], spot[1], 3) : null;
+  }
+
+  /**
+   * Puts the map's boss on the ground at full health, with a freshly rolled element: at `at` (where it stood before the room slept) or at a
+   * random spot of the map. Null when it cannot (already one, no boss for this map).
+   */
+  spawnBoss(mapId: MapId, now: number, at?: Vec2): MonsterSnapshot | null {
     const kind = BOSSES[mapId];
     const def = kind ? getMonsterDef(kind) : undefined;
     if (!def || this.hasBoss) return null;
-    const spot = BOSS_SPOTS[mapId];
-    const home = spot ? nearestStandablePoint(this.map, spot[0], spot[1], 3) : null;
+    const home = (at ? nearestStandablePoint(this.map, at[0], at[1], 3) : null) ?? this.randomBossHome(mapId);
     if (!home) return null;
     const m: Monster = {
       id: `m${this.nextMonsterId++}`,
@@ -561,10 +598,10 @@ export class CombatSim {
   }
 
   /** The boss's health as a fraction and its damage table, for keeping across the room sleeping (null: no boss). */
-  bossState(): { frac: number; damage: Record<string, number> } | null {
+  bossState(): { frac: number; damage: Record<string, number>; home: Vec2 } | null {
     for (const m of this.monsters.values()) {
       if (!m.boss) continue;
-      return { frac: m.maxHp > 0 ? m.hp / m.maxHp : 1, damage: Object.fromEntries(m.damage) };
+      return { frac: m.maxHp > 0 ? m.hp / m.maxHp : 1, damage: Object.fromEntries(m.damage), home: m.home };
     }
     return null;
   }
@@ -1150,6 +1187,7 @@ export class CombatSim {
     const aim = positions?.get(focus.id);
     const attacker = { ...m.combatant, attack: Math.max(1, Math.round(m.combatant.attack * bossCone().power)) };
     if (!aim || !positions) return this.hurtPlayer(m, focus, attacker, now, events);
+    events.push({ t: "cone", monsterId: m.id, at: from, aim, range: bossCone().range, halfAngleDeg: bossCone().halfAngleDeg });
     for (const [id, at] of positions) {
       const target = this.players.get(id);
       if (!target || target.dead) continue;
@@ -1308,6 +1346,7 @@ export class CombatSim {
     p.cooldowns.set(skill.id, now + eff.cooldownMs);
     p.pendingCast = null;
     events.push(this.mpEvent(p, now), { t: "cast_ok", playerId: p.id, skill: skill.id, cdMs: eff.cooldownMs });
+    events.push({ t: "fx", playerId: p.id, skill: skill.id, ...(pending.target ? { target: pending.target } : {}), ...(pending.dest ? { dest: pending.dest } : {}), ...(pending.element ? { element: pending.element } : {}) });
     if (skill.kind === "teleport" && pending.dest) {
       p.targetId = null;
       events.push({ t: "teleport", playerId: p.id, to: pending.dest });

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { DAILY_QUESTS, DEFAULT_QUESTS, EXTRA_QUESTS, HIGH_DAILY_QUESTS, SEED_QUESTS, planAdd, questStatus, type QuestDef } from "@game/shared";
+import { DAILY_QUESTS, DEFAULT_QUESTS, EXTRA_QUESTS, HIGH_DAILY_QUESTS, SEED_QUESTS, meetsQuestLevel, planAdd, questStatus, type QuestDef } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { commitBagOps, loadBag } from "./inventory";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestCatalog, loadQuestProgress, pathItemKey, planConsume, planTurnIn, resetQuestCache, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -321,6 +321,41 @@ describe("path quests", () => {
       expect(JSON.parse(line!.slice(line!.indexOf("'{") + 1, line!.lastIndexOf("}'") + 1))).toEqual(JSON.parse(JSON.stringify(q)));
     }
     expect(sql).toMatch(/UPDATE config_versions SET version = version \+ 1/);
+  });
+});
+
+describe("the breakthrough pill quests and the level they ask for", () => {
+  it("migration 0031 turns the stored definitions into the seed's (stage 9 of the realm before)", () => {
+    const sql = readFileSync(new URL("../migrations/0031_breakthrough_quest_levels.sql", import.meta.url), "utf8");
+    const ids = ["breakthrough_1", "breakthrough_2", "breakthrough_3"];
+    for (const id of ids) {
+      // What the quest looked like before: the same without a stage (and breakthrough_1 without a minimum realm), and its old text.
+      const { minStage: _s, ...old } = def(id) as QuestDef & { minStage?: number };
+      const stored = id === "breakthrough_1" ? (({ minRealm: _r, ...rest }) => rest)(old) : old;
+      raw.prepare("INSERT INTO quests (id, chain, seq, enabled, def, updated_at) VALUES (?, 'breakthrough', 1, 1, ?, 5)").run(id, JSON.stringify({ ...stored, descVi: "old text" }));
+    }
+    const before = (raw.prepare("SELECT version FROM config_versions WHERE name = 'quests'").get() as { version: number }).version;
+    raw.exec(sql);
+    for (const id of ids) {
+      const row = raw.prepare("SELECT def FROM quests WHERE id = ?").get(id) as { def: string };
+      expect(JSON.parse(row.def), id).toEqual(JSON.parse(JSON.stringify(def(id))));
+    }
+    expect((raw.prepare("SELECT version FROM config_versions WHERE name = 'quests'").get() as { version: number }).version).toBe(before + 1);
+  });
+
+  it("meetsQuestLevel: stage 9 of the realm before, or anything above", () => {
+    const b1 = def("breakthrough_1");
+    const b2 = def("breakthrough_2");
+    const b3 = def("breakthrough_3");
+    expect([b1, b2, b3].map((d) => [d.minRealm, d.minStage])).toEqual([[0, 9], [1, 9], [2, 9]]);
+    expect(meetsQuestLevel(b1, 0, 8)).toBe(false);
+    expect(meetsQuestLevel(b1, 0, 9)).toBe(true);
+    expect(meetsQuestLevel(b2, 1, 8)).toBe(false);
+    expect(meetsQuestLevel(b2, 1, 9)).toBe(true);
+    expect(meetsQuestLevel(b2, 0, 9)).toBe(false);
+    expect(meetsQuestLevel(b3, 2, 9)).toBe(true);
+    expect(meetsQuestLevel(b3, 3, 1)).toBe(true);
+    expect(meetsQuestLevel({}, 0, 1)).toBe(true);
   });
 });
 

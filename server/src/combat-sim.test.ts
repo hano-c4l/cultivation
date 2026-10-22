@@ -45,7 +45,9 @@ describe("CombatSim", () => {
 
   it("snapshots carry a path, hp and the kind", () => {
     const [m] = forestSim().snapshots(0);
-    expect(m).toMatchObject({ id: "m1", kind: "soi_rung", tier: 1, rank: "normal" });
+    expect(m).toMatchObject({ id: "m1", rank: "normal" });
+    expect(["soi_rung", "heo_rung", "bao_dem"]).toContain(m!.kind);
+    expect(m!.tier).toBeGreaterThanOrEqual(1);
     expect(m!.hp).toBe(m!.maxHp);
     expect(m!.path).toHaveLength(1);
   });
@@ -379,7 +381,7 @@ describe("CombatSim.isIdle (the room may stop ticking)", () => {
 
   it("is busy while a monster is dead waiting to respawn, and idle after it came back", () => {
     const sim = forestSim();
-    const m = sim.snapshots(0)[0]!;
+    const m = sim.snapshots(0).find((x) => !x.guard && x.tier === 1)!; // a weak one: the player wins
     const p = sim.addPlayer(seed());
     sim.setTarget("p1", m.id);
     const here: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];

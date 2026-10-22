@@ -3,7 +3,7 @@
 // Usage: node tools/boss-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1, ENABLE_DEV_GRANT=1 and PK_DROP_FORCE=1 (the PvP item drop always succeeds) in .dev.vars. Never run it against preview or production.
-import { FOREST_BOSS, FOREST_BY_WOLVES } from "./world.mjs";
+import { FOREST_BY_WOLVES } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -133,7 +133,7 @@ check("after the room slept the welcome lists the boss again", c3.welcome.monste
 const bossId = c3.welcome.monsters.find((m) => m.boss)?.id;
 
 // Kill it: a second character beside it, the boss left with 1 HP by the dev hook (local only).
-const k = await makePlayer("K", "forest", FOREST_BOSS[0] + 1, FOREST_BOSS[1]);
+const k = await makePlayer("K", "forest", spawned.monster.path[0][0] + 1, spawned.monster.path[0][1]);
 const ck = await connect(k.cookie);
 const hook = await fetch(`${httpBase}/api/dev/boss-hp?room=forest:3&hp=1`).then((r) => r.json());
 check("the dev hook left the boss on 1 HP", hook.ok === true, JSON.stringify(hook));

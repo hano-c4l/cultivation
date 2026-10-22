@@ -476,6 +476,64 @@ Tất cả đã ở preview rồi production; chỉ `0029` là migration.
 - **Nguyên liệu tinh luyện** rơi từ quái và boss cùng cảnh giới, **hiếm hơn Tinh Thiết**: thường 4% (x1), hiếm 1 15% (x1-2), hiếm 2 40% (x1-3). Boss nay rơi cả Tinh Thiết lẫn Tinh Hoa trong mỗi vòng rơi.
 - Test: `shared/src/smith.test.ts` (nhóm tinh luyện), `shared/src/speed-gear.test.ts`, `server/src/pvp.test.ts` (boss giữ máu, người chết rời bảng), `tools/mount-smoke.mjs` (cưỡi giữ qua bản đồ và nối lại, giày, tin `path` không gửi ngược lúc xuống khi đang đi), `tools/smith-smoke.mjs` (tinh luyện).
 
+## 2k. Mở rộng thế giới (2026-10-23 đến 24, PR `features_world-expansion`, migration `0030`)
+Đã lên preview; chưa lên production. Mọi con số là giá trị tạm.
+
+### Hằng số 2j vào D1 (bảng `game_tuning`)
+- Bảng `game_tuning` (`name`, `value` JSON, `updated_at`, `updated_by`), mỗi nhóm số một dòng; gieo từ mặc định trong code lúc đọc lần đầu (`INSERT OR IGNORE`), cache 30 giây, đọc lại khi `config_versions.tuning` đổi (`server/src/tuning.ts`, `getTuning`). Nhóm hỏng hoặc thiếu thì dùng mặc định. Màn admin **chưa làm**.
+- Nhóm hiện có (`shared/src/tuning.ts`): `refine` (Tinh luyện), `oreDrop` (rơi Tinh Thiết), `refineDrop` (rơi Tinh Hoa), `keepLevel` (giá Hộ Cấp Phù), `enhanceCost` (Linh Thạch cơ bản theo cảnh giới và giới hạn cộng dồn thất bại), `bossCone`, `bossRegen`, và từ 2l `waygate`. Hằng số cũ (`ORE_DROP`, `REFINE_RULES`, `BOSS_CONE`...) đã bỏ, thay bằng hàm đọc `tuning()` (trạng thái của isolate, như `setEnhanceTable`).
+- Client nhận số kèm tin `shop` và `smith` (`tuning`), nên giá Hộ Cấp Phù và chi phí Tinh luyện khớp server. Thêm nhóm mới: sửa `Tuning`, `DEFAULT_TUNING`, `validTuningGroup`, `TUNING_LABELS_VI`.
+
+### Bản đồ hình chữ nhật
+- Lưới vẫn vuông (`width === height`) nhưng chỉ chơi trong một **hình chữ nhật trên màn hình** (`MapData.rect`, `halfW` và `halfH` tính bằng "đơn vị màn hình" 32 px). Ô ngoài chữ nhật là void (chặn, không vẽ), có dải tường 2 đơn vị phía trong cạnh. Đổi toạ độ: `screenToTile`, `tileToScreenUnit`, `mapPoint`, `inPlayRect`, `playRectPixels` (`shared/src/map.ts`). Bố cục viết bằng đơn vị màn hình (`Grid.srect`, `frame`, `clipToRect`).
+- Kích thước: Thanh Vân Thành và Thiên Hà Thành 90×45 (bố cục cũ của thành giữ nguyên, dời 25 ô vào giữa lưới), rừng 150×75, hang 180×50, Xích Diễm Sơn 160×80, Vạn Cổ Hàn Uyên 170×85.
+- Bản đồ **dựng lười** (`getMap`, mỗi bản khoảng 10 ms), nên Worker khởi động nhanh. `MAP_SIZE`, `MAP_REALM`, `MAPS_NPC_IDS` là bảng tĩnh (có test khớp với bản dựng).
+- **Client:** nền là một mẫu lặp (`TileSprite`, một mẫu 64×32 theo `palette` của bản đồ), vật cản vẽ theo khối 1024 px, chỉ các ô trong chữ nhật. **Camera** bị kẹp trong chữ nhật (`setBounds`); bản đồ nhỏ hơn cửa sổ thì đặt giữa. Không còn nền đen ở cạnh và góc.
+- **Tìm đường** (`pathfinding.ts`): mảng tạm dùng lại giữa các lần tìm (đánh dấu thế hệ), tối đa 60.000 ô mỗi lần; vượt thì coi như không có đường (không bao giờ trả đường dở).
+- **Vị trí đã lưu** của bản đồ cũ phần lớn rơi vào void; lúc vào phòng server đưa về điểm sinh nếu không có chỗ đứng trong 2 ô.
+
+### Vùng nhìn (area-of-interest)
+- Chỉ bản đồ chiến đấu (thành vẫn báo hết, vì phòng thành ngủ được và không giữ bộ nhớ). Server giữ `aoi` (id người chơi → tập id đã báo), mỗi 5 tick (0,5 giây) so lại (`shared/src/aoi.ts`, `diffView`): vào tầm khi cách dưới 52×32 đơn vị màn hình, rời tầm khi quá 58×36. Boss luôn trong tầm.
+- Tin `joined`/`path`/`mon`/`hit`/`pk_*`/`left`/`mon_gone` gửi qua `broadcastAbout` (chỉ cho người đã biết thực thể đó). `welcome` chỉ liệt kê người và quái gần. Tin mới `online {n}` (số người thật trong phòng, HUD dùng) và `mon_reset` (phòng dựng lại, client bỏ quái rồi nhận lại).
+- `aoiMapId()` lấy bản đồ từ `roomId` hoặc từ bản ghi người chơi (roomId mất khi object bị đuổi).
+- Số 52/58 là hằng số trong code (chưa vào D1). Đo 50 client: tick trung bình khoảng 16 ms (trước 2,7 ms); tắt vùng nhìn vẫn khoảng 19 ms, nên chi phí đến từ bản đồ lớn và nhiều quái hơn.
+
+### Kim Đan và Nguyên Anh
+- **Bản đồ:** Thiên Hà Thành (an toàn, `town2`), Xích Diễm Sơn (Kim Đan, `kimdan`), Vạn Cổ Hàn Uyên (Nguyên Anh, `nguyenanh`). Đường đi: rừng → hang → (cổng đông hang) Thiên Hà Thành → hai bản đồ mới. Mỗi bản đồ có `home` (thành về khi chết) và `palette`.
+- **NPC Thiên Hà Thành:** `merchant2`, `smith2`, `elder2` và ba Đạo Sư hướng tu (dùng chung id với thành cũ). Vệ binh ở mọi cổng (`MapData.guardRealm` cho thành).
+- **Quái:** 6 loài mới (Hỏa Diễm Lang, Nham Giáp Thú, Liệt Hỏa Xà; Băng Phong Hạc, Hàn Thi Ma, Tuyết Yêu Hầu) và 2 boss (Xích Diễm Long Vương, Băng Hoàng). Boss và vệ binh ở cảnh giới cao nhất không có cảnh giới trên nên kẹp ở cảnh giới cuối.
+- **Thương nhân Thiên Hà Thành** (`TOWN_STOCK` trong `shop.ts`): trang bị Kim Đan và Nguyên Anh (bậc 1–2, Hạ phẩm), đan mới (Linh Nguyên Đan, Bảo Nguyên Đan, Thiên Ngộ Đan), bí tịch mới và Truyền Tống Phù của thành đó (`ttp_town2`, 20.000 Linh Thạch). Rơi đồ có thêm đan cấp cao theo cảnh giới bản đồ (`REALM_LOOT`).
+- **Kỹ năng:** thêm 10 kỹ năng hệ (`${hệ}_4` Kim Đan, `${hệ}_5` Nguyên Anh) và 3 kỹ năng hỗ trợ (`ho_the_kd`, `hoi_nguyen_kd`, `cuong_than_na`), học từ bí tịch.
+- **Nhiệm vụ của `elder2`:** đan đột phá Kim Đan (`breakthrough_2`) và Nguyên Anh (`breakthrough_3`), hai nhiệm vụ hằng ngày (`HIGH_DAILY_QUESTS`, tách khỏi `DAILY_QUESTS` vì migration 0024 đã ghi nhóm cũ). Thêm nhiệm vụ vào `SEED_QUESTS` thì gieo lười tự thêm, không cần migration.
+- Chết thì về `getMap(bản đồ).home`.
+
+### Việc đã biết, chưa làm của 2k
+- Màn admin cho `game_tuning` và các bảng 2j; số vùng nhìn vào D1.
+- Thương nhân thành mới chưa bán Tinh Thiết (nguyên liệu vẫn rơi theo cảnh giới bản đồ).
+- Giới hạn mua mỗi ngày dùng chung số đã mua giữa hai thành (giới hạn khác nhau theo thành).
+- `homeExpCap` tăng vì quái bậc 9 có mặt (Luyện Khí: 98 lên 138).
+
+## 2l. Đợt hoàn thiện sau 2k (2026-10-24, PR `features_world-polish`, migration `0031`)
+Đã lên preview khi PR này merge; chưa lên production. Giá trị tạm.
+
+### Cửa hàng, nhiệm vụ đan đột phá
+- Thương nhân Thanh Vân Thành bán trang bị Luyện Khí và Trúc Cơ (bậc 1–2, Hạ phẩm), như Thiên Hà Thành (`gearRealms: [0, 1]`). Chưa mở rộng tới bậc 9.
+- Nhiệm vụ nhận đan đột phá ràng cấp: trường mới `QuestDef.minStage` (đi với `minRealm`): `breakthrough_1` cần Luyện Khí 9, `_2` cần Trúc Cơ 9, `_3` cần Kim Đan 9. Nhiệm vụ có `minStage` **không hiển thị** ở NPC cho đến khi đủ cấp và bị từ chối khi nhận (`level`); nhiệm vụ hướng tu vẫn hiện để NPC nói cảnh giới cần. Migration `0031` sửa định nghĩa đã lưu (`json_set`, tăng `config_versions.quests`); test so với hạt giống. Hàm `meetsQuestLevel`.
+
+### Truyền Tống Trận
+- NPC loại `waygate` (`waygate`, `waygate2`) ở **giữa mỗi thành chính**, vẽ vòng tròn trên nền, không chặn (điểm sinh nằm ngay trên đó). Thợ Rèn dời sang trái vài ô ở cả hai thành.
+- Bấm vào mở cửa sổ (`client/src/waygate-ui.ts`) liệt kê các thành chính khác và phí. Phí = `base + perUnit × khoảng cách` (nhóm tuning `waygate`: 500 và 40; vị trí thành trên bản đồ thế giới ở `TOWN_WORLD_POS`: thành cũ (0,0), Thiên Hà (100,0); hiện 4.500 Linh Thạch). Thêm thành chính mới chỉ cần thêm một vị trí.
+- Tin `waygate_go {npc, to}` (client), `waygate {npc, dests}` (server). Dùng lại kênh niệm của Truyền Tống Phù (5 giây, ngắt khi di chuyển/đánh/bị đánh); khi xong, **phí và việc chuyển bản đồ là một batch D1** (`currencyStatements` trong `economy.ts` đưa vào `before` của `handoff`, khóa idempotency mỗi lần dùng), nên không mất tiền khi lỗi. Kiểm ví trước khi niệm (`tp_end` lý do `money`).
+
+### Vị trí bãi quái và boss
+- Bãi quái xếp **lưới đều** (`latticeGlades`): hai hàng mỗi bên đường, hàng ngoài lệch nửa bước. Bậc quái theo thứ hạng khoảng cách từ chỗ vào (chín dải đều, `tiersByDistance`), loài theo bậc (ba bậc một loài). Số bãi: rừng 17, hang 16 (hầm đôi hàng), Kim Đan 18, Nguyên Anh 18. Test: hai bãi cách nhau ít nhất 18 đơn vị, chỗ đi được xa bãi nhất không quá 40.
+- **Boss xuất hiện ở chỗ ngẫu nhiên** (`CombatSim.randomBossHome`): chỗ đứng được trong chữ nhật, đi được từ chỗ vào, cách cổng và vệ binh ít nhất 25 ô; thử tối đa 20 lần rồi về chỗ cố định (giữa bản đồ, `BOSS_SPOTS`). Chỗ được lưu cùng máu khi phòng ngủ (`bossState.home`), nên dựng lại không đổi chỗ.
+
+### Hiệu ứng
+- Máy chủ báo hiệu ứng cho mọi người thấy nhân vật: `fx {id, skill, to?, x?, y?, el?}` (mỗi lần dùng kỹ năng, từ sự kiện sim `fx`), `fx_cone` (nón của boss, sự kiện sim `cone`), `fx_channel {id, what: bt|tp, on, ok?}` (mọi `bt`, `bt_end`, `tp`, `tp_end` đi qua `send`).
+- Client (`client/src/fx.ts`, `fx-kinds.ts`): vẽ bằng graphics và tween, tối đa 40 hiệu ứng một lúc. Kiểu: `melee` (vệt chém), `ranged` (đạn bay), `cone`, `blink` (tốc biến), `buff` (vòng bay lên, màu theo chỉ số), `heal` (cộng xanh). Bảng `SKILL_FX` gán theo id hoặc mẫu kỹ năng (mặc định theo loại), mở rộng riêng từng kỹ năng sau này. Hiệu ứng kênh: đột phá (vòng vàng, hạt bay lên, bùng sáng khi thành, khói khi bại), truyền tống (vòng tím quay và cột sáng).
+- Chưa làm: người vào giữa lúc đang niệm không thấy hiệu ứng (chỉ gửi lúc bắt đầu và kết thúc). Chưa xem bằng mắt trên trình duyệt (khung trình duyệt của app bị tạm dừng); cần xem trên preview, cả điện thoại và WebGL. Chưa có kỹ năng người chơi nào hình nón.
+
 ## Quyết định đã chốt (2026-10-17)
 1. **Thứ tự:** 2g (chat) lên trước vì độc lập, mỗi kênh một màu để phân biệt ở thẻ "Tất cả"; sau đó 2a → 2b → 2c → 2d → 2e → 2f → 2h.
 2. **Boss:** mỗi bản đồ chỉ có đúng 1 boss cùng lúc (cho cả 8 kênh, cần điều phối toàn cục theo bản đồ); quy tắc loại dưới 10% áp dụng cho cả tiền lẫn đồ.

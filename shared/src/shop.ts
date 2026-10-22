@@ -159,7 +159,7 @@ const BOOK_OFFERS_HIGH: readonly ShopOffer[] = [
   ...SPIRITUAL_ROOTS.map((el) => offer(bookItemId(`${el}_5`), 3_000_000)),
 ];
 
-/** Basic gear on sale: bậc 1 and 2, Hạ phẩm (needs nothing of the wearer), in every element. */
+/** Basic gear on sale for the realms of each town (see TOWN_STOCK): bậc 1 and 2, Hạ phẩm (needs nothing of the wearer), in every element. */
 const GEAR_KINDS: readonly EquipKind[] = ["hat", "robe", "bracer", "ring", "jade", "necklace", "belt", "boots"];
 const GEAR_TIERS = [1, 2] as const;
 
@@ -190,7 +190,7 @@ interface TownStock {
   gearRealms: readonly number[];
 }
 const TOWN_STOCK: Readonly<Record<string, TownStock>> = {
-  town: { plain: PLAIN_OFFERS, books: BOOK_OFFERS, gearRealms: [0] },
+  town: { plain: PLAIN_OFFERS, books: BOOK_OFFERS, gearRealms: [0, 1] },
   town2: { plain: PLAIN_OFFERS_HIGH, books: BOOK_OFFERS_HIGH, gearRealms: [2, 3] },
 };
 
