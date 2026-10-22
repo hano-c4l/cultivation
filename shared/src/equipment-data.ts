@@ -22,10 +22,10 @@ import { BASE_STAT_START, REALMS, STAGES_PER_REALM, type BaseStats, type StatKey
  * Slots, in display order. Rings take two slots and pháp bảo (charms) four; then one slot each for the pháp bảo bản mệnh
  * (bonded artifact: levels up with its owner) and the pháp bảo phi hành (flight artifact: speed).
  */
-export const EQUIP_SLOTS = ["weapon", "hat", "robe", "bracer", "ring1", "ring2", "jade", "necklace", "belt", "charm1", "charm2", "charm3", "charm4", "bonded", "flight"] as const;
+export const EQUIP_SLOTS = ["weapon", "hat", "robe", "bracer", "ring1", "ring2", "jade", "necklace", "belt", "boots", "charm1", "charm2", "charm3", "charm4", "bonded", "flight"] as const;
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
 
-export const EQUIP_KINDS = ["weapon", "hat", "robe", "bracer", "ring", "jade", "necklace", "belt", "charm", "bonded", "flight"] as const;
+export const EQUIP_KINDS = ["weapon", "hat", "robe", "bracer", "ring", "jade", "necklace", "belt", "boots", "charm", "bonded", "flight"] as const;
 export type EquipKind = (typeof EQUIP_KINDS)[number];
 
 export const KIND_SLOTS: Readonly<Record<EquipKind, readonly EquipSlot[]>> = {
@@ -37,6 +37,7 @@ export const KIND_SLOTS: Readonly<Record<EquipKind, readonly EquipSlot[]>> = {
   jade: ["jade"],
   necklace: ["necklace"],
   belt: ["belt"],
+  boots: ["boots"],
   charm: ["charm1", "charm2", "charm3", "charm4"],
   bonded: ["bonded"],
   flight: ["flight"],
@@ -78,6 +79,7 @@ const KIND_NAMES: Readonly<Record<EquipKind, { m?: string; f?: string; u?: strin
   jade: { m: "Long Văn Bội", f: "Phượng Văn Bội" },
   necklace: { m: "Hổ Phù Liên", f: "Châu Ngọc Liên" },
   belt: { u: "Yêu Đái" },
+  boots: { u: "Giày" },
   charm: { u: "Pháp Bảo" },
   bonded: { u: "Pháp Bảo Bản Mệnh" },
   flight: { u: "Pháp Bảo Phi Hành" },
@@ -93,9 +95,10 @@ const KIND_WEIGHTS: Readonly<Record<EquipKind, Partial<EquipStats>>> = {
   jade: { maxHp: 5, dodgeRate: 0.1 },
   necklace: { maxHp: 5, defense: 0.8 },
   belt: { defense: 1.5, maxHp: 3 },
+  boots: { defense: 0.8 },
   charm: { attack: 1.5, defense: 0.5 },
   bonded: { attack: 2, defense: 1, maxHp: 3 },
-  flight: { moveSpeed: 25 },
+  flight: {},
 };
 
 /** The base stat a high-grade piece of each kind asks for. */
@@ -108,6 +111,7 @@ const KIND_REQ_STAT: Readonly<Record<EquipKind, StatKey>> = {
   jade: "phucDuyen",
   necklace: "ngoTinh",
   belt: "canCot",
+  boots: "thanPhap",
   charm: "thanThuc",
   bonded: "linhLuc",
   flight: "thanPhap",
@@ -171,10 +175,28 @@ function unitsOf(realm: number, tier: number, grade: number): number {
   return (1 + levelIndex(realm, tier) * 0.6) * (GRADE_MULT[grade - 1] ?? 1);
 }
 
+/**
+ * Walking speed (percent) of the pieces that give it, by the realm of the piece: [min, max] of the roll. Neither the grade, the upgrade level nor the
+ * wearer's resonance changes it, so the range is what a player sees. The boots are a modest boost, the flight pháp bảo a large one.
+ */
+export const SPEED_RANGES: Readonly<Partial<Record<EquipKind, readonly (readonly [number, number])[]>>> = {
+  boots: [[10, 20], [15, 25], [20, 30], [30, 40]],
+  flight: [[40, 60], [60, 80], [80, 100], [110, 150]],
+};
+
+/** The speed range of a kind at flat level `lv`, or undefined when the kind gives no speed. */
+export function speedRangeAt(kind: EquipKind, lv: number): readonly [number, number] | undefined {
+  const ranges = SPEED_RANGES[kind];
+  if (!ranges) return undefined;
+  return ranges[Math.min(ranges.length - 1, Math.floor(lv / STAGES_PER_REALM))];
+}
+
 /** Stats of a piece of this kind and grade at flat level `lv` (see levelIndex). */
 export function formulaStats(kind: EquipKind, lv: number, grade: number): EquipStats {
   const units = (1 + lv * 0.6) * (GRADE_MULT[grade - 1] ?? 1);
   const stats = emptyEquipStats();
+  const speed = speedRangeAt(kind, lv);
+  if (speed) stats.moveSpeed = Math.round(((speed[0] + speed[1]) / 2) * 10) / 10; // pieces made without a roll get the middle of the range
   for (const key of EQUIP_STAT_KEYS) {
     const w = KIND_WEIGHTS[kind][key];
     if (!w) continue;
@@ -367,9 +389,11 @@ export function scaledStats(info: EquipInfo, dur: number | undefined, max: numbe
   const noWear = dur === undefined || max === undefined || max <= 0;
   if (noWear && mult === 1 && enh === 1) return base;
   const out = emptyEquipStats();
-  const f = (noWear ? mult : Math.min(1, Math.max(0, dur / max)) * mult) * enh;
+  const wearF = noWear ? 1 : Math.min(1, Math.max(0, dur / max));
+  const f = wearF * mult * enh;
   for (const key of EQUIP_STAT_KEYS) {
-    const v = base[key] * f;
+    // Speed is not scaled by resonance or the upgrade level (the grade is left out of its roll too), only by wear.
+    const v = base[key] * (key === "moveSpeed" ? wearF : f);
     out[key] = EQUIP_RATE_KEYS.includes(key) ? Math.floor(v * 10) / 10 : Math.floor(v);
   }
   return out;

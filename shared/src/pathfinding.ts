@@ -18,7 +18,7 @@ const DIRS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 /** Movement speed in tiles per second (base value, later derived from stats). */
-export const BASE_SPEED = 4;
+export const BASE_SPEED = 3;
 
 export function tileCenter(tile: Tile): Vec2 {
   return [tile[0] + 0.5, tile[1] + 0.5];

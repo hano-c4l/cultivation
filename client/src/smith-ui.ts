@@ -134,8 +134,6 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
       return;
     }
     if (flash) panel.append(el("div", flash.ok ? "shop-flash" : "shop-flash smith-bad", flash.text));
-    if (!sheet) return;
-
     const all = planRepair({ items: [], equipped: worn }, "all");
     const repairAll = el("button", "eq-wide", all.ok ? vi.smith.repairAll(all.cost) : vi.equip.nothingToRepair);
     repairAll.disabled = !all.ok;

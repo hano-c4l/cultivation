@@ -1,3 +1,4 @@
+import { gearSetName } from "./gear-names";
 import { equipmentInfo, refineLevelOf, slotKind, isEquipSlot } from "./equipment-data";
 import { levelIndex } from "./progression";
 import { STAGES_PER_REALM } from "./progression-data";
@@ -63,4 +64,36 @@ export function gearSkillInfo(worn: readonly WornPiece[]): GearSkillInfo[] {
 /** Just the ids of gearSkillInfo. */
 export function gearSkillIds(worn: readonly WornPiece[]): string[] {
   return gearSkillInfo(worn).map((g) => g.id);
+}
+
+/**
+ * The skills of worn pháp bảo are named after the set of the piece that grants them (Lăng Y Kim Quang, Bạch Thi Thuấn Di...), so
+ * the name follows the gear. Everything else keeps the name it has. The client keeps the sets of what is worn up to date.
+ */
+const GEAR_SKILL_SUFFIX: Readonly<Record<string, string>> = {
+  bm_ho_the: "Hộ Thể",
+  bm_hoi_sinh: "Hồi Sinh",
+  pt_thuan_di: "Thuấn Di",
+  pt_phong_than: "Phong Thân Quyết",
+};
+const ELEMENT_VI: Readonly<Record<string, string>> = { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ", loi: "Lôi", bang: "Băng", phong: "Phong" };
+
+let wornSets = new Map<string, string>();
+
+/** Remembers which set each worn pháp bảo skill comes from (call it whenever the worn gear changes). */
+export function setWornSkillSets(worn: readonly WornPiece[]): void {
+  wornSets = new Map(gearSkillInfo(worn).map((g) => [g.id, gearSetName(g.realm, g.tier)]));
+}
+
+/** The name to show for a skill: pháp bảo skills carry the set name of the piece that gives them. */
+export function skillDisplayName(def: { id: string; nameVi: string; source: string }): string {
+  if (def.source !== "gear") return def.nameVi;
+  const set = wornSets.get(def.id);
+  if (!set) return def.nameVi;
+  const fixed = GEAR_SKILL_SUFFIX[def.id];
+  if (fixed) return `${set} ${fixed}`;
+  const m = /^(pb|bm)_([a-z]+)/.exec(def.id);
+  const el = m ? ELEMENT_VI[m[2]!] : undefined;
+  if (!m || !el) return def.nameVi;
+  return `${set} ${el} ${m[1] === "pb" ? "Quang" : "Kích"}`;
 }

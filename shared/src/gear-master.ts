@@ -1,4 +1,4 @@
-import { EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, equipmentInfo, formulaStats, GRADE_MULT, type EquipKind, type EquipStatKey, type EquipStyle, type RolledStats } from "./equipment-data";
+import { EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, equipmentInfo, formulaStats, GRADE_MULT, speedRangeAt, type EquipKind, type EquipStatKey, type EquipStyle, type RolledStats } from "./equipment-data";
 import { levelIndex } from "./progression";
 
 /**
@@ -36,6 +36,7 @@ export function defaultMasterEntry(kind: EquipKind, style: EquipStyle, realm: nu
     const v = base[key];
     if (!v) continue;
     const rate = EQUIP_RATE_KEYS.includes(key);
+    if (key === "moveSpeed") continue; // set from SPEED_RANGES below
     const lo = v * (1 - DEFAULT_SPREAD);
     const hi = v * (1 + DEFAULT_SPREAD);
     if (rate) {
@@ -46,6 +47,8 @@ export function defaultMasterEntry(kind: EquipKind, style: EquipStyle, realm: nu
       stats[key] = [min, Math.max(min + 1, Math.ceil(hi))];
     }
   }
+  const speed = speedRangeAt(kind, levelIndex(realm, tier));
+  if (speed) stats.moveSpeed = [speed[0], speed[1]];
   return { kind, style, realm, tier, stats };
 }
 
@@ -87,7 +90,8 @@ export function rollGearStats(stats: MasterStats, grade: number, rand: () => num
   for (const key of EQUIP_STAT_KEYS) {
     const r = stats[key];
     if (!r) continue;
-    const v = (r[0] + rand() * (r[1] - r[0])) * mult;
+    // Speed keeps the range of the master as it is: the grade does not scale it.
+    const v = (r[0] + rand() * (r[1] - r[0])) * (key === "moveSpeed" ? 1 : mult);
     out[key] = EQUIP_RATE_KEYS.includes(key) ? Math.round(v * 10) / 10 : Math.max(1, Math.round(v));
   }
   return out;
@@ -102,4 +106,25 @@ export function rollForType(type: string, rand: () => number, lookup?: (key: str
   if (!info || info.kind === "bonded" || type.startsWith("eqs.")) return undefined;
   const stats = lookup?.(masterKey(info.kind, info.style, info.realm, info.tier)) ?? defaultMasterEntry(info.kind, info.style, info.realm, info.tier)?.stats;
   return stats ? rollGearStats(stats, info.grade, rand) : undefined;
+}
+
+/** How a rolled value sits in the range it was rolled from: at the top (max), at the bottom (min) or between. */
+export type RollPosition = "max" | "min" | "mid";
+
+/**
+ * The range a rolled stat of this piece can have (after the grade, as rolled; the master's default ranges), and where `value` sits in it.
+ * Pieces without a roll, stats without a range, and ranges of a single value have no position ("mid").
+ */
+export function rollPosition(type: string, key: EquipStatKey, value: number | undefined): RollPosition {
+  const info = equipmentInfo(type);
+  if (!info || value === undefined) return "mid";
+  const r = defaultMasterEntry(info.kind, info.style, info.realm, info.tier)?.stats[key];
+  if (!r || r[1] <= r[0]) return "mid";
+  const mult = key === "moveSpeed" ? 1 : (GRADE_MULT[Math.min(Math.max(info.grade, 1), GRADE_MULT.length) - 1] ?? 1);
+  const round = (v: number) => (EQUIP_RATE_KEYS.includes(key) ? Math.round(v * 10) / 10 : Math.max(1, Math.round(v)));
+  const lo = round(r[0] * mult);
+  const hi = round(r[1] * mult);
+  if (value >= hi - 1e-9) return "max";
+  if (value <= lo + 1e-9) return "min";
+  return "mid";
 }

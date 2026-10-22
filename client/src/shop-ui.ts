@@ -1,5 +1,8 @@
 import {
+  ITEM_RARITIES,
+  REALMS,
   SHOP_CATEGORIES,
+  SORT_MODES,
   SHOP_SELL_MANY_MAX,
   SPIRITUAL_ROOTS,
   MAX_SHOP_QTY,
@@ -69,6 +72,13 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   /** Items ticked for the quick sale (by item id, which survives the bag being redrawn). */
   const ticked = new Set<string>();
   let armedMany = 0;
+  /** The order of the lists: the index into SORT_MODES, advanced by the sort button (a view only, nothing is rewritten). */
+  let sortIdx = 0;
+  /** Realms and grades picked in the filters of the sell tab; empty means no filter. They only steer "Chọn hết". */
+  const realmSel = new Set<number>();
+  const gradeSel = new Set<number>();
+  /** Which filter drop-downs are open (a redraw must not close them). */
+  const msOpen = new Set<string>();
   /** Quantity typed per offer, kept across redraws. */
   const qtys = new Map<string, number>();
 
@@ -89,12 +99,30 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     return box;
   }
 
+  /** Orders a list by the current sort mode (name, rarity, grade, realm); the higher first for all but the name. */
+  function sortItems<T>(list: readonly T[], typeOf: (x: T) => string, lvOf: (x: T) => number | undefined): T[] {
+    const mode = SORT_MODES[sortIdx % SORT_MODES.length];
+    const name = (x: T) => nameOf(typeOf(x));
+    const rarity = (x: T) => ITEM_RARITIES.indexOf(getItemDef(typeOf(x))?.rarity ?? "common");
+    const grade = (x: T) => getItemDef(typeOf(x))?.grade ?? 0;
+    const realm = (x: T) => itemTierRealm(typeOf(x), lvOf(x)) ?? -1;
+    return [...list].sort((a, b) => {
+      let d = 0;
+      if (mode === "rarity") d = rarity(b) - rarity(a);
+      else if (mode === "grade") d = grade(b) - grade(a);
+      else if (mode === "realm") d = realm(b) - realm(a) || grade(b) - grade(a);
+      return d || name(a).localeCompare(name(b), "vi");
+    });
+  }
+
   function renderBuy(): HTMLElement {
     const list = el("div");
     if (!sheet) return list;
     const filterByElement = ELEMENT_TABS.has(category) && element;
-    const offers = merchantOffers(sheet.gender, mapId).filter(
-      (o) => (category === "all" || o.category === category) && (!filterByElement || o.element === null || o.element === element),
+    const offers = sortItems(
+      merchantOffers(sheet.gender, mapId).filter((o) => (category === "all" || o.category === category) && (!filterByElement || o.element === null || o.element === element)),
+      (o) => o.item,
+      () => undefined,
     );
     if (offers.length === 0) list.append(el("div", "muted", vi.shop.nothingHere));
     for (const offer of offers) {
@@ -133,9 +161,18 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     return def?.category === "equipment" || def?.rarity === "rare" || def?.rarity === "epic" || item.lv !== undefined;
   };
 
+  /** What the sell tab shows now: the sellable bag items of the current tab, in the chosen order. */
+  function sellableItems(): BagItem[] {
+    return sortItems(
+      getBag().filter((i) => sellPrice(i.type, i.dur, i.max) > 0 && (category === "all" || shopCategoryOf(i.type) === category)),
+      (i) => i.type,
+      (i) => i.lv,
+    );
+  }
+
   function renderSell(): HTMLElement {
     const list = el("div");
-    const sellable = getBag().filter((i) => sellPrice(i.type, i.dur, i.max) > 0 && (category === "all" || shopCategoryOf(i.type) === category));
+    const sellable = sellableItems();
     // Ticks of items that left the bag no longer count.
     const present = new Set(getBag().map((i) => i.id));
     for (const id of [...ticked]) if (!present.has(id)) ticked.delete(id);
@@ -146,6 +183,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       const check = el("input") as HTMLInputElement;
       check.type = "checkbox";
       check.checked = ticked.has(item.id);
+      check.disabled = !check.checked && ticked.size >= SHOP_SELL_MANY_MAX; // no more than the limit can be picked
       check.onchange = () => {
         if (check.checked) ticked.add(item.id);
         else ticked.delete(item.id);
@@ -189,8 +227,59 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       row.append(side);
       list.append(row);
     }
-    list.append(renderBulkBar(sellable));
     return list;
+  }
+
+  const gradeOf = (i: BagItem) => getItemDef(i.type)?.grade ?? 0;
+  const realmOf = (i: BagItem) => itemTierRealm(i.type, i.lv);
+
+  /** A drop-down with a tick box per option (several can be picked); it shows how many are picked. */
+  function multiSelect<V extends number>(key: string, label: string, options: Array<[V, string]>, picked: Set<V>): HTMLElement {
+    const box = el("details", "shop-ms");
+    box.open = msOpen.has(key);
+    box.ontoggle = () => {
+      if (box.open) msOpen.add(key);
+      else msOpen.delete(key);
+    };
+    box.append(el("summary", undefined, picked.size > 0 ? `${label} (${picked.size})` : label));
+    const menu = el("div", "shop-ms-list");
+    for (const [value, text] of options) {
+      const row = el("label");
+      const cb = el("input") as HTMLInputElement;
+      cb.type = "checkbox";
+      cb.checked = picked.has(value);
+      cb.onchange = () => {
+        if (cb.checked) picked.add(value);
+        else picked.delete(value);
+        render();
+      };
+      row.append(cb, document.createTextNode(` ${text}`));
+      menu.append(row);
+    }
+    box.append(menu);
+    return box;
+  }
+
+  /** The realms and grades present in the items shown; a filter with a single choice is not worth showing. */
+  function filterOptions(shown: BagItem[]): { realms: number[]; grades: number[] } {
+    const realms = [...new Set(shown.map(realmOf).filter((r): r is number => r !== null))].sort((a, b) => a - b);
+    const grades = [...new Set(shown.map(gradeOf).filter((g) => g > 0))].sort((a, b) => a - b);
+    // Picks of options that are gone (or of a filter that is not shown) no longer count.
+    for (const r of [...realmSel]) if (!realms.includes(r) || realms.length < 2) realmSel.delete(r);
+    for (const g of [...gradeSel]) if (!grades.includes(g) || grades.length < 2) gradeSel.delete(g);
+    return { realms, grades };
+  }
+
+  /** Whether "Chọn hết" takes the item: it must match the picked realms and grades (no pick in a filter means anything). */
+  const matchesFilters = (i: BagItem) => (realmSel.size === 0 || realmSel.has(realmOf(i) ?? -1)) && (gradeSel.size === 0 || gradeSel.has(gradeOf(i)));
+
+  function renderFilters(shown: BagItem[]): HTMLElement | null {
+    const { realms, grades } = filterOptions(shown);
+    if (realms.length < 2 && grades.length < 2) return null;
+    const row = el("div", "shop-filters");
+    if (realms.length >= 2) row.append(multiSelect("realm", vi.shop.realm, realms.map((r): [number, string] => [r, REALMS[r]?.shortVi ?? String(r)]), realmSel));
+    if (grades.length >= 2) row.append(multiSelect("grade", vi.shop.grade, grades.map((g): [number, string] => [g, vi.inventory.grades[g] ?? String(g)]), gradeSel));
+    return row;
   }
 
   /** The quick-sale bar: tick everything shown, and sell the ticked stacks at once after a second tap. */
@@ -198,19 +287,22 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     const bar = el("div", "shop-bulk");
     const chosen = getBag().filter((i) => ticked.has(i.id));
     const total = chosen.reduce((n, i) => n + sellPrice(i.type, i.dur, i.max) * i.qty, 0);
-    const toggle = el("button", "eq-small", shown.length > 0 && shown.every((i) => ticked.has(i.id)) ? vi.shop.untickAll : vi.shop.tickAll);
-    toggle.disabled = shown.length === 0;
+    const target = shown.filter(matchesFilters);
+    // "Chọn hết" takes what the filters pick (everything when nothing is picked), up to the limit of one sale.
+    const everything = target.length > 0 && target.every((i) => ticked.has(i.id));
+    const toggle = el("button", "eq-small", everything ? vi.shop.untickAll : vi.shop.tickAll);
+    toggle.disabled = target.length === 0;
     toggle.onclick = () => {
-      const everything = shown.every((i) => ticked.has(i.id));
-      for (const i of shown) {
+      for (const i of target) {
         if (everything) ticked.delete(i.id);
-        else ticked.add(i.id);
+        else if (ticked.size < SHOP_SELL_MANY_MAX) ticked.add(i.id);
       }
       armedMany = 0;
       render();
     };
     const sell = el("button", "eq-small", vi.shop.sellTicked(chosen.length, total));
     sell.disabled = chosen.length === 0 || chosen.length > SHOP_SELL_MANY_MAX;
+    sell.title = vi.shop.sellTickedHint(chosen.length, total);
     sell.onclick = () => {
       const now = Date.now();
       if (now - armedMany > 3000) {
@@ -223,7 +315,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       ticked.clear();
     };
     bar.append(toggle, sell);
-    if (chosen.length > SHOP_SELL_MANY_MAX) bar.append(el("div", "muted", vi.shop.tooMany(SHOP_SELL_MANY_MAX)));
+    if (ticked.size >= SHOP_SELL_MANY_MAX) bar.append(el("div", "muted", vi.shop.tooMany(SHOP_SELL_MANY_MAX)));
     return bar;
   }
 
@@ -247,6 +339,12 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       };
       modes.append(b);
     }
+    const sortBtn = el("button", "shop-sort", vi.inventory.sortBy(vi.inventory.sortModes[SORT_MODES[sortIdx % SORT_MODES.length]!] ?? ""));
+    sortBtn.onclick = () => {
+      sortIdx = (sortIdx + 1) % SORT_MODES.length;
+      render();
+    };
+    modes.append(sortBtn);
     const cats = el("div", "eq-tabs shop-cats");
     for (const c of SHOP_CATEGORIES) {
       const b = el("button", c === category ? "active" : undefined, vi.shop.categories[c]);
@@ -275,6 +373,12 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       };
       row.append(select);
       panel.append(row);
+    }
+    if (mode === "sell") {
+      const shown = sellableItems();
+      const filters = renderFilters(shown);
+      if (filters) panel.append(filters);
+      panel.append(renderBulkBar(shown));
     }
     panel.append(mode === "buy" ? renderBuy() : renderSell(), el("div", "muted", vi.shop.note));
   }
