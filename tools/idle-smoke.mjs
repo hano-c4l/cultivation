@@ -1,3 +1,4 @@
+import { TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
 // Local test of "pause the tick when idle": two clients stand in a forest room, the tick must stop, an eviction is
 // imitated, and the next action must rebuild the sim (every player gets a profile back, monster classes are kept).
 // Usage: node tools/idle-smoke.mjs [ws://localhost:8787]
@@ -64,8 +65,8 @@ async function enterForest(tag) {
   let c = open(reg.cookie);
   await c.opened;
   await c.wait((m) => m.t === "welcome");
-  c.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
-  await sleep(5800);
+  c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 1 });
+  await sleep(10500);
   c.send({ t: "portal" });
   await c.wait((m) => m.t === "transfer");
   await sleep(400);
@@ -108,7 +109,7 @@ await sleep(800);
 s = await stats();
 check("exactly one rebuild happened", s.wakes === wakesBefore + 1, JSON.stringify(s));
 check("the rebuilt sim has profiles for both players, not only the sender", s.players === 2, `players ${s.players}`);
-check("monsters are back", s.monsters === Object.keys(ranksBefore).length, `monsters ${s.monsters}`);
+check("monsters are back (the whole map, not only what A was shown)", s.monsters >= Object.keys(ranksBefore).length, `monsters ${s.monsters}`);
 const resynced = a.c.log.slice(mark).filter((m) => m.t === "mon");
 check("the idle player A was sent a fresh snapshot of every monster", new Set(resynced.map((m) => m.monster.id)).size >= Object.keys(ranksBefore).length, `${resynced.length} mon messages`);
 const changed = resynced.filter((m) => m.monster.rank !== ranksBefore[m.monster.id]);

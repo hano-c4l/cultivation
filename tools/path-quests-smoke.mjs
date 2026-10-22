@@ -5,6 +5,7 @@
 // Usage: node tools/path-quests-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
+import { T } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -95,9 +96,9 @@ sql(`UPDATE accounts SET role='admin' WHERE email='pq-admin-${run}@example.test'
 const qrow = (q) => sql(`SELECT state, progress FROM character_quests WHERE character_id = '${id}' AND quest_id = '${q}'`)[0];
 const keyRows = (k) => sql(`SELECT COUNT(*) AS n FROM item_grants WHERE key = '${k}'`)[0].n;
 const pathsOf = () => sql(`SELECT paths FROM characters WHERE id = '${id}'`)[0].paths;
-const SPOT_KIEM = { x: 23, y: 23 };
-const SPOT_DAN = { x: 27.5, y: 23 };
-const SPOT_THUAT = { x: 24.5, y: 23 };
+const SPOT_KIEM = { x: 23 + T, y: 23 + T };
+const SPOT_DAN = { x: 27.5 + T, y: 23 + T };
+const SPOT_THUAT = { x: 24.5 + T, y: 23 + T };
 
 let c = await connect(reg.cookie);
 const loot = async (item, qty) => {
@@ -228,7 +229,7 @@ check("kiếm: after 3 rare kills the Kiếm Tu Lệnh comes", r.some((m) => m.t
 c.ws.close();
 await sleep(800);
 for (let i = 1; i <= 6; i++) sql(`INSERT OR IGNORE INTO character_quests (character_id, quest_id, state, progress, accepted_at, done_at) VALUES ('${id}', 'newbie_${i}', 'done', 1, 0, 0)`);
-sql(`UPDATE characters SET map_id = 'town', x = 18.5, y = 16.5 WHERE id = '${id}'`);
+sql(`UPDATE characters SET map_id = 'town', x = ${18.5 + T}, y = ${16.5 + T} WHERE id = '${id}'`);
 c = await connect(reg.cookie);
 r = await after(c, { t: "npc_open", npc: "elder" });
 check("the elder now offers the breakthrough quest", !!r.find((m) => m.t === "quests")?.defs.some((d) => d.id === "breakthrough_1"));

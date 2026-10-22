@@ -4,6 +4,7 @@
 // Usage: node tools/quests-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
+import { T, TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -91,20 +92,20 @@ const reg = await post("/api/register", { email: `quest-${run}@example.test`, pa
 const created = await post("/api/character", { name: `Nv ${run.slice(-4)}`, gender: "male" }, reg.cookie);
 const id = created.data.character.id;
 const qrow = (q) => sql(`SELECT state, progress FROM character_quests WHERE character_id = '${id}' AND quest_id = '${q}'`)[0];
-const NEAR_ELDER = { x: 18.5, y: 16.5 };
-const NEAR_MERCHANT = { x: 21.5, y: 16.5 };
+const NEAR_ELDER = { x: 18.5 + T, y: 16.5 + T };
+const NEAR_MERCHANT = { x: 21.5 + T, y: 16.5 + T };
 
 let c = await connect(reg.cookie);
-const walk = async (to, from) => {
+const walk = async (to, from, ms = 2500) => {
   const self = [...c.log].reverse().find((m) => m.t === "path")?.player.path.at(-1) ?? from;
   c.send({ t: "move", x: to.x, y: to.y, fx: self[0], fy: self[1], seq: Math.floor(Math.random() * 1e6) });
-  await sleep(2500);
+  await sleep(ms);
 };
 
 // --- distance, locked and available ---
 let r = await after(c, { t: "quest_accept", npc: "elder", quest: "newbie_1" });
 check("from far away the quest NPC refuses", r.some((m) => m.t === "quest_error" && m.reason === "far"));
-await walk(NEAR_ELDER, [20.5, 20.5]);
+await walk(NEAR_ELDER, TOWN_SPAWN);
 r = await after(c, { t: "npc_open", npc: "elder" });
 const list = r.find((m) => m.t === "quests");
 check("opening the elder lists only what can be taken now (the first step; later ones are locked and hidden), nothing started", list?.defs.length === 1 && list.defs[0].id === "newbie_1" && Object.keys(list.states).length === 0, JSON.stringify(list?.defs.map((d) => d.id)));
@@ -118,10 +119,10 @@ r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_1" });
 check("handing in before talking to the merchant is refused", r.some((m) => m.t === "quest_error" && m.reason === "not_ready") && balanceOf(c) === 0);
 
 // --- talk objective: opening the merchant ---
-await walk(NEAR_MERCHANT, [18.5, 16.5]);
+await walk(NEAR_MERCHANT, [18.5 + T, 16.5 + T]);
 r = await after(c, { t: "npc_open", npc: "merchant" });
 check("opening the merchant completes the talk objective", r.some((m) => m.t === "quest_progress" && m.quest === "newbie_1" && m.progress === 1) && qrow("newbie_1")?.progress === 1);
-await walk(NEAR_ELDER, [21.5, 16.5]);
+await walk(NEAR_ELDER, [21.5 + T, 16.5 + T]);
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_1" }, 1000);
 check("handing in pays Linh Thạch, EXP and items and closes it", r.some((m) => m.t === "quest_done") && balanceOf(c) === 50 && countOf(c, "hoi_huyet_dan") === 3 && lastStats(c).exp === 100 && qrow("newbie_1")?.state === "done", `balance ${balanceOf(c)}, exp ${lastStats(c).exp}`);
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_1" });
@@ -130,8 +131,7 @@ check("handing in a second time changes nothing", r.some((m) => m.t === "quest_e
 // --- kills: counted in the forest, kept across an eviction ---
 r = await after(c, { t: "quest_accept", npc: "elder", quest: "newbie_2" });
 check("the kill quest is accepted", qrow("newbie_2")?.state === "active" && qrow("newbie_2")?.progress === 0);
-await walk({ x: 20.5, y: 38.5 }, [18.5, 16.5]);
-await sleep(3000);
+await walk({ x: TOWN_GATE[0], y: TOWN_GATE[1] }, [18.5 + T, 16.5 + T], 13_000);
 c.send({ t: "portal" });
 await c.wait((m) => m.t === "transfer", 8000, "transfer to the forest");
 await sleep(600);
@@ -143,7 +143,8 @@ async function killOne() {
   const live = new Map(welcomeMons.map((m) => [m.id, m]));
   for (const m of c.log) if (m.t === "mon") live.set(m.monster.id, m.monster);
   const gone = new Set(c.log.filter((m) => m.t === "mon_gone").map((m) => m.id));
-  const prey = [...live.values()].find((m) => !m.guard && m.rank === "normal" && !gone.has(m.id)) ?? [...live.values()].find((m) => !m.guard);
+  const weakest = [...live.values()].filter((m) => !m.guard && !gone.has(m.id)).sort((x, y) => x.tier - y.tier || Number(x.rank !== "normal") - Number(y.rank !== "normal"));
+  const prey = weakest[0];
   const mark = c.log.length;
   c.send({ t: "attack", id: prey.id });
   await c.wait((m) => m.t === "mon_gone" && m.id === prey.id, 60000, "monster dies");
@@ -167,7 +168,7 @@ check("and it is written", qrow("newbie_2")?.progress === 2);
 
 // --- back to town: finish the kill quest (the other kills are filled in by hand), then collect ---
 sql(`UPDATE character_quests SET progress = 10 WHERE character_id = '${id}' AND quest_id = 'newbie_2'`);
-sql(`UPDATE characters SET map_id = 'town', x = 18.5, y = 16.5 WHERE id = '${id}'`);
+sql(`UPDATE characters SET map_id = 'town', x = ${18.5 + T}, y = ${16.5 + T} WHERE id = '${id}'`);
 c = await connect(reg.cookie);
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_2" }, 1000);
 check("the kill quest is handed in for its reward", r.some((m) => m.t === "quest_done" && m.quest === "newbie_2") && countOf(c, "duong_huyet_dan") === 3 && qrow("newbie_2")?.state === "done");

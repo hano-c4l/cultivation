@@ -9,7 +9,7 @@ export const TILE_H = 32;
  */
 export const CELLS_PER_TILE = 4;
 
-export const MAP_IDS = ["town", "forest", "cave"] as const;
+export const MAP_IDS = ["town", "forest", "cave", "town2", "kimdan", "nguyenanh"] as const;
 export type MapId = (typeof MAP_IDS)[number];
 
 export function isMapId(value: string): value is MapId {
@@ -31,8 +31,8 @@ export interface Portal {
 /** A non-player character standing at a fixed spot. Names and talk live in the client locale. */
 export interface NpcSpot {
   id: string;
-  /** What the NPC does: sells and buys (merchant) or gives quests (quest). */
-  kind: "merchant" | "quest" | "smith";
+  /** What the NPC does: sells and buys (merchant), gives quests (quest), upgrades gear (smith) or carries one to another town (waygate: a teleport array drawn on the ground, nothing to stand beside). */
+  kind: "merchant" | "quest" | "smith" | "waygate";
   /** Position in tile units (continuous). */
   x: number;
   y: number;
@@ -41,11 +41,28 @@ export interface NpcSpot {
 /** How close (tiles) a player must be for the server to accept a command to an NPC. */
 export const NPC_INTERACT_RADIUS = 3;
 
+/**
+ * The playable area is a rectangle ON SCREEN (the isometric view of the square tile grid would be a diamond): `halfW` and `halfH` are its half
+ * width and half height in "screen units" of 32 px. A tile (x, y) of a size x size grid lies at screen unit px = x - y (horizontal, 0 at the middle)
+ * and py = (x + y - size) / 2 (vertical, 0 at the middle). The grid must hold the rectangle: size >= halfW + 2 * halfH. Cells outside the rectangle
+ * are void (blocked, never drawn); a band of wall just inside its edge keeps characters off the border.
+ */
+export interface PlayRect {
+  halfW: number;
+  halfH: number;
+}
+
 export interface MapData {
   id: MapId;
-  /** Size in tiles. */
+  /** Size in tiles (the grid is square: width === height). */
   width: number;
   height: number;
+  /** The rectangle on screen the map plays in (see PlayRect). */
+  rect: PlayRect;
+  /** The safe town a character goes back to after dying here (a town maps to itself). */
+  home: MapId;
+  /** Colours of the ground (the two checker tones) and of the obstacles, 0xRRGGBB. */
+  palette: { groundA: number; groundB: number; obstacle: number };
   /** Fine collision grid, row-major, (width * CELLS_PER_TILE) x (height * CELLS_PER_TILE): 1 = walkable, 0 = blocked. */
   collision: Uint8Array;
   spawn: [number, number];
@@ -53,6 +70,8 @@ export interface MapData {
   safe: boolean;
   /** Cultivation realm the map is meant for (index into REALMS); null for the safe town. Monsters scale from it. */
   realm: number | null;
+  /** A safe town's guards are built as if for this realm's maps (they stand at the gates of the maps around it). */
+  guardRealm?: number;
   portals: Portal[];
   npcs: NpcSpot[];
 }
@@ -63,6 +82,34 @@ export const PORTAL_RADIUS = 1.2;
 export const BODY_RADIUS = 0.25;
 /** Slack between the radius used for planning and the one used to validate standing positions (2-decimal rounding). */
 export const CLEAR_TOLERANCE = 0.02;
+
+/** Tile position (continuous) of the screen unit (px, py) on a square grid of `size` tiles: the inverse of the mapping in PlayRect. */
+export function screenToTile(size: number, px: number, py: number): Vec2 {
+  return [(size + 2 * py + px) / 2, (size + 2 * py - px) / 2];
+}
+
+/** Screen unit (px, py) of a tile position on a square grid of `size` tiles. */
+export function tileToScreenUnit(size: number, x: number, y: number): Vec2 {
+  return [x - y, (x + y - size) / 2];
+}
+
+/** Tile position of the screen unit (px, py) on a map. */
+export function mapPoint(map: { width: number }, px: number, py: number): Vec2 {
+  return screenToTile(map.width, px, py);
+}
+
+/** Whether a position lies inside the map's rectangle (the void outside it is blocked and never drawn). */
+export function inPlayRect(map: MapData, x: number, y: number): boolean {
+  const [px, py] = tileToScreenUnit(map.width, x, y);
+  return Math.abs(px) <= map.rect.halfW && Math.abs(py) <= map.rect.halfH;
+}
+
+/** The map's rectangle in world pixels as the renderer lays it out (the tile (x, y) is drawn at ((x - y) * TILE_W / 2, (x + y) * TILE_H / 2)). */
+export function playRectPixels(map: MapData): { x0: number; y0: number; x1: number; y1: number } {
+  const unit = TILE_W / 2;
+  const cy = (map.width * TILE_H) / 2;
+  return { x0: -map.rect.halfW * unit, y0: cy - map.rect.halfH * unit, x1: map.rect.halfW * unit, y1: cy + map.rect.halfH * unit };
+}
 
 /** Walkability of one fine collision cell; outside the map counts as blocked. */
 export function isCellWalkable(map: MapData, cx: number, cy: number): boolean {
@@ -147,7 +194,7 @@ function mulberry32(seed: number): () => number {
 }
 
 /**
- * Builder for the fine collision grid. All coordinates are tile units (floats allowed). Shapes only use
+ * Builder for the fine collision grid. All coordinates are tile units (floats allowed) unless a method says "screen". Shapes only use
  * comparisons and +,-,* so every JS engine produces the identical grid (no trig, no pow).
  */
 class Grid {
@@ -197,109 +244,332 @@ class Grid {
       return dx + dy >= cut;
     });
   }
-  /** Blocks the outermost ring of tiles. */
-  wall(): void {
-    this.rect(0, 0, this.width, 1, false);
-    this.rect(0, this.height - 1, this.width, this.height, false);
-    this.rect(0, 0, 1, this.height, false);
-    this.rect(this.width - 1, 0, this.width, this.height, false);
+  /** Tile position of a screen unit (see PlayRect). */
+  at(px: number, py: number): Vec2 {
+    return screenToTile(this.width, px, py);
   }
-  /** Scatters `count` blocked discs (trees, rocks) of random radius at random, non tile-aligned positions. */
-  scatterDiscs(seed: number, count: number, rMin: number, rMax: number): void {
+  /** A rectangle ON SCREEN: screen units [px0, px1) x [py0, py1). */
+  srect(px0: number, py0: number, px1: number, py1: number, walkable: boolean): void {
+    const corners = [this.at(px0, py0), this.at(px1, py0), this.at(px0, py1), this.at(px1, py1)];
+    const xs = corners.map((c) => c[0]);
+    const ys = corners.map((c) => c[1]);
+    const size = this.width;
+    this.fill(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), walkable, (x, y) => {
+      const sx = x - y;
+      const sy = (x + y - size) / 2;
+      return sx >= px0 && sx < px1 && sy >= py0 && sy < py1;
+    });
+  }
+  /** A blocked disc at a screen position (a pillar, a statue). */
+  blockAt(px: number, py: number, r: number): void {
+    const [x, y] = this.at(px, py);
+    this.disc(x, y, r, false);
+  }
+  /** Blocks everything outside the rectangle plus a band of `bandX` / `bandY` screen units inside its edge (walls and void). */
+  frame(halfW: number, halfH: number, bandX = 2, bandY = 1.5): void {
+    const size = this.width;
+    this.fill(0, 0, this.width, this.height, false, (x, y) => {
+      const sx = x - y;
+      const sy = (x + y - size) / 2;
+      return !(sx >= -halfW + bandX && sx < halfW - bandX && sy >= -halfH + bandY && sy < halfH - bandY);
+    });
+  }
+  /** Blocks only what lies outside the rectangle (used last, after gates were carved through the wall band). */
+  clipToRect(halfW: number, halfH: number): void {
+    const size = this.width;
+    this.fill(0, 0, this.width, this.height, false, (x, y) => {
+      const sx = x - y;
+      const sy = (x + y - size) / 2;
+      return !(sx >= -halfW && sx < halfW && sy >= -halfH && sy < halfH);
+    });
+  }
+  /** Scatters `count` blocked discs (trees, rocks) of random radius at random, non tile-aligned positions inside the screen rectangle. */
+  scatterDiscs(seed: number, count: number, rMin: number, rMax: number, halfW: number, halfH: number): void {
     const rand = mulberry32(seed);
     for (let i = 0; i < count; i++) {
       const r = rMin + rand() * (rMax - rMin);
-      const x = 1.5 + rand() * (this.width - 3);
-      const y = 1.5 + rand() * (this.height - 3);
-      this.disc(x, y, r, false);
+      const px = (rand() * 2 - 1) * (halfW - 3);
+      const py = (rand() * 2 - 1) * (halfH - 2);
+      this.blockAt(px, py, r);
     }
   }
 }
 
+/** The tile (integer coordinates) at screen unit (px, py) of a map of this size: where a portal stands, or where a character arrives. */
+function portalTile(size: number, px: number, py: number): { x: number; y: number } {
+  const [x, y] = screenToTile(size, px, py);
+  return { x: Math.floor(x), y: Math.floor(y) };
+}
+function spot(size: number, px: number, py: number): [number, number] {
+  const t = portalTile(size, px, py);
+  return [t.x, t.y];
+}
+
+/**
+ * Where monster groups stand, in screen units: an even lattice over the map (two rows each side of the road, the outer rows shifted by half a step the
+ * way bricks are laid), so no stretch of the map is left empty and no two groups stand close. `skip` leaves out spots that would sit on a lane or a gate.
+ * Written as a function so the layout is the same wherever it is read from (the map builder carves a glade at each spot, the monster list stands a group on it).
+ */
+function latticeGlades(cols: readonly number[], inner: number, outer: number, shift: number, maxPx: number, skip: (px: number, py: number) => boolean = () => false): readonly (readonly [number, number])[] {
+  const out: Array<readonly [number, number]> = [];
+  for (const py of [-outer, -inner, inner, outer]) {
+    // The outer rows are shifted, the upper one to the right and the lower one to the left, so the gaps at the two ends balance out.
+    const dx = Math.abs(py) === outer ? (py < 0 ? shift : -shift) : 0;
+    for (const c of cols) {
+      const px = c + dx;
+      if (Math.abs(px) > maxPx || skip(px, py)) continue;
+      out.push([px, py]);
+    }
+  }
+  return out;
+}
+
+/** Where monster groups stand on each combat map, in screen units (see CLUSTERS in monsters.ts, which gives each its bậc and species by distance from the arrival). */
+export const FOREST_GLADES: readonly (readonly [number, number])[] = latticeGlades([-52, -26, 0, 26, 52], 13, 27, 13, 62, (px, py) => py === -13 && px === 0); // the lane from the north gate runs through the middle
+export const KIMDAN_GLADES: readonly (readonly [number, number])[] = latticeGlades([-52, -26, 0, 26, 52], 13, 27, 13, 62);
+export const NGUYENANH_GLADES: readonly (readonly [number, number])[] = latticeGlades([-54, -27, 0, 27, 54], 14, 29, 13, 66);
+export const CAVE_CHAMBERS: readonly (readonly [number, number])[] = [-70, -50, -30, -10, 10, 30, 50, 70].flatMap((px) => [[px, -13], [px, 13]] as const);
+
+const TOWN_RECT: PlayRect = { halfW: 45, halfH: 22.5 };
+const TOWN_SIZE = TOWN_RECT.halfW + 2 * TOWN_RECT.halfH;
+const FOREST_RECT: PlayRect = { halfW: 75, halfH: 37.5 };
+const FOREST_SIZE = FOREST_RECT.halfW + 2 * FOREST_RECT.halfH;
+const CAVE_RECT: PlayRect = { halfW: 90, halfH: 25 };
+const CAVE_SIZE = CAVE_RECT.halfW + 2 * CAVE_RECT.halfH;
+const KIMDAN_RECT: PlayRect = { halfW: 80, halfH: 40 };
+const KIMDAN_SIZE = KIMDAN_RECT.halfW + 2 * KIMDAN_RECT.halfH;
+const NGUYENANH_RECT: PlayRect = { halfW: 85, halfH: 42.5 };
+const NGUYENANH_SIZE = NGUYENANH_RECT.halfW + 2 * NGUYENANH_RECT.halfH;
+
 /** Placeholder maps. Later maps will be authored in Tiled and baked into this same shape. */
+
+/** What both towns share: the first town grid was a 40 x 40 diamond; its layout is kept as it was, moved to the middle of the new grid (tile offset 25). */
+const TOWN_OFFSET = 25;
+function townGround(g: Grid): void {
+  const o = TOWN_OFFSET;
+  g.disc(27.5 + o, 10.5 + o, 3.6, false); // round pond
+  g.chamfered(8 + o, 22 + o, 15.5 + o, 27.5 + o, 1.0, false); // building with cut corners
+  g.chamfered(22 + o, 28 + o, 28.5 + o, 32.5 + o, 0.8, false); // building with cut corners
+  for (const [x, y] of [[18.5, 18.5], [21.5, 18.5], [18.5, 21.5], [21.5, 21.5]] as const) g.disc(x + o, y + o, 0.45, false); // pillars
+  g.rect(10 + o, 10 + o, 16.5 + o, 10.3 + o, false); // thin fence, not tile aligned
+  g.rect(33 + o, 20 + o, 33.3 + o, 28.5 + o, false); // thin fence, not tile aligned
+  g.disc(23.5 + o, 17.5 + o, 0.4, false); // the merchant's stall: nobody stands on the NPC
+  g.disc(16.5 + o, 17.5 + o, 0.4, false); // the quest giver
+  for (const x of [22.5, 25.5, 28.5]) g.disc(x + o, 24.5 + o, 0.4, false); // the three hướng tu masters
+  // New ground around it: buildings in the four corners of the rectangle and a few more pillars.
+  g.srect(-40, -17, -30, -9, false);
+  g.srect(28, -18, 38, -10, false);
+  g.srect(-39, 8, -29, 15, false);
+  g.srect(30, 9, 40, 16, false);
+  for (const [px, py] of [[-12, -14], [12, -14], [-12, 14], [12, 14]] as const) g.blockAt(px, py, 0.6);
+}
+
 function buildTown(): MapData {
-  const g = new Grid(40, 40);
-  g.disc(27.5, 10.5, 3.6, false); // round pond
-  g.chamfered(8, 22, 15.5, 27.5, 1.0, false); // building with cut corners
-  g.chamfered(22, 28, 28.5, 32.5, 0.8, false); // building with cut corners
-  for (const [x, y] of [[18.5, 18.5], [21.5, 18.5], [18.5, 21.5], [21.5, 21.5]] as const) g.disc(x, y, 0.45, false); // pillars
-  g.rect(10, 10, 16.5, 10.3, false); // thin fence, not tile aligned
-  g.rect(33, 20, 33.3, 28.5, false); // thin fence, not tile aligned
-  g.disc(23.5, 17.5, 0.4, false); // the merchant's stall: nobody stands on the NPC
-  g.disc(16.5, 17.5, 0.4, false); // the quest giver
-  for (const x of [22.5, 25.5, 28.5]) g.disc(x, 24.5, 0.4, false); // the three hướng tu masters
-  g.wall();
-  g.rect(18, 33, 23, 39, true); // lane to the south gate
+  const { halfW, halfH } = TOWN_RECT;
+  const g = new Grid(TOWN_SIZE, TOWN_SIZE);
+  townGround(g);
+  const o = TOWN_OFFSET;
+  g.frame(halfW, halfH);
+  g.srect(-3, 15, 3, halfH, true); // lane to the south gate (through the wall band)
+  g.clipToRect(halfW, halfH);
+  const gate = portalTile(TOWN_SIZE, 0, 20);
+  const arrive = spot(FOREST_SIZE, 0, -34);
   return {
     id: "town",
-    width: 40,
-    height: 40,
+    width: TOWN_SIZE,
+    height: TOWN_SIZE,
+    rect: TOWN_RECT,
+    home: "town",
+    palette: { groundA: 0x3d5a3a, groundB: 0x38553a, obstacle: 0x5a4a3a },
     collision: g.cells,
-    spawn: [20, 20],
+    spawn: [20 + o, 20 + o],
     safe: true,
     realm: null,
-    portals: [{ x: 20, y: 38, toMap: "forest", toX: 20, toY: 3 }],
+    portals: [{ ...gate, toMap: "forest", toX: arrive[0], toY: arrive[1] }],
     npcs: [
-      { id: "merchant", kind: "merchant", x: 23.5, y: 17.5 },
-      { id: "elder", kind: "quest", x: 16.5, y: 17.5 },
-      { id: "smith", kind: "smith", x: 19.5, y: 20.5 },
-      { id: "path_kiem", kind: "quest", x: 22.5, y: 24.5 },
-      { id: "path_thuat", kind: "quest", x: 25.5, y: 24.5 },
-      { id: "path_dan", kind: "quest", x: 28.5, y: 24.5 },
+      { id: "merchant", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
+      { id: "elder", kind: "quest", x: 16.5 + o, y: 17.5 + o },
+      { id: "smith", kind: "smith", x: 15.5 + o, y: 20.5 + o },
+      { id: "waygate", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
+      { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
+      { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
+      { id: "path_dan", kind: "quest", x: 28.5 + o, y: 24.5 + o },
+    ],
+  };
+}
+
+/** The second town, beside the Kim Đan and Nguyên Anh maps: the same ground as the first, a west gate to the cave and two east gates. */
+function buildTown2(): MapData {
+  const { halfW, halfH } = TOWN_RECT;
+  const g = new Grid(TOWN_SIZE, TOWN_SIZE);
+  townGround(g);
+  const o = TOWN_OFFSET;
+  g.frame(halfW, halfH);
+  g.srect(-halfW, -3, -14, 3, true); // lane to the west gate (the cave)
+  g.srect(14, -11, halfW, -5, true); // lane to the Kim Đan gate
+  g.srect(14, 5, halfW, 11, true); // lane to the Nguyên Anh gate
+  g.clipToRect(halfW, halfH);
+  const west = portalTile(TOWN_SIZE, -43, 0);
+  const kim = portalTile(TOWN_SIZE, 43, -8);
+  const nguyen = portalTile(TOWN_SIZE, 43, 8);
+  const toKim = spot(KIMDAN_SIZE, -76, 0);
+  const toNguyen = spot(NGUYENANH_SIZE, -81, 0);
+  const toCave = spot(CAVE_SIZE, 84, 0);
+  return {
+    id: "town2",
+    width: TOWN_SIZE,
+    height: TOWN_SIZE,
+    rect: TOWN_RECT,
+    home: "town2",
+    palette: { groundA: 0x4a5560, groundB: 0x444f5a, obstacle: 0x6b5a4a },
+    collision: g.cells,
+    spawn: [20 + o, 20 + o],
+    safe: true,
+    realm: null,
+    guardRealm: 2,
+    portals: [
+      { ...west, toMap: "cave", toX: toCave[0], toY: toCave[1] },
+      { ...kim, toMap: "kimdan", toX: toKim[0], toY: toKim[1] },
+      { ...nguyen, toMap: "nguyenanh", toX: toNguyen[0], toY: toNguyen[1] },
+    ],
+    npcs: [
+      { id: "merchant2", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
+      { id: "elder2", kind: "quest", x: 16.5 + o, y: 17.5 + o },
+      { id: "smith2", kind: "smith", x: 15.5 + o, y: 20.5 + o },
+      { id: "waygate2", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
+      // The same three masters as the first town, with the same ids: their quests and rewards are the same wherever they stand.
+      { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
+      { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
+      { id: "path_dan", kind: "quest", x: 28.5 + o, y: 24.5 + o },
     ],
   };
 }
 
 function buildForest(): MapData {
-  const g = new Grid(48, 48);
-  g.scatterDiscs(1337, 260, 0.3, 0.55); // trees
-  g.wall();
-  g.rect(18, 1, 23, 7, true); // clearing at the north gate (arrival from town)
-  g.rect(19, 1, 22, 25, true); // lane south from the gate
-  g.rect(3, 23, 47, 26, true); // lane east to the cave
-  g.rect(42, 22, 47, 27, true); // clearing at the east gate
+  const { halfW, halfH } = FOREST_RECT;
+  const g = new Grid(FOREST_SIZE, FOREST_SIZE);
+  g.scatterDiscs(1337, 1300, 0.3, 0.55, halfW, halfH); // trees
+  g.frame(halfW, halfH);
+  g.srect(-8, -halfH, 8, -28, true); // clearing at the north gate (arrival from town)
+  g.srect(-2, -halfH, 2, 2, true); // lane south from the gate to the crossroads
+  g.srect(-halfW + 3, -2, halfW, 2, true); // the east-west road, to the east gate and the cave
+  g.srect(halfW - 8, -6, halfW, 6, true); // clearing at the east gate
+  for (const [px, py] of FOREST_GLADES) g.srect(px - 8, py - 5, px + 8, py + 5, true); // a glade under each monster group
+  g.clipToRect(halfW, halfH);
+  const north = portalTile(FOREST_SIZE, 0, -36);
+  const east = portalTile(FOREST_SIZE, 73, 0);
+  const fromTown = spot(FOREST_SIZE, 0, -34);
+  const toTown = spot(TOWN_SIZE, 0, 18);
+  const toCave = spot(CAVE_SIZE, -84, 0);
   return {
     id: "forest",
-    width: 48,
-    height: 48,
+    width: FOREST_SIZE,
+    height: FOREST_SIZE,
+    rect: FOREST_RECT,
+    home: "town",
+    palette: { groundA: 0x3d5a3a, groundB: 0x38553a, obstacle: 0x5a4a3a },
     collision: g.cells,
-    spawn: [20, 3],
+    spawn: fromTown,
     safe: false,
     realm: 0,
     portals: [
-      { x: 20, y: 1, toMap: "town", toX: 20, toY: 36 },
-      { x: 46, y: 24, toMap: "cave", toX: 3, toY: 20 },
+      { ...north, toMap: "town", toX: toTown[0], toY: toTown[1] },
+      { ...east, toMap: "cave", toX: toCave[0], toY: toCave[1] },
     ],
     npcs: [],
   };
 }
 
 function buildCave(): MapData {
-  const g = new Grid(40, 30);
-  g.scatterDiscs(4242, 110, 0.4, 1.0); // rocks
-  g.wall();
-  g.rect(1, 18, 39, 23, true); // main corridor
-  g.rect(1, 18, 7, 23, true); // clearing at the west gate (arrival from forest)
+  const { halfW, halfH } = CAVE_RECT;
+  const g = new Grid(CAVE_SIZE, CAVE_SIZE);
+  g.scatterDiscs(4242, 900, 0.4, 1.0, halfW, halfH); // rocks
+  g.frame(halfW, halfH);
+  g.srect(-halfW + 3, -4, halfW - 3, 4, true); // main corridor
+  g.srect(-halfW, -6, -halfW + 12, 6, true); // clearing at the west gate (arrival from forest)
+  g.srect(halfW - 12, -6, halfW, 6, true); // clearing at the east gate (to the second town)
+  for (const [px, py] of CAVE_CHAMBERS) {
+    g.srect(px - 9, py - 6, px + 9, py + 6, true); // a chamber under each monster group
+    g.srect(px - 2, Math.min(py, 0), px + 2, Math.max(py, 0), true); // a passage from the chamber to the corridor
+  }
+  g.clipToRect(halfW, halfH);
+  const west = portalTile(CAVE_SIZE, -88, 0);
+  const east = portalTile(CAVE_SIZE, 88, 0);
+  const toForest = spot(FOREST_SIZE, 69, 0);
+  const toTown2 = spot(TOWN_SIZE, -40, 0);
+  const arrive = spot(CAVE_SIZE, -84, 0);
   return {
     id: "cave",
-    width: 40,
-    height: 30,
+    width: CAVE_SIZE,
+    height: CAVE_SIZE,
+    rect: CAVE_RECT,
+    home: "town",
+    palette: { groundA: 0x4a4540, groundB: 0x433e39, obstacle: 0x2e2a28 },
     collision: g.cells,
-    spawn: [3, 20],
+    spawn: arrive,
     safe: false,
     realm: 1,
-    portals: [{ x: 1, y: 20, toMap: "forest", toX: 44, toY: 24 }],
+    portals: [
+      { ...west, toMap: "forest", toX: toForest[0], toY: toForest[1] },
+      { ...east, toMap: "town2", toX: toTown2[0], toY: toTown2[1] },
+    ],
     npcs: [],
   };
 }
 
-const MAPS: Record<MapId, MapData> = { town: buildTown(), forest: buildForest(), cave: buildCave() };
+/** A big open combat map: a gate on the west edge, a road east along the middle and a glade under each monster group. */
+function buildOpenMap(id: "kimdan" | "nguyenanh", rect: PlayRect, size: number, seed: number, obstacles: number, rMin: number, rMax: number, glades: readonly (readonly [number, number])[], realm: number, palette: MapData["palette"]): MapData {
+  const { halfW, halfH } = rect;
+  const g = new Grid(size, size);
+  g.scatterDiscs(seed, obstacles, rMin, rMax, halfW, halfH);
+  g.frame(halfW, halfH);
+  g.srect(-halfW, -6, -halfW + 14, 6, true); // clearing at the gate (arrival from the town)
+  g.srect(-halfW + 3, -2, halfW - 3, 2, true); // the road east along the middle
+  for (const [px, py] of glades) g.srect(px - 8, py - 5, px + 8, py + 5, true); // a glade under each monster group
+  g.clipToRect(halfW, halfH);
+  const gate = portalTile(size, -halfW + 2, 0);
+  const toTown = spot(TOWN_SIZE, 40, id === "kimdan" ? -8 : 8);
+  return {
+    id,
+    width: size,
+    height: size,
+    rect,
+    home: "town2",
+    palette,
+    collision: g.cells,
+    spawn: spot(size, -halfW + 6, 0),
+    safe: false,
+    realm,
+    portals: [{ ...gate, toMap: "town2", toX: toTown[0], toY: toTown[1] }],
+    npcs: [],
+  };
+}
 
-/** Every NPC id on any map (quests name their giver and talk targets from this set). */
-export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(Object.values(MAPS).flatMap((m) => m.npcs.map((n) => n.id)));
+/**
+ * What is known about a map without building it (building one fills hundreds of thousands of collision cells, so a map is built the first time
+ * it is asked for, not when the module loads: every Worker isolate and every page load imports this file).
+ */
+export const MAP_SIZE: Readonly<Record<MapId, number>> = { town: TOWN_SIZE, forest: FOREST_SIZE, cave: CAVE_SIZE, town2: TOWN_SIZE, kimdan: KIMDAN_SIZE, nguyenanh: NGUYENANH_SIZE };
+/** The realm of each map (null for a town), the same as MapData.realm. */
+export const MAP_REALM: Readonly<Record<MapId, number | null>> = { town: null, forest: 0, cave: 1, town2: null, kimdan: 2, nguyenanh: 3 };
+
+const BUILDERS: Readonly<Record<MapId, () => MapData>> = {
+  town: buildTown,
+  forest: buildForest,
+  cave: buildCave,
+  town2: buildTown2,
+  kimdan: () => buildOpenMap("kimdan", KIMDAN_RECT, KIMDAN_SIZE, 7001, 1300, 0.35, 0.8, KIMDAN_GLADES, 2, { groundA: 0x5b3a30, groundB: 0x553529, obstacle: 0x2a1a16 }),
+  nguyenanh: () => buildOpenMap("nguyenanh", NGUYENANH_RECT, NGUYENANH_SIZE, 9001, 1400, 0.35, 0.8, NGUYENANH_GLADES, 3, { groundA: 0x3a4f63, groundB: 0x35495c, obstacle: 0x1d2b38 }),
+};
+const built = new Map<MapId, MapData>();
+
+/** Every NPC id on any map (quests name their giver and talk targets from this set; a test checks it against the maps). */
+export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2"]);
 
 export function getMap(id: MapId): MapData {
-  return MAPS[id];
+  let map = built.get(id);
+  if (!map) built.set(id, (map = BUILDERS[id]()));
+  return map;
 }
 
 /** The NPC with this id when it is within NPC_INTERACT_RADIUS of a continuous position. */

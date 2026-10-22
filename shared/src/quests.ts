@@ -47,6 +47,11 @@ export interface QuestDef {
   /** The character must have reached this realm (index into REALMS) to take the quest. */
   minRealm?: number;
   /**
+   * With `minRealm`: the stage (1..9) the character must have reached in that realm (or be in a higher realm). A quest with this is not offered
+   * at all until the character meets it (the one for a breakthrough pill asks for stage 9 of the realm before the one it leads to).
+   */
+  minStage?: number;
+  /**
    * A hướng tu quest (one step of that path's quest chain): the step that rewards the path item shares the one-time key of the
    * path item (`path_item:<character>:<path>`); every step opens again when the character drops the path (the item can then be
    * had again), and is not offered to a character that already has the path. It must not pay Linh Thạch (the reward key doubles
@@ -93,6 +98,13 @@ export function countsProgress(o: QuestObjective): boolean {
 /** Whether a kill (on `mapId`, of a rare monster or not) counts for this quest. */
 export function killCounts(o: QuestObjective, mapId: string, rare: boolean): boolean {
   return o.kind === "kill" && (o.map === undefined || o.map === mapId) && (!o.rare || rare);
+}
+
+/** Whether a character at this realm and stage meets the level a quest asks for (`minRealm`, and `minStage` within that realm). */
+export function meetsQuestLevel(def: Pick<QuestDef, "minRealm" | "minStage">, realm: number, stage: number): boolean {
+  if (def.minRealm === undefined) return true;
+  if (realm !== def.minRealm) return realm > def.minRealm;
+  return stage >= (def.minStage ?? 1);
 }
 
 /** Whether a finished daily quest was handed in on an earlier (Vietnam) day than `now`, so it can be taken again. */
@@ -149,6 +161,7 @@ export function validateQuests(list: readonly QuestDef[], npcs: ReadonlySet<stri
       problems.push(`${at}: bad realm or stage`);
     else if (!["talk", "kill", "collect", "reach"].includes(o.kind)) problems.push(`${at}: unknown objective`);
     if (q.minRealm !== undefined && !(Number.isInteger(q.minRealm) && q.minRealm >= 0 && q.minRealm < REALMS.length)) problems.push(`${at}: bad minimum realm`);
+    if (q.minStage !== undefined && (q.minRealm === undefined || !(Number.isInteger(q.minStage) && q.minStage >= 1 && q.minStage <= STAGES_PER_REALM))) problems.push(`${at}: bad minimum stage`);
     if (q.repeat !== undefined && (q.repeat !== "daily" || q.path !== undefined)) problems.push(`${at}: bad repeat`);
     if (q.path !== undefined) {
       if (!isPathId(q.path)) problems.push(`${at}: unknown path ${String(q.path)}`);
@@ -280,11 +293,42 @@ export const EXTRA_QUESTS: readonly QuestDef[] = [
     seq: 1,
     giver: "elder",
     titleVi: "Đan Đột Phá Trúc Cơ",
-    descVi: "Đột phá lên Trúc Cơ cần Đan Đột Phá. Mang đến 20 Linh Thảo, 10 Thú Cốt và 3 Yêu Đan, ta sẽ luyện cho con một viên. Chỉ làm được một lần.",
+    descVi: "Đột phá lên Trúc Cơ cần Đan Đột Phá. Cần đã đạt Luyện Khí tầng 9. Mang đến 20 Linh Thảo, 10 Thú Cốt và 3 Yêu Đan, ta sẽ luyện cho con một viên. Chỉ làm được một lần.",
     enabled: true,
     requires: "newbie_6",
+    minRealm: 0,
+    minStage: 9,
     objective: { kind: "collect", item: "linh_thao", qty: 20, also: [{ item: "thu_cot", qty: 10 }, { item: "yeu_dan", qty: 3 }] },
     rewards: { items: [{ item: BREAKTHROUGHS[0]?.pill ?? "", qty: 1 }] },
+  },
+  // The second town's elder (Kim Đan and Nguyên Anh): the one-time breakthrough pills, like the one of the first town's elder.
+  {
+    id: "breakthrough_2",
+    chain: "breakthrough",
+    seq: 2,
+    giver: "elder2",
+    titleVi: "Đan Đột Phá Kim Đan",
+    descVi: "Kết đan là cửa ải lớn của Trúc Cơ. Cần đã đạt Trúc Cơ tầng 9. Mang đến 60 Linh Thảo, 30 Thú Cốt và 12 Yêu Đan, ta sẽ luyện cho con một viên Đan Đột Phá Kim Đan. Chỉ làm được một lần.",
+    enabled: true,
+    requires: null,
+    minRealm: 1,
+    minStage: 9,
+    objective: { kind: "collect", item: "linh_thao", qty: 60, also: [{ item: "thu_cot", qty: 30 }, { item: "yeu_dan", qty: 12 }] },
+    rewards: { items: [{ item: BREAKTHROUGHS[1]?.pill ?? "", qty: 1 }] },
+  },
+  {
+    id: "breakthrough_3",
+    chain: "breakthrough",
+    seq: 3,
+    giver: "elder2",
+    titleVi: "Đan Đột Phá Nguyên Anh",
+    descVi: "Phá đan thành anh còn khó hơn nhiều. Cần đã đạt Kim Đan tầng 9. Mang đến 40 Yêu Đan, 25 Tinh Thiết Kim Đan và 10 Tinh Hoa Kim Đan, ta sẽ luyện cho con một viên Đan Đột Phá Nguyên Anh. Chỉ làm được một lần.",
+    enabled: true,
+    requires: "breakthrough_2",
+    minRealm: 2,
+    minStage: 9,
+    objective: { kind: "collect", item: "yeu_dan", qty: 40, also: [{ item: "ren_kd", qty: 25 }, { item: "tl_kd", qty: 10 }] },
+    rewards: { items: [{ item: BREAKTHROUGHS[2]?.pill ?? "", qty: 1 }] },
   },
 ];
 
@@ -292,11 +336,11 @@ export const EXTRA_QUESTS: readonly QuestDef[] = [
  * Daily quests of the Trưởng Lão (phase 2e-B PR3): they open after the first steps of the newbie chain and can be done once a day
  * (Vietnam time). They pay Cống Hiến as well as Linh Thạch. Placeholder values.
  */
-const daily = (id: string, seq: number, titleVi: string, descVi: string, requires: string, minRealm: number, objective: QuestObjective, rewards: QuestRewards): QuestDef => ({
+const daily = (id: string, seq: number, titleVi: string, descVi: string, requires: string | null, minRealm: number, objective: QuestObjective, rewards: QuestRewards, giver = "elder"): QuestDef => ({
   id,
   chain: "daily",
   seq,
-  giver: "elder",
+  giver,
   titleVi,
   descVi,
   enabled: true,
@@ -313,5 +357,14 @@ export const DAILY_QUESTS: readonly QuestDef[] = [
   daily("daily_cave", 3, "Thám hiểm U Minh Động", "Từ Trúc Cơ trở đi, mỗi ngày hạ 20 con quái ở U Minh Động.", "newbie_6", 1, { kind: "kill", count: 20, map: "cave" }, { linhThach: 400, congHien: 20 }),
 ];
 
+/**
+ * Daily quests of the second town's elder (Kim Đan and Nguyên Anh). Kept apart from DAILY_QUESTS, which migration 0024 wrote into D1: these
+ * are added to an existing catalogue by the server's lazy seeding (INSERT OR IGNORE), without a migration.
+ */
+export const HIGH_DAILY_QUESTS: readonly QuestDef[] = [
+  daily("daily_kimdan", 4, "Trấn thủ Xích Diễm Sơn", "Từ Kim Đan trở đi, mỗi ngày hạ 25 con quái ở Xích Diễm Sơn để giữ yên vùng đất quanh thành.", null, 2, { kind: "kill", count: 25, map: "kimdan" }, { linhThach: 3_000, congHien: 40 }, "elder2"),
+  daily("daily_nguyenanh", 5, "Trấn thủ Vạn Cổ Hàn Uyên", "Từ Nguyên Anh trở đi, mỗi ngày hạ 25 con quái ở Vạn Cổ Hàn Uyên.", null, 3, { kind: "kill", count: 25, map: "nguyenanh" }, { linhThach: 30_000, congHien: 80 }, "elder2"),
+];
+
 /** Everything the server seeds into an empty catalogue, in order. */
-export const SEED_QUESTS: readonly QuestDef[] = [...DEFAULT_QUESTS, ...EXTRA_QUESTS, ...DAILY_QUESTS];
+export const SEED_QUESTS: readonly QuestDef[] = [...DEFAULT_QUESTS, ...EXTRA_QUESTS, ...DAILY_QUESTS, ...HIGH_DAILY_QUESTS];

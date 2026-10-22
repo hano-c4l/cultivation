@@ -3,6 +3,8 @@
 // Usage: node tools/pvp-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1, ENABLE_DEV_GRANT=1 and PK_DROP_FORCE=1 (the PvP item drop always succeeds) in .dev.vars. Never run it against preview or production.
+import { FOREST_ARRIVAL, forest } from "./world.mjs";
+import { mapPoint } from "../shared/src/map.ts";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -72,8 +74,8 @@ async function after(c, msg, wait = 700) {
   return c.log.slice(mark);
 }
 
-/** A character standing in the forest gate at (x, 4.5): stage, sát nhân and HP as asked. */
-async function makePlayer(tag, x, { stage = 5, satNhan = 0, satKhi = 0, hero = 0, hp = null, y = 4.5 } = {}) {
+/** A character standing in the forest gate at (x, the arrival tile's y): stage, sát nhân and HP as asked. */
+async function makePlayer(tag, x, { stage = 5, satNhan = 0, satKhi = 0, hero = 0, hp = null, y = FOREST_ARRIVAL[1] } = {}) {
   const reg = await post("/api/register", { email: `pvp-${tag}-${run}@example.test`, password: "correct-horse-battery" });
   const created = await post("/api/character", { name: `${tag}${run.slice(-5)}`, gender: "male" }, reg.cookie);
   const id = created.data.character.id;
@@ -81,13 +83,15 @@ async function makePlayer(tag, x, { stage = 5, satNhan = 0, satKhi = 0, hero = 0
   sql(`UPDATE characters SET map_id = 'forest', x = ${x}, y = ${y}, realm = 0, stage = ${stage}, exp = 0, sat_nhan = ${satNhan}, sat_khi = ${satKhi}, anh_hung = ${hero}, vitals = ${vitals} WHERE id = '${id}'`);
   return { id, cookie: reg.cookie, tag };
 }
+/** Down the lane from the gate, away from the guards at the gate and from the monster groups. */
+const LANE = mapPoint(forest, 0, -12);
 const row = (id) => sql(`SELECT sat_khi, sat_nhan, anh_hung, stage FROM characters WHERE id = '${id}'`)[0];
 const lastPk = (c) => [...c.log].reverse().find((m) => m.t === "pk");
 
 // --- the newbie protection works both ways, and the switch must be on ---
-const a = await makePlayer("A", 20.5);
-const young = await makePlayer("Y", 21.5, { stage: 4 });
-const b = await makePlayer("B", 22.5, { hp: 1 });
+const a = await makePlayer("A", FOREST_ARRIVAL[0]);
+const young = await makePlayer("Y", FOREST_ARRIVAL[0] + 1, { stage: 4 });
+const b = await makePlayer("B", FOREST_ARRIVAL[0] + 2, { hp: 1 });
 const ca = await connect(a.cookie);
 const cy = await connect(young.cookie);
 const cb = await connect(b.cookie);
@@ -117,7 +121,7 @@ check("the victim lost nothing it did not have (sát khí and sát nhân floor a
 check("a kill gives no EXP", row(a.id).stage === 5 && ca.log.filter((m) => m.t === "stats").every((m) => m.character.exp === 0));
 
 // --- self defence: the victim hit the killer first, showing white: sát khí only ---
-const c1 = await makePlayer("C", 21.5, { hp: 1 });
+const c1 = await makePlayer("C", FOREST_ARRIVAL[0] + 1, { hp: 1 });
 const cc = await connect(c1.cookie);
 await after(cc, { t: "pk_mode", mode: 2 });
 await after(cc, { t: "attack", id: a.id }, 1800); // C hits A first
@@ -132,8 +136,8 @@ cc.ws.close();
 
 // --- an orange victim: a killer with sát nhân 0 earns hero points, nothing else ---
 // Down the lane, away from the guards at the gate (they go for orange and red names) and from the monster clusters.
-const k = await makePlayer("K", 20.5, { y: 22.5 });
-const o = await makePlayer("O", 21.5, { satNhan: 300, hp: 1, y: 22.5 });
+const k = await makePlayer("K", LANE[0], { y: LANE[1] });
+const o = await makePlayer("O", LANE[0] + 1, { satNhan: 300, hp: 1, y: LANE[1] });
 // The orange victim carries one stack; with PK_DROP_FORCE=1 in .dev.vars the roll always succeeds (the real chance for orange is 25%).
 sql(`INSERT INTO item_instances (id, owner_character_id, item_type, qty, bag_tab, cell, created_at) VALUES ('pk-smoke-${run}', '${o.id}', 'linh_thao', 7, 0, 0, 0)`);
 const ck = await connect(k.cookie);

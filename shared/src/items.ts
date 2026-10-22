@@ -147,6 +147,47 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     grade: 2,
     healFraction: 0.8,
   },
+  linh_nguyen_dan: {
+    id: "linh_nguyen_dan",
+    nameVi: "Linh Nguyên Đan",
+    descVi: "Đan dược cấp Kim Đan, hồi 60% sinh lực khi dùng.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "rare",
+    grade: 3,
+    healFraction: 0.6,
+  },
+  bao_nguyen_dan: {
+    id: "bao_nguyen_dan",
+    nameVi: "Bảo Nguyên Đan",
+    descVi: "Đan dược cấp Nguyên Anh, hồi đầy sinh lực, thấm dần trong 4 giây.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "epic",
+    grade: 4,
+    healFraction: 1,
+    healOverMs: 4000,
+  },
+  thien_ngo_dan: {
+    id: "thien_ngo_dan",
+    nameVi: "Thiên Ngộ Đan",
+    descVi: "Dùng từ cửa sổ Kỹ năng để tăng độ thuần thục cho một kỹ năng, gấp năm lần một Ngộ Đạo Đan.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "epic",
+    grade: 4,
+    masteryPills: MASTERY_PILL_POINTS * 5,
+  },
+  ttp_town2: {
+    id: "ttp_town2",
+    nameVi: "Truyền Tống Phù · Thiên Hà Thành",
+    descVi: "Dùng để lập tức trở về Thiên Hà Thành. Chỉ bán ở thương nhân của thành, không rơi từ quái.",
+    category: "consumable",
+    maxStack: 20,
+    rarity: "rare",
+    grade: 3,
+    teleportTo: "town2",
+  },
   ttp_town: {
     id: "ttp_town",
     nameVi: "Truyền Tống Phù · Thanh Vân Thành",
@@ -231,6 +272,20 @@ export const LOOT_TABLES: Readonly<Record<MonsterRank, readonly LootEntry[]>> = 
   ],
 };
 
+/** Extra lines for maps of the higher realms (Kim Đan and Nguyên Anh): the stronger pills, on top of the lines above. */
+export const REALM_LOOT: Readonly<Record<number, Readonly<Record<MonsterRank, readonly LootEntry[]>>>> = {
+  2: {
+    normal: [{ item: "linh_nguyen_dan", chance: 0.03, min: 1, max: 1 }],
+    rare1: [{ item: "linh_nguyen_dan", chance: 0.15, min: 1, max: 2 }, { item: "bao_nguyen_dan", chance: 0.03, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.04, min: 1, max: 1 }],
+    rare2: [{ item: "linh_nguyen_dan", chance: 0.4, min: 1, max: 3 }, { item: "bao_nguyen_dan", chance: 0.12, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.15, min: 1, max: 1 }],
+  },
+  3: {
+    normal: [{ item: "linh_nguyen_dan", chance: 0.04, min: 1, max: 1 }, { item: "bao_nguyen_dan", chance: 0.01, min: 1, max: 1 }],
+    rare1: [{ item: "linh_nguyen_dan", chance: 0.2, min: 1, max: 2 }, { item: "bao_nguyen_dan", chance: 0.08, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.06, min: 1, max: 1 }],
+    rare2: [{ item: "linh_nguyen_dan", chance: 0.5, min: 1, max: 3 }, { item: "bao_nguyen_dan", chance: 0.25, min: 1, max: 2 }, { item: "thien_ngo_dan", chance: 0.25, min: 1, max: 1 }],
+  },
+};
+
 export interface LootDrop {
   item: string;
   qty: number;
@@ -242,9 +297,9 @@ export interface LootDrop {
 }
 
 /** Items dropped by one kill. `rand` returns uniform [0, 1); two numbers are drawn per entry (chance, quantity). */
-export function rollLoot(rank: MonsterRank, rand: () => number, chanceMult = 1): LootDrop[] {
+export function rollLoot(rank: MonsterRank, rand: () => number, chanceMult = 1, mapRealm = 0): LootDrop[] {
   const out: LootDrop[] = [];
-  for (const e of LOOT_TABLES[rank]) {
+  for (const e of [...LOOT_TABLES[rank], ...(REALM_LOOT[mapRealm]?.[rank] ?? [])]) {
     const chanceRoll = rand();
     const qtyRoll = rand();
     if (chanceRoll >= e.chance * chanceMult) continue;

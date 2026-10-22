@@ -1,7 +1,7 @@
 import { gearStyleOf, type Gender } from "./gender";
 import { equipmentInfo, makeEquipmentId, GENDERED_KINDS, WEAPON_TYPES, type EquipKind } from "./equipment-data";
 import { getItemDef } from "./items";
-import { KEEP_LEVEL_ITEM, KEEP_LEVEL_PRICE_TIEN_NGOC } from "./smith";
+import { KEEP_LEVEL_ITEM, keepLevelPrice } from "./smith";
 import { SPIRITUAL_ROOTS } from "./character";
 import { levelIndex } from "./progression";
 import { bookItemId, getSkill } from "./skills";
@@ -77,6 +77,10 @@ const ITEM_VALUE: Readonly<Record<string, number>> = {
   thu_cot: 3,
   yeu_dan: 40,
   ttp_town: 2_000,
+  ttp_town2: 20_000,
+  linh_nguyen_dan: 400,
+  bao_nguyen_dan: 1_500,
+  thien_ngo_dan: 7_500,
 };
 
 /** Base value of one piece of each gear kind at level 0, grade 1. */
@@ -128,7 +132,15 @@ const PLAIN_OFFERS: readonly ShopOffer[] = [
   offer("duong_huyet_dan", itemValue("duong_huyet_dan"), 30),
   offer("dai_hoi_huyet_dan", itemValue("dai_hoi_huyet_dan"), 20),
   offer("ngo_dao_dan", itemValue("ngo_dao_dan"), 2),
-  { ...offer(KEEP_LEVEL_ITEM, KEEP_LEVEL_PRICE_TIEN_NGOC), currency: "tien_ngoc" },
+];
+
+/** The second town sells the pills of the higher realms (the first town's pills stay on offer there too, they are cheap). */
+const PLAIN_OFFERS_HIGH: readonly ShopOffer[] = [
+  offer("dai_hoi_huyet_dan", itemValue("dai_hoi_huyet_dan"), 30),
+  offer("linh_nguyen_dan", itemValue("linh_nguyen_dan"), 30),
+  offer("bao_nguyen_dan", itemValue("bao_nguyen_dan"), 15),
+  offer("ngo_dao_dan", itemValue("ngo_dao_dan"), 5),
+  offer("thien_ngo_dan", itemValue("thien_ngo_dan"), 2),
 ];
 
 /** Skill books on sale (bí tịch): the two basic ones of Luyện Khí and the strongest skill of each element (Trúc Cơ). Unlimited: a skill can only be learned once. */
@@ -138,31 +150,61 @@ const BOOK_OFFERS: readonly ShopOffer[] = [
   ...SPIRITUAL_ROOTS.map((el) => offer(bookItemId(`${el}_3`), 20_000)),
 ];
 
-/** Basic gear on sale: Luyện Khí bậc 1 and 2, Hạ phẩm (needs nothing of the wearer), in every element. */
+/** The second town's books: the strongest skill of each element for Kim Đan and for Nguyên Anh, and a guard, a heal and a battle cry. */
+const BOOK_OFFERS_HIGH: readonly ShopOffer[] = [
+  offer(bookItemId("ho_the_kd"), 150_000),
+  offer(bookItemId("hoi_nguyen_kd"), 200_000),
+  offer(bookItemId("cuong_than_na"), 1_500_000),
+  ...SPIRITUAL_ROOTS.map((el) => offer(bookItemId(`${el}_4`), 300_000)),
+  ...SPIRITUAL_ROOTS.map((el) => offer(bookItemId(`${el}_5`), 3_000_000)),
+];
+
+/** Basic gear on sale for the realms of each town (see TOWN_STOCK): bậc 1 and 2, Hạ phẩm (needs nothing of the wearer), in every element. */
 const GEAR_KINDS: readonly EquipKind[] = ["hat", "robe", "bracer", "ring", "jade", "necklace", "belt", "boots"];
 const GEAR_TIERS = [1, 2] as const;
 
-/** The pieces for one gear style: the gendered kinds in that style's version, every weapon family and pháp bảo, per element. */
-function gearOffers(style: "m" | "f"): ShopOffer[] {
+/** The pieces for one gear style and realm: the gendered kinds in that style's version, every weapon family and pháp bảo, per element. */
+function gearOffers(style: "m" | "f", realm: number): ShopOffer[] {
   const out: ShopOffer[] = [];
   for (const el of SPIRITUAL_ROOTS) {
     for (const tier of GEAR_TIERS) {
       for (const kind of GEAR_KINDS) {
-        const id = makeEquipmentId(kind, GENDERED_KINDS.has(kind) ? style : "u", 0, tier, 1, el);
+        const id = makeEquipmentId(kind, GENDERED_KINDS.has(kind) ? style : "u", realm, tier, 1, el);
         out.push(offer(id, itemValue(id)));
       }
       for (const wt of WEAPON_TYPES) {
-        const id = makeEquipmentId("weapon", "u", 0, tier, 1, el, wt);
+        const id = makeEquipmentId("weapon", "u", realm, tier, 1, el, wt);
         out.push(offer(id, itemValue(id)));
       }
-      const charm = makeEquipmentId("charm", "u", 0, tier, 1, el);
+      const charm = makeEquipmentId("charm", "u", realm, tier, 1, el);
       out.push(offer(charm, itemValue(charm)));
     }
   }
   return out;
 }
 
-const OFFERS_BY_STYLE = { m: [...PLAIN_OFFERS, ...BOOK_OFFERS, ...gearOffers("m")], f: [...PLAIN_OFFERS, ...BOOK_OFFERS, ...gearOffers("f")] } as const;
+/** What each town's merchant sells besides the teleport talismans: the gear of the realms around it, its pills and its books. */
+interface TownStock {
+  plain: readonly ShopOffer[];
+  books: readonly ShopOffer[];
+  gearRealms: readonly number[];
+}
+const TOWN_STOCK: Readonly<Record<string, TownStock>> = {
+  town: { plain: PLAIN_OFFERS, books: BOOK_OFFERS, gearRealms: [0, 1] },
+  town2: { plain: PLAIN_OFFERS_HIGH, books: BOOK_OFFERS_HIGH, gearRealms: [2, 3] },
+};
+
+const OFFERS_BASE = new Map<string, readonly ShopOffer[]>();
+function baseOffers(style: "m" | "f", mapId: string): readonly ShopOffer[] {
+  const key = `${style}:${mapId}`;
+  let list = OFFERS_BASE.get(key);
+  if (!list) {
+    const stock = TOWN_STOCK[mapId] ?? TOWN_STOCK.town!;
+    list = [...stock.plain, ...stock.books, ...stock.gearRealms.flatMap((r) => gearOffers(style, r))];
+    OFFERS_BASE.set(key, list);
+  }
+  return list;
+}
 const WITH_TALISMAN = new Map<string, readonly ShopOffer[]>();
 
 /**
@@ -171,11 +213,14 @@ const WITH_TALISMAN = new Map<string, readonly ShopOffer[]>();
  */
 export function merchantOffers(gender: Gender, mapId: string): readonly ShopOffer[] {
   const style = gearStyleOf(gender) === "male" ? "m" : "f";
-  const key = `${style}:${mapId}`;
+  // The scroll's price is a tuning number that can change while the game runs, so it is part of the cache key.
+  const keepPrice = keepLevelPrice();
+  const key = `${style}:${mapId}:${keepPrice}`;
   let list = WITH_TALISMAN.get(key);
   if (!list) {
     const talisman = `ttp_${mapId}`;
-    list = getItemDef(talisman) ? [...OFFERS_BY_STYLE[style], offer(talisman, itemValue(talisman))] : OFFERS_BY_STYLE[style];
+    const keep: ShopOffer = { ...offer(KEEP_LEVEL_ITEM, keepPrice), currency: "tien_ngoc" };
+    list = getItemDef(talisman) ? [...baseOffers(style, mapId), keep, offer(talisman, itemValue(talisman))] : [...baseOffers(style, mapId), keep];
     WITH_TALISMAN.set(key, list);
   }
   return list;

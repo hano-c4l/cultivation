@@ -170,6 +170,15 @@
       #shop-panel .shop-filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; } #shop-panel .shop-ms { position: relative; } #shop-panel .shop-ms summary { cursor: pointer; padding: 3px 8px; border: 1px solid #3a4560; border-radius: 6px; background: #2a3245; list-style: none; user-select: none; }
       #shop-panel .shop-ms-list { position: absolute; z-index: 2; left: 0; top: 100%; min-width: 120px; margin-top: 2px; padding: 4px 8px; border: 1px solid #3a4560; border-radius: 6px; background: #1b2130; } #shop-panel .shop-ms-list label { display: block; padding: 2px 0; cursor: pointer; white-space: nowrap; }
       #shop-panel .shop-price { color: #ffd54a; font-variant-numeric: tabular-nums; }
+      #waygate-panel[hidden] { display: none; }
+      #waygate-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(340px, calc(100vw - 16px)); padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
+        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #waygate-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; min-height: 28px; }
+      #waygate-panel button:disabled { opacity: 0.45; cursor: default; }
+      #waygate-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #waygate-panel .eq-head b { flex: 1; font-size: 15px; }
+      #waygate-panel .muted { opacity: 0.65; font-size: 12px; margin: 4px 0; }
+      #waygate-panel .wg-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding: 6px 8px; border: 1px solid #3a4560; border-radius: 6px; }
+      #waygate-panel .wg-name { font-weight: 600; } #waygate-panel .wg-price { color: #ffd54a; font-variant-numeric: tabular-nums; }
       #smith-panel[hidden] { display: none; }
       #smith-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
         overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);

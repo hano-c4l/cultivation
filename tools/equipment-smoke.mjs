@@ -3,6 +3,7 @@
 // Usage: node tools/equipment-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
+import { CAVE_ARRIVAL, CAVE_BY_BATS, FOREST_E_GATE, TOWN_GATE, TOWN_SMITH_NEAR } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -131,6 +132,8 @@ check("worn gear is still worn after reconnecting", ["hat", "ring1", "weapon"].e
 c.ws.close();
 await sleep(500);
 sql(`UPDATE item_instances SET durability = 50 WHERE owner_character_id = '${charId}' AND equip_slot = 'hat'`);
+sql(`UPDATE characters SET map_id = 'town', x = ${TOWN_SMITH_NEAR[0]}, y = ${TOWN_SMITH_NEAR[1]} WHERE id = '${charId}'`); // beside the blacksmith, a few tiles from the spawn
+await sleep(2500);
 c = await connect(reg.cookie);
 r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 check("repair without Linh Thạch is refused", r.some((m) => m.t === "inv_error" && m.reason === "funds"));
@@ -163,23 +166,23 @@ c.ws.close();
 await sleep(500);
 sql(`UPDATE item_instances SET durability = 3 WHERE owner_character_id = '${charId}' AND equip_slot = 'hat'`);
 c = await connect(reg.cookie);
-c.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
+c.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SMITH_NEAR[0], fy: TOWN_SMITH_NEAR[1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1);
-await sleep(5500);
+await sleep(10500);
 c.send({ t: "portal" });
 await c.wait((m) => m.t === "transfer");
 await sleep(500);
 c = await connect(reg.cookie, 6);
 const here = c.welcome.players.find((p) => p.id === charId).path[0];
-c.send({ t: "move", x: 46.5, y: 24.5, fx: here[0], fy: here[1], seq: 1 });
+c.send({ t: "move", x: FOREST_E_GATE[0], y: FOREST_E_GATE[1], fx: here[0], fy: here[1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1);
-await sleep((Math.hypot(46.5 - here[0], 24.5 - here[1]) / 4) * 1000 + 5000);
+await sleep((Math.hypot(FOREST_E_GATE[0] - here[0], FOREST_E_GATE[1] - here[1]) / 3) * 1000 + 3000);
 c.send({ t: "portal" });
 await c.wait((m) => m.t === "transfer", 8000, "east gate");
 await sleep(500);
 c = await connect(reg.cookie, 6);
 check("in the cave with the hat and a ring worn", c.welcome.map === "cave" && c.welcome.equipped.length === 2);
-c.send({ t: "move", x: 14.5, y: 20.5, fx: 3.5, fy: 20.5, seq: 1 });
+c.send({ t: "move", x: CAVE_BY_BATS[0], y: CAVE_BY_BATS[1], fx: CAVE_ARRIVAL[0], fy: CAVE_ARRIVAL[1], seq: 1 });
 await c.wait((m) => m.t === "died", 90000, "dying to cave monsters");
 await c.wait((m) => m.t === "transfer", 5000);
 const iDied = c.log.findIndex((m) => m.t === "died");

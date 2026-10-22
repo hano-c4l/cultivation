@@ -45,7 +45,9 @@ describe("CombatSim", () => {
 
   it("snapshots carry a path, hp and the kind", () => {
     const [m] = forestSim().snapshots(0);
-    expect(m).toMatchObject({ id: "m1", kind: "soi_rung", tier: 1, rank: "normal" });
+    expect(m).toMatchObject({ id: "m1", rank: "normal" });
+    expect(["soi_rung", "heo_rung", "bao_dem"]).toContain(m!.kind);
+    expect(m!.tier).toBeGreaterThanOrEqual(1);
     expect(m!.hp).toBe(m!.maxHp);
     expect(m!.path).toHaveLength(1);
   });
@@ -62,7 +64,7 @@ describe("CombatSim", () => {
     expect(events.some((e) => e.t === "mon_gone" && e.id === m.id)).toBe(true);
     expect(p.exp).toBeGreaterThan(0);
     expect(p.expDirty).toBe(true);
-    expect(p.targetId).toBeNull();
+    expect(p.targetId).not.toBe(m.id); // the group around it may have pulled the player into the next fight
   });
 
   it("a kill drops Linh Thạch to the winner when the chance roll hits, and nothing when it misses", () => {
@@ -270,13 +272,18 @@ describe("CombatSim", () => {
     expect(p.hp / p.maxHp).toBeCloseTo(0.5, 1);
   });
 
-  it("clusters are fixed in size and tiered 1, 4 and 7 on each combat map", () => {
+  it("clusters are fixed in size and cover bậc 1 to 9 on each combat map", () => {
     for (const id of ["forest", "cave"] as const) {
-      expect(CLUSTERS[id].map((c) => c.tier)).toEqual([1, 4, 7]);
+      const clusters = CLUSTERS[id];
+      expect(clusters.length).toBeGreaterThanOrEqual(8);
+      expect(new Set(clusters.map((c) => c.count)).size).toBe(1); // one group size per map
+      const tiers = clusters.map((c) => c.tier);
+      expect(Math.min(...tiers)).toBe(1);
+      expect(Math.max(...tiers)).toBe(9);
       const sim = new CombatSim(getMap(id), id, noCrit, 0);
-      const tiers = sim.snapshots(0).map((m) => m.tier);
-      expect(tiers.filter((t) => t === 1)).toHaveLength(3);
-      expect(tiers.filter((t) => t === 7)).toHaveLength(3);
+      const spawned = sim.snapshots(0).filter((m) => !m.guard);
+      expect(spawned).toHaveLength(clusters.reduce((n, c) => n + c.count, 0));
+      expect(spawned.filter((m) => m.tier === 1)).toHaveLength(clusters.filter((c) => c.tier === 1).length * clusters[0]!.count);
     }
   });
 
@@ -321,9 +328,9 @@ describe("CombatSim", () => {
   it("EXP: pace table, rank multiplier, cap when hunting above your realm", () => {
     expect(killExp({ realm: 0, tier: 1, rank: "normal" }, 0, 0)).toBe(monsterBaseExp(0, 1));
     expect(killExp({ realm: 0, tier: 1, rank: "rare2" }, 0, 0)).toBe(Math.floor(monsterBaseExp(0, 1) * RANKS.rare2.expMult));
-    // A Luyện Khí player in the Trúc Cơ cave gets no more than the best Luyện Khí monster of the same rank.
+    // A Luyện Khí player in the Trúc Cơ cave gets no more than the best Luyện Khí monster of the same rank (bậc 9 of the forest).
     const capped = killExp({ realm: 1, tier: 7, rank: "normal" }, 0, 0);
-    expect(capped).toBe(monsterBaseExp(0, 7));
+    expect(capped).toBe(monsterBaseExp(0, 9));
     expect(capped).toBeLessThan(monsterBaseExp(1, 7));
     // Own realm is unaffected.
     expect(killExp({ realm: 1, tier: 7, rank: "normal" }, 1, 0)).toBe(monsterBaseExp(1, 7));
@@ -374,7 +381,7 @@ describe("CombatSim.isIdle (the room may stop ticking)", () => {
 
   it("is busy while a monster is dead waiting to respawn, and idle after it came back", () => {
     const sim = forestSim();
-    const m = sim.snapshots(0)[0]!;
+    const m = sim.snapshots(0).find((x) => !x.guard && x.tier === 1)!; // a weak one: the player wins
     const p = sim.addPlayer(seed());
     sim.setTarget("p1", m.id);
     const here: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];

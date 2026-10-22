@@ -3,6 +3,7 @@
 // Hộ Cấp Phù for Tiên Ngọc. Usage: node tools/smith-smoke.mjs [ws://localhost:8787]
 // Local only; needs DISABLE_RATE_LIMIT=1, ENABLE_DEV_GRANT=1 and the 0028 migration (npm run db:migrate:local). It credits the throwaway
 // character through `wrangler d1 execute --local`.
+import { T, TOWN_SMITH_NEAR } from "./world.mjs";
 import { execSync } from "node:child_process";
 const base = process.argv[2] ?? "ws://localhost:8787";
 const httpBase = base.replace(/^ws/, "http");
@@ -64,7 +65,7 @@ check("the dev loot gave a robe and the ore", !!robe() && (bagNow().find((i) => 
 
 // Walk away first (the spawn is next to the smith), then try from far: refused. A player's own eq_repair: refused.
 const spawn = c.log.find((m) => m.t === "welcome").players.find((p) => p.id === charId).path[0];
-c.send({ t: "move", x: 20.5, y: 30.5, fx: spawn[0], fy: spawn[1], seq: 1 });
+c.send({ t: "move", x: 20.5 + T, y: 30.5 + T, fx: spawn[0], fy: spawn[1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1, 4000, "ack");
 await sleep(5500);
 let mark = c.log.length;
@@ -77,8 +78,8 @@ c.send({ t: "eq_repair", slot: "all" });
 const forbidden = await c.wait((m) => m.t === "inv_error", 4000, "forbidden", mark);
 check("the player's own repair command is refused (GM only)", forbidden.reason === "forbidden", forbidden.reason);
 
-// Back to the smith (19.5, 20.5).
-c.send({ t: "move", x: 19.5, y: 22.2, fx: 20.5, fy: 30.5, seq: 2 });
+// Back to the smith (19.5, 20.5 in the old frame).
+c.send({ t: "move", x: TOWN_SMITH_NEAR[0], y: TOWN_SMITH_NEAR[1], fx: 20.5 + T, fy: 30.5 + T, seq: 2 });
 await c.wait((m) => m.t === "ack" && m.seq === 2, 4000, "ack");
 await sleep(5500);
 mark = c.log.length;
@@ -123,7 +124,7 @@ await c.opened;
 const wr = await c.wait((m) => m.t === "welcome", 6000, "welcome");
 const robeR = wr.bag.items.find((i) => i.type === TYPE);
 const rsBefore = robeR.rs;
-c.send({ t: "move", x: 19.5, y: 22.2, fx: wr.players.find((p) => p.id === charId).path[0][0], fy: wr.players.find((p) => p.id === charId).path[0][1], seq: 1 });
+c.send({ t: "move", x: TOWN_SMITH_NEAR[0], y: TOWN_SMITH_NEAR[1], fx: wr.players.find((p) => p.id === charId).path[0][0], fy: wr.players.find((p) => p.id === charId).path[0][1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1, 4000, "ack").catch(() => undefined);
 await sleep(600);
 const oreBefore = wr.bag.items.find((i) => i.type === "tl_lk")?.qty ?? 0;
@@ -152,7 +153,7 @@ c = open(reg.cookie, 7);
 await c.opened;
 const w2 = await c.wait((m) => m.t === "welcome", 6000, "welcome");
 const robe2 = w2.bag.items.find((i) => i.type === TYPE);
-c.send({ t: "move", x: 19.5, y: 22.2, fx: w2.players.find((p) => p.id === charId).path[0][0], fy: w2.players.find((p) => p.id === charId).path[0][1], seq: 1 });
+c.send({ t: "move", x: TOWN_SMITH_NEAR[0], y: TOWN_SMITH_NEAR[1], fx: w2.players.find((p) => p.id === charId).path[0][0], fy: w2.players.find((p) => p.id === charId).path[0][1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1, 4000, "ack").catch(() => undefined);
 await sleep(500);
 mark = c.log.length;
@@ -161,7 +162,7 @@ const noOre = await c.wait((m) => m.t === "inv_error", 5000, "no ore", mark);
 check("without ore the upgrade is refused", noOre.reason === "smith_mats", noOre.reason);
 // The merchant sells the Hộ Cấp Phù for Tiên Ngọc.
 await sleep(300);
-c.send({ t: "move", x: 22.5, y: 19.5, fx: 19.5, fy: 22.2, seq: 2 });
+c.send({ t: "move", x: TOWN_SMITH_NEAR[0] + 3, y: TOWN_SMITH_NEAR[1] - 3, fx: TOWN_SMITH_NEAR[0], fy: TOWN_SMITH_NEAR[1], seq: 2 });
 await c.wait((m) => m.t === "ack" && m.seq === 2, 4000, "ack").catch(() => undefined);
 await sleep(2500);
 mark = c.log.length;

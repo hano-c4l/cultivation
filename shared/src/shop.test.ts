@@ -55,8 +55,9 @@ describe("tabs, elements, books and the talisman", () => {
       expect(SHOP_CATEGORIES).toContain(o.category);
       expect(o.category).toBe(shopCategoryOf(o.item));
     }
+    // Two bậc of each element, for each of the two realms the town sells (Luyện Khí and Trúc Cơ).
     const hats = offers.filter((o) => o.id.startsWith("eq.hat."));
-    expect(hats.map((o) => o.element).sort()).toEqual(["hoa", "hoa", "kim", "kim", "moc", "moc", "tho", "tho", "thuy", "thuy"]);
+    expect(hats.map((o) => o.element).sort()).toEqual(["hoa", "hoa", "hoa", "hoa", "kim", "kim", "kim", "kim", "moc", "moc", "moc", "moc", "tho", "tho", "tho", "tho", "thuy", "thuy", "thuy", "thuy"]);
     expect(offers.find((o) => o.id === "eq.weapon.u.0.1.1.kim.kiem")?.category).toBe("gear");
     expect(offers.find((o) => o.id === "eq.charm.u.0.1.1.hoa")?.category).toBe("artifact");
     expect(shopElementOf("eq.charm.u.0.1.1.hoa")).toBe("hoa");
@@ -93,5 +94,34 @@ describe("shop_sell_many", () => {
     expect(msg([{ tab: 0, cell: 1 }, { tab: 0, cell: 1 }])).toBeNull();
     expect(msg([{ tab: 0, cell: 999 }])).toBeNull();
     expect(msg("x")).toBeNull();
+  });
+});
+
+describe("the second town's merchant", () => {
+  it("sells the pills, books and gear of Kim Đan and Nguyên Anh, and the talisman of its own town only", async () => {
+    const { merchantOffers } = await import("./shop");
+    const { equipmentInfo } = await import("./equipment-data");
+    const offers = merchantOffers("male", "town2");
+    const gear = offers.map((o) => equipmentInfo(o.item)).filter((e) => e !== undefined);
+    expect(gear.length).toBeGreaterThan(50);
+    expect(new Set(gear.map((e) => e!.realm))).toEqual(new Set([2, 3]));
+    expect(offers.some((o) => o.item === "linh_nguyen_dan")).toBe(true);
+    expect(offers.some((o) => o.item === "bt_hoa_4")).toBe(true);
+    expect(offers.some((o) => o.item === "bt_kim_5")).toBe(true);
+    expect(offers.some((o) => o.item === "ttp_town2")).toBe(true);
+    expect(offers.some((o) => o.item === "ttp_town")).toBe(false);
+    // The first town sells the gear of Luyện Khí and Trúc Cơ.
+    const first = merchantOffers("male", "town").map((o) => equipmentInfo(o.item)).filter((e) => e !== undefined);
+    expect(new Set(first.map((e) => e!.realm))).toEqual(new Set([0, 1]));
+    expect(merchantOffers("male", "town").some((o) => o.item === "linh_nguyen_dan")).toBe(false);
+  });
+
+  it("every offer is a real item with a price", async () => {
+    const { merchantOffers } = await import("./shop");
+    const { getItemDef } = await import("./items");
+    for (const o of merchantOffers("female", "town2")) {
+      expect(getItemDef(o.item), o.item).toBeDefined();
+      expect(o.price, o.item).toBeGreaterThan(0);
+    }
   });
 });

@@ -3,6 +3,7 @@
 // ends either way consistently (success: next realm, stage 1, points, two new root skills; failure: EXP lost).
 // Usage: node tools/breakthrough-smoke.mjs [ws://localhost:8787]
 // Registers a throwaway account and uses dev-only endpoints: local only, needs DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1.
+import { T } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -110,7 +111,7 @@ check("more pills than the realm allows: refused", r.some((m) => m.t === "bt_err
 fund(COST * 3);
 // A walk that is still going cannot be broken by a later message, so a breakthrough may not start in the middle of one.
 const start0 = c.log.find((m) => m.t === "welcome").players.find((p) => p.id === c.welcome.self).path.at(-1);
-c.send({ t: "move", x: 25.5, y: 25.5, fx: start0[0], fy: start0[1], seq: 90 });
+c.send({ t: "move", x: 25.5 + T, y: 25.5 + T, fx: start0[0], fy: start0[1], seq: 90 });
 await sleep(300);
 r = await after(c, { t: "bt_start", pills: 1 });
 check("a breakthrough cannot start while still walking", r.some((m) => m.t === "bt_error" && m.reason === "moving") && pills() === 3 && row().bt_started_at === null);
@@ -123,7 +124,7 @@ r = await after(c, { t: "bt_start", pills: 1 });
 check("a second start while one runs is refused", r.some((m) => m.t === "bt_error" && m.reason === "busy") && pills() === 2);
 const expBefore = row().exp;
 const self = c.log.find((m) => m.t === "welcome").players.find((p) => p.id === c.welcome.self);
-r = await after(c, { t: "move", x: 20.5, y: 24.5, fx: 25.5, fy: 25.5, seq: 91 }, 1000);
+r = await after(c, { t: "move", x: 20.5 + T, y: 24.5 + T, fx: 25.5 + T, fy: 25.5 + T, seq: 91 }, 1000);
 const ended = r.find((m) => m.t === "bt_end");
 check("moving fails it: EXP lost, marker cleared", ended?.ok === false && ended.reason === "moved" && ended.expLost > 0 && row().bt_started_at === null && row().exp === expBefore - ended.expLost, JSON.stringify(ended));
 

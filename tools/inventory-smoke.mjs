@@ -3,6 +3,7 @@
 // Usage: node tools/inventory-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
+import { TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -184,8 +185,8 @@ check("the reconnected bag keeps the same set of items as before the writes", b.
   const ch2 = await post("/api/character", { name: `Đan ${run.slice(-4)}` }, reg2.cookie);
   const id2 = ch2.data.character.id;
   let t = await connect(reg2.cookie);
-  t.send({ t: "move", x: 20.5, y: 38.5, fx: 20.5, fy: 20.5, seq: 1 });
-  await sleep(5800);
+  t.send({ t: "move", x: TOWN_GATE[0], y: TOWN_GATE[1], fx: TOWN_SPAWN[0], fy: TOWN_SPAWN[1], seq: 1 });
+  await sleep(10500);
   t.send({ t: "portal" });
   for (let i = 0; i < 40 && !t.log.some((m) => m.t === "transfer"); i++) await sleep(100);
   await sleep(500);

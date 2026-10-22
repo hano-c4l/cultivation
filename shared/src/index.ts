@@ -32,3 +32,6 @@ export * from "./element-tuning";
 export * from "./gear-names";
 export * from "./smith";
 export * from "./gear-master";
+export * from "./tuning";
+export * from "./aoi";
+export * from "./waygate";

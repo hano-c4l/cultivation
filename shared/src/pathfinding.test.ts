@@ -9,6 +9,7 @@ import {
   isStandable,
   isWalkable,
   lineClear,
+  mapPoint,
   nearestStandablePoint,
   pointClear,
   pointWalkable,
@@ -19,6 +20,8 @@ import { findNavPath, findSmoothPath, positionAlongPath } from "./pathfinding";
 import { normalizeChatText, parseClientMessage } from "./protocol";
 
 const town = getMap("town");
+/** The town layout moved by this many tiles when its grid grew (the old coordinates in these tests are relative to it). */
+const T = 25;
 const forest = getMap("forest");
 
 const length = (path: Vec2[]) => path.slice(1).reduce((sum, p, i) => sum + Math.hypot(p[0] - path[i]![0], p[1] - path[i]![1]), 0);
@@ -67,10 +70,10 @@ describe("validation", () => {
 describe("collision grid", () => {
   it("uses sub-tile cells: a round pillar blocks only part of its tile", () => {
     // Pillar disc at (18.5, 18.5) r=0.45: the middle is blocked, the tile corner is open ground.
-    expect(pointWalkable(town, 18.5, 18.5)).toBe(false);
-    expect(pointWalkable(town, 18.05, 18.05)).toBe(true);
+    expect(pointWalkable(town, 18.5 + T, 18.5 + T)).toBe(false);
+    expect(pointWalkable(town, 18.05 + T, 18.05 + T)).toBe(true);
     const blocked = Array.from({ length: CELLS_PER_TILE * CELLS_PER_TILE }, (_, i) =>
-      isCellWalkable(town, 18 * CELLS_PER_TILE + (i % CELLS_PER_TILE), 18 * CELLS_PER_TILE + Math.floor(i / CELLS_PER_TILE)),
+      isCellWalkable(town, (18 + T) * CELLS_PER_TILE + (i % CELLS_PER_TILE), (18 + T) * CELLS_PER_TILE + Math.floor(i / CELLS_PER_TILE)),
     ).filter((open) => !open).length;
     expect(blocked).toBeGreaterThan(0);
     expect(blocked).toBeLessThan(CELLS_PER_TILE * CELLS_PER_TILE);
@@ -78,40 +81,41 @@ describe("collision grid", () => {
 
   it("body radius keeps clearance: clear just outside the pillar, blocked when the body touches it", () => {
     // Pillar edge is at x = 18.5 + 0.45 = 18.95 (cells snap to 0.25); a body centred at 19.30 is clear.
-    expect(pointClear(town, 19.3, 18.5)).toBe(true);
-    expect(pointClear(town, 19.1, 18.5)).toBe(false);
-    expect(isStandable(town, 19.3, 18.5)).toBe(true);
+    expect(pointClear(town, 19.3 + T, 18.5 + T)).toBe(true);
+    expect(pointClear(town, 19.1 + T, 18.5 + T)).toBe(false);
+    expect(isStandable(town, 19.3 + T, 18.5 + T)).toBe(true);
   });
 
   it("a thin non tile-aligned fence blocks movement across it", () => {
     // Fence at x in [33, 33.3), y in [20, 28.5).
-    expect(lineClear(town, [31.5, 24.5], [35.5, 24.5])).toBe(false);
-    expect(lineClear(town, [31.5, 29.5], [35.5, 29.5])).toBe(true); // below the fence end
+    expect(lineClear(town, [31.5 + T, 24.5 + T], [35.5 + T, 24.5 + T])).toBe(false);
+    expect(lineClear(town, [31.5 + T, 29.5 + T], [35.5 + T, 29.5 + T])).toBe(true); // below the fence end
   });
 
   it("clicks on or next to obstacles resolve to the nearest standable point", () => {
-    const p = nearestStandablePoint(town, 18.5, 18.5)!; // inside the pillar
+    const p = nearestStandablePoint(town, 18.5 + T, 18.5 + T)!; // inside the pillar
     expect(p).not.toBeNull();
     expect(isStandable(town, p[0], p[1])).toBe(true);
-    expect(Math.hypot(p[0] - 18.5, p[1] - 18.5)).toBeLessThan(1.5);
-    expect(nearestStandablePoint(town, 27.5, 10.5)).toBeNull(); // middle of the pond, nothing standable nearby
+    expect(Math.hypot(p[0] - 18.5 - T, p[1] - 18.5 - T)).toBeLessThan(1.5);
+    expect(nearestStandablePoint(town, 27.5 + T, 10.5 + T)).toBeNull(); // middle of the pond, nothing standable nearby
   });
 });
 
 describe("free movement", () => {
   it("goes in one straight segment to the exact click point when the line is clear", () => {
-    const path = findSmoothPath(town, [10.5, 10.5], [11.37, 13.82])!;
-    expect(path).toEqual([[10.5, 10.5], [11.37, 13.82]]);
+    const path = findSmoothPath(town, [10.5 + T, 10.5 + T], [11.37 + T, 13.82 + T])!;
+    expect(path).toEqual([[10.5 + T, 10.5 + T], [11.37 + T, 13.82 + T]]);
   });
 
   it("keeps the exact destination instead of snapping to a tile centre", () => {
-    const path = findSmoothPath(town, [20.5, 20.5], [26.13, 5.77])!;
-    expect(path.at(-1)).toEqual([26.13, 5.77]);
+    const path = findSmoothPath(town, [20.5 + T, 20.5 + T], [26.13 + T, 5.77 + T])!;
+    expect(path.at(-1)![0]).toBeCloseTo(26.13 + T, 6);
+    expect(path.at(-1)![1]).toBeCloseTo(5.77 + T, 6);
   });
 
   it("walks around a round pillar with a short, clear detour", () => {
-    const from: Vec2 = [16.5, 18.5];
-    const to: Vec2 = [20.5, 18.5]; // the pillar at (18.5, 18.5) is in the way
+    const from: Vec2 = [16.5 + T, 18.5 + T];
+    const to: Vec2 = [20.5 + T, 18.5 + T]; // the pillar at (18.5, 18.5) is in the way
     const path = findSmoothPath(town, from, to)!;
     expect(path.length).toBeGreaterThan(2);
     expect(path.length).toBeLessThan(6);
@@ -121,26 +125,26 @@ describe("free movement", () => {
   });
 
   it("routes around the round pond with few waypoints", () => {
-    const path = findSmoothPath(town, [21.5, 10.5], [33.5, 10.5])!; // pond disc r=3.6 at (27.5, 10.5)
+    const path = findSmoothPath(town, [21.5 + T, 10.5 + T], [33.5 + T, 10.5 + T])!; // pond disc r=3.6 at (27.5, 10.5)
     expect(path.length).toBeGreaterThan(2);
     expect(path.length).toBeLessThan(8);
     expect(everySegmentClear(town, path)).toBe(true);
   });
 
   it("rejects a destination deep inside an obstacle", () => {
-    expect(findSmoothPath(town, [20.5, 20.5], [27.5, 10.5])).toBeNull();
+    expect(findSmoothPath(town, [20.5 + T, 20.5 + T], [27.5 + T, 10.5 + T])).toBeNull();
   });
 
   it("moves a wall-hugging destination to the nearest standable point", () => {
-    const path = findSmoothPath(town, [21.5, 10.5], [23.95, 10.5])!; // right against the pond edge
+    const path = findSmoothPath(town, [21.5 + T, 10.5 + T], [23.95 + T, 10.5 + T])!; // right against the pond edge
     const end = path.at(-1)!;
     expect(isStandable(town, end[0], end[1])).toBe(true);
-    expect(Math.hypot(end[0] - 23.95, end[1] - 10.5)).toBeLessThan(0.8);
+    expect(Math.hypot(end[0] - 23.95 - T, end[1] - 10.5 - T)).toBeLessThan(0.8);
   });
 
   it("works on the forest map with scattered trees (every segment clear, destination exact)", () => {
-    const start: Vec2 = [20.5, 3.5];
-    const goal: Vec2 = [44.3, 24.7];
+    const start: Vec2 = mapPoint(forest, 0, -34);
+    const goal: Vec2 = mapPoint(forest, 50, 0.7);
     const path = findSmoothPath(forest, start, goal)!;
     expect(path[0]).toEqual(start);
     expect(path.at(-1)).toEqual(goal);
@@ -149,13 +153,13 @@ describe("free movement", () => {
 
   it("finds a route across the whole forest quickly enough for the server and client to run per click", () => {
     const t0 = performance.now();
-    for (let i = 0; i < 5; i++) expect(findSmoothPath(forest, [20.5, 3.5], [44.3 + i * 0.01, 24.7])).not.toBeNull();
+    for (let i = 0; i < 5; i++) expect(findSmoothPath(forest, mapPoint(forest, 0, -34), [mapPoint(forest, 50, 0.7)[0] + i * 0.01, mapPoint(forest, 50, 0.7)[1]])).not.toBeNull();
     const perCall = (performance.now() - t0) / 5;
     expect(perCall).toBeLessThan(150);
   });
 
   it("nav path cells are all standable", () => {
-    const cells = findNavPath(forest, [20.5, 3.5], [44.5, 24.5])!;
+    const cells = findNavPath(forest, mapPoint(forest, 0, -34), mapPoint(forest, 50, 0.7))!;
     expect(cells.every(([x, y]) => pointClear(forest, x, y, BODY_RADIUS))).toBe(true);
   });
 });

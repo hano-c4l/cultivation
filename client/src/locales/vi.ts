@@ -8,7 +8,7 @@ export const vi = {
   kicked: "Tài khoản đăng nhập ở nơi khác.",
   title: "Tu Tiên Giới",
   transferring: "Đang chuyển bản đồ…",
-  maps: { town: "Thanh Vân Thành (an toàn)", forest: "Hắc Mộc Lâm", cave: "U Minh Động" } as Record<string, string>,
+  maps: { town: "Thanh Vân Thành (an toàn)", forest: "Hắc Mộc Lâm", cave: "U Minh Động", town2: "Thiên Hà Thành (an toàn)", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên" } as Record<string, string>,
   chat: {
     placeholder: "Nói gì đó… (Enter)",
     targetPlaceholder: "Gửi cho…",
@@ -318,7 +318,7 @@ export const vi = {
       invalid: "Mục tiêu không hợp lệ.",
     } as Record<string, string>,
   },
-  npcs: { merchant: "Thương nhân", smith: "Thợ Rèn", elder: "Trưởng Lão", path_kiem: "Kiếm Đạo Sư", path_thuat: "Thuật Đạo Sư", path_dan: "Đan Đạo Sư" } as Record<string, string>,
+  npcs: { merchant: "Thương nhân", smith: "Thợ Rèn", elder: "Trưởng Lão", merchant2: "Thương nhân", smith2: "Thợ Rèn", elder2: "Trưởng Lão", waygate: "Truyền Tống Trận", waygate2: "Truyền Tống Trận", path_kiem: "Kiếm Đạo Sư", path_thuat: "Thuật Đạo Sư", path_dan: "Đan Đạo Sư" } as Record<string, string>,
   quests: {
     title: "Nhiệm vụ",
     none: "Hiện chưa có nhiệm vụ nào để nhận hay đang làm.",
@@ -375,6 +375,16 @@ export const vi = {
       claimed: "Bạn đã nhận vật phẩm của hướng tu này rồi (bỏ hướng tu thì có thể làm lại nhiệm vụ).",
     } as Record<string, string>,
   },
+  waygate: {
+    title: "Truyền Tống Trận",
+    hint: "Chọn thành muốn tới. Thành càng xa, phí càng cao. Giữ nguyên vị trí 5 giây; di chuyển hoặc bị đánh sẽ bị ngắt (chưa mất Linh Thạch).",
+    none: "Chưa có thành nào để tới.",
+    price: (n: string) => `${n} Linh Thạch`,
+    go: "Đi",
+    poor: "Không đủ Linh Thạch",
+    balance: (n: string) => `Bạn có ${n} Linh Thạch.`,
+    channelName: "Truyền Tống Trận",
+  },
   shop: {
     title: "Thương nhân",
     tabs: { buy: "Mua", sell: "Bán" },
@@ -394,7 +404,7 @@ export const vi = {
     tooFar: "Hãy lại gần NPC hơn.",
     channelLeft: (s: string) => `${s} giây`,
     channel: (name: string, s: number) => `Đang niệm ${name}… giữ nguyên vị trí ${s} giây (di chuyển hoặc bị đánh sẽ bị ngắt, phù không mất).`,
-    channelBroken: { moved: "Niệm phù bị ngắt vì bạn hành động. Phù chưa bị mất.", hit: "Niệm phù bị ngắt vì bị tấn công. Phù chưa bị mất.", dead: "Niệm phù thất bại vì bạn đã tử vong.", no_item: "Niệm phù thất bại: không còn phù trong túi.", other: "Niệm phù bị ngắt. Phù chưa bị mất." } as Record<string, string>,
+    channelBroken: { moved: "Niệm phù bị ngắt vì bạn hành động. Phù chưa bị mất.", hit: "Niệm phù bị ngắt vì bị tấn công. Phù chưa bị mất.", dead: "Niệm phù thất bại vì bạn đã tử vong.", no_item: "Niệm phù thất bại: không còn phù trong túi.", money: "Không đủ Linh Thạch để dùng Truyền Tống Trận.", other: "Niệm phù bị ngắt. Phù chưa bị mất." } as Record<string, string>,
     categories: { all: "Tất cả", pill: "Đan dược/phù", gear: "Trang bị", artifact: "Pháp bảo", book: "Bí tịch", material: "Nguyên liệu" } as Record<string, string>,
     element: "Hệ:",
     anyElement: "Mọi hệ",

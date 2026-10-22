@@ -1,0 +1,33 @@
+// Positions of the maps for the smoke scripts, taken from the shared map data (so they follow the layout). Tile centres unless noted.
+import { CAVE_CHAMBERS, FOREST_GLADES, getMap, mapPoint } from "../shared/src/map.ts";
+
+const c = ([x, y]) => [x + 0.5, y + 0.5];
+export const town = getMap("town");
+export const forest = getMap("forest");
+export const cave = getMap("cave");
+/** The town layout moved by this many tiles when its grid grew; every old town coordinate is that much further. */
+export const T = 25;
+export const TOWN_SPAWN = c(town.spawn);
+/** The town's portal to the forest, and where one arrives in the town from the forest. */
+export const TOWN_GATE = c([town.portals[0].x, town.portals[0].y]);
+export const TOWN_ARRIVAL = c([forest.portals[0].toX, forest.portals[0].toY]);
+export const FOREST_ARRIVAL = c(forest.spawn);
+export const FOREST_N_GATE = c([forest.portals[0].x, forest.portals[0].y]);
+export const FOREST_E_GATE = c([forest.portals[1].x, forest.portals[1].y]);
+export const FOREST_E_ARRIVAL = c([cave.portals[0].toX, cave.portals[0].toY]);
+export const CAVE_ARRIVAL = c(cave.spawn);
+const nearestTo = (list, origin) => [...list].sort((a, b) => Math.hypot(a[0] - origin[0], a[1] - origin[1]) - Math.hypot(b[0] - origin[0], b[1] - origin[1]))[0];
+/** The first group of monsters of the forest (the nearest to where one arrives: bậc 1), the spot just below it inside its glade (a few tiles from the nearest of them). */
+const firstGlade = nearestTo(FOREST_GLADES, [0, -34]);
+export const FOREST_WOLVES = mapPoint(forest, firstGlade[0], firstGlade[1]);
+export const FOREST_BY_WOLVES = mapPoint(forest, firstGlade[0], firstGlade[1] + 4);
+/** The same for the cave: the chamber nearest to the arrival, and a spot in it towards the corridor. */
+const firstChamber = nearestTo(CAVE_CHAMBERS, [-84, 0]);
+export const CAVE_BY_BATS = mapPoint(cave, firstChamber[0], firstChamber[1] + (firstChamber[1] < 0 ? 4 : -4));
+/** Two tiles beside the first town's blacksmith (it stands a few tiles from the spawn, which is the teleport array in the middle of the town). */
+const townSmith = town.npcs.find((n) => n.id === "smith");
+export const TOWN_SMITH_NEAR = [townSmith.x + 2, townSmith.y];
+export const TOWN_WAYGATE = (() => {
+  const n = town.npcs.find((x) => x.kind === "waygate");
+  return [n.x, n.y];
+})();
