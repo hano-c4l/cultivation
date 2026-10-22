@@ -67,6 +67,11 @@ import {
   applyBag,
   applyRefineExp,
   currentGearSetNames,
+  canRefine,
+  parseRolledStats,
+  refineCost,
+  refineStats,
+  REFINE_RULES,
   smithRealmOf,
   STAGES_PER_REALM,
   KEEP_LEVEL_ITEM,
@@ -631,12 +636,13 @@ export class MapRoom extends DurableObject<Env> {
       case "mail_claim":
         return this.handleInventory(ws, state, msg);
       case "mount":
-        return this.handleMount(ws, state, msg.on);
+        return this.handleMount(ws, state, msg.on, msg.fx !== undefined && msg.fy !== undefined ? [msg.fx, msg.fy] : undefined);
       case "eq_equip":
       case "eq_unequip":
       case "eq_repair":
         return this.handleEquipment(ws, state, msg);
       case "smith_upgrade":
+      case "smith_refine":
       case "smith_repair":
         return this.handleSmith(ws, state, msg);
       case "npc_open":
@@ -1579,7 +1585,7 @@ export class MapRoom extends DurableObject<Env> {
    * Re-derives the walking speed (stats, riding, and later buffs and items). A change while walking re-plans the path from
    * where the character is now at the new speed and tells everyone, so nobody's track runs at the wrong speed.
    */
-  private async refreshSpeed(ws: WebSocket): Promise<void> {
+  private async refreshSpeed(ws: WebSocket, opts: { claim?: [number, number]; quiet?: boolean; force?: boolean } = {}): Promise<void> {
     const first = ws.deserializeAttachment() as PlayerState | null;
     if (!first || first.transferring) return;
     const w = await this.wearerOf(first.id);
@@ -1587,18 +1593,29 @@ export class MapRoom extends DurableObject<Env> {
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!w || !state || state.transferring) return;
     const speed = walkSpeed(w.base, equipmentBonus(bag.equipped, { ...w, mounted: state.mounted }).moveSpeed);
-    if (speed === state.speed) return;
-    const now = Date.now();
-    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-    const dest = state.path[state.path.length - 1];
-    const rest = here.moving && dest ? findSmoothPath(getMap(state.mapId), [here.x, here.y], dest) : null;
-    state.path = rest ?? [[here.x, here.y]];
-    state.startedAt = now;
-    state.speed = speed;
-    state.dirty = true;
-    ws.serializeAttachment(state);
-    // Everyone, the mover included: its own client swaps to the new track and speed.
-    this.broadcast({ t: "path", player: this.snapshot(state) });
+    if (speed === state.speed && !opts.force) return;
+    let accepted = false;
+    if (speed !== state.speed) {
+      const now = Date.now();
+      const map = getMap(state.mapId);
+      const there = positionAlongPath(state.path, now - state.startedAt, state.speed);
+      // The mover may say where it is (it predicted the change from there): trusted when close to where the server has it, like a move.
+      let anchor: Vec2 = [there.x, there.y];
+      const c = opts.claim;
+      if (c && Math.hypot(c[0] - there.x, c[1] - there.y) <= MAX_DESYNC_TILES * Math.max(1, state.speed / BASE_SPEED) && isStandable(map, c[0], c[1])) {
+        anchor = c;
+        accepted = true;
+      }
+      const dest = state.path[state.path.length - 1];
+      const rest = there.moving && dest ? findSmoothPath(map, anchor, dest) : null;
+      state.path = rest ?? [anchor];
+      state.startedAt = now;
+      state.speed = speed;
+      state.dirty = true;
+      ws.serializeAttachment(state);
+    }
+    // Everyone is told; a mover that predicted the change itself (and was believed) is not, or its own track would jump.
+    this.broadcast({ t: "path", player: this.snapshot(state) }, opts.quiet && accepted ? ws : undefined);
   }
 
   /** Gets off when the flight pháp bảo is gone, broken or no longer allowed, then settles the speed. */
@@ -1617,7 +1634,8 @@ export class MapRoom extends DurableObject<Env> {
         ws.serializeAttachment(fresh);
         await saveMounted(this.env.DB, id, false).catch((err) => console.error("save mounted failed", id, err));
         this.send(ws, { t: "mounted", on: false });
-        this.broadcast({ t: "path", player: this.snapshot(fresh) });
+        await this.refreshSpeed(ws, { force: true }); // tells everyone (the flag and the speed) in one message
+        return;
       }
     }
     await this.refreshSpeed(ws);
@@ -1636,12 +1654,12 @@ export class MapRoom extends DurableObject<Env> {
     ws.serializeAttachment(fresh);
     await saveMounted(this.env.DB, id, false).catch((err) => console.error("save mounted failed", id, err));
     this.send(ws, { t: "mounted", on: false });
-    this.broadcast({ t: "path", player: this.snapshot(fresh) });
-    this.applyGear(id, await this.getBag(id), ws); // also settles the speed
+    await this.refreshSpeed(ws, { force: true });
+    this.applyGear(id, await this.getBag(id), ws);
   }
 
   /** Get on or off the flight pháp bảo. Stats and speed follow at once. */
-  private async handleMount(ws: WebSocket, state: PlayerState, on: boolean): Promise<void> {
+  private async handleMount(ws: WebSocket, state: PlayerState, on: boolean, claim?: [number, number]): Promise<void> {
     const now = Date.now();
     if (now - (state.lastMountAt ?? 0) < 500) return;
     state.lastMountAt = now;
@@ -1655,9 +1673,14 @@ export class MapRoom extends DurableObject<Env> {
       const bag = await this.getBag(state.id);
       const flight = bag.equipped.find((e) => e.slot === "flight");
       const info = flight ? equipmentInfo(flight.type) : undefined;
-      if (!w || !flight || !info) return this.send(ws, { t: "mounted", on: false, error: "no_flight" });
+      // A refusal also hands back the track the server has: the client may have predicted the change.
+      const refuse = (error: "no_flight" | "broken" | "requirements") => {
+        this.send(ws, { t: "mounted", on: false, error });
+        this.send(ws, { t: "ack", seq: 0, player: this.snapshot((ws.deserializeAttachment() as PlayerState | null) ?? state) });
+      };
+      if (!w || !flight || !info) return refuse("no_flight");
       const block = equipBlock(info, flight.slot as EquipSlot, flight.dur, w);
-      if (block) return this.send(ws, { t: "mounted", on: false, error: block === "broken" ? "broken" : "requirements" });
+      if (block) return refuse(block === "broken" ? "broken" : "requirements");
     }
     const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
     if (fresh.transferring) return;
@@ -1665,10 +1688,10 @@ export class MapRoom extends DurableObject<Env> {
     ws.serializeAttachment(fresh);
     await saveMounted(this.env.DB, fresh.id, on).catch((err) => console.error("save mounted failed", fresh.id, err));
     this.send(ws, { t: "mounted", on });
-    // The riding flag rides on the snapshot, so other players see it too.
-    this.broadcast({ t: "path", player: this.snapshot(fresh) });
+    // One message tells the others about the flag and the new speed; the mover predicted both and from where it stood (`claim`).
+    await this.refreshSpeed(ws, { claim, quiet: true, force: true });
     const bag = await this.getBag(fresh.id);
-    this.applyGear(fresh.id, bag, ws); // also settles the speed (syncMount)
+    this.applyGear(fresh.id, bag, ws); // the stats follow the flag
   }
 
   /** Worn gear changed (or wore down): the combat stats follow, in a combat map. In town the next join recomputes them. */
@@ -2281,7 +2304,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** Blacksmith commands: upgrading a piece and repairing. Same checks as the merchant (close enough, no murderers, rate limit). */
-  private handleSmith(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "smith_upgrade" | "smith_repair" }>): void {
+  private handleSmith(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "smith_upgrade" | "smith_refine" | "smith_repair" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
@@ -2294,6 +2317,7 @@ export class MapRoom extends DurableObject<Env> {
     const id = state.id;
     void this.bagTask(id, async () => {
       if (msg.t === "smith_repair") return this.repairGear(ws, id, msg.slot);
+      if (msg.t === "smith_refine") return this.smithRefine(ws, id, msg);
       return this.smithUpgrade(ws, id, msg);
     });
   }
@@ -2345,6 +2369,54 @@ export class MapRoom extends DurableObject<Env> {
     } catch (err) {
       // A failed guard means the cached bag was stale: nothing was written, so reload and let the player retry.
       if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("smith upgrade failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+  }
+
+  /**
+   * One refining: some stats of the piece rise towards their maximum (never down). The Linh Thạch, the refining ore and the new stats are
+   * written in ONE batch, guarded on the stats the piece had, like an upgrade.
+   */
+  private async smithRefine(ws: WebSocket, id: string, msg: Extract<ClientMessage, { t: "smith_refine" }>): Promise<void> {
+    const master = await getGearMaster(this.env.DB);
+    const bag = await this.getBag(id);
+    const piece = msg.slot ? bag.equipped.find((e) => e.slot === msg.slot) : bag.items.find((i) => i.tab === msg.tab && i.cell === msg.cell);
+    const info = piece ? equipmentInfo(piece.type) : undefined;
+    if (!piece || !info || info.kind === "bonded" || piece.type.startsWith("eqs.")) return this.resync(ws, id, "smith_item");
+    const row = await this.env.DB.prepare("SELECT rolled_stats FROM item_instances WHERE id = ? AND owner_character_id = ?").bind(piece.id, id).first<{ rolled_stats: string | null }>();
+    if (!row) {
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+    const current = row.rolled_stats ? parseRolledStats(row.rolled_stats) : undefined;
+    const cost = refineCost(smithRealmOf(info, undefined, STAGES_PER_REALM));
+    if (!cost) return this.send(ws, { t: "inv_error", reason: "smith_item" });
+    if (!canRefine(piece.type, current)) return this.send(ws, { t: "inv_error", reason: "smith_full" });
+    const ore = planConsume(bag.items, cost.ore, cost.materials);
+    if (!ore) return this.send(ws, { t: "inv_error", reason: "smith_mats" });
+    const result = refineStats(piece.type, current, Math.random, REFINE_RULES.statChance, (key) => master.stats.get(key));
+    if (!result) return this.resync(ws, id, "smith_item");
+    const now = Date.now();
+    const extra = [
+      // The piece must still have the stats the plan was made from (a NULL column reads as the empty text).
+      this.env.DB.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM item_instances WHERE id = ? AND owner_character_id = ? AND IFNULL(rolled_stats, '') = ?)").bind(piece.id, id, row.rolled_stats ?? ""),
+      ...ore.flatMap((op) => opStatements(this.env.DB, id, op, now)),
+      this.env.DB.prepare("UPDATE item_instances SET rolled_stats = ? WHERE id = ? AND owner_character_id = ?").bind(JSON.stringify(result.rs), piece.id, id),
+    ];
+    try {
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -cost.linhThach, reason: "smith_refine", actor: "system", idempotencyKey: `smith:${crypto.randomUUID()}` }, extra);
+      if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+      if (r.status !== "applied") return this.resync(ws, id, "busy");
+      this.bags.delete(id);
+      const fresh = await this.getBag(id);
+      this.send(ws, { t: "inv", full: true, tabs: fresh.tabs, items: fresh.items, removed: [], tabPrice: await getSetting(this.env.DB, "bag_tab_price") });
+      this.send(ws, { t: "eq", items: fresh.equipped });
+      this.applyGear(id, fresh, ws);
+      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+      this.send(ws, { t: "smith_refined", id: piece.id, gains: result.gains });
+    } catch (err) {
+      if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("smith refine failed", id, err);
       this.bags.delete(id);
       return this.resync(ws, id, "busy");
     }

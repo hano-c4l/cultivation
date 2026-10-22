@@ -1,8 +1,6 @@
 import {
-  ITEM_RARITIES,
   REALMS,
   SHOP_CATEGORIES,
-  SORT_MODES,
   SHOP_SELL_MANY_MAX,
   SPIRITUAL_ROOTS,
   MAX_SHOP_QTY,
@@ -15,7 +13,9 @@ import {
   type CharacterSheet,
   type ClientMessage,
   type ShopCategory,
+  type SortMode,
 } from "@game/shared";
+import { sortControls, sortItemsBy } from "./item-sort";
 import { elementDot, equipLines, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
@@ -72,8 +72,9 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   /** Items ticked for the quick sale (by item id, which survives the bag being redrawn). */
   const ticked = new Set<string>();
   let armedMany = 0;
-  /** The order of the lists: the index into SORT_MODES, advanced by the sort button (a view only, nothing is rewritten). */
-  let sortIdx = 0;
+  /** The kind of sort picked in the drop-down, and the one the "Sắp xếp" button applied last (a view only, nothing is rewritten). */
+  let sortPicked: SortMode = "name";
+  let sortApplied: SortMode = "name";
   /** Realms and grades picked in the filters of the sell tab; empty means no filter. They only steer "Chọn hết". */
   const realmSel = new Set<number>();
   const gradeSel = new Set<number>();
@@ -81,6 +82,12 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   const msOpen = new Set<string>();
   /** Quantity typed per offer, kept across redraws. */
   const qtys = new Map<string, number>();
+
+  // A click anywhere outside an open filter list closes it.
+  document.addEventListener("pointerdown", (ev) => {
+    if (panel.hidden) return;
+    for (const d of panel.querySelectorAll<HTMLDetailsElement>("details.shop-ms")) if (d.open && !d.contains(ev.target as Node)) d.open = false;
+  });
 
   const nameOf = (type: string) => getItemDef(type)?.nameVi ?? type;
 
@@ -99,21 +106,8 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     return box;
   }
 
-  /** Orders a list by the current sort mode (name, rarity, grade, realm); the higher first for all but the name. */
-  function sortItems<T>(list: readonly T[], typeOf: (x: T) => string, lvOf: (x: T) => number | undefined): T[] {
-    const mode = SORT_MODES[sortIdx % SORT_MODES.length];
-    const name = (x: T) => nameOf(typeOf(x));
-    const rarity = (x: T) => ITEM_RARITIES.indexOf(getItemDef(typeOf(x))?.rarity ?? "common");
-    const grade = (x: T) => getItemDef(typeOf(x))?.grade ?? 0;
-    const realm = (x: T) => itemTierRealm(typeOf(x), lvOf(x)) ?? -1;
-    return [...list].sort((a, b) => {
-      let d = 0;
-      if (mode === "rarity") d = rarity(b) - rarity(a);
-      else if (mode === "grade") d = grade(b) - grade(a);
-      else if (mode === "realm") d = realm(b) - realm(a) || grade(b) - grade(a);
-      return d || name(a).localeCompare(name(b), "vi");
-    });
-  }
+  /** Orders a list by the sort the button applied last. */
+  const sortItems = <T,>(list: readonly T[], typeOf: (x: T) => string, lvOf: (x: T) => number | undefined): T[] => sortItemsBy(list, sortApplied, typeOf, lvOf);
 
   function renderBuy(): HTMLElement {
     const list = el("div");
@@ -273,13 +267,12 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   /** Whether "Chọn hết" takes the item: it must match the picked realms and grades (no pick in a filter means anything). */
   const matchesFilters = (i: BagItem) => (realmSel.size === 0 || realmSel.has(realmOf(i) ?? -1)) && (gradeSel.size === 0 || gradeSel.has(gradeOf(i)));
 
-  function renderFilters(shown: BagItem[]): HTMLElement | null {
+  function renderFilters(shown: BagItem[]): HTMLElement[] {
     const { realms, grades } = filterOptions(shown);
-    if (realms.length < 2 && grades.length < 2) return null;
-    const row = el("div", "shop-filters");
-    if (realms.length >= 2) row.append(multiSelect("realm", vi.shop.realm, realms.map((r): [number, string] => [r, REALMS[r]?.shortVi ?? String(r)]), realmSel));
-    if (grades.length >= 2) row.append(multiSelect("grade", vi.shop.grade, grades.map((g): [number, string] => [g, vi.inventory.grades[g] ?? String(g)]), gradeSel));
-    return row;
+    const out: HTMLElement[] = [];
+    if (realms.length >= 2) out.push(multiSelect("realm", vi.shop.realm, realms.map((r): [number, string] => [r, REALMS[r]?.shortVi ?? String(r)]), realmSel));
+    if (grades.length >= 2) out.push(multiSelect("grade", vi.shop.grade, grades.map((g): [number, string] => [g, vi.inventory.grades[g] ?? String(g)]), gradeSel));
+    return out;
   }
 
   /** The quick-sale bar: tick everything shown, and sell the ticked stacks at once after a second tap. */
@@ -288,19 +281,18 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     const chosen = getBag().filter((i) => ticked.has(i.id));
     const total = chosen.reduce((n, i) => n + sellPrice(i.type, i.dur, i.max) * i.qty, 0);
     const target = shown.filter(matchesFilters);
-    // "Chọn hết" takes what the filters pick (everything when nothing is picked), up to the limit of one sale.
-    const everything = target.length > 0 && target.every((i) => ticked.has(i.id));
+    // "Chọn hết" takes what the filters pick (everything when nothing is picked), up to the limit of one sale. It is a toggle: while all of
+    // them are ticked (or the limit is reached with some of them ticked) it reads "Bỏ chọn", which clears every tick, filters or not.
+    const everything = target.length > 0 && (target.every((i) => ticked.has(i.id)) || (ticked.size >= SHOP_SELL_MANY_MAX && target.some((i) => ticked.has(i.id))));
     const toggle = el("button", "eq-small", everything ? vi.shop.untickAll : vi.shop.tickAll);
-    toggle.disabled = target.length === 0;
+    toggle.disabled = !everything && target.length === 0;
     toggle.onclick = () => {
-      for (const i of target) {
-        if (everything) ticked.delete(i.id);
-        else if (ticked.size < SHOP_SELL_MANY_MAX) ticked.add(i.id);
-      }
+      if (everything) ticked.clear();
+      else for (const i of target) if (ticked.size < SHOP_SELL_MANY_MAX) ticked.add(i.id);
       armedMany = 0;
       render();
     };
-    const sell = el("button", "eq-small", vi.shop.sellTicked(chosen.length, total));
+    const sell = el("button", "eq-small shop-sell", vi.shop.sellTicked(chosen.length, total));
     sell.disabled = chosen.length === 0 || chosen.length > SHOP_SELL_MANY_MAX;
     sell.title = vi.shop.sellTickedHint(chosen.length, total);
     sell.onclick = () => {
@@ -314,8 +306,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       send({ t: "shop_sell_many", npc, cells: chosen.map((i) => ({ tab: i.tab, cell: i.cell })) });
       ticked.clear();
     };
-    bar.append(toggle, sell);
-    if (ticked.size >= SHOP_SELL_MANY_MAX) bar.append(el("div", "muted", vi.shop.tooMany(SHOP_SELL_MANY_MAX)));
+    bar.append(toggle, ...renderFilters(shown), sell);
     return bar;
   }
 
@@ -339,12 +330,19 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       };
       modes.append(b);
     }
-    const sortBtn = el("button", "shop-sort", vi.inventory.sortBy(vi.inventory.sortModes[SORT_MODES[sortIdx % SORT_MODES.length]!] ?? ""));
-    sortBtn.onclick = () => {
-      sortIdx = (sortIdx + 1) % SORT_MODES.length;
-      render();
-    };
-    modes.append(sortBtn);
+    modes.append(
+      sortControls(
+        "shop-sort",
+        sortPicked,
+        (m) => {
+          sortPicked = m;
+        },
+        () => {
+          sortApplied = sortPicked;
+          render();
+        },
+      ),
+    );
     const cats = el("div", "eq-tabs shop-cats");
     for (const c of SHOP_CATEGORIES) {
       const b = el("button", c === category ? "active" : undefined, vi.shop.categories[c]);
@@ -355,7 +353,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       cats.append(b);
     }
     panel.append(head, modes, cats);
-    if (flash) panel.append(el("div", "shop-flash", flash));
+    if (flash && mode === "buy") panel.append(el("div", "shop-flash", flash));
     if (mode === "buy" && ELEMENT_TABS.has(category)) {
       const row = el("div", "shop-element");
       row.append(el("span", "muted", vi.shop.element));
@@ -375,10 +373,8 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       panel.append(row);
     }
     if (mode === "sell") {
-      const shown = sellableItems();
-      const filters = renderFilters(shown);
-      if (filters) panel.append(filters);
-      panel.append(renderBulkBar(shown));
+      panel.append(renderBulkBar(sellableItems()));
+      if (flash) panel.append(el("div", "shop-flash", flash));
     }
     panel.append(mode === "buy" ? renderBuy() : renderSell(), el("div", "muted", vi.shop.note));
   }

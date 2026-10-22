@@ -144,3 +144,71 @@ describe("the realm the smith counts a piece in", () => {
     expect(smithRealmOf({ kind: "bonded", realm: 0 }, undefined, 9)).toBe(0);
   });
 });
+
+describe("refining (tinh luyện)", () => {
+  const seeded = (seed: number) => {
+    let s = seed;
+    return () => (s = (s * 16807) % 2147483647) / 2147483647;
+  };
+
+  it("never lowers a stat and never goes above the maximum, and may raise nothing", async () => {
+    const { refineStats, statRangeFor, canRefine } = await import("./gear-master");
+    const { EQUIP_STAT_KEYS } = await import("./equipment-data");
+    const type = "eq.robe.m.1.4.2.kim";
+    const start = { defense: statRangeFor(type, "defense")![0], maxHp: statRangeFor(type, "maxHp")![0] };
+    let any = false;
+    let none = false;
+    for (let i = 0; i < 300; i++) {
+      const r = refineStats(type, start, seeded(i + 1), 0.5)!;
+      let gained = false;
+      for (const key of EQUIP_STAT_KEYS) {
+        const before = start[key as "defense" | "maxHp"];
+        const after = r.rs[key];
+        if (before === undefined) continue;
+        expect(after!).toBeGreaterThanOrEqual(before);
+        expect(after!).toBeLessThanOrEqual(statRangeFor(type, key)![1]);
+        if (after! > before) gained = true;
+      }
+      if (gained) any = true;
+      else none = true;
+      expect(Object.keys(r.gains).length > 0).toBe(gained);
+    }
+    expect(any && none).toBe(true);
+    expect(canRefine(type, start)).toBe(true);
+  });
+
+  it("takes a value from what the stat has now up to the maximum (the example of 12 in 10..20 gives 12..20)", async () => {
+    const { refineStats } = await import("./gear-master");
+    const type = "eq.weapon.u.0.1.1.kim.kiem";
+    const range = (await import("./gear-master")).statRangeFor(type, "attack")!;
+    const now = Math.min(range[1] - 1, range[0] + 1);
+    for (let i = 0; i < 100; i++) {
+      const r = refineStats(type, { attack: now }, seeded(i + 7), 1)!;
+      expect(r.rs.attack!).toBeGreaterThanOrEqual(now);
+      expect(r.rs.attack!).toBeLessThanOrEqual(range[1]);
+    }
+    // At the maximum nothing can rise.
+    expect(refineStats(type, { attack: range[1] }, () => 0, 1)!.gains).toEqual({});
+  });
+
+  it("starts from the fixed stats of a piece made before rolling, and refuses the pieces that are not rolled", async () => {
+    const { refineStats, canRefine } = await import("./gear-master");
+    expect(refineStats("eq.ring.u.0.1.1.kim", undefined, () => 0, 1)).not.toBeNull();
+    expect(refineStats("eq.bonded.u.0.1.2.kim", undefined, () => 0, 1)).toBeNull();
+    expect(refineStats("eqs.van_co_gioi", undefined, () => 0, 1)).toBeNull();
+    expect(canRefine("eq.ring.u.0.1.1.kim", undefined)).toBe(true);
+  });
+
+  it("costs the refining ore of the realm and drops rarer than the smith's ore", async () => {
+    const { refineCost, rollRefineDrop, REFINE_DROP, ORE_DROP, REFINE_ORES } = await import("./smith");
+    expect(refineCost(0)).toMatchObject({ ore: "tl_lk", materials: 2 });
+    expect(refineCost(2)!.ore).toBe("tl_kd");
+    expect(refineCost(9)).toBeUndefined();
+    for (const rank of ["normal", "rare1", "rare2"] as const) expect(REFINE_DROP[rank].chance).toBeLessThan(ORE_DROP[rank].chance);
+    let n = 0;
+    expect(rollRefineDrop(1, "normal", () => (n++, 0))).toEqual({ item: "tl_tc", qty: 1 });
+    expect(n).toBe(2);
+    expect(rollRefineDrop(9, "normal", () => 0)).toBeNull();
+    for (const ore of REFINE_ORES) expect(getItemDef(ore)?.category).toBe("material");
+  });
+});

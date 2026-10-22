@@ -80,6 +80,8 @@ export type ClientMessage =
   | { t: "eq_repair"; slot: EquipSlot | "all" }
   /** Blacksmith: upgrade one piece, worn (`slot`) or in the bag (`tab`, `cell`); `protect` spends a Hộ Cấp Phù when it would save a level. */
   | { t: "smith_upgrade"; npc: string; slot?: EquipSlot; tab?: number; cell?: number; protect: boolean }
+  /** Blacksmith: refine one piece (worn: `slot`, or in the bag: `tab`, `cell`): some stats rise towards their maximum, for refining ore and Linh Thạch. */
+  | { t: "smith_refine"; npc: string; slot?: EquipSlot; tab?: number; cell?: number }
   /** Blacksmith: repair one worn piece or all of them for Linh Thạch. */
   | { t: "smith_repair"; npc: string; slot: EquipSlot | "all" }
   /** Use a skill. `target` is the monster to hit (attack skills; omitted: the current target). Heals and buffs need none. */
@@ -103,7 +105,7 @@ export type ClientMessage =
   /** Stop the breakthrough in progress; it counts as a failure (the pills and the Linh Thạch are gone). */
   | { t: "bt_cancel" }
   /** Get on (true) or off (false) the flight pháp bảo. Its stats and speed only count while riding. */
-  | { t: "mount"; on: boolean }
+  | { t: "mount"; on: boolean; fx?: number; fy?: number }
   /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
   | { t: "conn_report"; code: number; reason: string; clean: boolean; downMs: number }
   /** Take a path item (a placeholder for the NPC quest): one per path per character. */
@@ -256,7 +258,7 @@ export type ServerMessage =
   | { t: "tp"; ms: number; item: string }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
   | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "other" }
-  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden"; retryMs?: number }
+  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -281,6 +283,8 @@ export type ServerMessage =
   | { t: "repaired"; cost: number }
   /** The blacksmith's window: the upgrade rules and the extra success chance (percent) each of your pieces has built up from failures. */
   | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number> }
+  /** The outcome of a refining: what each stat gained (empty: nothing rose this time). */
+  | { t: "smith_refined"; id: string; gains: Record<string, number> }
   /** The outcome of an upgrade: the piece, whether it worked, its level now, whether a level was lost or a Hộ Cấp Phù used, and its new bonus chance. */
   | { t: "smith_result"; id: string; success: boolean; level: number; dropped: boolean; scrollUsed: boolean; pity: number }
   /** The receiving character died; a transfer to town follows. */
@@ -405,6 +409,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "bt_cancel" };
     case "mount":
       if (typeof m.on !== "boolean") return null;
+      if (m.fx !== undefined || m.fy !== undefined) return isCoord(m.fx) && isCoord(m.fy) ? { t: "mount", on: m.on, fx: m.fx, fy: m.fy } : null;
       return { t: "mount", on: m.on };
     case "conn_report":
       return isInt(m.code) && typeof m.reason === "string" && typeof m.clean === "boolean" && isInt(m.downMs)
@@ -433,6 +438,11 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (!isNpcId(m.npc) || typeof m.protect !== "boolean") return null;
       if (m.slot !== undefined) return isEquipSlot(m.slot) ? { t: "smith_upgrade", npc: m.npc, slot: m.slot, protect: m.protect } : null;
       return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) ? { t: "smith_upgrade", npc: m.npc, tab: m.tab, cell: m.cell, protect: m.protect } : null;
+    }
+    case "smith_refine": {
+      if (!isNpcId(m.npc)) return null;
+      if (m.slot !== undefined) return isEquipSlot(m.slot) ? { t: "smith_refine", npc: m.npc, slot: m.slot } : null;
+      return isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) ? { t: "smith_refine", npc: m.npc, tab: m.tab, cell: m.cell } : null;
     }
     case "smith_repair":
       return isNpcId(m.npc) && (m.slot === "all" || isEquipSlot(m.slot)) ? { t: "smith_repair", npc: m.npc, slot: m.slot as EquipSlot | "all" } : null;

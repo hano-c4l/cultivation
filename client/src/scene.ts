@@ -44,11 +44,14 @@ import {
   type PlayerSnapshot,
   type ServerMessage,
   type Vec2,
+  equipmentBonus,
+  walkSpeed,
+  type EquipStatKey,
 } from "@game/shared";
 import { initCharacterPanel, type CharacterPanel } from "./character-ui";
 import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
-import { itemTierText } from "./equip-text";
+import { itemTierText, statText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initShop, type ShopUi } from "./shop-ui";
 import { initSmith, type SmithUi } from "./smith-ui";
@@ -66,7 +69,7 @@ import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { vi } from "./locales/vi";
-import { isMounted, setMounted } from "./wearer";
+import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
@@ -226,7 +229,7 @@ export class GameScene extends Phaser.Scene {
     this.mountBtn = document.createElement("button");
     this.mountBtn.id = "mount-btn";
     this.mountBtn.hidden = true;
-    this.mountBtn.onclick = () => this.net.send({ t: "mount", on: !isMounted() });
+    this.mountBtn.onclick = () => this.toggleMount();
     document.body.append(this.mountBtn);
     this.drawMap();
     this.marker = this.add.graphics().setDepth(1);
@@ -241,6 +244,8 @@ export class GameScene extends Phaser.Scene {
       // A skill is an action: during a breakthrough it would end it (hotbar potions are fine).
       send: (msg) => {
         if (msg.t === "cast" && this.guardBreakthrough()) return;
+        // Using another skill or item drops a teleport that was waiting for a click: it counts as never started.
+        if ((msg.t === "cast" || msg.t === "use_type") && this.aiming) this.endAim();
         this.net.send(msg);
       },
       aim: (skill) => this.beginAim(skill),
@@ -287,7 +292,7 @@ export class GameScene extends Phaser.Scene {
       const a = document.activeElement;
       const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
       if (!typing && (ev.key === "m" || ev.key === "M") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && this.selfId) {
-        this.net.send({ t: "mount", on: !isMounted() });
+        this.toggleMount();
       }
     });
 
@@ -809,6 +814,15 @@ export class GameScene extends Phaser.Scene {
         this.smith.setPity(msg.id, msg.pity);
         break;
       }
+      case "smith_refined": {
+        const owned = [...this.worn, ...this.inventory.list()].find((x) => x.id === msg.id);
+        const name = owned ? (getItemDef(owned.type)?.nameVi ?? owned.type) : "";
+        const parts = Object.entries(msg.gains).map(([key, v]) => statText(key as EquipStatKey, v));
+        const text = parts.length > 0 ? vi.smith.refined(name, parts.join(", ")) : vi.smith.refinedNothing(name);
+        this.chat.system(text, parts.length > 0 ? undefined : "warning");
+        this.smith.notify(text, parts.length > 0);
+        break;
+      }
       case "shop_ok": {
         const name = getItemDef(msg.item)?.nameVi ?? msg.item;
         const text = msg.op === "buy" ? vi.shop.bought(name, msg.qty, msg.total) : vi.shop.sold(name, msg.qty, msg.total);
@@ -1146,6 +1160,28 @@ export class GameScene extends Phaser.Scene {
     if (on && !actor.cloud) actor.cloud = this.add.ellipse(0, 0, 40, 16, 0x9fe8ff, 0.75).setStrokeStyle(2, 0xffffff, 0.8);
     actor.cloud?.setVisible(on);
     if (actor.id === this.selfId && isMounted() !== on) this.applyMounted(on);
+  }
+
+  /**
+   * Gets on or off. A walk in progress goes on at the new speed from where the character is right now, predicted here just like a click
+   * to walk is (and the position is sent along), so the change is smooth and the server's answer does not pull the character back.
+   */
+  private toggleMount(): void {
+    const on = !isMounted();
+    const self = this.actors.get(this.selfId);
+    const sheet = this.selfSheet;
+    if (!self || !sheet || (on && !this.flightWorn)) {
+      this.net.send({ t: "mount", on });
+      return;
+    }
+    const now = performance.now();
+    const here = currentPos(self, now);
+    const from: Vec2 = [Math.round(here.x * 100) / 100, Math.round(here.y * 100) / 100];
+    const speed = walkSpeed(sheet.base, equipmentBonus(this.worn, { ...wearerOfSheet(sheet), mounted: on }).moveSpeed);
+    const dest = self.path[self.path.length - 1];
+    const rest = here.moving && dest ? findSmoothPath(this.map, from, dest) : null;
+    applyTrack(self, rest ?? [from], now, speed, now);
+    this.net.send({ t: "mount", on, fx: from[0], fy: from[1] });
   }
 
   /** The button is there while a flight pháp bảo is worn (or you are riding): it says what a press does. */
