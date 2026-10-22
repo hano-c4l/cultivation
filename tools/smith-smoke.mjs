@@ -113,6 +113,35 @@ await c.opened;
 await c.wait((m) => m.t === "welcome", 6000, "welcome");
 check("the level is kept after reconnecting", c.log.find((m) => m.t === "welcome").bag.items.find((i) => i.type === TYPE)?.en === level);
 
+// Refining: raises some stats of the piece towards their maximum, never lowers, costs refining ore and Linh Thạch.
+await give("tl_lk", 6);
+await sleep(1200);
+c.ws.close();
+await sleep(800);
+c = open(reg.cookie, 7);
+await c.opened;
+const wr = await c.wait((m) => m.t === "welcome", 6000, "welcome");
+const robeR = wr.bag.items.find((i) => i.type === TYPE);
+const rsBefore = robeR.rs;
+c.send({ t: "move", x: 19.5, y: 22.2, fx: wr.players.find((p) => p.id === charId).path[0][0], fy: wr.players.find((p) => p.id === charId).path[0][1], seq: 1 });
+await c.wait((m) => m.t === "ack" && m.seq === 1, 4000, "ack").catch(() => undefined);
+await sleep(600);
+const oreBefore = wr.bag.items.find((i) => i.type === "tl_lk")?.qty ?? 0;
+let gainsSeen = false;
+for (let i = 0; i < 3; i++) {
+  mark = c.log.length;
+  c.send({ t: "smith_refine", npc: "smith", tab: robeR.tab, cell: robeR.cell });
+  const out = await c.wait((m) => m.t === "smith_refined" || m.t === "inv_error", 6000, "refine result", mark);
+  if (out.t === "inv_error") { check("a refining is accepted", out.reason === "smith_full", out.reason); break; }
+  if (Object.keys(out.gains).length > 0) gainsSeen = true;
+  await sleep(400);
+}
+const inv = [...c.log].reverse().find((m) => m.t === "inv" && m.full);
+const robeAfter = inv?.items.find((i) => i.id === robeR.id);
+check("refining never lowered a stat", Object.keys(rsBefore).every((k) => robeAfter.rs[k] >= rsBefore[k]), `${JSON.stringify(rsBefore)} -> ${JSON.stringify(robeAfter?.rs)}`);
+check("refining took the ore", (inv?.items.find((i) => i.type === "tl_lk")?.qty ?? 0) < oreBefore, `${oreBefore} -> ${inv?.items.find((i) => i.type === "tl_lk")?.qty}`);
+console.log(gainsSeen ? "  (some stats rose)" : "  (nothing rose in 3 tries, which is allowed)");
+
 // Not enough ore.
 await sleep(300);
 sql(`DELETE FROM item_instances WHERE owner_character_id = '${charId}' AND item_type = 'ren_lk'`);

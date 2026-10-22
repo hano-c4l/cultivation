@@ -108,23 +108,83 @@ export function rollForType(type: string, rand: () => number, lookup?: (key: str
   return stats ? rollGearStats(stats, info.grade, rand) : undefined;
 }
 
+const roundFor = (key: EquipStatKey, v: number) => (EQUIP_RATE_KEYS.includes(key) ? Math.round(v * 10) / 10 : Math.max(1, Math.round(v)));
+
+/**
+ * The range a rolled stat of this piece can have after the grade (the live master through `lookup`, else the default), or undefined when the
+ * piece has no such stat or is not rolled (the bonded artifact, special pieces).
+ */
+export function statRangeFor(type: string, key: EquipStatKey, lookup?: (key: string) => MasterStats | undefined): readonly [number, number] | undefined {
+  const info = equipmentInfo(type);
+  if (!info || info.kind === "bonded" || type.startsWith("eqs.")) return undefined;
+  const stats = lookup?.(masterKey(info.kind, info.style, info.realm, info.tier)) ?? defaultMasterEntry(info.kind, info.style, info.realm, info.tier)?.stats;
+  const r = stats?.[key];
+  if (!r) return undefined;
+  const mult = key === "moveSpeed" ? 1 : (GRADE_MULT[Math.min(Math.max(info.grade, 1), GRADE_MULT.length) - 1] ?? 1);
+  return [roundFor(key, r[0] * mult), roundFor(key, r[1] * mult)];
+}
+
 /** How a rolled value sits in the range it was rolled from: at the top (max), at the bottom (min) or between. */
 export type RollPosition = "max" | "min" | "mid";
 
-/**
- * The range a rolled stat of this piece can have (after the grade, as rolled; the master's default ranges), and where `value` sits in it.
- * Pieces without a roll, stats without a range, and ranges of a single value have no position ("mid").
- */
+/** Where `value` sits in the range of the stat; pieces without a roll, stats without a range, and ranges of a single value have no position ("mid"). */
 export function rollPosition(type: string, key: EquipStatKey, value: number | undefined): RollPosition {
-  const info = equipmentInfo(type);
-  if (!info || value === undefined) return "mid";
-  const r = defaultMasterEntry(info.kind, info.style, info.realm, info.tier)?.stats[key];
+  if (value === undefined) return "mid";
+  const r = statRangeFor(type, key);
   if (!r || r[1] <= r[0]) return "mid";
-  const mult = key === "moveSpeed" ? 1 : (GRADE_MULT[Math.min(Math.max(info.grade, 1), GRADE_MULT.length) - 1] ?? 1);
-  const round = (v: number) => (EQUIP_RATE_KEYS.includes(key) ? Math.round(v * 10) / 10 : Math.max(1, Math.round(v)));
-  const lo = round(r[0] * mult);
-  const hi = round(r[1] * mult);
-  if (value >= hi - 1e-9) return "max";
-  if (value <= lo + 1e-9) return "min";
+  if (value >= r[1] - 1e-9) return "max";
+  if (value <= r[0] + 1e-9) return "min";
   return "mid";
+}
+
+/** The values a piece has now for every stat that has a range: its rolled ones, or (a piece made before rolling) its fixed ones. */
+function currentStats(type: string, rs: RolledStats | undefined): RolledStats {
+  const info = equipmentInfo(type);
+  const out: RolledStats = {};
+  if (!info) return out;
+  for (const key of EQUIP_STAT_KEYS) {
+    const range = statRangeFor(type, key);
+    if (!range) continue;
+    out[key] = rs?.[key] ?? info.stats[key];
+  }
+  return out;
+}
+
+/** Whether some stat of the piece is below its maximum, so refining could still raise it. */
+export function canRefine(type: string, rs: RolledStats | undefined): boolean {
+  const cur = currentStats(type, rs);
+  return (Object.keys(cur) as EquipStatKey[]).some((key) => cur[key]! < statRangeFor(type, key)![1] - 1e-9);
+}
+
+export interface RefineResult {
+  /** The stats of the piece after refining (all the stats that have a range). */
+  rs: RolledStats;
+  /** What each stat gained (only the ones that gained something). */
+  gains: RolledStats;
+}
+
+/**
+ * Refines a piece: every stat with a range is picked with chance REFINE_CHANCE and then takes a random value between what it has and its
+ * maximum (which can be what it has: nothing gained). Nothing ever goes down or above the maximum. Two random numbers per stat, in
+ * EQUIP_STAT_KEYS order. Null when the piece cannot be refined at all.
+ */
+export function refineStats(type: string, rs: RolledStats | undefined, rand: () => number, chance: number, lookup?: (key: string) => MasterStats | undefined): RefineResult | null {
+  const info = equipmentInfo(type);
+  if (!info || info.kind === "bonded" || type.startsWith("eqs.")) return null;
+  const cur = currentStats(type, rs);
+  const out: RolledStats = { ...cur };
+  const gains: RolledStats = {};
+  for (const key of EQUIP_STAT_KEYS) {
+    const now = cur[key];
+    const pick = rand();
+    const roll = rand();
+    const range = statRangeFor(type, key, lookup);
+    if (now === undefined || !range || pick >= chance || now >= range[1]) continue;
+    const next = Math.min(range[1], Math.max(now, roundFor(key, now + roll * (range[1] - now))));
+    if (next > now) {
+      out[key] = next;
+      gains[key] = EQUIP_RATE_KEYS.includes(key) ? Math.round((next - now) * 10) / 10 : next - now;
+    }
+  }
+  return { rs: out, gains };
 }

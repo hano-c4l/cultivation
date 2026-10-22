@@ -4,7 +4,7 @@ import { PATH_IDS, PATHS } from "./paths";
 import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
-import { KEEP_LEVEL_ITEM, SMITH_ORES } from "./smith";
+import { KEEP_LEVEL_ITEM, REFINE_ORES, SMITH_ORES } from "./smith";
 import { BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId } from "./skills";
 
 /**
@@ -92,6 +92,12 @@ const SMITH_ITEMS: Record<string, ItemDef> = {
     SMITH_ORES.map((id, realm) => [
       id,
       { id, nameVi: `Tinh Thiết ${REALMS[realm]?.nameVi ?? ""}`, descVi: `Nguyên liệu để Thợ Rèn nâng cấp trang bị và pháp bảo cảnh giới ${REALMS[realm]?.nameVi ?? ""}. Chỉ rơi từ quái cảnh giới này.`, category: "material", maxStack: 99, rarity: "uncommon", grade: Math.min(MAX_ITEM_GRADE, realm + 1) } satisfies ItemDef,
+    ]),
+  ),
+  ...Object.fromEntries(
+    REFINE_ORES.map((id, realm) => [
+      id,
+      { id, nameVi: `Tinh Hoa ${REALMS[realm]?.nameVi ?? ""}`, descVi: `Nguyên liệu để Thợ Rèn tinh luyện trang bị và pháp bảo cảnh giới ${REALMS[realm]?.nameVi ?? ""}, tăng chỉ số lên gần mức tối đa. Hiếm hơn Tinh Thiết; chỉ rơi từ quái và boss cảnh giới này.`, category: "material", maxStack: 99, rarity: "rare", grade: Math.min(MAX_ITEM_GRADE, realm + 1) } satisfies ItemDef,
     ]),
   ),
   [KEEP_LEVEL_ITEM]: {

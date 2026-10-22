@@ -169,3 +169,44 @@ export function rollOreDrop(mapRealm: number, rank: MonsterRank, rand: () => num
   if (!ore || chanceRoll >= cfg.chance * chanceMult) return null;
   return { item: ore, qty: cfg.min + Math.floor(qtyRoll * (cfg.max - cfg.min + 1)) };
 }
+
+// ---- Tinh luyện (refining): raises some stats of a piece towards the top of their range, never lowering any ----
+
+/** The refining ore, one kind per realm; like the smith's ore it only drops from monsters and bosses of that realm, but much less often. */
+export const REFINE_ORES: readonly string[] = ["tl_lk", "tl_tc", "tl_kd", "tl_na"];
+export function refineOreFor(realm: number): string | undefined {
+  return REFINE_ORES[realm];
+}
+
+/** Placeholder rules of one refining: the ore it takes, the Linh Thạch (as a share of ENHANCE_LINH_BASE of the realm) and how likely each stat is to be rolled. */
+export const REFINE_RULES = { materials: 2, linhShare: 1, statChance: 0.5 } as const;
+
+export interface RefineCost {
+  ore: string;
+  materials: number;
+  linhThach: number;
+}
+
+export function refineCost(realm: number): RefineCost | undefined {
+  const ore = refineOreFor(realm);
+  if (!ore) return undefined;
+  const base = ENHANCE_LINH_BASE[realm] ?? ENHANCE_LINH_BASE[ENHANCE_LINH_BASE.length - 1]!;
+  return { ore, materials: REFINE_RULES.materials, linhThach: Math.round(base * REFINE_RULES.linhShare) };
+}
+
+/** Refining ore of a kill: rarer than the smith's ore, because refining never costs anything and is hard to fail. */
+export const REFINE_DROP: Readonly<Record<MonsterRank, { chance: number; min: number; max: number }>> = {
+  normal: { chance: 0.04, min: 1, max: 1 },
+  rare1: { chance: 0.15, min: 1, max: 2 },
+  rare2: { chance: 0.4, min: 1, max: 3 },
+};
+
+/** The refining ore dropped by one kill, or null. Draws exactly two numbers, after the smith's ore roll. */
+export function rollRefineDrop(mapRealm: number, rank: MonsterRank, rand: () => number, chanceMult = 1): { item: string; qty: number } | null {
+  const chanceRoll = rand();
+  const qtyRoll = rand();
+  const ore = refineOreFor(mapRealm);
+  const cfg = REFINE_DROP[rank];
+  if (!ore || chanceRoll >= cfg.chance * chanceMult) return null;
+  return { item: ore, qty: cfg.min + Math.floor(qtyRoll * (cfg.max - cfg.min + 1)) };
+}

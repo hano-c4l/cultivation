@@ -43,6 +43,7 @@ import {
   rollBookDrop,
   rollPillDrop,
   rollOreDrop,
+  rollRefineDrop,
   MP_REGEN_DELAY_MS,
   modifierTotal,
   restoreVitals,
@@ -1410,6 +1411,8 @@ export class CombatSim {
     if (pill) loot.push({ item: pill, qty: 1 });
     const ore = rollOreDrop(this.realm, m.rank, this.rand, dropMult); // two more rolls: the blacksmith's ore of this realm
     if (ore) loot.push(ore);
+    const refine = rollRefineDrop(this.realm, m.rank, this.rand, dropMult); // two more: the refining ore of this realm
+    if (refine) loot.push(refine);
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
@@ -1502,6 +1505,10 @@ export class CombatSim {
       if (book) loot.push({ item: book, qty: 1 });
       const pill = rollPillDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
       if (pill) loot.push({ item: pill, qty: 1 });
+      const ore = rollOreDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      if (ore) loot.push(ore);
+      const refine = rollRefineDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      if (refine) loot.push(refine);
       for (const drop of loot) {
         const to = pickByShare(shares, this.rand());
         if (to) items.set(to, [...(items.get(to) ?? []), drop]);

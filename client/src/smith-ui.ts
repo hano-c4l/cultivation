@@ -1,15 +1,17 @@
 import {
   ENHANCE_MAX,
   KEEP_LEVEL_ITEM,
+  canRefine,
   equipmentInfo,
   getItemDef,
   planRepair,
+  refineCost,
   refineLevelOf,
-  smithRealmOf,
-  STAGES_PER_REALM,
   repairCost,
   setEnhanceTable,
   smithOreFor,
+  smithRealmOf,
+  STAGES_PER_REALM,
   upgradeCost,
   type BagItem,
   type CharacterSheet,
@@ -17,8 +19,10 @@ import {
   type EnhanceLevelDef,
   type EquipSlot,
   type EquippedItem,
+  type SortMode,
 } from "@game/shared";
 import { elementDot, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
+import { sortControls, sortItemsBy } from "./item-sort";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -32,7 +36,7 @@ export interface SmithUi {
   setRules(npc: string, levels: EnhanceLevelDef[], pity: Record<string, number>): void;
   /** The extra chance one piece has after an upgrade attempt. */
   setPity(itemId: string, pity: number): void;
-  /** The outcome of an upgrade: shown as a line at the top of the window. */
+  /** The outcome of an upgrade or a refining: shown as a line at the top of the window. */
   notify(text: string, ok: boolean): void;
   /** The bag changed. */
   refresh(): void;
@@ -47,9 +51,15 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
+/** The slots of the pháp bảo tab (the others are ordinary gear). */
+const ARTIFACT_SLOTS: ReadonlySet<EquipSlot> = new Set<EquipSlot>(["bonded", "flight", "charm1", "charm2", "charm3", "charm4"]);
+type Tab = "gear" | "artifact" | "bag";
+type Mode = "enhance" | "refine";
+
 /**
- * The blacksmith's window: every piece of gear and pháp bảo you own (worn first), with its upgrade level, the chance and cost of the next
- * step, and the repair of worn-down durability. It only sends the piece and whether to protect it; the server prices and decides.
+ * The blacksmith's window. Three tabs say which pieces are listed (worn gear, worn pháp bảo, the bag); two radio buttons say what is done to
+ * them: "Cường hoá" (upgrade +1 to +10) or "Tinh luyện" (raise stats towards their maximum). It also repairs worn-down durability. It only sends
+ * the piece and the choice; the server prices and decides.
  */
 export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagItem[], getWallet: () => { linh_thach: number }): SmithUi {
   const panel = el("div");
@@ -59,10 +69,13 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
   registerWindow("smith", panel, 5);
 
   let npc = "";
-  let sheet: CharacterSheet | null = null;
   let worn: EquippedItem[] = [];
   let pity: Record<string, number> = {};
   let protect = false;
+  let tab: Tab = "gear";
+  let mode: Mode = "enhance";
+  let sortPicked: SortMode = "name";
+  let sortApplied: SortMode = "name";
   let flash: { text: string; ok: boolean } | null = null;
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
   let banned = "";
@@ -79,7 +92,9 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
     return head;
   }
 
-  function pieceRow(piece: { id: string; type: string; dur?: number; max?: number; en?: number; lv?: number }, where: { slot: EquipSlot } | { tab: number; cell: number }): HTMLElement | null {
+  type Piece = { id: string; type: string; dur?: number; max?: number; en?: number; lv?: number; rs?: BagItem["rs"] };
+
+  function pieceRow(piece: Piece, where: { slot: EquipSlot } | { tab: number; cell: number }): HTMLElement | null {
     const info = equipmentInfo(piece.type);
     if (!info) return null;
     const level = piece.en ?? 0;
@@ -93,28 +108,42 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
     main.append(name);
 
     const lines: string[] = [];
+    const side = el("div", "shop-side");
+    // The bonded artifact counts in the realm it has trained to.
     const realm = smithRealmOf(info, info.kind === "bonded" ? refineLevelOf(info, piece.lv) : undefined, STAGES_PER_REALM);
-    const cost = upgradeCost(realm, level, pity[piece.id] ?? 0);
-    const ore = smithOreFor(realm);
-    if (cost && ore) {
-      const have = countOf(ore);
-      lines.push(vi.smith.next(level + 1, Math.round(cost.chancePct * 10) / 10, cost.materials, nameOf(ore), have, cost.linhThach.toLocaleString("vi-VN")));
-      if (cost.step.dropOnFail) lines.push(vi.smith.risk);
+    if (mode === "enhance") {
+      const cost = upgradeCost(realm, level, pity[piece.id] ?? 0);
+      const ore = smithOreFor(realm);
+      if (cost && ore) {
+        lines.push(vi.smith.next(level + 1, Math.round(cost.chancePct * 10) / 10, cost.materials, nameOf(ore), countOf(ore), cost.linhThach.toLocaleString("vi-VN")));
+        if (cost.step.dropOnFail) lines.push(vi.smith.risk);
+        const ok = countOf(ore) >= cost.materials && getWallet().linh_thach >= cost.linhThach;
+        const up = el("button", "eq-small", vi.smith.upgrade);
+        up.disabled = !ok;
+        up.onclick = () => send({ t: "smith_upgrade", npc, ...where, protect });
+        side.append(up);
+      } else {
+        lines.push(vi.smith.maxed(ENHANCE_MAX));
+      }
     } else {
-      lines.push(vi.smith.maxed(ENHANCE_MAX));
+      const cost = info.kind === "bonded" || piece.type.startsWith("eqs.") ? undefined : refineCost(realm);
+      if (!cost) {
+        lines.push(vi.smith.cannotRefine);
+      } else if (!canRefine(piece.type, piece.rs)) {
+        lines.push(vi.smith.refineMaxed);
+      } else {
+        lines.push(vi.smith.refineCost(cost.materials, nameOf(cost.ore), countOf(cost.ore), cost.linhThach.toLocaleString("vi-VN")));
+        const ok = countOf(cost.ore) >= cost.materials && getWallet().linh_thach >= cost.linhThach;
+        const refine = el("button", "eq-small", vi.smith.refine);
+        refine.disabled = !ok;
+        refine.onclick = () => send({ t: "smith_refine", npc, ...where });
+        side.append(refine);
+      }
     }
     if (piece.dur !== undefined && piece.max !== undefined) lines.push(vi.equip.durability(piece.dur, piece.max));
     main.append(el("div", "muted", lines.join(" · ")));
     row.append(main);
 
-    const side = el("div", "shop-side");
-    if (cost && ore) {
-      const ok = countOf(ore) >= cost.materials && getWallet().linh_thach >= cost.linhThach;
-      const up = el("button", "eq-small", vi.smith.upgrade);
-      up.disabled = !ok;
-      up.onclick = () => send({ t: "smith_upgrade", npc, ...where, protect });
-      side.append(up);
-    }
     if (piece.dur !== undefined && piece.max !== undefined && piece.dur < piece.max && "slot" in where) {
       const fee = repairCost(info.grade, piece.max - piece.dur);
       const fix = el("button", "eq-small", vi.smith.repairShort(fee));
@@ -134,40 +163,90 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
       return;
     }
     if (flash) panel.append(el("div", flash.ok ? "shop-flash" : "shop-flash smith-bad", flash.text));
+
     const all = planRepair({ items: [], equipped: worn }, "all");
     const repairAll = el("button", "eq-wide", all.ok ? vi.smith.repairAll(all.cost) : vi.equip.nothingToRepair);
     repairAll.disabled = !all.ok;
     repairAll.onclick = () => send({ t: "smith_repair", npc, slot: "all" });
     panel.append(repairAll);
 
-    const scrolls = countOf(KEEP_LEVEL_ITEM);
-    const keep = el("label", "smith-keep");
-    const box = el("input") as HTMLInputElement;
-    box.type = "checkbox";
-    box.checked = protect;
-    box.onchange = () => {
-      protect = box.checked;
-    };
-    keep.append(box, document.createTextNode(` ${vi.smith.keep(scrolls)}`));
-    panel.append(keep);
-
-    panel.append(el("div", "muted", vi.smith.wornTitle));
-    const wornList = el("div");
-    for (const w of worn) {
-      const row = pieceRow(w, { slot: w.slot });
-      if (row) wornList.append(row);
+    // What is done: one of two radio buttons (choosing one clears the other).
+    const modes = el("div", "smith-modes");
+    for (const m of ["enhance", "refine"] as const) {
+      const label = el("label");
+      const radio = el("input") as HTMLInputElement;
+      radio.type = "radio";
+      radio.name = "smith-mode";
+      radio.checked = mode === m;
+      radio.onchange = () => {
+        if (!radio.checked) return;
+        mode = m;
+        render();
+      };
+      label.append(radio, document.createTextNode(` ${vi.smith.modes[m]}`));
+      modes.append(label);
     }
-    if (!wornList.hasChildNodes()) wornList.append(el("div", "muted", vi.smith.nothing));
-    panel.append(wornList);
+    panel.append(modes);
 
-    panel.append(el("div", "muted", vi.smith.bagTitle));
-    const bagList = el("div");
-    for (const it of getBag()) {
-      const row = equipmentInfo(it.type) ? pieceRow(it, { tab: it.tab, cell: it.cell }) : null;
-      if (row) bagList.append(row);
+    // The scroll only matters when upgrading.
+    if (mode === "enhance") {
+      const keep = el("label", "smith-keep");
+      const box = el("input") as HTMLInputElement;
+      box.type = "checkbox";
+      box.checked = protect;
+      box.onchange = () => {
+        protect = box.checked;
+      };
+      keep.append(box, document.createTextNode(` ${vi.smith.keep(countOf(KEEP_LEVEL_ITEM))}`));
+      panel.append(keep);
     }
-    if (!bagList.hasChildNodes()) bagList.append(el("div", "muted", vi.smith.nothing));
-    panel.append(bagList, el("div", "muted", vi.smith.note));
+
+    const tabs = el("div", "eq-tabs");
+    for (const t of ["gear", "artifact", "bag"] as const) {
+      const b = el("button", t === tab ? "active" : undefined, vi.smith.tabs[t]);
+      b.onclick = () => {
+        tab = t;
+        render();
+      };
+      tabs.append(b);
+    }
+    if (tab === "bag") {
+      tabs.append(
+        sortControls(
+          "shop-sort",
+          sortPicked,
+          (m) => {
+            sortPicked = m;
+          },
+          () => {
+            sortApplied = sortPicked;
+            render();
+          },
+        ),
+      );
+    }
+    panel.append(tabs);
+
+    const list = el("div");
+    if (tab === "bag") {
+      const items = sortItemsBy(
+        getBag().filter((i) => equipmentInfo(i.type)),
+        sortApplied,
+        (i) => i.type,
+        (i) => i.lv,
+      );
+      for (const it of items) {
+        const row = pieceRow(it, { tab: it.tab, cell: it.cell });
+        if (row) list.append(row);
+      }
+    } else {
+      for (const w of worn.filter((p) => ARTIFACT_SLOTS.has(p.slot) === (tab === "artifact"))) {
+        const row = pieceRow(w, { slot: w.slot });
+        if (row) list.append(row);
+      }
+    }
+    if (!list.hasChildNodes()) list.append(el("div", "muted", vi.smith.nothing));
+    panel.append(list, el("div", "muted", mode === "enhance" ? vi.smith.note : vi.smith.refineNote));
   }
 
   const ui: SmithUi = {
@@ -182,8 +261,7 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
     close() {
       panel.hidden = true;
     },
-    setSheet(s) {
-      sheet = s;
+    setSheet() {
       render();
     },
     setEquipped(items) {
