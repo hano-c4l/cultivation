@@ -1,6 +1,6 @@
 import { getSkill, SKILLS } from "@game/shared";
 import { describe, expect, it } from "vitest";
-import { BUFF_COLOR, ELEMENT_COLOR, skillFxOf } from "./fx-kinds";
+import { BASIC_COLOR, BASIC_MELEE_MAX_PX, BUFF_COLOR, ELEMENT_COLOR, basicFxOf, skillFxOf } from "./fx-kinds";
 
 describe("which effect a skill uses", () => {
   it("every skill kind has an effect, by the kind of the skill", () => {
@@ -24,5 +24,14 @@ describe("which effect a skill uses", () => {
   it("has a colour for every element and for the stats a buff raises", () => {
     for (const el of ["kim", "moc", "thuy", "hoa", "tho", "loi", "bang", "phong"]) expect(ELEMENT_COLOR[el]).toBeDefined();
     for (const stat of ["attack", "defense", "dodge"]) expect(BUFF_COLOR[stat]).toBeDefined();
+  });
+});
+
+describe("the effect of a plain attack", () => {
+  it("is a swing up close and a bolt from afar", () => {
+    expect(basicFxOf(0)).toBe("melee");
+    expect(basicFxOf(BASIC_MELEE_MAX_PX)).toBe("melee");
+    expect(basicFxOf(BASIC_MELEE_MAX_PX + 1)).toBe("ranged");
+    expect(BASIC_COLOR.player).not.toBe(BASIC_COLOR.monster);
   });
 });

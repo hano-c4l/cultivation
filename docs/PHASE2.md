@@ -532,6 +532,7 @@ Tất cả đã ở preview rồi production; chỉ `0029` là migration.
 ### Hiệu ứng
 - Máy chủ báo hiệu ứng cho mọi người thấy nhân vật: `fx {id, skill, to?, x?, y?, el?}` (mỗi lần dùng kỹ năng, từ sự kiện sim `fx`), `fx_cone` (nón của boss, sự kiện sim `cone`), `fx_channel {id, what: bt|tp, on, ok?}` (mọi `bt`, `bt_end`, `tp`, `tp_end` đi qua `send`).
 - Client (`client/src/fx.ts`, `fx-kinds.ts`): vẽ bằng graphics và tween, tối đa 40 hiệu ứng một lúc. Kiểu: `melee` (vệt chém), `ranged` (đạn bay), `cone`, `blink` (tốc biến), `buff` (vòng bay lên, màu theo chỉ số), `heal` (cộng xanh). Bảng `SKILL_FX` gán theo id hoặc mẫu kỹ năng (mặc định theo loại), mở rộng riêng từng kỹ năng sau này. Hiệu ứng kênh: đột phá (vòng vàng, hạt bay lên, bùng sáng khi thành, khói khi bại), truyền tống (vòng tím quay và cột sáng).
+- **Đòn đánh thường** (không có kỹ năng, thêm sau, chỉ client): mọi tin `hit` không mang `skill` được vẽ từ chính tin đó (`Effects.basic`): vệt chém khi hai bên đứng gần (khoảng cách trên màn hình tối đa 130 px, `basicFxOf`), đạn bay khi xa; đòn của người chơi màu vàng nhạt, của quái màu đỏ. Hit của kỹ năng đã có hiệu ứng riêng (`fx`) nên không vẽ hai lần. Đòn kỹ năng của boss (không mang `skill`) vẽ như đòn thường của quái.
 - Chưa làm: người vào giữa lúc đang niệm không thấy hiệu ứng (chỉ gửi lúc bắt đầu và kết thúc). Chưa xem bằng mắt trên trình duyệt (khung trình duyệt của app bị tạm dừng); cần xem trên preview, cả điện thoại và WebGL. Chưa có kỹ năng người chơi nào hình nón.
 
 ## Quyết định đã chốt (2026-10-17)
