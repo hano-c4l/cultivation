@@ -330,7 +330,8 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       };
       modes.append(b);
     }
-    modes.append(
+    // Sorting is for the sell tab (the bag is long); the few things on sale need none.
+    if (mode === "sell") modes.append(
       sortControls(
         "shop-sort",
         sortPicked,
