@@ -67,6 +67,11 @@ import {
   applyBag,
   applyRefineExp,
   currentGearSetNames,
+  canRefine,
+  parseRolledStats,
+  refineCost,
+  refineStats,
+  REFINE_RULES,
   smithRealmOf,
   STAGES_PER_REALM,
   KEEP_LEVEL_ITEM,
@@ -131,9 +136,9 @@ import {
   type ServerMessage,
   type Vec2,
 } from "@game/shared";
-import { BOSSES, bossKillText, bossSpawnText, getMonsterDef, DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { BOSS_REGEN_PER_S, BOSSES, bossKillText, bossSpawnText, getMonsterDef, DEATH_DURABILITY_BY_TIER, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, SAT_NHAN_DECAY_PER_MIN, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, sellPrice, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
-import { savePkScores } from "./characters";
+import { saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
@@ -267,7 +272,7 @@ function baseOf(row: CharacterRow): BaseStats {
 /** Who is wearing the gear: requirements are judged against the character without it. */
 function wearerOfRow(row: CharacterRow, catalog?: ConstitutionCatalog): WearerCtx {
   const affinity = catalog ? gearAffinity(parseRoots(row.roots, row.spiritual_root), constitutionEffects(catalog, row.constitution, row.constitution_tier)) : undefined;
-  return { gender: row.gender, realm: row.realm, stage: row.stage, base: baseOf(row), affinity };
+  return { gender: row.gender, realm: row.realm, stage: row.stage, base: baseOf(row), affinity, mounted: row.mounted === 1 };
 }
 
 /** Weapon family of the worn weapon, or null (no weapon, a broken one, or one without a family). */
@@ -515,6 +520,7 @@ export class MapRoom extends DurableObject<Env> {
         mapId,
         path: [position],
         startedAt: Date.now(),
+        mounted: row.mounted === 1 && bagNow.equipped.some((e) => e.slot === "flight") ? true : undefined,
         speed: walkSpeed(baseOf(row), equipmentBonus(bagNow.equipped, wearerOfRow(row)).moveSpeed),
         lastMoveAt: 0,
         dirty: false,
@@ -630,12 +636,13 @@ export class MapRoom extends DurableObject<Env> {
       case "mail_claim":
         return this.handleInventory(ws, state, msg);
       case "mount":
-        return this.handleMount(ws, state, msg.on);
+        return this.handleMount(ws, state, msg.on, msg.fx !== undefined && msg.fy !== undefined ? [msg.fx, msg.fy] : undefined);
       case "eq_equip":
       case "eq_unequip":
       case "eq_repair":
         return this.handleEquipment(ws, state, msg);
       case "smith_upgrade":
+      case "smith_refine":
       case "smith_repair":
         return this.handleSmith(ws, state, msg);
       case "npc_open":
@@ -965,10 +972,22 @@ export class MapRoom extends DurableObject<Env> {
       return;
     }
     this.bossRefreshedAt = Date.now();
+    this.forgetBossState(); // a new boss is whole
     this.broadcast({ t: "mon", monster: snap });
     this.startTick();
     const channel = room.split(":")[1]?.replace(/^ch/, "") ?? "";
     await this.announce(bossSpawnText(getMonsterDef(snap.kind)?.nameVi ?? snap.kind, mapId, channel));
+  }
+
+  /** The boss's health and damage table are kept while the room has no sim (everyone left or died), so it heals by the clock instead of coming back whole. */
+  private saveBossState(sim: CombatSim | null | undefined): void {
+    const state = sim?.bossState();
+    if (!state) return;
+    this.ctx.waitUntil(this.ctx.storage.put("boss", { ...state, at: Date.now() }).then(() => undefined));
+  }
+
+  private forgetBossState(): void {
+    this.ctx.waitUntil(this.ctx.storage.delete("boss").then(() => undefined));
   }
 
   /** GM: the boss of this room goes (nobody could kill it): it leaves the map, the claim is released and nobody is paid. */
@@ -980,6 +999,7 @@ export class MapRoom extends DurableObject<Env> {
     const gone = sim.removeBoss();
     if (!gone) return;
     this.broadcast({ t: "mon_gone", id: gone });
+    this.forgetBossState();
     await releaseBoss(this.env.DB, mapId, room);
     console.log("boss removed by a GM", room);
   }
@@ -1016,6 +1036,7 @@ export class MapRoom extends DurableObject<Env> {
         await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
       }
     }
+    this.forgetBossState();
     const channel = room.split(":")[1]?.replace(/^ch/, "") ?? "";
     console.log("boss killed", room, "sharing", sharers);
     await this.announce(bossKillText(name, mapId, channel, killer));
@@ -1077,6 +1098,12 @@ export class MapRoom extends DurableObject<Env> {
       const holder = await bossHolder(this.env.DB, mapId).catch(() => null);
       const room = await this.roomName();
       if (holder !== null && holder === room && !sim.hasBoss && sim.spawnBoss(mapId, Date.now())) {
+        // It stands where it was left, with the health it had, healed by the time that passed (BOSS_REGEN_PER_S of its maximum each second).
+        const kept = await this.ctx.storage.get<{ frac: number; damage: Record<string, number>; at: number }>("boss");
+        if (kept && Number.isFinite(kept.frac) && Number.isFinite(kept.at)) {
+          const healed = kept.frac + (BOSS_REGEN_PER_S * Math.max(0, Date.now() - kept.at)) / 1000;
+          sim.restoreBoss(healed, healed >= 1 ? {} : kept.damage);
+        }
         this.bossRefreshedAt = Date.now();
         await refreshBoss(this.env.DB, mapId, room, this.bossRefreshedAt).catch(() => false);
       }
@@ -1125,6 +1152,7 @@ export class MapRoom extends DurableObject<Env> {
     await Promise.all([
       this.alarm(),
       ...saves,
+      Promise.resolve(this.saveBossState(sim)),
       json === this.ranksJson ? Promise.resolve() : this.ctx.storage.put("ranks", ranks).then(() => void (this.ranksJson = json)),
       sim.pity === this.pityStored ? Promise.resolve() : this.ctx.storage.put("pity", sim.pity).then(() => void (this.pityStored = sim.pity)),
     ]);
@@ -1149,6 +1177,7 @@ export class MapRoom extends DurableObject<Env> {
     }
     // Judged by the sockets, not the sim: after a sleep the sim may be gone while the last players leave.
     if (this.players().length === 0) {
+      this.saveBossState(this.sim);
       if (this.tickTimer) clearInterval(this.tickTimer);
       this.tickTimer = null;
       this.sim = null;
@@ -1556,7 +1585,7 @@ export class MapRoom extends DurableObject<Env> {
    * Re-derives the walking speed (stats, riding, and later buffs and items). A change while walking re-plans the path from
    * where the character is now at the new speed and tells everyone, so nobody's track runs at the wrong speed.
    */
-  private async refreshSpeed(ws: WebSocket): Promise<void> {
+  private async refreshSpeed(ws: WebSocket, opts: { claim?: [number, number]; quiet?: boolean; force?: boolean } = {}): Promise<void> {
     const first = ws.deserializeAttachment() as PlayerState | null;
     if (!first || first.transferring) return;
     const w = await this.wearerOf(first.id);
@@ -1564,18 +1593,29 @@ export class MapRoom extends DurableObject<Env> {
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!w || !state || state.transferring) return;
     const speed = walkSpeed(w.base, equipmentBonus(bag.equipped, { ...w, mounted: state.mounted }).moveSpeed);
-    if (speed === state.speed) return;
-    const now = Date.now();
-    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-    const dest = state.path[state.path.length - 1];
-    const rest = here.moving && dest ? findSmoothPath(getMap(state.mapId), [here.x, here.y], dest) : null;
-    state.path = rest ?? [[here.x, here.y]];
-    state.startedAt = now;
-    state.speed = speed;
-    state.dirty = true;
-    ws.serializeAttachment(state);
-    // Everyone, the mover included: its own client swaps to the new track and speed.
-    this.broadcast({ t: "path", player: this.snapshot(state) });
+    if (speed === state.speed && !opts.force) return;
+    let accepted = false;
+    if (speed !== state.speed) {
+      const now = Date.now();
+      const map = getMap(state.mapId);
+      const there = positionAlongPath(state.path, now - state.startedAt, state.speed);
+      // The mover may say where it is (it predicted the change from there): trusted when close to where the server has it, like a move.
+      let anchor: Vec2 = [there.x, there.y];
+      const c = opts.claim;
+      if (c && Math.hypot(c[0] - there.x, c[1] - there.y) <= MAX_DESYNC_TILES * Math.max(1, state.speed / BASE_SPEED) && isStandable(map, c[0], c[1])) {
+        anchor = c;
+        accepted = true;
+      }
+      const dest = state.path[state.path.length - 1];
+      const rest = there.moving && dest ? findSmoothPath(map, anchor, dest) : null;
+      state.path = rest ?? [anchor];
+      state.startedAt = now;
+      state.speed = speed;
+      state.dirty = true;
+      ws.serializeAttachment(state);
+    }
+    // Everyone is told; a mover that predicted the change itself (and was believed) is not, or its own track would jump.
+    this.broadcast({ t: "path", player: this.snapshot(state) }, opts.quiet && accepted ? ws : undefined);
   }
 
   /** Gets off when the flight pháp bảo is gone, broken or no longer allowed, then settles the speed. */
@@ -1592,15 +1632,34 @@ export class MapRoom extends DurableObject<Env> {
       if (fresh?.mounted && (!w || !flight || !info || equipBlock(info, flight.slot as EquipSlot, flight.dur, w))) {
         fresh.mounted = false;
         ws.serializeAttachment(fresh);
+        await saveMounted(this.env.DB, id, false).catch((err) => console.error("save mounted failed", id, err));
         this.send(ws, { t: "mounted", on: false });
-        this.broadcast({ t: "path", player: this.snapshot(fresh) });
+        await this.refreshSpeed(ws, { force: true }); // tells everyone (the flag and the speed) in one message
+        return;
       }
     }
     await this.refreshSpeed(ws);
   }
 
+  /** Gets off at once (a breakthrough starts, or the character died): the flag is saved and the speed and stats follow. */
+  private async forceDismount(id: string): Promise<void> {
+    const sock = this.socketOf(id);
+    if (!sock?.state.mounted) {
+      await saveMounted(this.env.DB, id, false).catch(() => undefined);
+      return;
+    }
+    const { ws } = sock;
+    const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? sock.state;
+    fresh.mounted = false;
+    ws.serializeAttachment(fresh);
+    await saveMounted(this.env.DB, id, false).catch((err) => console.error("save mounted failed", id, err));
+    this.send(ws, { t: "mounted", on: false });
+    await this.refreshSpeed(ws, { force: true });
+    this.applyGear(id, await this.getBag(id), ws);
+  }
+
   /** Get on or off the flight pháp bảo. Stats and speed follow at once. */
-  private async handleMount(ws: WebSocket, state: PlayerState, on: boolean): Promise<void> {
+  private async handleMount(ws: WebSocket, state: PlayerState, on: boolean, claim?: [number, number]): Promise<void> {
     const now = Date.now();
     if (now - (state.lastMountAt ?? 0) < 500) return;
     state.lastMountAt = now;
@@ -1614,19 +1673,25 @@ export class MapRoom extends DurableObject<Env> {
       const bag = await this.getBag(state.id);
       const flight = bag.equipped.find((e) => e.slot === "flight");
       const info = flight ? equipmentInfo(flight.type) : undefined;
-      if (!w || !flight || !info) return this.send(ws, { t: "mounted", on: false, error: "no_flight" });
+      // A refusal also hands back the track the server has: the client may have predicted the change.
+      const refuse = (error: "no_flight" | "broken" | "requirements") => {
+        this.send(ws, { t: "mounted", on: false, error });
+        this.send(ws, { t: "ack", seq: 0, player: this.snapshot((ws.deserializeAttachment() as PlayerState | null) ?? state) });
+      };
+      if (!w || !flight || !info) return refuse("no_flight");
       const block = equipBlock(info, flight.slot as EquipSlot, flight.dur, w);
-      if (block) return this.send(ws, { t: "mounted", on: false, error: block === "broken" ? "broken" : "requirements" });
+      if (block) return refuse(block === "broken" ? "broken" : "requirements");
     }
     const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
     if (fresh.transferring) return;
     fresh.mounted = on;
     ws.serializeAttachment(fresh);
+    await saveMounted(this.env.DB, fresh.id, on).catch((err) => console.error("save mounted failed", fresh.id, err));
     this.send(ws, { t: "mounted", on });
-    // The riding flag rides on the snapshot, so other players see it too.
-    this.broadcast({ t: "path", player: this.snapshot(fresh) });
+    // One message tells the others about the flag and the new speed; the mover predicted both and from where it stood (`claim`).
+    await this.refreshSpeed(ws, { claim, quiet: true, force: true });
     const bag = await this.getBag(fresh.id);
-    this.applyGear(fresh.id, bag, ws); // also settles the speed (syncMount)
+    this.applyGear(fresh.id, bag, ws); // the stats follow the flag
   }
 
   /** Worn gear changed (or wore down): the combat stats follow, in a combat map. In town the next join recomputes them. */
@@ -1652,7 +1717,7 @@ export class MapRoom extends DurableObject<Env> {
   /** Who is wearing: the live profile when there is one, otherwise the saved row. */
   private async wearerOf(id: string): Promise<WearerCtx | null> {
     const p = this.sim?.getPlayer(id);
-    if (p) return { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity };
+    if (p) return { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity, mounted: this.isMounted(id) };
     const row = await getCharacterById(this.env.DB, id);
     return row ? wearerOfRow(row) : null;
   }
@@ -2239,7 +2304,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** Blacksmith commands: upgrading a piece and repairing. Same checks as the merchant (close enough, no murderers, rate limit). */
-  private handleSmith(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "smith_upgrade" | "smith_repair" }>): void {
+  private handleSmith(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "smith_upgrade" | "smith_refine" | "smith_repair" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
@@ -2252,6 +2317,7 @@ export class MapRoom extends DurableObject<Env> {
     const id = state.id;
     void this.bagTask(id, async () => {
       if (msg.t === "smith_repair") return this.repairGear(ws, id, msg.slot);
+      if (msg.t === "smith_refine") return this.smithRefine(ws, id, msg);
       return this.smithUpgrade(ws, id, msg);
     });
   }
@@ -2303,6 +2369,54 @@ export class MapRoom extends DurableObject<Env> {
     } catch (err) {
       // A failed guard means the cached bag was stale: nothing was written, so reload and let the player retry.
       if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("smith upgrade failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+  }
+
+  /**
+   * One refining: some stats of the piece rise towards their maximum (never down). The Linh Thạch, the refining ore and the new stats are
+   * written in ONE batch, guarded on the stats the piece had, like an upgrade.
+   */
+  private async smithRefine(ws: WebSocket, id: string, msg: Extract<ClientMessage, { t: "smith_refine" }>): Promise<void> {
+    const master = await getGearMaster(this.env.DB);
+    const bag = await this.getBag(id);
+    const piece = msg.slot ? bag.equipped.find((e) => e.slot === msg.slot) : bag.items.find((i) => i.tab === msg.tab && i.cell === msg.cell);
+    const info = piece ? equipmentInfo(piece.type) : undefined;
+    if (!piece || !info || info.kind === "bonded" || piece.type.startsWith("eqs.")) return this.resync(ws, id, "smith_item");
+    const row = await this.env.DB.prepare("SELECT rolled_stats FROM item_instances WHERE id = ? AND owner_character_id = ?").bind(piece.id, id).first<{ rolled_stats: string | null }>();
+    if (!row) {
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+    const current = row.rolled_stats ? parseRolledStats(row.rolled_stats) : undefined;
+    const cost = refineCost(smithRealmOf(info, undefined, STAGES_PER_REALM));
+    if (!cost) return this.send(ws, { t: "inv_error", reason: "smith_item" });
+    if (!canRefine(piece.type, current)) return this.send(ws, { t: "inv_error", reason: "smith_full" });
+    const ore = planConsume(bag.items, cost.ore, cost.materials);
+    if (!ore) return this.send(ws, { t: "inv_error", reason: "smith_mats" });
+    const result = refineStats(piece.type, current, Math.random, REFINE_RULES.statChance, (key) => master.stats.get(key));
+    if (!result) return this.resync(ws, id, "smith_item");
+    const now = Date.now();
+    const extra = [
+      // The piece must still have the stats the plan was made from (a NULL column reads as the empty text).
+      this.env.DB.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM item_instances WHERE id = ? AND owner_character_id = ? AND IFNULL(rolled_stats, '') = ?)").bind(piece.id, id, row.rolled_stats ?? ""),
+      ...ore.flatMap((op) => opStatements(this.env.DB, id, op, now)),
+      this.env.DB.prepare("UPDATE item_instances SET rolled_stats = ? WHERE id = ? AND owner_character_id = ?").bind(JSON.stringify(result.rs), piece.id, id),
+    ];
+    try {
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -cost.linhThach, reason: "smith_refine", actor: "system", idempotencyKey: `smith:${crypto.randomUUID()}` }, extra);
+      if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+      if (r.status !== "applied") return this.resync(ws, id, "busy");
+      this.bags.delete(id);
+      const fresh = await this.getBag(id);
+      this.send(ws, { t: "inv", full: true, tabs: fresh.tabs, items: fresh.items, removed: [], tabPrice: await getSetting(this.env.DB, "bag_tab_price") });
+      this.send(ws, { t: "eq", items: fresh.equipped });
+      this.applyGear(id, fresh, ws);
+      this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+      this.send(ws, { t: "smith_refined", id: piece.id, gains: result.gains });
+    } catch (err) {
+      if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("smith refine failed", id, err);
       this.bags.delete(id);
       return this.resync(ws, id, "busy");
     }
@@ -2844,6 +2958,7 @@ export class MapRoom extends DurableObject<Env> {
       this.bags.delete(id);
       return this.btError(ws, "busy");
     }
+    await this.forceDismount(id); // the breakthrough begins on foot (nothing is lost if it was refused above)
     const ratePct = breakthroughRate(def, pills, ready.overflowBonus);
     const active: ActiveBreakthrough = { startedAt, endsAt: startedAt + def.durationMs, from: realm, ratePct };
     this.patchState(ws, (s) => {
@@ -3199,6 +3314,7 @@ export class MapRoom extends DurableObject<Env> {
     // queue before the lock is released, so the town room reads the new durability.
     this.wearGearOnDeath(ws, state.id, { gender: profile.gender, realm: profile.realm, stage: profile.stage, base: profile.base }, DEATH_DURABILITY_BY_TIER[tier]);
     this.send(ws, { t: "died", expLost });
+    await this.forceDismount(state.id); // back in town on foot
     const [sx, sy] = getMap("town").spawn;
     await this.handoff(ws, state, "town", sx + 0.5, sy + 0.5, true);
   }

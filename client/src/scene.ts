@@ -44,11 +44,14 @@ import {
   type PlayerSnapshot,
   type ServerMessage,
   type Vec2,
+  equipmentBonus,
+  walkSpeed,
+  type EquipStatKey,
 } from "@game/shared";
 import { initCharacterPanel, type CharacterPanel } from "./character-ui";
 import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
-import { itemTierText } from "./equip-text";
+import { itemTierText, statText } from "./equip-text";
 import { initEquipment, type EquipmentUi } from "./equipment-ui";
 import { initShop, type ShopUi } from "./shop-ui";
 import { initSmith, type SmithUi } from "./smith-ui";
@@ -57,7 +60,7 @@ import { initPk, type PkUi } from "./pk-ui";
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
-import { setGearSetNames, GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
+import { setGearSetNames, setWornSkillSets, skillDisplayName, GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
 import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
@@ -66,7 +69,7 @@ import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { vi } from "./locales/vi";
-import { isMounted, setMounted } from "./wearer";
+import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
@@ -224,9 +227,9 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.hud = document.getElementById("hud")!;
     this.mountBtn = document.createElement("button");
+    this.mountBtn.id = "mount-btn";
     this.mountBtn.hidden = true;
-    this.mountBtn.style.cssText = "position:fixed;top:44px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:12px;border:1px solid #bfeeff;background:rgba(40,110,150,.85);color:#e8faff;font-size:13px;z-index:20;cursor:pointer";
-    this.mountBtn.onclick = () => this.net.send({ t: "mount", on: !isMounted() });
+    this.mountBtn.onclick = () => this.toggleMount();
     document.body.append(this.mountBtn);
     this.drawMap();
     this.marker = this.add.graphics().setDepth(1);
@@ -241,6 +244,8 @@ export class GameScene extends Phaser.Scene {
       // A skill is an action: during a breakthrough it would end it (hotbar potions are fine).
       send: (msg) => {
         if (msg.t === "cast" && this.guardBreakthrough()) return;
+        // Using another skill or item drops a teleport that was waiting for a click: it counts as never started.
+        if ((msg.t === "cast" || msg.t === "use_type") && this.aiming) this.endAim();
         this.net.send(msg);
       },
       aim: (skill) => this.beginAim(skill),
@@ -287,7 +292,7 @@ export class GameScene extends Phaser.Scene {
       const a = document.activeElement;
       const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
       if (!typing && (ev.key === "m" || ev.key === "M") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && this.selfId) {
-        this.net.send({ t: "mount", on: !isMounted() });
+        this.toggleMount();
       }
     });
 
@@ -438,7 +443,7 @@ export class GameScene extends Phaser.Scene {
 
   private beginAim(skill: SkillDef): void {
     this.aiming = skill;
-    this.hotbar.setAimNote(vi.skills.aim(skill.nameVi, skill.range));
+    this.hotbar.setAimNote(vi.skills.aim(skillDisplayName(skill), skill.range));
   }
 
   private endAim(): void {
@@ -559,7 +564,7 @@ export class GameScene extends Phaser.Scene {
       case "welcome":
         this.selfId = msg.self;
         setGearSetNames(msg.gearSets); // the live names of the gear sets
-        setMounted(false); // a new room starts on foot
+        setMounted(false); // the snapshot of yourself (below) says whether you still ride: it is kept across maps
         this.flightWorn = msg.equipped.some((e) => e.slot === "flight");
         this.refreshMountBtn();
         this.hitMeAt.clear(); // a new room starts without quarrels
@@ -582,6 +587,7 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.update(msg.character);
         this.equipment.setSheet(msg.character);
         this.shop.setSheet(msg.character);
+        this.smith.setSheet(msg.character);
         this.quests.setSheet(msg.character);
         this.rank.show(msg.character.name);
         this.inventory.setSheet(msg.character);
@@ -593,6 +599,7 @@ export class GameScene extends Phaser.Scene {
         this.inventory.setBag(msg.bag);
         this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
+        this.smith.setEquipped(msg.equipped);
         const wornBonded = msg.equipped.find((e) => e.slot === "bonded");
         this.bondedLv = wornBonded ? bondedLevel(wornBonded) : undefined;
         this.inventory.setEquipped(msg.equipped);
@@ -601,6 +608,7 @@ export class GameScene extends Phaser.Scene {
         this.knownSkills = msg.skills;
         this.skillStates = msg.skillStates;
         this.worn = msg.equipped;
+        setWornSkillSets(msg.equipped);
         this.skillsUi.setStates(msg.skillStates);
         this.charPanel.setSkills(msg.skills, msg.skillStates);
         this.skillsUi.setEquipped(msg.equipped);
@@ -673,7 +681,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "mounted":
         if (msg.error) this.chat.system(vi.mount.errors[msg.error] ?? msg.error);
-        this.applyMounted(msg.on);
+        this.applyMounted(msg.on, true);
         {
           const me = this.actors.get(this.selfId);
           if (me) this.setActorMounted(me, msg.on);
@@ -724,6 +732,8 @@ export class GameScene extends Phaser.Scene {
         this.inventory.setEquipped(msg.items);
         this.charPanel.setEquipped(msg.items);
         this.worn = msg.items;
+        setWornSkillSets(msg.items);
+        this.hotbar.refresh();
         this.skillsUi.setEquipped(msg.items); // gear skills take the realm and grade of the piece
         this.hotbar.refresh();
         break;
@@ -747,7 +757,7 @@ export class GameScene extends Phaser.Scene {
         if (msg.up) this.charPanel.setSkills(this.knownSkills ?? [], this.skillStates); // a passive may be stronger now
         this.skillsUi.setState(msg.id, msg.lv, msg.xp);
         const def = getSkill(msg.id);
-        if (msg.up && def) this.chat.system(vi.skills.levelUp(def.nameVi, vi.skills.levels[msg.lv] ?? ""));
+        if (msg.up && def) this.chat.system(vi.skills.levelUp(skillDisplayName(def), vi.skills.levels[msg.lv] ?? ""));
         this.hotbar.refresh(); // a level changes MP cost and cooldown
         break;
       }
@@ -764,7 +774,7 @@ export class GameScene extends Phaser.Scene {
         this.buffs.set(msg.list);
         break;
       case "buff":
-        this.chat.system(vi.skills.buffOn(getSkill(msg.skill)?.nameVi ?? msg.skill, Math.round(msg.ms / 1000)));
+        this.chat.system(vi.skills.buffOn(((d) => (d ? skillDisplayName(d) : msg.skill))(getSkill(msg.skill)), Math.round(msg.ms / 1000)));
         break;
       case "eq_removed":
         for (const it of msg.items) {
@@ -802,6 +812,15 @@ export class GameScene extends Phaser.Scene {
         this.chat.system(text, msg.success ? undefined : "warning");
         this.smith.notify(text, msg.success);
         this.smith.setPity(msg.id, msg.pity);
+        break;
+      }
+      case "smith_refined": {
+        const owned = [...this.worn, ...this.inventory.list()].find((x) => x.id === msg.id);
+        const name = owned ? (getItemDef(owned.type)?.nameVi ?? owned.type) : "";
+        const parts = Object.entries(msg.gains).map(([key, v]) => statText(key as EquipStatKey, v));
+        const text = parts.length > 0 ? vi.smith.refined(name, parts.join(", ")) : vi.smith.refinedNothing(name);
+        this.chat.system(text, parts.length > 0 ? undefined : "warning");
+        this.smith.notify(text, parts.length > 0);
         break;
       }
       case "shop_ok": {
@@ -1143,21 +1162,47 @@ export class GameScene extends Phaser.Scene {
     if (actor.id === this.selfId && isMounted() !== on) this.applyMounted(on);
   }
 
+  /**
+   * Gets on or off. A walk in progress goes on at the new speed from where the character is right now, predicted here just like a click
+   * to walk is (and the position is sent along), so the change is smooth and the server's answer does not pull the character back.
+   */
+  private toggleMount(): void {
+    const on = !isMounted();
+    const self = this.actors.get(this.selfId);
+    const sheet = this.selfSheet;
+    if (!self || !sheet || (on && !this.flightWorn)) {
+      this.net.send({ t: "mount", on });
+      return;
+    }
+    const now = performance.now();
+    const here = currentPos(self, now);
+    const from: Vec2 = [Math.round(here.x * 100) / 100, Math.round(here.y * 100) / 100];
+    const speed = walkSpeed(sheet.base, equipmentBonus(this.worn, { ...wearerOfSheet(sheet), mounted: on }).moveSpeed);
+    const dest = self.path[self.path.length - 1];
+    const rest = here.moving && dest ? findSmoothPath(this.map, from, dest) : null;
+    applyTrack(self, rest ?? [from], now, speed, now);
+    this.net.send({ t: "mount", on, fx: from[0], fy: from[1] });
+  }
+
   /** The button is there while a flight pháp bảo is worn (or you are riding): it says what a press does. */
   private refreshMountBtn(): void {
     const on = isMounted();
-    this.mountBtn.hidden = !(on || this.flightWorn);
-    this.mountBtn.textContent = on ? vi.mount.badge : vi.mount.ride;
+    // Always there once in the game, like the other buttons; grey and dead while no flight pháp bảo is worn.
+    this.mountBtn.hidden = false;
+    this.mountBtn.textContent = on ? vi.mount.down : vi.mount.up;
+    this.mountBtn.title = this.flightWorn || on ? vi.mount.hint : vi.mount.needFlight;
+    this.mountBtn.disabled = !this.flightWorn && !on;
+    this.mountBtn.classList.toggle("riding", on);
   }
 
   /** Your own riding state changed: badge, stat views and the line in the system chat. */
-  private applyMounted(on: boolean): void {
+  private applyMounted(on: boolean, announce = false): void {
     if (isMounted() === on) return;
     setMounted(on);
     this.refreshMountBtn();
     this.charPanel.refresh();
     this.equipment.refresh();
-    this.chat.system(on ? vi.mount.on : vi.mount.off);
+    if (announce) this.chat.system(on ? vi.mount.on : vi.mount.off);
   }
 
   private recolorName(actor: Actor, now: number): void {

@@ -1,4 +1,4 @@
-import { type RolledStats, resonanceBonus, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
+import { type RollPosition, rollPosition, type RolledStats, resonanceBonus, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
 import { vi } from "./locales/vi";
 
 /** "+12 Công kích" style text for one stat; rates are percentage points. */
@@ -74,17 +74,23 @@ export function durabilityText(dur?: number, max?: number): string {
 }
 
 /** "+5 Công kích, +5 Sinh lực" at the current durability; a stat that wore down shows its maximum too. */
-function statsText(type: string, dur?: number, max?: number, lv?: number, mult = 1, rs?: RolledStats, en?: number): string {
+function statParts(type: string, dur?: number, max?: number, lv?: number, mult = 1, rs?: RolledStats, en?: number): Array<{ key: EquipStatKey; text: string; pos: RollPosition }> {
   const info = equipmentInfo(type);
-  if (!info) return "";
+  if (!info) return [];
   const full = scaledStats(info, undefined, undefined, lv, mult, rs, en);
   const now = scaledStats(info, dur, max, lv, mult, rs, en);
-  const parts: string[] = [];
+  const parts: Array<{ key: EquipStatKey; text: string; pos: RollPosition }> = [];
   for (const key of EQUIP_STAT_KEYS) {
     if (full[key] <= 0) continue;
-    parts.push(now[key] === full[key] ? statText(key, now[key]) : `${statText(key, now[key])} (${vi.equip.of(full[key])})`);
+    parts.push({ key, text: now[key] === full[key] ? statText(key, now[key]) : `${statText(key, now[key])} (${vi.equip.of(full[key])})`, pos: rollPosition(type, key, rs?.[key]) });
   }
-  return parts.join(", ");
+  return parts;
+}
+
+function statsText(type: string, dur?: number, max?: number, lv?: number, mult = 1, rs?: RolledStats, en?: number): string {
+  return statParts(type, dur, max, lv, mult, rs, en)
+    .map((p) => p.text)
+    .join(", ");
 }
 
 /** "Luyện Khí tầng 1, Căn cốt ≥ 8", or null when the piece asks nothing. */
@@ -147,7 +153,18 @@ export function describeItem(type: string, opts: { dur?: number; max?: number; q
   if (info) {
     // Gear that suits the wearer (its element is their root's or their constitution's, or its weapon family is) gives more.
     const suits = resonates(info, opts.wearer?.affinity);
-    line(`${vi.equip.statsLabel}: ${statsText(type, opts.dur, opts.max, opts.lv, suits ? 1 + resonanceBonus(info, opts.wearer?.affinity) : 1, opts.rs, opts.en)}`);
+    // A stat rolled at the top of its range is gold, one at the bottom grey, the others white.
+    const stats = document.createElement("div");
+    stats.className = "id-line";
+    stats.append(`${vi.equip.statsLabel}: `);
+    statParts(type, opts.dur, opts.max, opts.lv, suits ? 1 + resonanceBonus(info, opts.wearer?.affinity) : 1, opts.rs, opts.en).forEach((p, i) => {
+      if (i > 0) stats.append(", ");
+      const span = document.createElement("span");
+      span.className = `st-${p.pos}`;
+      span.textContent = p.text;
+      stats.append(span);
+    });
+    box.append(stats);
     if (suits) line(vi.equip.resonates(Math.round(resonanceBonus(info, opts.wearer?.affinity) * 100)));
     // The pháp bảo bản mệnh trains on its own EXP, up to the level of its owner.
     if (info.kind === "bonded") line(vi.equip.refine(opts.xp ?? 0, refineExpNeeded(refineLevelOf(info, opts.lv))));

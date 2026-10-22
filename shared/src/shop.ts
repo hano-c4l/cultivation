@@ -89,6 +89,7 @@ const KIND_VALUE: Readonly<Record<EquipKind, number>> = {
   jade: 25,
   necklace: 25,
   belt: 20,
+  boots: 20,
   charm: 60,
   bonded: 150,
   flight: 150,
@@ -138,7 +139,7 @@ const BOOK_OFFERS: readonly ShopOffer[] = [
 ];
 
 /** Basic gear on sale: Luyện Khí bậc 1 and 2, Hạ phẩm (needs nothing of the wearer), in every element. */
-const GEAR_KINDS: readonly EquipKind[] = ["hat", "robe", "bracer", "ring", "jade", "necklace", "belt"];
+const GEAR_KINDS: readonly EquipKind[] = ["hat", "robe", "bracer", "ring", "jade", "necklace", "belt", "boots"];
 const GEAR_TIERS = [1, 2] as const;
 
 /** The pieces for one gear style: the gendered kinds in that style's version, every weapon family and pháp bảo, per element. */

@@ -43,6 +43,7 @@ import {
   rollBookDrop,
   rollPillDrop,
   rollOreDrop,
+  rollRefineDrop,
   MP_REGEN_DELAY_MS,
   modifierTotal,
   restoreVitals,
@@ -559,6 +560,30 @@ export class CombatSim {
     return this.snapshot(m, now);
   }
 
+  /** The boss's health as a fraction and its damage table, for keeping across the room sleeping (null: no boss). */
+  bossState(): { frac: number; damage: Record<string, number> } | null {
+    for (const m of this.monsters.values()) {
+      if (!m.boss) continue;
+      return { frac: m.maxHp > 0 ? m.hp / m.maxHp : 1, damage: Object.fromEntries(m.damage) };
+    }
+    return null;
+  }
+
+  /** Puts a boss back the way it was left: this fraction of its health and these damage shares. */
+  restoreBoss(frac: number, damage: Readonly<Record<string, number>>): void {
+    for (const m of this.monsters.values()) {
+      if (!m.boss) continue;
+      m.hp = Math.min(m.maxHp, Math.max(1, Math.round(m.maxHp * Math.min(1, Math.max(0, frac)))));
+      m.damage = new Map(Object.entries(damage).filter(([, v]) => v > 0));
+      return;
+    }
+  }
+
+  /** A player who died no longer counts towards a boss kill: the damage they did is forgotten. */
+  private forgetBossDamage(id: string): void {
+    for (const m of this.monsters.values()) if (m.boss) m.damage.delete(id);
+  }
+
   /** A safe map's sim exists only for its guards. */
   get isSafeMap(): boolean {
     return this.map.safe === true;
@@ -667,6 +692,7 @@ export class CombatSim {
   }
 
   removePlayer(id: string): void {
+    if (this.players.get(id)?.dead) this.forgetBossDamage(id);
     this.players.delete(id);
     for (const m of this.monsters.values()) {
       if (m.targetId === id && m.state === "chase") m.state = "return";
@@ -1149,6 +1175,7 @@ export class CombatSim {
     if (p.hp <= 0) {
       p.dead = true;
       p.targetId = null;
+      this.forgetBossDamage(p.id);
       events.push({ t: "player_dead", playerId: p.id, ...(m.guard ? { guard: true as const } : {}) });
     }
   }
@@ -1384,6 +1411,8 @@ export class CombatSim {
     if (pill) loot.push({ item: pill, qty: 1 });
     const ore = rollOreDrop(this.realm, m.rank, this.rand, dropMult); // two more rolls: the blacksmith's ore of this realm
     if (ore) loot.push(ore);
+    const refine = rollRefineDrop(this.realm, m.rank, this.rand, dropMult); // two more: the refining ore of this realm
+    if (refine) loot.push(refine);
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
@@ -1421,6 +1450,7 @@ export class CombatSim {
       return applied;
     }
     q.dead = true;
+    this.forgetBossDamage(q.id);
     q.targetId = null;
     q.pendingCast = null;
     p.targetId = null;
@@ -1475,6 +1505,10 @@ export class CombatSim {
       if (book) loot.push({ item: book, qty: 1 });
       const pill = rollPillDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
       if (pill) loot.push({ item: pill, qty: 1 });
+      const ore = rollOreDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      if (ore) loot.push(ore);
+      const refine = rollRefineDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      if (refine) loot.push(refine);
       for (const drop of loot) {
         const to = pickByShare(shares, this.rand());
         if (to) items.set(to, [...(items.get(to) ?? []), drop]);

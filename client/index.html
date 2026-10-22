@@ -89,6 +89,9 @@
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #bag-btn.alert { color: #ff5252; font-weight: 600; }
       #rank-btn[hidden], #rank-panel[hidden] { display: none; }
+      #mount-btn { position: fixed; right: 12px; top: 292px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+      #mount-btn[hidden] { display: none; } #mount-btn:disabled { opacity: 0.45; cursor: default; } #mount-btn.riding { background: rgba(40, 110, 150, 0.85); color: #e8faff; }
       #rank-btn { position: fixed; right: 12px; top: 252px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #rank-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
@@ -161,6 +164,11 @@
       #shop-panel .shop-element { display: flex; align-items: center; gap: 6px; margin: 4px 0; } #shop-panel select { background: #2a3245; color: #e8e4d8; border: 1px solid #3a4560; border-radius: 6px; padding: 3px 6px; font: inherit; }
       #shop-panel .shop-main { display: flex; align-items: center; gap: 8px; min-width: 0; } #shop-panel .shop-main input { flex: none; }
       #shop-panel .shop-bulk { display: flex; gap: 6px; margin-top: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+      #shop-panel .shop-sort { margin-left: auto; display: flex; gap: 4px; align-items: center; } #shop-panel .shop-sort button { padding: 3px 8px; font-size: 12px; background: #3a4560; color: #e8e4d8; }
+      #shop-panel .shop-sort select { padding: 3px 4px; border-radius: 6px; border: 1px solid #3a4560; background: #2a3245; color: #e8e4d8; font: inherit; font-size: 12px; }
+      #shop-panel .shop-bulk { flex-wrap: nowrap; gap: 6px; justify-content: flex-start; } #shop-panel .shop-bulk .shop-sell { margin-left: auto; }
+      #shop-panel .shop-filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; } #shop-panel .shop-ms { position: relative; } #shop-panel .shop-ms summary { cursor: pointer; padding: 3px 8px; border: 1px solid #3a4560; border-radius: 6px; background: #2a3245; list-style: none; user-select: none; }
+      #shop-panel .shop-ms-list { position: absolute; z-index: 2; left: 0; top: 100%; min-width: 120px; margin-top: 2px; padding: 4px 8px; border: 1px solid #3a4560; border-radius: 6px; background: #1b2130; } #shop-panel .shop-ms-list label { display: block; padding: 2px 0; cursor: pointer; white-space: nowrap; }
       #shop-panel .shop-price { color: #ffd54a; font-variant-numeric: tabular-nums; }
       #smith-panel[hidden] { display: none; }
       #smith-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
@@ -248,7 +256,7 @@
       .bag-ghost .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; }
       .bag-ghost .bag-mark.x { color: #ff5252; } .bag-ghost .bag-mark.plus { color: #ffd54a; }
       #bag-panel .bag-cell .bag-name, .bag-ghost .bag-name { padding-top: 7px; }
-      .item-desc b { display: block; margin-bottom: 2px; } .item-desc .id-line { font-size: 12px; opacity: 0.85; line-height: 1.45; }
+      .item-desc b { display: block; margin-bottom: 2px; } .item-desc .id-line { font-size: 12px; opacity: 0.85; line-height: 1.45; } .item-desc .st-max { color: #ffd54a; font-weight: 600; } .item-desc .st-min { color: #9e9e9e; } .item-desc .st-mid { color: #fff; }
       #bag-panel .bag-compare { margin-top: 6px; padding-top: 4px; border-top: 1px dashed #3a4560; }
       #bag-panel .bag-detail { max-height: 240px; overflow-y: auto; }
       #eq-panel .eq-text { position: relative; padding-top: 9px; }
@@ -330,7 +338,7 @@
       @media (max-width: 1200px) {
         #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout { padding: 4px 8px; font-size: 12px; }
         #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
-        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; }
+        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; }
       }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;

@@ -29,6 +29,8 @@ export interface CharacterRow {
   constitution: string;
   constitution_tier: number;
   gender: Gender;
+  /** 1 while riding the flight pháp bảo (migration 0029). */
+  mounted: number;
   hotbar: string;
   vitals: string | null;
   /** All the elements of the spiritual root, main one first, comma separated; empty: only `spiritual_root`. */
@@ -50,7 +52,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, hotbar, vitals, roots, bt_started_at, paths, sat_khi, sat_nhan, anh_hung, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, mounted, hotbar, vitals, roots, bt_started_at, paths, sat_khi, sat_nhan, anh_hung, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 export async function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
@@ -255,4 +257,9 @@ export async function savePkScores(db: D1Database, id: string, scores: { satKhi:
     .prepare("UPDATE characters SET sat_khi = ?, sat_nhan = ?, anh_hung = ? WHERE id = ?")
     .bind(Math.max(0, Math.round(scores.satKhi)), Math.max(0, Math.round(scores.satNhan)), Math.max(0, Math.round(scores.hero)), id)
     .run();
+}
+
+/** Records whether the character rides the flight pháp bảo (kept across maps and reconnects). */
+export async function saveMounted(db: D1Database, id: string, on: boolean): Promise<void> {
+  await db.prepare("UPDATE characters SET mounted = ? WHERE id = ? AND mounted != ?").bind(on ? 1 : 0, id, on ? 1 : 0).run();
 }
