@@ -1,5 +1,6 @@
 import {
   ENHANCE_MAX,
+  EQUIP_SLOTS,
   KEEP_LEVEL_ITEM,
   canRefine,
   equipmentInfo,
@@ -54,7 +55,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 /** The slots of the pháp bảo tab (the others are ordinary gear). */
 const ARTIFACT_SLOTS: ReadonlySet<EquipSlot> = new Set<EquipSlot>(["bonded", "flight", "charm1", "charm2", "charm3", "charm4"]);
 type Tab = "gear" | "artifact" | "bag";
-type Mode = "enhance" | "refine";
+type Mode = "enhance" | "refine" | "repair";
 
 /**
  * The blacksmith's window. Three tabs say which pieces are listed (worn gear, worn pháp bảo, the bag); two radio buttons say what is done to
@@ -111,7 +112,9 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
     const side = el("div", "shop-side");
     // The bonded artifact counts in the realm it has trained to.
     const realm = smithRealmOf(info, info.kind === "bonded" ? refineLevelOf(info, piece.lv) : undefined, STAGES_PER_REALM);
-    if (mode === "enhance") {
+    if (mode === "repair") {
+      // Only the repair button (worn pieces with some durability lost); the durability line is added below.
+    } else if (mode === "enhance") {
       const cost = upgradeCost(realm, level, pity[piece.id] ?? 0);
       const ore = smithOreFor(realm);
       if (cost && ore) {
@@ -144,7 +147,7 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
     main.append(el("div", "muted", lines.join(" · ")));
     row.append(main);
 
-    if (piece.dur !== undefined && piece.max !== undefined && piece.dur < piece.max && "slot" in where) {
+    if (mode === "repair" && piece.dur !== undefined && piece.max !== undefined && piece.dur < piece.max && "slot" in where) {
       const fee = repairCost(info.grade, piece.max - piece.dur);
       const fix = el("button", "eq-small", vi.smith.repairShort(fee));
       fix.title = vi.smith.repair(fee);
@@ -164,15 +167,9 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
     }
     if (flash) panel.append(el("div", flash.ok ? "shop-flash" : "shop-flash smith-bad", flash.text));
 
-    const all = planRepair({ items: [], equipped: worn }, "all");
-    const repairAll = el("button", "eq-wide", all.ok ? vi.smith.repairAll(all.cost) : vi.equip.nothingToRepair);
-    repairAll.disabled = !all.ok;
-    repairAll.onclick = () => send({ t: "smith_repair", npc, slot: "all" });
-    panel.append(repairAll);
-
-    // What is done: one of two radio buttons (choosing one clears the other).
+    // What is done: one of three radio buttons (choosing one clears the other).
     const modes = el("div", "smith-modes");
-    for (const m of ["enhance", "refine"] as const) {
+    for (const m of ["enhance", "refine", "repair"] as const) {
       const label = el("label");
       const radio = el("input") as HTMLInputElement;
       radio.type = "radio";
@@ -188,17 +185,26 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
     }
     panel.append(modes);
 
-    // The scroll only matters when upgrading.
+    // The scroll only matters when upgrading; with none in the bag the box is unticked and cannot be ticked. Repairing has its own button here.
     if (mode === "enhance") {
+      const scrolls = countOf(KEEP_LEVEL_ITEM);
+      if (scrolls === 0) protect = false;
       const keep = el("label", "smith-keep");
       const box = el("input") as HTMLInputElement;
       box.type = "checkbox";
       box.checked = protect;
+      box.disabled = scrolls === 0;
       box.onchange = () => {
         protect = box.checked;
       };
-      keep.append(box, document.createTextNode(` ${vi.smith.keep(countOf(KEEP_LEVEL_ITEM))}`));
+      keep.append(box, document.createTextNode(` ${vi.smith.keep(scrolls)}`));
       panel.append(keep);
+    } else if (mode === "repair") {
+      const all = planRepair({ items: [], equipped: worn }, "all");
+      const repairAll = el("button", "eq-wide", all.ok ? vi.smith.repairAll(all.cost) : vi.equip.nothingToRepair);
+      repairAll.disabled = !all.ok;
+      repairAll.onclick = () => send({ t: "smith_repair", npc, slot: "all" });
+      panel.append(repairAll);
     }
 
     const tabs = el("div", "eq-tabs");
@@ -240,13 +246,13 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
         if (row) list.append(row);
       }
     } else {
-      for (const w of worn.filter((p) => ARTIFACT_SLOTS.has(p.slot) === (tab === "artifact"))) {
+      for (const w of worn.filter((p) => ARTIFACT_SLOTS.has(p.slot) === (tab === "artifact")).sort((a, b) => EQUIP_SLOTS.indexOf(a.slot) - EQUIP_SLOTS.indexOf(b.slot))) {
         const row = pieceRow(w, { slot: w.slot });
         if (row) list.append(row);
       }
     }
     if (!list.hasChildNodes()) list.append(el("div", "muted", vi.smith.nothing));
-    panel.append(list, el("div", "muted", mode === "enhance" ? vi.smith.note : vi.smith.refineNote));
+    panel.append(list, el("div", "muted", mode === "enhance" ? vi.smith.note : mode === "refine" ? vi.smith.refineNote : vi.smith.repairNote));
   }
 
   const ui: SmithUi = {
