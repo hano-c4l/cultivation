@@ -1369,6 +1369,8 @@ export class GameScene extends Phaser.Scene {
 
   private showHit(msg: Extract<ServerMessage, { t: "hit" }>): void {
     if (msg.to === this.selfId && this.actors.has(msg.from) && !msg.ret) this.hitMeAt.set(msg.from, performance.now());
+    // A hit with no skill behind it is a plain attack (a skill is drawn from its own `fx` message).
+    if (!msg.skill) this.fx.basic(msg.from, msg.to, this.monsters.has(msg.from));
     const monster = this.monsters.get(msg.to);
     if (monster) monster.hp = msg.hp;
     const now = performance.now();

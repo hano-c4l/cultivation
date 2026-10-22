@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { getSkill } from "@game/shared";
-import { BUFF_COLOR, ELEMENT_COLOR, NEUTRAL, skillFxOf } from "./fx-kinds";
+import { BASIC_COLOR, BUFF_COLOR, ELEMENT_COLOR, NEUTRAL, basicFxOf, skillFxOf } from "./fx-kinds";
 
 /** A point on screen (world pixels of the scene) where an effect is drawn, or null when the thing it belongs to is not in view. */
 export type PosOf = (id: string) => { x: number; y: number } | null;
@@ -58,6 +58,16 @@ export class Effects {
         if (from) this.heal(from, id);
         break;
     }
+  }
+
+  /** A plain attack (no skill) of `from` on `to`: a swing up close, a bolt from afar; players and monsters in their own colours. */
+  basic(from: string, to: string, byMonster: boolean): void {
+    const a = this.posOf(from);
+    const b = this.posOf(to);
+    if (!a || !b) return;
+    const color = byMonster ? BASIC_COLOR.monster : BASIC_COLOR.player;
+    if (basicFxOf(Math.hypot(b.x - a.x, b.y - a.y)) === "melee") this.melee(b, color);
+    else this.bolt(a, b, color);
   }
 
   /** The boss's cone: from its feet towards the point it faced. `range` is in tiles, `half` is half the opening in degrees. */

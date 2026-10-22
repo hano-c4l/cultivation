@@ -47,3 +47,15 @@ export const ELEMENT_COLOR: Readonly<Record<string, number>> = {
 export const BUFF_COLOR: Readonly<Record<string, number>> = { attack: 0xff6b6b, defense: 0x6bb6ff, dodge: 0x8ff0a4 };
 export const NEUTRAL = 0xe8e4d8;
 
+
+/**
+ * The effect of a plain attack (no skill): a swing when the two stand close (as the ground is seen on screen: a tile is about 45 px), a thrown
+ * bolt when they are further apart. `screenDist` is the distance between them in pixels on screen.
+ */
+export const BASIC_MELEE_MAX_PX = 130;
+export function basicFxOf(screenDist: number): "melee" | "ranged" {
+  return screenDist <= BASIC_MELEE_MAX_PX ? "melee" : "ranged";
+}
+
+/** Plain attacks of players are pale gold, those of monsters red. */
+export const BASIC_COLOR = { player: 0xf4ecd0, monster: 0xff8a7a } as const;
