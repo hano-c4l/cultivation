@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { AOI_ENTER, AOI_LEAVE, diffView, withinView } from "./aoi";
+import { aoiEnter, aoiLeave, diffView, withinView } from "./aoi";
+const AOI_ENTER = aoiEnter();
+const AOI_LEAVE = aoiLeave();
 import { screenToTile } from "./map";
 
 const SIZE = 150;

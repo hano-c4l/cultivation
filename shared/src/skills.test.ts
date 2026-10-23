@@ -6,7 +6,7 @@ import {
   BOOK_SKILLS,
   DIVINE_GRADE,
   HOTBAR_SLOTS,
-  MASTERY_NEEDED,
+  masteryNeeded,
   SKILLS,
   addMastery,
   availableSkills,
@@ -118,16 +118,16 @@ describe("realm, grade and mastery make a skill stronger", () => {
 describe("mastery", () => {
   it("one level takes the points MASTERY_NEEDED says, and extra points carry over", () => {
     expect(addMastery(0, 0, 1, 0)).toEqual({ level: 0, mastery: 1, up: false });
-    expect(addMastery(0, MASTERY_NEEDED[0]! - 1, 1, 0)).toEqual({ level: 1, mastery: 0, up: true });
-    expect(addMastery(0, 0, MASTERY_NEEDED[0]! + 7, 0)).toEqual({ level: 1, mastery: 7, up: true });
-    expect(addMastery(0, 0, MASTERY_NEEDED[0]! + MASTERY_NEEDED[1]! + 3, 0)).toEqual({ level: 2, mastery: 3, up: true });
+    expect(addMastery(0, masteryNeeded(0)! - 1, 1, 0)).toEqual({ level: 1, mastery: 0, up: true });
+    expect(addMastery(0, 0, masteryNeeded(0)! + 7, 0)).toEqual({ level: 1, mastery: 7, up: true });
+    expect(addMastery(0, 0, masteryNeeded(0)! + masteryNeeded(1)! + 3, 0)).toEqual({ level: 2, mastery: 3, up: true });
   });
 
   it("thần thông is only open to the high grades; below it viên mãn is the top and points stop", () => {
     expect(maxSkillLevel(DIVINE_GRADE - 1)).toBe(3);
     expect(maxSkillLevel(DIVINE_GRADE)).toBe(4);
-    expect(addMastery(3, MASTERY_NEEDED[3]! - 1, 5, DIVINE_GRADE - 1)).toEqual({ level: 3, mastery: 0, up: false });
-    expect(addMastery(3, MASTERY_NEEDED[3]! - 1, 1, DIVINE_GRADE)).toEqual({ level: 4, mastery: 0, up: true });
+    expect(addMastery(3, masteryNeeded(3)! - 1, 5, DIVINE_GRADE - 1)).toEqual({ level: 3, mastery: 0, up: false });
+    expect(addMastery(3, masteryNeeded(3)! - 1, 1, DIVINE_GRADE)).toEqual({ level: 4, mastery: 0, up: true });
     expect(addMastery(4, 0, 50, DIVINE_GRADE)).toEqual({ level: 4, mastery: 0, up: false });
   });
 });

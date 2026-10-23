@@ -36,7 +36,25 @@ export interface NpcSpot {
   /** Position in tile units (continuous). */
   x: number;
   y: number;
+  /** Display name. Absent: the client locale's name for the id. NPCs are data in D1 (table `npc_spots`); the maps below only hold the ones the game starts with. */
+  name?: string;
 }
+
+/** The names of the NPCs the game starts with (seed of `npc_spots.name_vi`; the client falls back to its locale). */
+export const NPC_NAMES_VI: Readonly<Record<string, string>> = {
+  merchant: "Thương nhân",
+  smith: "Thợ Rèn",
+  elder: "Trưởng Lão",
+  merchant2: "Thương nhân",
+  smith2: "Thợ Rèn",
+  elder2: "Trưởng Lão",
+  waygate: "Truyền Tống Trận",
+  waygate2: "Truyền Tống Trận",
+  path_kiem: "Kiếm Đạo Sư",
+  path_thuat: "Thuật Đạo Sư",
+  path_dan: "Đan Đạo Sư",
+};
+export const NPC_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "waygate"];
 
 /** How close (tiles) a player must be for the server to accept a command to an NPC. */
 export const NPC_INTERACT_RADIUS = 3;
@@ -574,7 +592,40 @@ export function getMap(id: MapId): MapData {
 
 /** The NPC with this id when it is within NPC_INTERACT_RADIUS of a continuous position. */
 export function npcNear(map: MapData, id: string, x: number, y: number): NpcSpot | undefined {
-  return map.npcs.find((n) => n.id === id && Math.hypot(x - n.x, y - n.y) <= NPC_INTERACT_RADIUS);
+  return npcsOf(map).find((n) => n.id === id && Math.hypot(x - n.x, y - n.y) <= NPC_INTERACT_RADIUS);
+}
+
+/**
+ * The NPCs in force, per map: the server installs every map's list from D1 (`setAllNpcs`), the client the list of the map it is in (`setMapNpcs`,
+ * from the `welcome` message). A map with no installed list uses the NPCs written in its builder above, so the game still runs with D1 down.
+ */
+let liveNpcs: Map<string, readonly NpcSpot[]> = new Map();
+
+export function setAllNpcs(rows: ReadonlyArray<NpcSpot & { mapId: string }>): void {
+  const next = new Map<string, NpcSpot[]>(MAP_IDS.map((id) => [id, []]));
+  for (const { mapId, ...spot } of rows) next.get(mapId)?.push(spot);
+  liveNpcs = next;
+}
+
+export function setMapNpcs(mapId: string, list: readonly NpcSpot[]): void {
+  liveNpcs = new Map(liveNpcs).set(mapId, list);
+}
+
+/** The NPCs standing on a map now. */
+export function npcsOf(map: MapData): readonly NpcSpot[] {
+  return liveNpcs.get(map.id) ?? map.npcs;
+}
+
+/** Every NPC id there is: the starting ones and the ones installed from D1 (quests name their giver and talk targets from this set). */
+export function allNpcIds(): Set<string> {
+  const ids = new Set(MAPS_NPC_IDS);
+  for (const list of liveNpcs.values()) for (const n of list) ids.add(n.id);
+  return ids;
+}
+
+/** The NPCs the game starts with, on every map (seeds of the D1 table). */
+export function startingNpcs(): Array<NpcSpot & { mapId: MapId }> {
+  return MAP_IDS.flatMap((mapId) => getMap(mapId).npcs.map((n) => ({ ...n, mapId, name: NPC_NAMES_VI[n.id] ?? n.id })));
 }
 
 /** The portal whose tile is within PORTAL_RADIUS of a continuous position, if any. */

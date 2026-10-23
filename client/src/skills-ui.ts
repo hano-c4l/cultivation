@@ -1,5 +1,5 @@
 import {
-  MASTERY_NEEDED,
+  masteryNeeded,
   REALMS,
   ALL_ROOTS,
   effectiveSkill,
@@ -124,7 +124,7 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
     info.append(title, el("div", "sk-meta", meta.join(" · ")));
     if (s.source !== "gear") {
       const top = maxSkillLevel(ctx.grade);
-      const need = ctx.level < top ? (MASTERY_NEEDED[ctx.level] ?? 0) : 0;
+      const need = ctx.level < top ? (masteryNeeded(ctx.level) ?? 0) : 0;
       const have = states[s.id]?.xp ?? 0;
       const bar = el("div", "sk-bar");
       const fill = el("div", "sk-bar-fill");

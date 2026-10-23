@@ -1,3 +1,4 @@
+import { tuning } from "./tuning";
 import { isBonded } from "./equipment-data";
 import type { BagContents, BagOp } from "./inventory";
 import { levelIndex } from "./progression";
@@ -39,30 +40,21 @@ export function canStartPvp(mine: PkMode, theirs: PkMode): boolean {
   return mine === 2 || (mine === 1 && theirs >= 1);
 }
 
-// ---- sát khí ----
-export const SAT_KHI_PER_KILL = 10;
-export const SAT_KHI_LOST_ON_DEATH = 50;
-/** Damage bonus starts above this many points... */
-export const SAT_KHI_BONUS_ABOVE = 200;
-/** ...and reaches its maximum at this many. */
-export const SAT_KHI_BONUS_FULL_AT = 1000;
-export const SAT_KHI_BONUS_MIN_PCT = 5;
-export const SAT_KHI_BONUS_MAX_PCT = 15;
+// ---- sát khí (the numbers are in the tuning, `pvp`) ----
 
 /** Percent of extra damage the sát khí gives: 0 up to 200, 5% just above it, rising evenly to 15% at 1000 and staying there. */
 export function satKhiDamagePct(satKhi: number): number {
-  if (satKhi <= SAT_KHI_BONUS_ABOVE) return 0;
-  const span = SAT_KHI_BONUS_FULL_AT - SAT_KHI_BONUS_ABOVE;
-  const t = Math.min(1, (satKhi - SAT_KHI_BONUS_ABOVE) / span);
-  return SAT_KHI_BONUS_MIN_PCT + (SAT_KHI_BONUS_MAX_PCT - SAT_KHI_BONUS_MIN_PCT) * t;
+  const k = tuning().pvp.satKhi;
+  if (satKhi <= k.bonusAbove) return 0;
+  const t = Math.min(1, (satKhi - k.bonusAbove) / (k.bonusFullAt - k.bonusAbove));
+  return k.bonusMinPct + (k.bonusMaxPct - k.bonusMinPct) * t;
 }
 
 // ---- sát nhân and the name colour ----
-export const SAT_NHAN_PER_KILL = 100;
-export const SAT_NHAN_DECAY_PER_MIN = 5;
-export const SAT_NHAN_LOST_ON_DEATH = 50;
-export const SAT_NHAN_LOST_KILLING_ORANGE = 50;
-export const SAT_NHAN_LOST_KILLING_RED = 100;
+/** Sát nhân lost per minute online (tuning `pvp`). */
+export function satNhanDecayPerMin(): number {
+  return tuning().pvp.satNhan.decayPerMin;
+}
 
 /** 0 white, 1 yellow, 2 orange, 3 red. */
 export type NameTier = 0 | 1 | 2 | 3;
@@ -88,7 +80,7 @@ export function displayColor(tier: NameTier, lastAttackedViewerAt: number | unde
 
 /** The sát nhân after `ms` of being online (it only falls while online; never below 0). */
 export function decayedSatNhan(satNhan: number, ms: number): number {
-  return Math.max(0, satNhan - (SAT_NHAN_DECAY_PER_MIN * Math.max(0, ms)) / 60_000);
+  return Math.max(0, satNhan - (satNhanDecayPerMin() * Math.max(0, ms)) / 60_000);
 }
 
 // ---- anh hùng ----
@@ -123,19 +115,19 @@ export interface PvpKillResult {
  */
 export function applyPvpKill(killer: PkScores, victim: PkScores, victimSatNhan: number, selfDefense: boolean, killerSatNhan = killer.satNhan): PvpKillResult {
   const tier = nameTier(victimSatNhan);
-  const next: PkScores = { satKhi: killer.satKhi + SAT_KHI_PER_KILL, satNhan: killerSatNhan, hero: killer.hero };
+  const next: PkScores = { satKhi: killer.satKhi + tuning().pvp.satKhi.perKill, satNhan: killerSatNhan, hero: killer.hero };
   if (tier >= 2) {
     // Killing an orange or red name: hero points while the killer's sát nhân is 0 (nothing carries over), otherwise it only brings sát nhân down.
     if (killerSatNhan === 0) next.hero += tier === 3 ? HERO_PER_RED : HERO_PER_ORANGE;
-    else next.satNhan = Math.max(0, killerSatNhan - (tier === 3 ? SAT_NHAN_LOST_KILLING_RED : SAT_NHAN_LOST_KILLING_ORANGE));
+    else next.satNhan = Math.max(0, killerSatNhan - (tier === 3 ? tuning().pvp.satNhan.lostKillingRed : tuning().pvp.satNhan.lostKillingOrange));
   } else if (!selfDefense) {
     // Sát nhân only rises while the killer has no hero points; a killer with hero points just loses them.
-    if (killer.hero <= 0) next.satNhan = killerSatNhan + SAT_NHAN_PER_KILL;
+    if (killer.hero <= 0) next.satNhan = killerSatNhan + tuning().pvp.satNhan.perKill;
     next.hero = 0;
   }
   const dead: PkScores = {
-    satKhi: Math.max(0, victim.satKhi - SAT_KHI_LOST_ON_DEATH),
-    satNhan: Math.max(0, victimSatNhan - SAT_NHAN_LOST_ON_DEATH),
+    satKhi: Math.max(0, victim.satKhi - tuning().pvp.satKhi.lostOnDeath),
+    satNhan: Math.max(0, victimSatNhan - tuning().pvp.satNhan.lostOnDeath),
     hero: victim.hero,
   };
   return { killer: next, victim: dead };
@@ -143,16 +135,20 @@ export function applyPvpKill(killer: PkScores, victim: PkScores, victimSatNhan: 
 
 /** Killing a guard counts as killing a white name (without the self-defence exemption): sát khí rises and so does sát nhân (unless the killer had hero points, which just go). */
 export function applyGuardKill(killer: PkScores, killerSatNhan = killer.satNhan): PkScores {
-  return { satKhi: killer.satKhi + SAT_KHI_PER_KILL, satNhan: killer.hero > 0 ? killerSatNhan : killerSatNhan + SAT_NHAN_PER_KILL, hero: 0 };
+  return { satKhi: killer.satKhi + tuning().pvp.satKhi.perKill, satNhan: killer.hero > 0 ? killerSatNhan : killerSatNhan + tuning().pvp.satNhan.perKill, hero: 0 };
 }
 
 // ---- what a death costs by name colour (phase 2f, PR2) ----
 
 /** Chance that a player killed by another player loses one item, by name tier (white, yellow, orange, red). Placeholder values. */
-export const PK_DROP_CHANCE: Readonly<Record<NameTier, number>> = { 0: 0, 1: 0.1, 2: 0.25, 3: 0.5 };
+export function pkDropChance(tier: NameTier): number {
+  return tuning().pvp.dropChance[tier] ?? 0;
+}
 
 /** Share of its maximum durability each worn piece loses at ANY death, by name tier: orange and red names wear their gear down harder. */
-export const DEATH_DURABILITY_BY_TIER: Readonly<Record<NameTier, number>> = { 0: 0.05, 1: 0.05, 2: 0.1, 3: 0.2 };
+export function deathDurabilityOf(tier: NameTier): number {
+  return tuning().pvp.deathDurability[tier] ?? 0.05;
+}
 
 /**
  * The item a player killed by another player loses, as a `give` op, or null when nothing drops (the roll fails, or there is nothing to
@@ -195,7 +191,7 @@ export function planPkLoss(bag: BagContents, tier: NameTier, roll: number, pick:
 }
 
 function pickDropCandidate(bag: BagContents, tier: NameTier, roll: number, pick: number) {
-  if (roll >= PK_DROP_CHANCE[tier]) return undefined;
+  if (roll >= pkDropChance(tier)) return undefined;
   const candidates = [
     ...bag.items.filter((i) => !isBonded(i.type)).map((i) => ({ id: i.id, type: i.type, qty: i.qty, dur: i.dur, max: i.max, lv: i.lv, xp: i.xp, rs: i.rs, en: i.en })),
     ...bag.equipped.filter((e) => !isBonded(e.type)).map((e) => ({ id: e.id, type: e.type, qty: 1, dur: e.dur, max: e.max, lv: e.lv, xp: e.xp, rs: e.rs, en: e.en })),
@@ -205,5 +201,5 @@ function pickDropCandidate(bag: BagContents, tier: NameTier, roll: number, pick:
 
 /** A guard's kill of a player lowers the victim's sát nhân like any death does. */
 export function satNhanAfterDeath(satNhan: number): number {
-  return Math.max(0, satNhan - SAT_NHAN_LOST_ON_DEATH);
+  return Math.max(0, satNhan - tuning().pvp.satNhan.lostOnDeath);
 }

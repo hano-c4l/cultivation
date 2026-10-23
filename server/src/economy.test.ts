@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { DROP_CHANCE, rollLinhThachDrop } from "@game/shared";
+import { rollLinhThachDrop, tuning } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyCurrencyDelta, claimMail, createItem, getWallet, sendMail } from "./economy";
 import { makeDb } from "./test-db";
@@ -141,7 +141,7 @@ describe("item instances", () => {
 
 describe("rollLinhThachDrop", () => {
   it("drops nothing when the chance roll misses", () => {
-    expect(rollLinhThachDrop(0, "normal", DROP_CHANCE.normal, 0.5)).toBe(0);
+    expect(rollLinhThachDrop(0, "normal", tuning().drops.linh.chance.normal, 0.5)).toBe(0);
   });
   it("normal drop is a positive integer; rare ranks drop more than normal", () => {
     const n = rollLinhThachDrop(5, "normal", 0, 0.5);

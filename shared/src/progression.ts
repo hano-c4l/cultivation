@@ -5,10 +5,9 @@ import type { Gender } from "./gender";
 import { BASE_SPEED } from "./pathfinding";
 import { effectiveSpeed } from "./movement";
 import { elementTuning } from "./element-tuning";
+import { tuning } from "./tuning";
 import {
   BASE_STAT_START,
-  KILLS_BASE,
-  KILLS_GROWTH,
   MAX_ALLOCATE_PER_STAT,
   OVERFLOW_EXP_MAX,
   REALMS,
@@ -65,9 +64,10 @@ export function levelIndex(realm: number, stage: number): number {
   return r * STAGES_PER_REALM + (s - 1);
 }
 
-/** Same-bậc normal monsters needed to finish a stage (see KILLS_BASE). */
+/** Same-bậc normal monsters needed to finish a stage (tuning `kills`). */
 export function killsToNext(realm: number, stage: number): number {
-  return Math.round(KILLS_BASE * KILLS_GROWTH ** levelIndex(realm, stage));
+  const k = tuning().kills;
+  return Math.round(k.base * k.growth ** levelIndex(realm, stage));
 }
 
 /** EXP of a normal monster of this realm and bậc: the stage's EXP divided by the kills it should take. */

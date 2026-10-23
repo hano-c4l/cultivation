@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { deathDurabilityLoss } from "./equipment-data";
 import { parseClientMessage } from "./protocol";
-import { DEATH_DURABILITY_BY_TIER, satNhanAfterDeath, GRAY_WINDOW_MS, applyGuardKill, applyPvpKill, canStartPvp, decayedSatNhan, displayColor, heroBonus, isPkProtected, nameTier, satKhiDamagePct, type PkScores } from "./pk";
+import { deathDurabilityOf, satNhanAfterDeath, GRAY_WINDOW_MS, applyGuardKill, applyPvpKill, canStartPvp, decayedSatNhan, displayColor, heroBonus, isPkProtected, nameTier, satKhiDamagePct, type PkScores } from "./pk";
 
 const scores = (satKhi = 0, satNhan = 0, hero = 0): PkScores => ({ satKhi, satNhan, hero });
 
@@ -144,11 +144,11 @@ describe("PvP messages", () => {
 
 describe("death wear by name colour", () => {
   it("orange and red names wear their gear down harder than white and yellow", () => {
-    expect(DEATH_DURABILITY_BY_TIER[0]).toBe(DEATH_DURABILITY_BY_TIER[1]);
-    expect(DEATH_DURABILITY_BY_TIER[2]).toBeGreaterThan(DEATH_DURABILITY_BY_TIER[1]);
-    expect(DEATH_DURABILITY_BY_TIER[3]).toBeGreaterThan(DEATH_DURABILITY_BY_TIER[2]);
+    expect(deathDurabilityOf(0)).toBe(deathDurabilityOf(1));
+    expect(deathDurabilityOf(2)).toBeGreaterThan(deathDurabilityOf(1));
+    expect(deathDurabilityOf(3)).toBeGreaterThan(deathDurabilityOf(2));
     expect(deathDurabilityLoss(100)).toBe(5);
-    expect(deathDurabilityLoss(100, DEATH_DURABILITY_BY_TIER[3])).toBe(20);
+    expect(deathDurabilityLoss(100, deathDurabilityOf(3))).toBe(20);
   });
 });
 

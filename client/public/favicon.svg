@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Linh thạch: a faceted spirit stone. Left facets lighter, right facets darker, a glint on the top left. -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#7ff5e0" stop-opacity="0.55" />
+      <stop offset="1" stop-color="#7ff5e0" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="34" r="30" fill="url(#glow)" />
+  <polygon points="32,5 52,20 52,44 32,59 12,44 12,20" fill="#17a39a" />
+  <polygon points="32,5 12,20 32,30" fill="#9ff7e8" />
+  <polygon points="32,5 52,20 32,30" fill="#5fe0cf" />
+  <polygon points="12,20 32,30 32,59 12,44" fill="#2fc4b5" />
+  <polygon points="52,20 32,30 32,59 52,44" fill="#0e7c78" />
+  <polygon points="32,5 52,20 52,44 32,59 12,44 12,20" fill="none" stroke="#08524f" stroke-width="2" stroke-linejoin="round" />
+  <polygon points="19,19 26,14 28,17 21,22" fill="#ffffff" opacity="0.75" />
+</svg>

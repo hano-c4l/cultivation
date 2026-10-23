@@ -2,21 +2,17 @@ import { fullGearStats, type GuardStats } from "./guards";
 import { MAP_SIZE, screenToTile, type MapId } from "./map";
 import { deriveStats, levelIndex, startingStats } from "./progression";
 import { REALMS } from "./progression-data";
-import { tuning } from "./tuning";
+import { tuning, type Tuning } from "./tuning";
 
 /**
  * Map bosses (phase 2h). One boss per map across all channels (its claim lives in D1, table `world_boss`), never respawning once killed,
  * it comes back only through a new spawn roll. Every number here is a placeholder.
  */
 
-/** Chance that a respawning monster of the room asks for the boss (per respawn). */
-export const BOSS_SPAWN_CHANCE = 0.001;
-/**
- * "Pity": kills counted in one room since its last boss request; reaching the number asks for the boss for sure. The docs hold two
- * proposals (500/1500 and the rarer 100/1000 the owner mentioned): this is the first, by the map's realm.
- */
-export const BOSS_PITY_KILLS: Readonly<Record<number, number>> = { 0: 500, 1: 1500, 2: 2500, 3: 4000 };
-export const BOSS_PITY_DEFAULT = 1500;
+/** Chance that a respawning monster of the room asks for the boss (per respawn): the tuning `bossSpawn`. */
+export function bossSpawnChance(): number {
+  return tuning().bossSpawn.chance;
+}
 /** A claim older than this is treated as lost (a room that never came back), so a map cannot stay without a boss forever. */
 export const BOSS_CLAIM_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -27,24 +23,23 @@ export const BOSS_TIER = 9;
 /** Where the boss stands when no random spot could be found (tile units): the middle of the map, off the monster groups and the guards (see CombatSim.spawnBoss, which picks a random spot). */
 export const BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { town: null, forest: screenToTile(MAP_SIZE.forest, 0, 0), cave: screenToTile(MAP_SIZE.cave, 0, 0), town2: null, kimdan: screenToTile(MAP_SIZE.kimdan, 0, 0), nguyenanh: screenToTile(MAP_SIZE.nguyenanh, 0, 0) };
 /**
- * Its fighting strength is a few levels above the map's, like a vệ binh: a character `BOSS_REALM_BONUS` realm above the map's, at bậc
- * `BOSS_STAT_TIER`, in a full set of top-grade gear, with its points spent and `BOSS_HP_MULT` times the maximum HP. Placeholder values.
+ * Its fighting strength is a few levels above the map's, like a vệ binh: a character `bossRealmBonus()` realms above the map's, at bậc
+ * the tuning `bossStats.statTier`, in a full set of top-grade gear, with its points spent and `bossStats.hpMult` times the maximum HP. Placeholder values.
  */
-export const BOSS_REALM_BONUS = 1;
-export const BOSS_STAT_TIER = 2;
-export const BOSS_GEAR_GRADE = 4;
-export const BOSS_HP_MULT = 25;
-export const BOSS_POINTS_PER_LEVEL = 2;
+export function bossRealmBonus(): number {
+  return tuning().bossStats.realmBonus;
+}
+export function bossStatTier(): number {
+  return tuning().bossStats.statTier;
+}
 
 /**
  * What the boss does besides its plain attack (3 skills: two attacks and a heal; no buff). Checked in this order each time it acts, each on
  * its own cooldown. `power` multiplies its attack; the heal restores `fraction` of its maximum HP and is used below `below` of it.
  */
-export const BOSS_SKILLS = {
-  mend: { fraction: 0.04, below: 0.5, cdMs: 20_000 },
-  burst: { power: 2.6, cdMs: 10_000 },
-  slash: { power: 1.7, cdMs: 5_000 },
-} as const;
+export function bossSkills(): Tuning["bossSkills"] {
+  return tuning().bossSkills;
+}
 
 /**
  * The boss's special skill (numbers in the tuning, `bossCone`): a cone in front of it (towards the player it is fighting) that hits every player inside, with a long cooldown,
@@ -73,27 +68,20 @@ export function inCone(dx: number, dy: number, fx: number, fy: number, range: nu
 }
 
 export function bossStats(mapRealm: number): GuardStats {
-  const realm = Math.min(mapRealm + BOSS_REALM_BONUS, REALMS.length - 1); // the top realm has none above it
+  const realm = Math.min(mapRealm + bossRealmBonus(), REALMS.length - 1); // the top realm has none above it
   const base = startingStats("kim", 1).base;
-  const lv = levelIndex(realm, BOSS_STAT_TIER);
-  base.canCot += lv * BOSS_POINTS_PER_LEVEL;
-  base.linhLuc += lv * BOSS_POINTS_PER_LEVEL;
-  const d = deriveStats(base, realm, BOSS_STAT_TIER, 1, fullGearStats(realm, BOSS_STAT_TIER, BOSS_GEAR_GRADE), 1);
-  return { maxHp: d.maxHp * BOSS_HP_MULT, attack: d.attack, defense: d.defense, critRate: d.critRate, dodgeRate: d.dodgeRate };
+  const b = tuning().bossStats;
+  const lv = levelIndex(realm, b.statTier);
+  base.canCot += lv * b.pointsPerLevel;
+  base.linhLuc += lv * b.pointsPerLevel;
+  const d = deriveStats(base, realm, b.statTier, 1, fullGearStats(realm, b.statTier, b.gearGrade), 1);
+  return { maxHp: d.maxHp * b.hpMult, attack: d.attack, defense: d.defense, critRate: d.critRate, dodgeRate: d.dodgeRate };
 }
 
-/** A contribution under this share of the HP-and-last-hit total gets nothing, from Linh Thạch as well as from items. */
-export const BOSS_MIN_SHARE = 0.1;
-/** Weights of the contribution: the damage dealt (as a share of the boss's HP) and the last hit. They add up to 1. */
-export const BOSS_DAMAGE_WEIGHT = 0.7;
-export const BOSS_LAST_HIT_WEIGHT = 0.3;
-
-/** The whole kill pays this many times the EXP of a Đại Yêu of the same bậc, split by share; and this times a Đại Yêu's Linh Thạch drop. */
-export const BOSS_EXP_MULT = 4;
-export const BOSS_LINH_MULT = 25;
-/** The item rolls (each a full set of Đại Yêu loot rolls, with the chances multiplied by BOSS_ITEM_CHANCE_MULT); every item goes to one player, picked by share. */
-export const BOSS_ITEM_ROUNDS = 5;
-export const BOSS_ITEM_CHANCE_MULT = 3;
+/** The numbers of a boss kill (tuning `bossReward`): a contribution under `minShare` of the HP-and-last-hit total gets nothing, from Linh Thạch as well as from items; the weights of the damage dealt (as a share of the boss's HP) and of the last hit add up to 1; the whole kill pays `expMult` times the EXP of a Đại Yêu of the same bậc, split by share, and `linhMult` times a Đại Yêu's Linh Thạch drop; the items are `itemRounds` full sets of Đại Yêu loot rolls with the chances multiplied by `itemChanceMult`, each item going whole to one player picked by share. */
+export function bossReward(): Tuning["bossReward"] {
+  return tuning().bossReward;
+}
 
 export interface BossShare {
   id: string;
@@ -112,8 +100,8 @@ export function bossShares(damage: ReadonlyMap<string, number>, maxHp: number, k
   const raw: BossShare[] = [];
   for (const id of [...ids].sort()) {
     if (!isEligible(id)) continue;
-    const c = BOSS_DAMAGE_WEIGHT * Math.min(1, (damage.get(id) ?? 0) / Math.max(1, maxHp)) + (id === killerId ? BOSS_LAST_HIT_WEIGHT : 0);
-    if (c >= BOSS_MIN_SHARE - 1e-9) raw.push({ id, share: c });
+    const c = bossReward().damageWeight * Math.min(1, (damage.get(id) ?? 0) / Math.max(1, maxHp)) + (id === killerId ? bossReward().lastHitWeight : 0);
+    if (c >= bossReward().minShare - 1e-9) raw.push({ id, share: c });
   }
   const total = raw.reduce((s, r) => s + r.share, 0);
   return total > 0 ? raw.map((r) => ({ id: r.id, share: r.share / total })) : [];
@@ -143,5 +131,6 @@ export function bossKillText(bossName: string, mapId: string, channel: string, k
 
 /** Kills needed in one room to ask for the boss for sure. */
 export function bossPityKills(realm: number): number {
-  return BOSS_PITY_KILLS[realm] ?? BOSS_PITY_DEFAULT;
+  const t = tuning().bossSpawn;
+  return t.pityKills[realm] ?? t.pityDefault;
 }

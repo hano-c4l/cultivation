@@ -1,4 +1,4 @@
-import { MASTERY_NEEDED, CLUSTERS, GUARDS, RANKS, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
+import { masteryNeeded, CLUSTERS, GUARDS, RANKS, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, skillContextOf, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -941,7 +941,7 @@ describe("mastery, realm and passives in the simulation", () => {
       return hit && hit.t === "hit" ? hit.damage : 0;
     };
     expect(damage({ chuong_0: { lv: 2, xp: 0 } })).toBeGreaterThan(damage());
-    const { sim, m, p, stand } = setup({ skillState: { chuong_0: { lv: 0, xp: MASTERY_NEEDED[0]! - 1 } } });
+    const { sim, m, p, stand } = setup({ skillState: { chuong_0: { lv: 0, xp: masteryNeeded(0)! - 1 } } });
     sim.queueCast("p1", "chuong_0", m.id, 0);
     const events = sim.tick(0, at(stand));
     expect(events).toContainEqual({ t: "mastery", playerId: "p1", skill: "chuong_0", lv: 1, xp: 0, up: true });

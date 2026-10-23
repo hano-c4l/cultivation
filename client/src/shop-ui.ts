@@ -2,12 +2,13 @@ import {
   REALMS,
   SHOP_CATEGORIES,
   SHOP_SELL_MANY_MAX,
-  SPIRITUAL_ROOTS,
+  ALL_ROOTS,
   MAX_SHOP_QTY,
   equipmentInfo,
   getItemDef,
+  getMerchant,
   merchantOffers,
-  sellPrice,
+  merchantPays,
   shopCategoryOf,
   type BagItem,
   type CharacterSheet,
@@ -59,7 +60,6 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   registerWindow("shop", panel, 5);
 
   let npc = "";
-  let mapId = "";
   let sheet: CharacterSheet | null = null;
   let mode: "buy" | "sell" = "buy";
   let category: ShopCategory = "all";
@@ -114,7 +114,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     if (!sheet) return list;
     const filterByElement = ELEMENT_TABS.has(category) && element;
     const offers = sortItems(
-      merchantOffers(sheet.gender, mapId).filter((o) => (category === "all" || o.category === category) && (!filterByElement || o.element === null || o.element === element)),
+      merchantOffers(sheet.gender, npc).filter((o) => (category === "all" || o.category === category) && (!filterByElement || o.element === null || o.element === element)),
       (o) => o.item,
       () => undefined,
     );
@@ -158,7 +158,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   /** What the sell tab shows now: the sellable bag items of the current tab, in the chosen order. */
   function sellableItems(): BagItem[] {
     return sortItems(
-      getBag().filter((i) => sellPrice(i.type, i.dur, i.max) > 0 && (category === "all" || shopCategoryOf(i.type) === category)),
+      getBag().filter((i) => merchantPays(npc, i.type, i.dur, i.max) > 0 && (category === "all" || shopCategoryOf(i.type) === category)),
       (i) => i.type,
       (i) => i.lv,
     );
@@ -172,7 +172,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     for (const id of [...ticked]) if (!present.has(id)) ticked.delete(id);
     if (sellable.length === 0) list.append(el("div", "muted", vi.shop.nothingToSell));
     for (const item of sellable) {
-      const unit = sellPrice(item.type, item.dur, item.max);
+      const unit = merchantPays(npc, item.type, item.dur, item.max);
       const row = el("div", "shop-row");
       const check = el("input") as HTMLInputElement;
       check.type = "checkbox";
@@ -279,7 +279,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   function renderBulkBar(shown: BagItem[]): HTMLElement {
     const bar = el("div", "shop-bulk");
     const chosen = getBag().filter((i) => ticked.has(i.id));
-    const total = chosen.reduce((n, i) => n + sellPrice(i.type, i.dur, i.max) * i.qty, 0);
+    const total = chosen.reduce((n, i) => n + merchantPays(npc, i.type, i.dur, i.max) * i.qty, 0);
     const target = shown.filter(matchesFilters);
     // "Chọn hết" takes what the filters pick (everything when nothing is picked), up to the limit of one sale. It is a toggle: while all of
     // them are ticked (or the limit is reached with some of them ticked) it reads "Bỏ chọn", which clears every tick, filters or not.
@@ -310,19 +310,31 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     return bar;
   }
 
+  const categoriesOf = (list: Array<Exclude<ShopCategory, "all">>): Set<Exclude<ShopCategory, "all">> => new Set(list);
+
   function render(): void {
     if (panel.hidden) return;
     panel.replaceChildren();
     const head = el("div", "eq-head");
     const close = el("button", "eq-small", "×");
     close.onclick = () => ui.close();
-    head.append(el("b", undefined, vi.shop.title), close);
+    head.append(el("b", undefined, getMerchant(npc)?.nameVi || vi.shop.title), close);
     if (banned) {
       panel.append(head, el("div", "shop-flash", banned));
       return;
     }
+    // A tab with nothing behind it is not shown: the buy tab when the merchant sells nothing to this character, the sell tab when he buys
+    // nothing, and a kind of item when there is none of it on offer (buying) or in the bag that he takes (selling).
+    const buyCats = categoriesOf(sheet ? merchantOffers(sheet.gender, npc).map((o) => o.category) : []);
+    const sellCats = categoriesOf(getBag().filter((i) => merchantPays(npc, i.type, i.dur, i.max) > 0).map((i) => shopCategoryOf(i.type)));
+    const buys = getMerchant(npc)?.buys;
+    const available = { buy: buyCats.size > 0, sell: buys === null || (buys?.length ?? 0) > 0 };
+    if (!available[mode]) mode = available.buy ? "buy" : "sell";
+    const shownCats = mode === "buy" ? buyCats : sellCats;
+    if (category !== "all" && !shownCats.has(category)) category = "all";
     const modes = el("div", "eq-tabs");
     for (const m of ["buy", "sell"] as const) {
+      if (!available[m]) continue;
       const b = el("button", m === mode ? "active" : undefined, vi.shop.tabs[m]);
       b.onclick = () => {
         mode = m;
@@ -346,6 +358,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     );
     const cats = el("div", "eq-tabs shop-cats");
     for (const c of SHOP_CATEGORIES) {
+      if (c === "all" ? shownCats.size === 0 : !shownCats.has(c)) continue;
       const b = el("button", c === category ? "active" : undefined, vi.shop.categories[c]);
       b.onclick = () => {
         category = c;
@@ -359,7 +372,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       const row = el("div", "shop-element");
       row.append(el("span", "muted", vi.shop.element));
       const select = el("select");
-      const options: Array<[string, string]> = [["", vi.shop.anyElement], ...SPIRITUAL_ROOTS.map((r): [string, string] => [r, vi.roots[r] ?? r])];
+      const options: Array<[string, string]> = [["", vi.shop.anyElement], ...ALL_ROOTS.map((r): [string, string] => [r, vi.roots[r] ?? r])];
       for (const [value, label] of options) {
         const opt = el("option", undefined, label);
         opt.value = value;
@@ -383,7 +396,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   const ui: ShopUi = {
     open(id, map) {
       npc = id;
-      mapId = map;
+      void map;
       mode = "buy";
       category = "all";
       ticked.clear();

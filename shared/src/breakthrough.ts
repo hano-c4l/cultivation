@@ -1,4 +1,5 @@
 import type { MonsterRank } from "./monsters";
+import { tuning } from "./tuning";
 import { expToNext, getRootGrade, overflowExp } from "./progression";
 import { BREAKTHROUGH_OVERFLOW_FROM, BREAKTHROUGH_OVERFLOW_FROM_BONUS, BREAKTHROUGH_OVERFLOW_MAX_BONUS, OVERFLOW_EXP_MAX, REALMS, STAGES_PER_REALM } from "./progression-data";
 
@@ -134,17 +135,12 @@ export function breakthroughPoints(def: BreakthroughDef, rootGrade: number, cons
  * Chance (0..1) that one kill by a monster of `rank` in a map of `realm` drops that realm's breakthrough pill. Rarer for
  * higher realms; the strongest pills are meant to come from bosses, shops and the one-time quest instead (later phases).
  */
-export const PILL_DROP_CHANCE: Readonly<Record<number, Readonly<Record<MonsterRank, number>>>> = {
-  0: { normal: 0.004, rare1: 0.04, rare2: 0.12 },
-  1: { normal: 0.0015, rare1: 0.02, rare2: 0.06 },
-  2: { normal: 0.0005, rare1: 0.008, rare2: 0.03 },
-};
 
 /** The pill dropped by one kill, or null. Draws exactly one number, after every other roll of the kill (so seeded sequences stay stable). */
 export function rollPillDrop(mapRealm: number, rank: MonsterRank, rand: () => number, chanceMult = 1): string | null {
   const roll = rand();
   const def = getBreakthrough(mapRealm);
-  const chance = PILL_DROP_CHANCE[mapRealm]?.[rank] ?? 0;
+  const chance = tuning().drops.pill[String(mapRealm)]?.[rank] ?? 0;
   return def && roll < chance * chanceMult ? def.pill : null;
 }
 

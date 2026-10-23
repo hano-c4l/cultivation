@@ -1,13 +1,18 @@
+import { tuning } from "./tuning";
 import { tileToScreenUnit, type MapData, type Vec2 } from "./map";
 
 /**
  * Area of interest. On a combat map the server only tells a player about the players and monsters near them (their screen plus a margin),
  * so a crowded map does not flood every client. Distances are measured on screen, in screen units of 32 px (see PlayRect): the half size of
- * the window the biggest screens show is about 40 x 23 units. An entity comes into view inside AOI_ENTER and goes out of view only beyond the
- * larger AOI_LEAVE (hysteresis, so one standing on the edge does not flicker). The boss is always in view (one per map, announced to all).
+ * the window the biggest screens show is about 40 x 23 units. An entity comes into view inside `aoi.enter` (tuning) and goes out of view only beyond the
+ * larger `aoi.leave` (hysteresis, so one standing on the edge does not flicker). The boss is always in view (one per map, announced to all).
  */
-export const AOI_ENTER = { x: 52, y: 32 } as const;
-export const AOI_LEAVE = { x: 58, y: 36 } as const;
+export function aoiEnter(): { x: number; y: number } {
+  return tuning().aoi.enter;
+}
+export function aoiLeave(): { x: number; y: number } {
+  return tuning().aoi.leave;
+}
 
 /** Whether `other` lies within the box `half` (screen units) around `from`, both tile positions on a map of this size. */
 export function withinView(mapSize: number, from: Vec2, other: Vec2, half: { x: number; y: number }): boolean {
@@ -35,7 +40,7 @@ export function diffView(map: Pick<MapData, "width">, viewerId: string, viewerPo
     if (e.id === viewerId) continue;
     alive.add(e.id);
     const has = known.has(e.id);
-    const inView = e.always === true || withinView(map.width, viewerPos, e.pos, has ? AOI_LEAVE : AOI_ENTER);
+    const inView = e.always === true || withinView(map.width, viewerPos, e.pos, has ? aoiLeave() : aoiEnter());
     if (inView && !has) {
       known.add(e.id);
       enter.push(e.id);
