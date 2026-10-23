@@ -6,27 +6,32 @@ import { merchantOffers, shopDay, type Gender } from "@game/shared";
  * so two purchases racing each other cannot both slip through, and the whole batch (debit included) rolls back.
  */
 
-/** Units bought today per offer id (only offers that have a row today). */
-export async function getPurchased(db: D1Database, characterId: string, now: number): Promise<Record<string, number>> {
+/** The key a purchase is counted under: the counters are per merchant (two merchants can sell the same item with their own limits). */
+export const purchaseKey = (npc: string, offerId: string): string => `${npc}:${offerId}`;
+
+/** Units bought today at the merchant `npc`, per offer id (only offers that have a row today). */
+export async function getPurchased(db: D1Database, characterId: string, npc: string, now: number): Promise<Record<string, number>> {
   const { results } = await db
     .prepare("SELECT offer_id, count FROM shop_purchases WHERE character_id = ? AND day = ?")
     .bind(characterId, shopDay(now))
     .all<{ offer_id: string; count: number }>();
+  const prefix = `${npc}:`;
   const out: Record<string, number> = {};
-  for (const r of results) out[r.offer_id] = r.count;
+  for (const r of results) if (r.offer_id.startsWith(prefix)) out[r.offer_id.slice(prefix.length)] = r.count;
   return out;
 }
 
 /** Units this character can still buy today, for each offer of a daily limit. */
-export function stockLeft(gender: Gender, mapId: string, bought: Readonly<Record<string, number>>): Record<string, number> {
+export function stockLeft(gender: Gender, npc: string, bought: Readonly<Record<string, number>>): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const o of merchantOffers(gender, mapId)) if (o.dailyLimit !== undefined) out[o.id] = Math.max(0, o.dailyLimit - (bought[o.id] ?? 0));
+  for (const o of merchantOffers(gender, npc)) if (o.dailyLimit !== undefined) out[o.id] = Math.max(0, o.dailyLimit - (bought[o.id] ?? 0));
   return out;
 }
 
 /** Counts a purchase of `qty` against a daily limit; yesterday's rows of the character are swept in the same batch. */
-export function limitStatements(db: D1Database, characterId: string, offerId: string, qty: number, limit: number, now: number): D1PreparedStatement[] {
+export function limitStatements(db: D1Database, characterId: string, npc: string, offer: string, qty: number, limit: number, now: number): D1PreparedStatement[] {
   const day = shopDay(now);
+  const offerId = purchaseKey(npc, offer);
   return [
     db
       .prepare(

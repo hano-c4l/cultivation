@@ -7,9 +7,9 @@ import {
   GUARDS,
   getMap,
   GUARD_KIND,
-  GUARD_REALM_BONUS,
-  GUARD_TIER,
-  GUARD_SKILLS,
+  guardRealmBonus,
+  guardTier,
+  guardSkills,
   NAME_TIER_ORANGE_FROM,
   guardStats,
   NAME_TIER_RED_FROM,
@@ -17,20 +17,17 @@ import {
   RANKS,
   BOSSES,
   BOSS_SPOTS,
-  BOSS_EXP_MULT,
-  BOSS_ITEM_CHANCE_MULT,
-  BOSS_ITEM_ROUNDS,
-  BOSS_LINH_MULT,
-  BOSS_SPAWN_CHANCE,
+  bossReward,
+  bossSpawnChance,
   BOSS_TIER,
   bossPityKills,
   bossShares,
   bossStats,
-  BOSS_SKILLS,
+  bossSkills,
   bossCone,
   bossRegenPerS,
   inCone,
-  BOSS_STAT_TIER,
+  bossStatTier,
   pickByShare,
   applyExp,
   getRootGrade,
@@ -407,7 +404,7 @@ export class CombatSim {
       if (!home || !guardDef) continue;
       const id = `m${this.nextMonsterId++}`;
       const g: Monster = {
-        id, def: guardDef, tier: GUARD_TIER, rank: "normal", maxHp: 0,
+        id, def: guardDef, tier: guardTier(), rank: "normal", maxHp: 0,
         combatant: { attack: 0, defense: 0, critRate: 5, dodgeRate: 0, element: guardDef.element },
         damage: new Map(), home, hp: 0, state: "idle", path: [home], startedAt: now, targetId: null, nextAttackAt: 0, lastRepathAt: 0, respawnAt: 0, guard: true,
       };
@@ -497,16 +494,38 @@ export class CombatSim {
   // ---- the map boss (phase 2h) ----
   private bossEnabled = false;
   private bossAsked = false;
+  /** Kills of this room not yet added to the map's shared counter (D1, `boss_kills`). */
   private pityKills = 0;
+  /** What the other rooms and earlier flushes of this one had added to that counter when it was last read. The boss is due when both together reach the pity number. */
+  private pityShared = 0;
 
-  /** Turns the boss rolls on (the room does, for a map that has a boss). */
-  enableBoss(pityKills = 0): void {
+  /** Turns the boss rolls on (the room does, for a map that has a boss). `pityKills` are this room's kills kept from before it slept, `shared` the map's counter. */
+  enableBoss(pityKills = 0, shared = 0): void {
     this.bossEnabled = true;
     this.pityKills = pityKills;
+    this.pityShared = shared;
   }
 
+  /** This room's kills not yet in the shared counter. */
   get pity(): number {
     return this.pityKills;
+  }
+
+  /** Hands the pending kills to the room to add to the shared counter (they leave this room's count). */
+  takePity(): number {
+    const n = this.pityKills;
+    this.pityKills = 0;
+    return n;
+  }
+
+  /** Gives kills back (a flush that failed). */
+  returnPity(n: number): void {
+    this.pityKills += n;
+  }
+
+  /** The shared counter as the last flush or read saw it, this room's own kills included. */
+  setSharedPity(total: number): void {
+    this.pityShared = total;
   }
 
   get hasBoss(): boolean {
@@ -529,6 +548,7 @@ export class CombatSim {
   bossAnswered(): void {
     this.bossAsked = false;
     this.pityKills = 0;
+    this.pityShared = 0;
   }
 
   /**
@@ -988,7 +1008,7 @@ export class CombatSim {
     return {
       id: m.id,
       kind: m.def.id,
-      tier: m.boss ? BOSS_STAT_TIER : m.tier,
+      tier: m.boss ? bossStatTier() : m.tier,
       rank: m.rank,
       element: m.combatant.element,
       path: m.path,
@@ -1043,7 +1063,7 @@ export class CombatSim {
       if (m.state === "dead") {
         if (now >= m.respawnAt) {
           this.applyRank(m); // every respawn rolls its class again
-          if (this.bossEnabled && !this.bossAsked && !m.guard && !this.hasBoss && (this.pityKills >= bossPityKills(this.realm) || this.rand() < BOSS_SPAWN_CHANCE)) {
+          if (this.bossEnabled && !this.bossAsked && !m.guard && !this.hasBoss && (this.pityKills + this.pityShared >= bossPityKills(this.realm) || this.rand() < bossSpawnChance())) {
             this.bossAsked = true;
             events.push({ t: "boss_request" });
           }
@@ -1150,7 +1170,8 @@ export class CombatSim {
     };
     const left = (id: string) => (m.skillReadyAt?.[id] ?? 0) <= now;
     // The boss uses the same turn as a guard with its own numbers and without the buff (two attacks and a heal).
-    const sk = m.boss ? BOSS_SKILLS : GUARD_SKILLS;
+    const guardSk = guardSkills();
+    const sk = m.boss ? bossSkills() : guardSk;
     // The boss's special cone first: only in the last quarter of its HP, on a long cooldown.
     if (m.boss && m.hp < m.maxHp * bossCone().below && left("cone") && ready("cone", bossCone().cdMs)) return "cone";
     if (m.hp < m.maxHp * sk.mend.below && left("mend") && ready("mend", sk.mend.cdMs)) {
@@ -1158,11 +1179,11 @@ export class CombatSim {
       events.push({ t: "mon", monster: this.snapshot(m, now) });
       return null;
     }
-    if (!m.boss && now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", GUARD_SKILLS.ward.cdMs)) {
-      m.buffUntil = now + GUARD_SKILLS.ward.durationMs;
+    if (!m.boss && now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", guardSk.ward.cdMs)) {
+      m.buffUntil = now + guardSk.ward.durationMs;
       return null;
     }
-    const buff = now < (m.buffUntil ?? 0) ? 1 + GUARD_SKILLS.ward.attackPct / 100 : 1;
+    const buff = now < (m.buffUntil ?? 0) ? 1 + guardSk.ward.attackPct / 100 : 1;
     if (left("burst") && ready("burst", sk.burst.cdMs)) return sk.burst.power * buff;
     if (left("slash") && ready("slash", sk.slash.cdMs)) return sk.slash.power * buff;
     return buff;
@@ -1527,7 +1548,7 @@ export class CombatSim {
 
   /**
    * The boss died: its reward is split by bossShares among the players still here and alive. Each gets their share of the EXP and of
-   * the Linh Thạch pool; the items (BOSS_ITEM_ROUNDS rounds of Đại Yêu loot with better chances) each go whole to one sharing player,
+   * the Linh Thạch pool; the items (`itemRounds` rounds of Đại Yêu loot with better chances) each go whole to one sharing player,
    * picked by share. The damage table is cleared and the room told, so it can release the claim and announce.
    */
   private payBoss(m: Monster, killer: PlayerProfile, events: SimEvent[]): void {
@@ -1536,28 +1557,29 @@ export class CombatSim {
       return !!q && !q.dead;
     });
     const items = new Map<string, LootDrop[]>();
-    for (let i = 0; i < BOSS_ITEM_ROUNDS; i++) {
-      const loot = rollLoot(m.rank, this.rand, BOSS_ITEM_CHANCE_MULT, this.realm);
-      const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+    const rw = bossReward();
+    for (let i = 0; i < rw.itemRounds; i++) {
+      const loot = rollLoot(m.rank, this.rand, rw.itemChanceMult, this.realm);
+      const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand, rw.itemChanceMult);
       if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
-      const book = rollBookDrop(m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const book = rollBookDrop(m.rank, this.rand, rw.itemChanceMult);
       if (book) loot.push({ item: book, qty: 1 });
-      const pill = rollPillDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const pill = rollPillDrop(this.realm, m.rank, this.rand, rw.itemChanceMult);
       if (pill) loot.push({ item: pill, qty: 1 });
-      const ore = rollOreDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const ore = rollOreDrop(this.realm, m.rank, this.rand, rw.itemChanceMult);
       if (ore) loot.push(ore);
-      const refine = rollRefineDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const refine = rollRefineDrop(this.realm, m.rank, this.rand, rw.itemChanceMult);
       if (refine) loot.push(refine);
       for (const drop of loot) {
         const to = pickByShare(shares, this.rand());
         if (to) items.set(to, [...(items.get(to) ?? []), drop]);
       }
     }
-    const pool = rollLinhThachDrop(levelIndex(this.realm, m.tier), "rare2", 0, 0.5) * BOSS_LINH_MULT;
+    const pool = rollLinhThachDrop(levelIndex(this.realm, m.tier), "rare2", 0, 0.5) * rw.linhMult;
     for (const { id, share } of shares) {
       const q = this.players.get(id);
       if (!q) continue;
-      const { stagesGained, gain } = this.reward(q, m, BOSS_EXP_MULT * share);
+      const { stagesGained, gain } = this.reward(q, m, rw.expMult * share);
       events.push({ t: "progress", playerId: id, stagesGained });
       events.push({ t: "kill", playerId: id, rare: true });
       events.push({ t: "refine", playerId: id, gain });

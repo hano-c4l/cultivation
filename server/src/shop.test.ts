@@ -27,12 +27,12 @@ const count = (type: string) => (raw.prepare("SELECT COALESCE(SUM(qty), 0) AS q 
 
 /** Buys the way the room does: the debit, the bag cells and (for a limited offer) the counter in one batch. */
 async function buy(offerId: string, qty: number, now = NOW) {
-  const offer = findOffer("male", "town", offerId)!;
+  const offer = findOffer("male", "merchant", offerId)!;
   const bag = await loadBag(db, A);
   const ops = planAdd(bag.items, bag.tabs, offer.item, qty, newId)!;
   const extra = [
     ...ops.flatMap((op) => opStatements(db, A, op, now)),
-    ...(offer.dailyLimit !== undefined ? limitStatements(db, A, offer.id, qty, offer.dailyLimit, now) : []),
+    ...(offer.dailyLimit !== undefined ? limitStatements(db, A, "merchant", offer.id, qty, offer.dailyLimit, now) : []),
   ];
   return applyCurrencyDelta(db, { characterId: A, currency: "linh_thach", delta: -offer.price * qty, reason: "shop_buy", actor: "system", idempotencyKey: `shop:${++n}` }, extra);
 }
@@ -57,8 +57,8 @@ describe("buying", () => {
     expect(await buy("ngo_dao_dan", 2)).toMatchObject({ status: "applied" });
     await expect(buy("ngo_dao_dan", 1)).rejects.toThrow(/inv_guard/);
     expect(count("ngo_dao_dan")).toBe(2);
-    expect(balance()).toBe(100_000 - 2 * findOffer("male", "town", "ngo_dao_dan")!.price);
-    expect(stockLeft("male", "town", await getPurchased(db, A, NOW))["ngo_dao_dan"]).toBe(0);
+    expect(balance()).toBe(100_000 - 2 * findOffer("male", "merchant", "ngo_dao_dan")!.price);
+    expect(stockLeft("male", "merchant", await getPurchased(db, A, "merchant", NOW))["ngo_dao_dan"]).toBe(0);
   });
 
   it("the limit starts again the next day and the old day's row is swept", async () => {

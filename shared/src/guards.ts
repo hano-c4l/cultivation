@@ -1,17 +1,14 @@
+import { tuning, type Tuning } from "./tuning";
 import { EQUIP_KINDS, KIND_SLOTS, GENDERED_KINDS, emptyEquipStats, equipmentInfo, makeEquipmentId, type EquipStats } from "./equipment-data";
-import { GUARD_REALM_BONUS, GUARD_TIER } from "./monsters";
+import { guardRealmBonus, guardTier } from "./monsters";
 import { deriveStats, levelIndex, startingStats } from "./progression";
 import { REALMS } from "./progression-data";
 
 /**
- * Stats of a vệ binh (phase 2f): a character one realm above the map's, at bậc `GUARD_TIER`, wearing a FULL set of top-grade gear of
+ * Stats of a vệ binh (phase 2f): a character one realm above the map's, at bậc `guardTier()`, wearing a FULL set of top-grade gear of
  * that realm (every slot but the pháp bảo), with its potential points spent, and five times the maximum HP. Computed from the same
  * formulas players use, so it follows the gear and level tables. Placeholder values ("giá trị tạm").
  */
-export const GUARD_GEAR_GRADE = 4;
-export const GUARD_HP_MULT = 5;
-/** Base stat points per level index a guard is assumed to have spent on Căn cốt and Linh lực. */
-export const GUARD_POINTS_PER_LEVEL = 2;
 
 export interface GuardStats {
   maxHp: number;
@@ -34,13 +31,14 @@ export function fullGearStats(realm: number, tier: number, grade: number): Equip
 }
 
 export function guardStats(mapRealm: number): GuardStats {
-  const realm = Math.min(mapRealm + GUARD_REALM_BONUS, REALMS.length - 1); // the top realm has none above it
+  const g = tuning().guard; // gear grade, HP multiple and the stat points a guard is assumed to have spent per level (Căn cốt and Linh lực)
+  const realm = Math.min(mapRealm + guardRealmBonus(), REALMS.length - 1); // the top realm has none above it
   const base = startingStats("kim", 1).base;
-  const lv = levelIndex(realm, GUARD_TIER);
-  base.canCot += lv * GUARD_POINTS_PER_LEVEL;
-  base.linhLuc += lv * GUARD_POINTS_PER_LEVEL;
-  const d = deriveStats(base, realm, GUARD_TIER, 1, fullGearStats(realm, GUARD_TIER, GUARD_GEAR_GRADE), 1);
-  return { maxHp: d.maxHp * GUARD_HP_MULT, attack: d.attack, defense: d.defense, critRate: d.critRate, dodgeRate: d.dodgeRate };
+  const lv = levelIndex(realm, guardTier());
+  base.canCot += lv * g.pointsPerLevel;
+  base.linhLuc += lv * g.pointsPerLevel;
+  const d = deriveStats(base, realm, guardTier(), 1, fullGearStats(realm, guardTier(), g.gearGrade), 1);
+  return { maxHp: d.maxHp * g.hpMult, attack: d.attack, defense: d.defense, critRate: d.critRate, dodgeRate: d.dodgeRate };
 }
 
 /**
@@ -48,9 +46,6 @@ export function guardStats(mapRealm: number): GuardStats {
  * its own cooldown. `power` multiplies its attack, the buff adds `attackPct` percent attack for `durationMs`, the heal restores `fraction` of
  * its maximum HP and is used below `below` of it.
  */
-export const GUARD_SKILLS = {
-  mend: { fraction: 0.25, below: 0.6, cdMs: 15_000 },
-  ward: { attackPct: 30, durationMs: 8_000, cdMs: 20_000 },
-  burst: { power: 2.4, cdMs: 9_000 },
-  slash: { power: 1.6, cdMs: 5_000 },
-} as const;
+export function guardSkills(): Tuning["guardSkills"] {
+  return tuning().guardSkills;
+}

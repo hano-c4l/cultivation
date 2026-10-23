@@ -35,3 +35,23 @@ export async function refreshBoss(db: D1Database, mapId: string, room: string, n
   const r = await db.prepare("UPDATE world_boss SET claimed_at = ? WHERE map_id = ? AND room = ?").bind(now, mapId, room).run();
   return (r.meta.changes ?? 0) > 0;
 }
+
+/** Kills of non-guard monsters counted for the map across every channel (table `boss_kills`); 0 when there is no row. */
+export async function getBossKills(db: D1Database, mapId: string): Promise<number> {
+  const row = await db.prepare("SELECT kills FROM boss_kills WHERE map_id = ?").bind(mapId).first<{ kills: number }>();
+  return row?.kills ?? 0;
+}
+
+/** Adds `n` kills to the map's counter and returns the new total (the rooms add in batches, so a busy map writes once per batch, not per kill). */
+export async function addBossKills(db: D1Database, mapId: string, n: number, now = Date.now()): Promise<number> {
+  const row = await db
+    .prepare("INSERT INTO boss_kills (map_id, kills, updated_at) VALUES (?, ?, ?) ON CONFLICT (map_id) DO UPDATE SET kills = kills + excluded.kills, updated_at = excluded.updated_at RETURNING kills")
+    .bind(mapId, n, now)
+    .first<{ kills: number }>();
+  return row?.kills ?? n;
+}
+
+/** Starts the map's counter again (a room asked for the boss). */
+export async function resetBossKills(db: D1Database, mapId: string, now = Date.now()): Promise<void> {
+  await db.prepare("INSERT INTO boss_kills (map_id, kills, updated_at) VALUES (?, 0, ?) ON CONFLICT (map_id) DO UPDATE SET kills = 0, updated_at = excluded.updated_at").bind(mapId, now).run();
+}

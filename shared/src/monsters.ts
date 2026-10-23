@@ -1,3 +1,4 @@
+import { tuning } from "./tuning";
 import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import { CAVE_CHAMBERS, FOREST_GLADES, KIMDAN_GLADES, MAP_IDS, MAP_REALM, MAP_SIZE, NGUYENANH_GLADES, screenToTile, type MapId } from "./map";
 import { levelIndex, monsterBaseExp } from "./progression";
@@ -47,12 +48,16 @@ export const MONSTERS: Readonly<Record<string, MonsterDef>> = {
 
 /**
  * Vệ binh (guards, phase 2f PR2): they stand at the gate of the forest and the cave and fight only red names (sát nhân from 501) and anyone
- * who hits them. They are one realm above the map's and at bậc `GUARD_TIER`, strong enough to beat a red player of the map's own level. Killing
+ * who hits them. They are one realm above the map's and at bậc `guardTier()`, strong enough to beat a red player of the map's own level. Killing
  * one pays nothing (no EXP, Linh Thạch or loot) and costs sát khí and sát nhân like killing a white name. Placeholder values.
  */
 export const GUARD_KIND = "ve_binh";
-export const GUARD_REALM_BONUS = 1;
-export const GUARD_TIER = 3;
+export function guardRealmBonus(): number {
+  return tuning().guard.realmBonus;
+}
+export function guardTier(): number {
+  return tuning().guard.tier;
+}
 /**
  * Guard positions per map (tile units, snapped to standable ground by the server): beside the arrival point, off the lane. Written in screen
  * units (see PlayRect) and converted, so they follow the map's layout.

@@ -1,4 +1,4 @@
-import { PATH_SUB_FACTOR, getSkill, maxSkillLevel, skillGrade, type SkillContext, type SkillDef } from "./skills";
+import { pathSubFactor, getSkill, maxSkillLevel, skillGrade, type SkillContext, type SkillDef } from "./skills";
 import { REALMS } from "./progression-data";
 
 /**
@@ -15,7 +15,7 @@ export function isPathId(v: unknown): v is PathId {
   return typeof v === "string" && (PATH_IDS as readonly string[]).includes(v);
 }
 
-/** What a path adds, in percent, when it is the chủ tu. As a phụ tu every value is multiplied by PATH_SUB_FACTOR. */
+/** What a path adds, in percent, when it is the chủ tu. As a phụ tu every value is multiplied by `pathSubFactor()`. */
 export interface PathBonus {
   /** Percent of attack and defense, and of the maximum MP. */
   attackPct: number;
@@ -101,7 +101,7 @@ export const PATH_MIN_REALM = 1;
 export const SUB_PATH_COST: readonly number[] = [20_000, 50_000];
 /** The EXP gained is multiplied by 1 / (1 + PATH_EXP_K · phụ tu). */
 export const PATH_EXP_K = 0.25;
-export { PATH_SUB_FACTOR };
+export { pathSubFactor };
 
 /** The paths a character has: the chủ tu and the phụ tu in the order they were taken. */
 export interface PathState {
@@ -243,7 +243,7 @@ export function checkPathChoice(s: PathState, id: PathId, realm: number): PathEr
   return nextPathSlot(s, id) === null ? "full" : null;
 }
 
-/** The sum of what all of a character's paths add (a phụ tu counts PATH_SUB_FACTOR as much). */
+/** The sum of what all of a character's paths add (a phụ tu counts `pathSubFactor()` as much). */
 export function pathBonuses(s: PathState): PathBonus {
   const t: PathBonus = { ...NONE };
   const add = (id: PathId, k: number) => {
@@ -251,7 +251,7 @@ export function pathBonuses(s: PathState): PathBonus {
     for (const key of Object.keys(t) as Array<keyof PathBonus>) t[key] += b[key] * k;
   };
   if (s.main) add(s.main, 1);
-  for (const id of s.subs) add(id, PATH_SUB_FACTOR);
+  for (const id of s.subs) add(id, pathSubFactor());
   return t;
 }
 

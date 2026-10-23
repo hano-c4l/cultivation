@@ -1,6 +1,6 @@
 # Trạng thái dự án
 
-Cập nhật: 2026-10-24 (2a-2l xong; preview và production cùng code, D1 ở `0031`). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
+Cập nhật: 2026-10-24 (2a-2l xong và ở production; 2m đã ở preview, chưa ở production; D1 production ở `0031`, preview ở `0033`). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
 
 ## Đã xong
 - **Giai đoạn 0** (xương sống kỹ thuật) và **giai đoạn 1** (MVP: tài khoản, thế giới, chat, chỉ số/cảnh giới, quái và chiến đấu, kinh tế khung xương). Riêng 1f (đo tải thật 50 client trên Cloudflare) **hoãn theo quyết định của người dùng**.
@@ -11,10 +11,11 @@ Cập nhật: 2026-10-24 (2a-2l xong; preview và production cùng code, D1 ở 
 
 
 ## Đang chạy ở đâu
-- **Production** (`main`) và **Preview** (`preview`): cùng code (đã gồm 2k và 2l); D1 đã áp dụng migration `0001`-`0031` (kiểm bằng `wrangler d1 migrations list DB --remote`). Nhân vật cũ trên production phần lớn đã bị đưa về điểm sinh vì bản đồ đổi hình (xem `docs/PHASE2.md` mục 2k).
+- **Production** (`main`): code tới 2l, D1 đã áp dụng migration `0001`-`0031`. **Preview** (`preview`): thêm 2m, D1 tới `0033` (kiểm bằng `wrangler d1 migrations list DB --remote`, preview thêm `--env preview`). Nhân vật cũ trên production phần lớn đã bị đưa về điểm sinh vì bản đồ đổi hình (xem `docs/PHASE2.md` mục 2k).
 - Admin phải kết nối lại sau mỗi lần deploy có thay đổi cờ admin (socket cũ không có cờ) thì các nút "GM · Nhận vật phẩm hướng tu/đột phá" mới dùng được. PK mặc định Tắt khi mở trang (client gửi lại trạng thái đã chọn sau mỗi lần đổi bản đồ).
 
 ## Đang làm dở
+- **2m (2026-10-23, đã lên preview; production chưa):** phần lớn dữ liệu cứng đã vào D1 để màn admin sau không cần migration mới (thương nhân, vị trí và tên NPC, số boss/vệ binh/PvP/vùng nhìn/rơi đồ/số quái mỗi tầng/giá trị vật phẩm/kỹ năng theo cấp/màu, bộ đếm boss chung các kênh; danh sách phần còn lại ở `docs/PHASE2.md` mục 2m), thương nhân bán đồ hệ biến dị và ẩn thẻ trống, icon linh thạch. Chi tiết `docs/PHASE2.md` mục 2m. **Việc kế tiếp: các màn admin** (nhiệm vụ, `game_tuning`, thương nhân và NPC, bảng master trang bị, bảng Thợ Rèn, hệ biến dị). Chưa thử tay trên preview: vẽ NPC từ D1 (cả điện thoại), đổi giá trị rồi xem ở máy khách.
 - **2f PvP: xong.** Ngoài phạm vi, chưa làm: thông báo "bị PK" cho cả phòng, thời gian chờ khi tắt PK (xem `docs/PHASE2.md` mục 2f). Mọi con số của vệ binh, xác suất rơi và độ bền là giá trị tạm.
 - **Điều tra rớt WebSocket khi đang đột phá (2026-10-20):** trên preview, một lần đột phá Trúc Cơ → Kim Đan của Admin bị rớt kết nối giữa chừng và mất đan cùng 30% tu vi; nghi do đường truyền (người dùng dùng Cloudflare One Client, ping khoảng 400 ms). **Luật giữ nguyên; đã thêm log** (`socket close|error|evicted` ở server, `conn report` do client gửi sau khi nối lại) để tái hiện và đọc nguyên nhân. Sau đó mới quyết định giữa "không mất đan và tu vi" hoặc "chờ khoảng 30 giây để nối lại" (chi tiết ở `docs/PHASE2.md`).
 - **Chưa thử tay (2j, sau các đợt chỉnh):** độ mượt khi lên/xuống lúc đang đi trên mạng thật; Tinh luyện và chế độ Sửa chữa của Thợ Rèn; hồi máu boss sau khi chết và quay lại; giao diện điện thoại của Thợ Rèn, thương nhân (bộ lọc, sắp xếp) và nút Lên/Xuống; kỹ năng nón của boss; hệ biến dị (nhân vật đơn linh căn mới); phím tắt mới. Đã thử trên localhost bằng trình duyệt: bố cục thương nhân và Thợ Rèn, nút Lên/Xuống, tooltip màu chỉ số.

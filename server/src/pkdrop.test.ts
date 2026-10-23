@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { PK_DROP_CHANCE, applyBag, planAdd, planPkDrop, planPkLoss } from "@game/shared";
+import { pkDropChance, applyBag, planAdd, planPkDrop, planPkLoss } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { commitBagOps, listMail, loadBag } from "./inventory";
 import { makeDb } from "./test-db";
@@ -33,9 +33,9 @@ describe("planPkDrop", () => {
 
   it("white names never lose anything; the chance grows with the colour", () => {
     expect(planPkDrop(bag, 0, 0, 0, B, ids, "pk_drop")).toBeNull();
-    expect(PK_DROP_CHANCE[1] < PK_DROP_CHANCE[2] && PK_DROP_CHANCE[2] < PK_DROP_CHANCE[3]).toBe(true);
-    expect(planPkDrop(bag, 1, PK_DROP_CHANCE[1], 0, B, ids, "pk_drop")).toBeNull(); // the roll must be below the chance
-    expect(planPkDrop(bag, 1, PK_DROP_CHANCE[1] - 0.001, 0, B, ids, "pk_drop")).not.toBeNull();
+    expect(pkDropChance(1) < pkDropChance(2) && pkDropChance(2) < pkDropChance(3)).toBe(true);
+    expect(planPkDrop(bag, 1, pkDropChance(1), 0, B, ids, "pk_drop")).toBeNull(); // the roll must be below the chance
+    expect(planPkDrop(bag, 1, pkDropChance(1) - 0.001, 0, B, ids, "pk_drop")).not.toBeNull();
   });
 
   it("takes a whole stack, picked by the second number, and nothing from an empty bag", () => {
@@ -94,7 +94,7 @@ describe("a death with nobody to receive the item", () => {
   it("planPkLoss uses the same chance and choice, and the item is simply deleted (from the bag or from the slots)", async () => {
     const bag = { items: [{ id: "i1", type: "linh_thao", tab: 0, cell: 0, qty: 7 }], equipped: [{ id: "e1", type: "x", slot: "weapon" as const, dur: 5, max: 50 }] };
     expect(planPkLoss(bag, 0, 0, 0)).toBeNull();
-    expect(planPkLoss(bag, 1, PK_DROP_CHANCE[1], 0)).toBeNull();
+    expect(planPkLoss(bag, 1, pkDropChance(1), 0)).toBeNull();
     const loss = planPkLoss(bag, 3, 0, 0.99)!;
     expect(loss).toMatchObject({ type: "x", qty: 1, op: { op: "remove", id: "e1", qty: 1 } });
     expect(applyBag(bag, [loss.op]).equipped).toEqual([]);

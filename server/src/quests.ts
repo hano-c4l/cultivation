@@ -1,5 +1,5 @@
 import {
-  MAPS_NPC_IDS,
+  allNpcIds,
   SEED_QUESTS,
   collectItems,
   givesPathItem,
@@ -49,7 +49,7 @@ export async function loadQuestCatalog(db: D1Database): Promise<{ defs: QuestDef
   ]);
   // Columns win over the JSON for the fields an admin toggles; a row that is not valid JSON is a hard error (never half a catalogue).
   const defs = rows.results.map((r) => ({ ...(JSON.parse(r.def) as QuestDef), enabled: r.enabled === 1 }));
-  const problems = validateQuests(defs, MAPS_NPC_IDS);
+  const problems = validateQuests(defs, allNpcIds());
   if (problems.length > 0) throw new Error(`quest catalogue is invalid: ${problems.join("; ")}`);
   return { defs, version: versionRow?.version ?? 0 };
 }

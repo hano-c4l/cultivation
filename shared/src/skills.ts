@@ -1,3 +1,4 @@
+import { tuning } from "./tuning";
 import type { SpiritualRoot } from "./character";
 import { ALL_ROOTS, SPIRITUAL_ROOTS } from "./character";
 import type { MonsterRank } from "./monsters";
@@ -22,7 +23,9 @@ import { RATE_CAP, getRootGrade, levelIndex, type Element } from "./progression"
 export type SkillKind = "attack" | "heal" | "buff" | "teleport" | "passive";
 export type SkillSource = "root" | "gear" | "sect" | "learned" | "path";
 /** What a path skill is worth as a phụ tu compared with as the chủ tu (also used for the stats of a path, see paths.ts). */
-export const PATH_SUB_FACTOR = 0.5;
+export function pathSubFactor(): number {
+  return tuning().skills.subFactor;
+}
 /** Worn pieces that grant skills while they are on (and not broken): ordinary pháp bảo, the bonded one, the flight one. */
 export type GearSkillSource = "charm" | "bonded" | "flight";
 /** What a buff raises. attack/defense: fraction of the stat; dodge: `power` is a fraction of 100, added as percentage points of dodge chance. */
@@ -272,11 +275,10 @@ export const DIVINE_GRADE = 3;
 export function maxSkillLevel(grade: number): number {
   return grade >= DIVINE_GRADE ? SKILL_LEVELS.length - 1 : SKILL_LEVELS.length - 2;
 }
-/** Mastery points needed to leave each level (the last level needs none). One successful use is worth 1 point. */
-export const MASTERY_NEEDED: readonly number[] = [50, 150, 400, 1000];
-/** Strength of the skill's effect at each level, and how much of its cooldown remains. */
-export const SKILL_LEVEL_POWER: readonly number[] = [1, 1.15, 1.35, 1.6, 2];
-export const SKILL_LEVEL_COOLDOWN: readonly number[] = [1, 1, 1, 0.9, 0.8];
+/** Mastery points needed to leave each level (the last level needs none). One successful use is worth 1 point. Tuning `skills`. */
+export function masteryNeeded(level: number): number | undefined {
+  return tuning().skills.masteryNeeded[level];
+}
 /** Mastery points one Ngộ Đạo Đan gives. */
 export const MASTERY_PILL_POINTS = 100;
 
@@ -305,19 +307,20 @@ export interface EffectiveSkill {
 export function effectiveSkill(def: SkillDef, ctx: SkillContext): EffectiveSkill {
   const level = Math.max(0, Math.min(ctx.level, maxSkillLevel(ctx.grade)));
   const grade = 1 + getRootGrade(ctx.grade).elementDamagePct / 100;
-  const lv = SKILL_LEVEL_POWER[level] ?? 1;
+  const sk = tuning().skills;
+  const lv = sk.levelPower[level] ?? 1; // strength at this mastery level
   // A realm and the bậc inside it make one scale: realm 0 bậc 4 sits between realm 0 bậc 1 and realm 1 bậc 1.
   const realm = ctx.realm + Math.max(0, (ctx.tier ?? 1) - 1) / 10;
-  // A skill of a phụ tu is worth PATH_SUB_FACTOR of the same skill as the chủ tu.
-  const base = def.source === "path" && ctx.role === "sub" ? def.power * PATH_SUB_FACTOR : def.power;
+  // A skill of a phụ tu is worth `pathSubFactor()` of the same skill as the chủ tu.
+  const base = def.source === "path" && ctx.role === "sub" ? def.power * pathSubFactor() : def.power;
   let power = base;
-  if (def.kind === "attack") power = base * (1 + 0.5 * realm) * grade * lv;
-  else if (def.kind === "heal") power = Math.min(0.9, base * (1 + 0.1 * realm) * grade * lv);
+  if (def.kind === "attack") power = base * (1 + sk.attackRealmScale * realm) * grade * lv;
+  else if (def.kind === "heal") power = Math.min(0.9, base * (1 + sk.healRealmScale * realm) * grade * lv);
   else if (def.kind === "buff" || def.kind === "passive") {
     const rate = def.buff?.stat === "dodge" || def.passive?.stat === "dodge" || def.passive?.stat === "crit";
-    power = Math.min(rate ? 0.5 : 1.5, base * (1 + 0.2 * realm) * grade * lv);
+    power = Math.min(rate ? 0.5 : 1.5, base * (1 + sk.buffRealmScale * realm) * grade * lv);
   }
-  return { power, mpCost: Math.round(def.mpCost * (1 + 0.5 * realm)), cooldownMs: Math.round(def.cooldownMs * (SKILL_LEVEL_COOLDOWN[level] ?? 1)) };
+  return { power, mpCost: Math.round(def.mpCost * (1 + 0.5 * realm)), cooldownMs: Math.round(def.cooldownMs * (sk.levelCooldown[level] ?? 1)) };
 }
 
 /** What a character's passive skills add all the time: fractions of attack and defense, percentage points of dodge and crit. */
@@ -363,8 +366,8 @@ export function addMastery(level: number, mastery: number, gain: number, grade: 
   let lv = Math.min(level, top);
   let pts = mastery + Math.max(0, gain);
   let up = false;
-  while (lv < top && pts >= (MASTERY_NEEDED[lv] ?? Infinity)) {
-    pts -= MASTERY_NEEDED[lv]!;
+  while (lv < top && pts >= (masteryNeeded(lv) ?? Infinity)) {
+    pts -= masteryNeeded(lv)!;
     lv++;
     up = true;
   }
@@ -416,14 +419,13 @@ export function parseHotbar(raw: string | null | undefined): string[] {
   return emptyHotbar();
 }
 
-/** Chance (0..1) that a kill drops a skill book, by monster class. Rolled apart from the loot table (see rollBookDrop). */
-export const BOOK_DROP_CHANCE: Readonly<Record<MonsterRank, number>> = { normal: 0.003, rare1: 0.03, rare2: 0.08 };
+/** The chance of a skill book is the tuning `drops.book` (by monster class); it is rolled apart from the loot table (see rollBookDrop). */
 
 /** A book dropped by one kill, or null. Draws exactly two numbers (chance, which book) so seeded sequences stay stable. */
 export function rollBookDrop(rank: MonsterRank, rand: () => number, chanceMult = 1): string | null {
   const chance = rand();
   const pick = rand();
-  if (chance >= BOOK_DROP_CHANCE[rank] * chanceMult) return null;
+  if (chance >= tuning().drops.book[rank] * chanceMult) return null;
   const skill = BOOK_SKILLS[Math.floor(pick * BOOK_SKILLS.length)];
   return skill ? bookItemId(skill.id) : null;
 }
