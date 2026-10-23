@@ -2,23 +2,25 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Tu Tiên Giới</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600&display=swap" rel="stylesheet" />
     <style>
-      html, body { margin: 0; height: 100%; background: #10141c; overflow: hidden; touch-action: none; }
+      :root { --ui-text: #e8e4d8; --ui-border: #3a4560; --ui-accent: #d6a94b; --ui-on-accent: #1b1405; --ui-highlight: #ffd54a; --ui-muted: #6b7a99; --ui-panel: rgba(27, 33, 48, 0.96); --ui-page: #10141c; }
+      html, body { margin: 0; height: 100%; background: var(--ui-page); overflow: hidden; touch-action: none; }
       #game { position: fixed; inset: 0; }
       #auth { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
         background: rgba(8, 10, 16, 0.85); font-family: "Be Vietnam Pro", system-ui, sans-serif; z-index: 10; }
       #auth[hidden], #hud[hidden], #logout[hidden] { display: none; }
-      .card { width: 100%; max-width: 360px; padding: 24px; border-radius: 12px; background: #1b2130; color: #e8e4d8; box-sizing: border-box; }
+      .card { width: 100%; max-width: 360px; padding: 24px; border-radius: 12px; background: #1b2130; color: var(--ui-text); box-sizing: border-box; }
       .card h1 { margin: 0 0 16px; font-size: 22px; text-align: center; }
       .card form { display: flex; flex-direction: column; gap: 12px; }
-      .card input { padding: 10px 12px; border-radius: 8px; border: 1px solid #3a4560; background: #10141c; color: inherit; font: inherit; }
-      .card button { padding: 10px 12px; border-radius: 8px; border: 0; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
-      .card select { padding: 10px 12px; border-radius: 8px; border: 1px solid #3a4560; background: #10141c; color: inherit; font: inherit; }
+      .card input { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--ui-border); background: var(--ui-page); color: inherit; font: inherit; }
+      .card button { padding: 10px 12px; border-radius: 8px; border: 0; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; }
+      .card select { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--ui-border); background: var(--ui-page); color: inherit; font: inherit; }
       .card label.note { margin-bottom: -6px; }
       .card button:disabled { opacity: 0.6; cursor: default; }
       .card button.link { background: none; color: #9db4e0; font-weight: 400; }
@@ -27,54 +29,54 @@
       /* Top right, one row: Linh Thạch, Cống Hiến, Tiên Ngọc, then log out; every one has its own background. */
       #topbar { position: fixed; right: 12px; top: 12px; display: flex; align-items: center; justify-content: flex-end; gap: 6px; z-index: 6; }
       #logout { padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+        color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       /* --hud-bottom follows the status line's real height (it wraps on a phone), so the HP bar never overlaps it. */
       #vitals-wrap { position: fixed; left: 12px; top: calc(var(--hud-bottom, 50px) + 6px); width: 200px; pointer-events: none; }
       #vitals { padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 12px/1.3 "Be Vietnam Pro", system-ui, sans-serif; box-sizing: border-box; }
+        color: var(--ui-text); font: 12px/1.3 "Be Vietnam Pro", system-ui, sans-serif; box-sizing: border-box; }
       #vitals[hidden] { display: none; }
       /* Buff tiles sit under the HP/MP box (outside its dark background) and wrap onto more rows when there are many. */
       #buffs { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; pointer-events: auto; } #buffs[hidden] { display: none; }
-      #buffs .buff { position: relative; width: 28px; height: 28px; box-sizing: border-box; border-radius: 5px; border: 1px solid #d6a94b; background: rgba(214, 169, 75, 0.22); text-align: center; overflow: hidden; }
-      #buffs .buff { cursor: pointer; } #buffs .buff-name { flex-basis: 100%; padding: 2px 6px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); color: #e8e4d8; font: 11px "Be Vietnam Pro", system-ui, sans-serif; }
+      #buffs .buff { position: relative; width: 28px; height: 28px; box-sizing: border-box; border-radius: 5px; border: 1px solid var(--ui-accent); background: rgba(214, 169, 75, 0.22); text-align: center; overflow: hidden; }
+      #buffs .buff { cursor: pointer; } #buffs .buff-name { flex-basis: 100%; padding: 2px 6px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); font: 11px "Be Vietnam Pro", system-ui, sans-serif; }
       #buffs .buff.buff-item { border-color: #6fcf97; background: rgba(111, 207, 151, 0.2); }
       #buffs .buff-tag { display: block; font-size: 11px; font-weight: 700; line-height: 17px; }
       #buffs .buff-left { position: absolute; left: 0; right: 0; bottom: 0; font-size: 9px; line-height: 10px; background: rgba(0, 0, 0, 0.6); font-variant-numeric: tabular-nums; }
       #wallet { display: flex; gap: 6px; pointer-events: none; }
       #wallet[hidden] { display: none; }
       #wallet div { display: flex; align-items: baseline; gap: 6px; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 12px/1.4 "Be Vietnam Pro", system-ui, sans-serif; white-space: nowrap; }
-      #vitals-bar { height: 8px; border-radius: 4px; background: #10141c; overflow: hidden; margin-top: 3px; }
+        color: var(--ui-text); font: 12px/1.4 "Be Vietnam Pro", system-ui, sans-serif; white-space: nowrap; }
+      #vitals-bar { height: 8px; border-radius: 4px; background: var(--ui-page); overflow: hidden; margin-top: 3px; }
       #vitals-mp-fill { height: 100%; width: 100%; background: #42a5f5; transition: width 0.3s; } #vitals-mp-text { display: block; margin-top: 4px; }
       #sk-btn { position: fixed; right: 12px; top: 132px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+        color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #sk-btn[hidden], #sk-panel[hidden] { display: none; }
       #sk-panel { position: fixed; left: 50%; top: 56px; width: min(360px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); overflow-y: auto; padding: 10px; border-radius: 10px;
-        background: rgba(27, 33, 48, 0.96); color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; }
-      #sk-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
+        background: var(--ui-panel); color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; scrollbar-width: thin; scrollbar-color: var(--ui-muted) transparent; }
+      #sk-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; }
       #sk-panel .sk-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; } #sk-panel .sk-head b { flex: 1; font-size: 15px; } #sk-panel .sk-small { padding: 4px 8px; min-height: 28px; }
-      #sk-panel .sk-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; } #sk-panel .sk-tabs button { padding: 4px 8px; font-size: 12px; background: #3a4560; color: #e8e4d8; } #sk-panel .sk-tabs button.active { background: #d6a94b; color: #1b1405; }
-      #sk-panel .sk-tag { margin-left: 6px; padding: 0 4px; border-radius: 4px; background: #ffd54a; color: #1b1405; font-size: 10px; font-weight: 700; } #sk-panel .sk-meta { font-size: 12px; color: #ffd54a; }
-      #sk-panel .sk-bar { height: 5px; margin: 3px 0 1px; border-radius: 3px; background: #10141c; overflow: hidden; } #sk-panel .sk-bar-fill { height: 100%; background: #6fcf97; }
+      #sk-panel .sk-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; } #sk-panel .sk-tabs button { padding: 4px 8px; font-size: 12px; background: var(--ui-border); color: var(--ui-text); } #sk-panel .sk-tabs button.active { background: var(--ui-accent); color: var(--ui-on-accent); }
+      #sk-panel .sk-tag { margin-left: 6px; padding: 0 4px; border-radius: 4px; background: var(--ui-highlight); color: var(--ui-on-accent); font-size: 10px; font-weight: 700; } #sk-panel .sk-meta { font-size: 12px; color: var(--ui-highlight); }
+      #sk-panel .sk-bar { height: 5px; margin: 3px 0 1px; border-radius: 3px; background: var(--ui-page); overflow: hidden; } #sk-panel .sk-bar-fill { height: 100%; background: #6fcf97; }
       #sk-panel .sk-actions { display: flex; flex-direction: column; align-items: stretch; gap: 4px; max-width: 120px; } #sk-panel .sk-el { display: flex; align-items: center; justify-content: center; }
       #sk-panel .sk-pill { background: #2f6b4f; color: #e8f5e9; } #sk-panel button:disabled { opacity: 0.45; cursor: default; }
-      #sk-panel .sk-card { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px; background: rgba(255, 255, 255, 0.06); border: 1px solid #3a4560; border-radius: 6px; }
+      #sk-panel .sk-card { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--ui-border); border-radius: 6px; }
       #sk-panel .sk-info { flex: 1; min-width: 0; } #sk-panel .muted { opacity: 0.7; font-size: 12px; }
-      #hotbar { position: fixed; right: 12px; bottom: 12px; z-index: 5; font: 12px "Be Vietnam Pro", system-ui, sans-serif; color: #e8e4d8; }
+      #hotbar { position: fixed; right: 12px; bottom: 12px; z-index: 5; font: 12px "Be Vietnam Pro", system-ui, sans-serif; color: var(--ui-text); }
       #hotbar[hidden] { display: none; }
-      #hotbar .hb-note { margin-bottom: 4px; padding: 3px 8px; border-radius: 6px; background: rgba(214, 169, 75, 0.92); color: #1b1405; font-weight: 600; max-width: 340px; }
+      #hotbar .hb-note { margin-bottom: 4px; padding: 3px 8px; border-radius: 6px; background: rgba(214, 169, 75, 0.92); color: var(--ui-on-accent); font-weight: 600; max-width: 340px; }
       #hotbar .hb-row { display: flex; gap: 3px; }
-      #hotbar .hb-slot { position: relative; width: 44px; height: 44px; padding: 2px; box-sizing: border-box; border: 1px solid #3a4560; border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: #e8e4d8; cursor: pointer; overflow: hidden; }
-      #hotbar .hb-slot.assigning { border-color: #ffd54a; box-shadow: 0 0 0 1px #ffd54a inset; } #hotbar .hb-slot.dim { opacity: 0.5; }
+      #hotbar .hb-slot { position: relative; width: 44px; height: 44px; padding: 2px; box-sizing: border-box; border: 1px solid var(--ui-border); border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: var(--ui-text); cursor: pointer; overflow: hidden; }
+      #hotbar .hb-slot.assigning { border-color: var(--ui-highlight); box-shadow: 0 0 0 1px var(--ui-highlight) inset; } #hotbar .hb-slot.dim { opacity: 0.5; }
       #hotbar .hb-elem { position: absolute; bottom: 2px; left: 2px; margin: 0; width: 9px; height: 9px; }
-      #hotbar .hb-key { position: absolute; top: 1px; right: 3px; font-size: 9px; color: #ffd54a; font-weight: 700; }
+      #hotbar .hb-key { position: absolute; top: 1px; right: 3px; font-size: 9px; color: var(--ui-highlight); font-weight: 700; }
       #hotbar .hb-tag, .hb-ghost .hb-tag { position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; line-height: 1; text-shadow: 0 0 2px #000; }
       /* The background of a skill slot follows the grade of the skill: Hạ, Trung, Thượng, Địa, Thiên. */
       #hotbar .hb-slot.hb-grade-0 { background: var(--grade-0, rgba(158, 158, 158, 0.28)); } #hotbar .hb-slot.hb-grade-1 { background: var(--grade-1, rgba(76, 175, 80, 0.3)); }
       #hotbar .hb-slot.hb-grade-2 { background: var(--grade-2, rgba(66, 165, 245, 0.32)); } #hotbar .hb-slot.hb-grade-3 { background: var(--grade-3, rgba(171, 71, 188, 0.34)); }
       #hotbar .hb-slot.hb-grade-4 { background: var(--grade-4, rgba(255, 179, 0, 0.36)); }
       .hb-ghost { position: fixed; z-index: 20; box-sizing: border-box; padding: 2px; border: 1px solid; border-radius: 6px; overflow: hidden; opacity: 0.9; pointer-events: none;
-        color: #e8e4d8; font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
+        color: var(--ui-text); font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
       .hb-ghost .hb-name { display: block; margin-top: 8px; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
       .hb-ghost .hb-key, .hb-ghost .hb-cd, .hb-ghost .hb-count { display: none; }
       #hotbar .hb-name { display: block; margin-top: 8px; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
@@ -83,63 +85,63 @@
       @media (max-width: 760px) { #hotbar { right: auto; left: 50%; transform: translateX(-50%); bottom: calc(var(--chat-h, 150px) + 20px); } #hotbar .hb-slot { width: 38px; height: 40px; } }
       #vitals-fill { height: 100%; width: 100%; background: #e53935; transition: width 0.15s; }
       #char-btn { position: fixed; right: 12px; top: 52px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+        color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #char-btn[hidden], #char-panel[hidden] { display: none; }
       #bag-btn { position: fixed; right: 12px; top: 172px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+        color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #bag-btn.alert { color: #ff5252; font-weight: 600; }
       #rank-btn[hidden], #rank-panel[hidden] { display: none; }
       #mount-btn { position: fixed; right: 12px; top: 292px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+        color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #mount-btn[hidden] { display: none; } #mount-btn:disabled { opacity: 0.45; cursor: default; } #mount-btn.riding { background: rgba(40, 110, 150, 0.85); color: #e8faff; }
       #rank-btn { position: fixed; right: 12px; top: 252px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+        color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #rank-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
-        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
-        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
-      #rank-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
+        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--ui-muted) transparent; padding: 10px; border-radius: 10px; background: var(--ui-panel);
+        color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #rank-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
       #rank-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #rank-panel .eq-head b { flex: 1; font-size: 15px; }
       #rank-panel .muted { opacity: 0.65; font-size: 12px; margin-top: 4px; }
       #rank-panel table { width: 100%; border-collapse: collapse; } #rank-panel td, #rank-panel th { padding: 2px 4px; text-align: left; } #rank-panel td.n, #rank-panel th.n { text-align: right; }
-      #rank-panel .eq-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; } #rank-panel .eq-tabs button.sub { background: #2a3248; color: #e8e4d8; font-weight: 400; }
+      #rank-panel .eq-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; } #rank-panel .eq-tabs button.sub { background: #2a3248; color: var(--ui-text); font-weight: 400; }
       #rank-panel tr.me { color: #ffd37a; font-weight: 600; }
       #quest-panel[hidden], #quest-tracker[hidden], #quest-btn[hidden], #quest-log[hidden] { display: none; }
       #quest-btn { position: fixed; right: 12px; top: 212px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+        color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #quest-log { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
-        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
-        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
-      #quest-log button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
+        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--ui-muted) transparent; padding: 10px; border-radius: 10px; background: var(--ui-panel);
+        color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #quest-log button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
       #quest-log button:disabled { opacity: 0.45; cursor: default; }
       #quest-log .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #quest-log .eq-head b { flex: 1; font-size: 15px; }
       #quest-log .muted { opacity: 0.65; font-size: 12px; margin-top: 4px; }
-      #quest-log .quest-tabs { display: flex; gap: 6px; margin-bottom: 4px; } #quest-log .quest-tabs button { flex: 1; background: #3a4560; color: #e8e4d8; } #quest-log .quest-tabs button.on { background: #d6a94b; color: #1b1405; }
-      #quest-log .quest-card { border: 1px solid #3a4560; border-radius: 6px; padding: 6px 8px; margin-top: 6px; } #quest-log .quest-card.active { border-color: #d6a94b; } #quest-log .quest-card.done { opacity: 0.8; }
+      #quest-log .quest-tabs { display: flex; gap: 6px; margin-bottom: 4px; } #quest-log .quest-tabs button { flex: 1; background: var(--ui-border); color: var(--ui-text); } #quest-log .quest-tabs button.on { background: var(--ui-accent); color: var(--ui-on-accent); }
+      #quest-log .quest-card { border: 1px solid var(--ui-border); border-radius: 6px; padding: 6px 8px; margin-top: 6px; } #quest-log .quest-card.active { border-color: var(--ui-accent); } #quest-log .quest-card.done { opacity: 0.8; }
       #quest-log .quest-title, #quest-panel .quest-title { font-weight: 700; color: #ffe08a; } #quest-log .quest-line { margin-top: 3px; }
       #quest-log .quest-actions, #quest-panel .quest-actions { display: flex; gap: 6px; margin-top: 6px; } #quest-panel .quest-actions button { margin-top: 0; }
       #quest-log .shop-flash { margin: 4px 0; padding: 5px 8px; border-radius: 6px; background: rgba(60, 160, 110, 0.25); color: #9be8c0; }
       .cp-path-lines div { line-height: 1.5; }
       #quest-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
-        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
-        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
-      #quest-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
+        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--ui-muted) transparent; padding: 10px; border-radius: 10px; background: var(--ui-panel);
+        color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #quest-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
       #quest-panel button:disabled { opacity: 0.45; cursor: default; }
       #quest-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #quest-panel .eq-head b { flex: 1; font-size: 15px; }
       #quest-panel .muted { opacity: 0.65; font-size: 12px; margin-top: 4px; }
-      #quest-panel .quest-card { border: 1px solid #3a4560; border-radius: 6px; padding: 6px 8px; margin-top: 6px; } #quest-panel .quest-card.locked { opacity: 0.55; } #quest-panel .quest-card.active { border-color: #d6a94b; }
+      #quest-panel .quest-card { border: 1px solid var(--ui-border); border-radius: 6px; padding: 6px 8px; margin-top: 6px; } #quest-panel .quest-card.locked { opacity: 0.55; } #quest-panel .quest-card.active { border-color: var(--ui-accent); }
       #quest-panel .quest-title { font-weight: 700; color: #ffe08a; } #quest-panel .quest-line { margin-top: 3px; } #quest-panel .quest-card button { margin-top: 6px; }
       #quest-panel .shop-flash { margin: 4px 0; padding: 5px 8px; border-radius: 6px; background: rgba(60, 160, 110, 0.25); color: #9be8c0; }
-      #quest-tracker { margin-top: 6px; max-width: 100%; box-sizing: border-box; padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.5); color: #e8e4d8;
+      #quest-tracker { margin-top: 6px; max-width: 100%; box-sizing: border-box; padding: 6px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.5); color: var(--ui-text);
         font: 12px/1.35 "Be Vietnam Pro", system-ui, sans-serif; z-index: 4; pointer-events: none; }
       #quest-tracker .qt-line { display: flex; align-items: flex-start; gap: 6px; } #quest-tracker .qt-text { flex: 1; }
-      #quest-tracker .qt-x { pointer-events: auto; border: 0; background: transparent; color: #e8e4d8; opacity: 0.6; font-size: 16px; line-height: 1; padding: 0 2px; cursor: pointer; } #quest-tracker .qt-x:hover { opacity: 1; color: #ff8a80; }
+      #quest-tracker .qt-x { pointer-events: auto; border: 0; background: transparent; color: var(--ui-text); opacity: 0.6; font-size: 16px; line-height: 1; padding: 0 2px; cursor: pointer; } #quest-tracker .qt-x:hover { opacity: 1; color: #ff8a80; }
       #quest-tracker .qt-line.ready { color: #9be8c0; } #quest-tracker b { color: #ffe08a; }
       #channel-bar[hidden] { display: none; }
       #channel-bar { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); width: min(280px, calc(100vw - 32px)); z-index: 20; text-align: center; pointer-events: none;
-        font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; color: #e8e4d8; text-shadow: 0 0 3px #000; }
-      #channel-bar .cb-track { height: 12px; margin: 6px 0 4px; border-radius: 6px; background: rgba(0, 0, 0, 0.65); border: 1px solid #6b7a99; overflow: hidden; }
+        font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; color: var(--ui-text); text-shadow: 0 0 3px #000; }
+      #channel-bar .cb-track { height: 12px; margin: 6px 0 4px; border-radius: 6px; background: rgba(0, 0, 0, 0.65); border: 1px solid var(--ui-muted); overflow: hidden; }
       #channel-bar .cb-fill { height: 100%; width: 0; background: linear-gradient(90deg, #42a5f5, #7fd6ff); transition: width 0.1s linear; }
-      #channel-bar.gold .cb-fill { background: linear-gradient(90deg, #d6a94b, #ffd37a); }
+      #channel-bar.gold .cb-fill { background: linear-gradient(90deg, var(--ui-accent), #ffd37a); }
       #channel-bar .cb-left { font-variant-numeric: tabular-nums; }
       #pk-row[hidden] { display: none; }
       #pk-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; pointer-events: auto; }
@@ -148,64 +150,64 @@
       #pk-btn.on { background: #000; color: #c68642; } #pk-btn.slaughter { background: #b3261e; color: #fff; } #pk-btn.safe { opacity: 0.6; }
       #shop-panel[hidden] { display: none; }
       #shop-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
-        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
-        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
-      #shop-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
+        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--ui-muted) transparent; padding: 10px; border-radius: 10px; background: var(--ui-panel);
+        color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #shop-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
       #shop-panel button:disabled { opacity: 0.45; cursor: default; }
       #shop-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #shop-panel .eq-head b { flex: 1; font-size: 15px; }
-      #shop-panel .eq-tabs { display: flex; gap: 4px; margin: 6px 0; } #shop-panel .eq-tabs button { padding: 4px 10px; font-size: 12px; background: #3a4560; color: #e8e4d8; } #shop-panel .eq-tabs button.active { background: #d6a94b; color: #1b1405; }
+      #shop-panel .eq-tabs { display: flex; gap: 4px; margin: 6px 0; } #shop-panel .eq-tabs button { padding: 4px 10px; font-size: 12px; background: var(--ui-border); color: var(--ui-text); } #shop-panel .eq-tabs button.active { background: var(--ui-accent); color: var(--ui-on-accent); }
       #shop-panel .muted { opacity: 0.65; font-size: 12px; }
-      #shop-panel .shop-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; margin-top: 6px; padding: 4px 6px; border: 1px solid #3a4560; border-radius: 6px; }
+      #shop-panel .shop-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; margin-top: 6px; padding: 4px 6px; border: 1px solid var(--ui-border); border-radius: 6px; }
       #shop-panel .shop-item.rar-uncommon .shop-name { color: #4fc3f7; } #shop-panel .shop-item.rar-rare .shop-name { color: #ba68c8; } #shop-panel .shop-item.rar-epic .shop-name { color: #ffb300; }
       #shop-panel .shop-name { display: flex; align-items: center; gap: 5px; font-weight: 600; }
       #shop-panel .shop-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; } #shop-panel .shop-side input { width: 56px; }
       #shop-panel .shop-cats { flex-wrap: wrap; } #shop-panel .shop-cats button { padding: 3px 7px; }
       #shop-panel .shop-flash { margin: 4px 0; padding: 5px 8px; border-radius: 6px; background: rgba(60, 160, 110, 0.25); color: #9be8c0; }
-      #shop-panel .shop-element { display: flex; align-items: center; gap: 6px; margin: 4px 0; } #shop-panel select { background: #2a3245; color: #e8e4d8; border: 1px solid #3a4560; border-radius: 6px; padding: 3px 6px; font: inherit; }
+      #shop-panel .shop-element { display: flex; align-items: center; gap: 6px; margin: 4px 0; } #shop-panel select { background: #2a3245; color: var(--ui-text); border: 1px solid var(--ui-border); border-radius: 6px; padding: 3px 6px; font: inherit; }
       #shop-panel .shop-main { display: flex; align-items: center; gap: 8px; min-width: 0; } #shop-panel .shop-main input { flex: none; }
       #shop-panel .shop-bulk { display: flex; gap: 6px; margin-top: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
-      #shop-panel .shop-sort { margin-left: auto; display: flex; gap: 4px; align-items: center; } #shop-panel .shop-sort button { padding: 3px 8px; font-size: 12px; background: #3a4560; color: #e8e4d8; }
-      #shop-panel .shop-sort select { padding: 3px 4px; border-radius: 6px; border: 1px solid #3a4560; background: #2a3245; color: #e8e4d8; font: inherit; font-size: 12px; }
+      #shop-panel .shop-sort { margin-left: auto; display: flex; gap: 4px; align-items: center; } #shop-panel .shop-sort button { padding: 3px 8px; font-size: 12px; background: var(--ui-border); color: var(--ui-text); }
+      #shop-panel .shop-sort select { padding: 3px 4px; border-radius: 6px; border: 1px solid var(--ui-border); background: #2a3245; color: var(--ui-text); font: inherit; font-size: 12px; }
       #shop-panel .shop-bulk { flex-wrap: nowrap; gap: 6px; justify-content: flex-start; } #shop-panel .shop-bulk .shop-sell { margin-left: auto; }
-      #shop-panel .shop-filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; } #shop-panel .shop-ms { position: relative; } #shop-panel .shop-ms summary { cursor: pointer; padding: 3px 8px; border: 1px solid #3a4560; border-radius: 6px; background: #2a3245; list-style: none; user-select: none; }
-      #shop-panel .shop-ms-list { position: absolute; z-index: 2; left: 0; top: 100%; min-width: 120px; margin-top: 2px; padding: 4px 8px; border: 1px solid #3a4560; border-radius: 6px; background: #1b2130; } #shop-panel .shop-ms-list label { display: block; padding: 2px 0; cursor: pointer; white-space: nowrap; }
-      #shop-panel .shop-price { color: #ffd54a; font-variant-numeric: tabular-nums; }
+      #shop-panel .shop-filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; } #shop-panel .shop-ms { position: relative; } #shop-panel .shop-ms summary { cursor: pointer; padding: 3px 8px; border: 1px solid var(--ui-border); border-radius: 6px; background: #2a3245; list-style: none; user-select: none; }
+      #shop-panel .shop-ms-list { position: absolute; z-index: 2; left: 0; top: 100%; min-width: 120px; margin-top: 2px; padding: 4px 8px; border: 1px solid var(--ui-border); border-radius: 6px; background: #1b2130; } #shop-panel .shop-ms-list label { display: block; padding: 2px 0; cursor: pointer; white-space: nowrap; }
+      #shop-panel .shop-price { color: var(--ui-highlight); font-variant-numeric: tabular-nums; }
       #waygate-panel[hidden] { display: none; }
-      #waygate-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(340px, calc(100vw - 16px)); padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
-        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
-      #waygate-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; min-height: 28px; }
+      #waygate-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(340px, calc(100vw - 16px)); padding: 10px; border-radius: 10px; background: var(--ui-panel);
+        color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #waygate-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; min-height: 28px; }
       #waygate-panel button:disabled { opacity: 0.45; cursor: default; }
       #waygate-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #waygate-panel .eq-head b { flex: 1; font-size: 15px; }
       #waygate-panel .muted { opacity: 0.65; font-size: 12px; margin: 4px 0; }
-      #waygate-panel .wg-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding: 6px 8px; border: 1px solid #3a4560; border-radius: 6px; }
-      #waygate-panel .wg-name { font-weight: 600; } #waygate-panel .wg-price { color: #ffd54a; font-variant-numeric: tabular-nums; }
+      #waygate-panel .wg-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--ui-border); border-radius: 6px; }
+      #waygate-panel .wg-name { font-weight: 600; } #waygate-panel .wg-price { color: var(--ui-highlight); font-variant-numeric: tabular-nums; }
       #smith-panel[hidden] { display: none; }
       #smith-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
-        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
-        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
-      #smith-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
+        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--ui-muted) transparent; padding: 10px; border-radius: 10px; background: var(--ui-panel);
+        color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #smith-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; min-height: 28px; }
       #smith-panel button:disabled { opacity: 0.45; cursor: default; }
       #smith-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #smith-panel .eq-head b { flex: 1; font-size: 15px; }
-      #smith-panel .eq-tabs { display: flex; gap: 4px; margin: 6px 0; } #smith-panel .eq-tabs button { padding: 4px 10px; font-size: 12px; background: #3a4560; color: #e8e4d8; } #smith-panel .eq-tabs button.active { background: #d6a94b; color: #1b1405; }
+      #smith-panel .eq-tabs { display: flex; gap: 4px; margin: 6px 0; } #smith-panel .eq-tabs button { padding: 4px 10px; font-size: 12px; background: var(--ui-border); color: var(--ui-text); } #smith-panel .eq-tabs button.active { background: var(--ui-accent); color: var(--ui-on-accent); }
       #smith-panel .muted { opacity: 0.65; font-size: 12px; }
-      #smith-panel .shop-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; margin-top: 6px; padding: 4px 6px; border: 1px solid #3a4560; border-radius: 6px; }
+      #smith-panel .shop-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: center; margin-top: 6px; padding: 4px 6px; border: 1px solid var(--ui-border); border-radius: 6px; }
       #smith-panel .shop-item.rar-uncommon .shop-name { color: #4fc3f7; } #smith-panel .shop-item.rar-rare .shop-name { color: #ba68c8; } #smith-panel .shop-item.rar-epic .shop-name { color: #ffb300; }
       #smith-panel .shop-name { display: flex; align-items: center; gap: 5px; font-weight: 600; }
       #smith-panel .shop-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; } #smith-panel .shop-side input { width: 56px; }
       #smith-panel .shop-cats { flex-wrap: wrap; } #smith-panel .shop-cats button { padding: 3px 7px; }
       #smith-panel .shop-flash { margin: 4px 0; padding: 5px 8px; border-radius: 6px; background: rgba(60, 160, 110, 0.25); color: #9be8c0; }
-      #smith-panel .shop-element { display: flex; align-items: center; gap: 6px; margin: 4px 0; } #smith-panel select { background: #2a3245; color: #e8e4d8; border: 1px solid #3a4560; border-radius: 6px; padding: 3px 6px; font: inherit; }
+      #smith-panel .shop-element { display: flex; align-items: center; gap: 6px; margin: 4px 0; } #smith-panel select { background: #2a3245; color: var(--ui-text); border: 1px solid var(--ui-border); border-radius: 6px; padding: 3px 6px; font: inherit; }
       #smith-panel .shop-main { display: flex; align-items: center; gap: 8px; min-width: 0; } #smith-panel .shop-main input { flex: none; }
       #smith-panel .shop-bulk { display: flex; gap: 6px; margin-top: 8px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
-      #smith-panel .shop-price { color: #ffd54a; font-variant-numeric: tabular-nums; }
+      #smith-panel .shop-price { color: var(--ui-highlight); font-variant-numeric: tabular-nums; }
       #smith-panel .smith-keep { display: block; margin: 6px 0; } #smith-panel .shop-flash.smith-bad { background: rgba(190, 80, 70, 0.25); color: #f0a8a0; }
       #eq-btn { position: fixed; right: 12px; top: 92px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
-        color: #e8e4d8; font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+        color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #eq-btn[hidden], #eq-panel[hidden] { display: none; }
       #eq-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(460px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
-        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96);
-        color: #e8e4d8; box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
-      #eq-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
+        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--ui-muted) transparent; padding: 10px; border-radius: 10px; background: var(--ui-panel);
+        color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #eq-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; }
       #eq-panel button:disabled { opacity: 0.45; cursor: default; }
       #eq-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #eq-panel .eq-head b { flex: 1; font-size: 15px; }
       #eq-panel .eq-wide { width: 100%; padding: 8px 10px; margin-bottom: 6px; } #eq-panel .eq-small { padding: 4px 8px; min-height: 28px; }
@@ -214,43 +216,43 @@
       #eq-panel .eq-row.rar-rare, #eq-panel .eq-opt.rar-rare, #eq-panel .eq-info.rar-rare { border-color: #ba68c8; }
       #eq-panel .eq-row.rar-epic, #eq-panel .eq-opt.rar-epic, #eq-panel .eq-info.rar-epic { border-color: #ffb300; }
       #eq-panel .eq-name.clickable { cursor: pointer; }
-      #eq-panel .eq-info { margin: 2px 0 0; padding: 6px 8px; border: 1px solid #3a4560; border-radius: 6px; background: rgba(0, 0, 0, 0.25); }
-      #eq-panel .eq-row { border: 1px solid #3a4560; display: grid; grid-template-columns: 86px minmax(0, 1fr) 34px 52px auto; align-items: center; column-gap: 6px; margin-top: 6px; padding: 4px 6px; min-height: 36px;
+      #eq-panel .eq-info { margin: 2px 0 0; padding: 6px 8px; border: 1px solid var(--ui-border); border-radius: 6px; background: rgba(0, 0, 0, 0.25); }
+      #eq-panel .eq-row { border: 1px solid var(--ui-border); display: grid; grid-template-columns: 86px minmax(0, 1fr) 34px 52px auto; align-items: center; column-gap: 6px; margin-top: 6px; padding: 4px 6px; min-height: 36px;
         background: rgba(255, 255, 255, 0.06); border-radius: 6px; }
       #eq-panel .eq-slot { color: #c8a8ff; }
       #eq-panel .eq-name { display: flex; align-items: center; gap: 5px; min-width: 0; } #eq-panel .eq-name .eq-label, #eq-panel .eq-name .eq-broken { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      #eq-panel .eq-tier { font-size: 11px; font-weight: 700; color: #ffd54a; } #eq-panel .eq-dur { font-size: 11px; opacity: 0.8; font-variant-numeric: tabular-nums; }
+      #eq-panel .eq-tier { font-size: 11px; font-weight: 700; color: var(--ui-highlight); } #eq-panel .eq-dur { font-size: 11px; opacity: 0.8; font-variant-numeric: tabular-nums; }
       #eq-panel .eq-dur.eq-broken { opacity: 1; }
       #eq-panel .eq-actions { display: flex; gap: 4px; justify-content: flex-end; }
       .elem-dot { display: inline-block; flex: none; width: 10px; height: 10px; box-sizing: border-box; border: 1px solid #fff; border-radius: 50%; vertical-align: middle; margin-right: 3px; }
       .elem-hoa { background: #e53935; } .elem-kim { background: #fbc02d; } .elem-tho { background: #8d6e63; } .elem-thuy { background: #1e88e5; } .elem-moc { background: #43a047; } .elem-loi { background: #7e57c2; } .elem-bang { background: #4dd0e1; } .elem-phong { background: #80cbc4; }
       .elem-loi { background: #8e24aa; } .elem-bang { background: #80deea; } .elem-phong { background: #cfd8dc; }
       #bag-panel .elem-dot.bag-elem, .bag-ghost .elem-dot.bag-elem { position: absolute; left: 2px; bottom: 2px; width: 9px; height: 9px; margin: 0; }
-      #eq-panel .eq-tabs { display: flex; gap: 4px; margin: 6px 0; } #eq-panel .eq-tabs button { padding: 4px 10px; font-size: 12px; border: 0; border-radius: 6px; background: #3a4560; color: #e8e4d8; font-weight: 600; cursor: pointer; } #eq-panel .eq-tabs button.active { background: #d6a94b; color: #1b1405; }
+      #eq-panel .eq-tabs { display: flex; gap: 4px; margin: 6px 0; } #eq-panel .eq-tabs button { padding: 4px 10px; font-size: 12px; border: 0; border-radius: 6px; background: var(--ui-border); color: var(--ui-text); font-weight: 600; cursor: pointer; } #eq-panel .eq-tabs button.active { background: var(--ui-accent); color: var(--ui-on-accent); }
       #eq-panel .eq-choose { margin: 4px 0 0; padding: 6px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; }
-      #eq-panel .eq-opt { border: 1px solid #3a4560; border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 8px; margin-top: 6px; } #eq-panel .eq-opt > div { flex: 1; min-width: 0; }
+      #eq-panel .eq-opt { border: 1px solid var(--ui-border); border-radius: 6px; padding: 4px 6px; display: flex; align-items: center; gap: 8px; margin-top: 6px; } #eq-panel .eq-opt > div { flex: 1; min-width: 0; }
       #eq-panel .eq-opt button { max-width: 120px; padding: 4px 8px; min-height: 28px; font-size: 12px; }
       #bag-btn[hidden], #bag-panel[hidden] { display: none; }
       #bag-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
-        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #6b7a99 transparent; padding: 10px; border-radius: 10px; background: rgba(27, 33, 48, 0.96); color: #e8e4d8; box-sizing: border-box;
+        overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--ui-muted) transparent; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); box-sizing: border-box;
         font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
       #bag-panel button:disabled { opacity: 0.45; cursor: default; }
-      #bag-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
+      #bag-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; }
       #bag-panel .bag-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-      #bag-panel .bag-head b { flex: 1; font-size: 15px; } #bag-panel .bag-used { opacity: 0.7; } #bag-panel .bag-head button { padding: 2px 8px; } #bag-panel .bag-head .bag-sort-mode { padding: 3px 4px; border-radius: 6px; border: 1px solid #3a4560; background: #10141c; color: inherit; font: inherit; font-size: 12px; max-width: 96px; }
+      #bag-panel .bag-head b { flex: 1; font-size: 15px; } #bag-panel .bag-used { opacity: 0.7; } #bag-panel .bag-head button { padding: 2px 8px; } #bag-panel .bag-head .bag-sort-mode { padding: 3px 4px; border-radius: 6px; border: 1px solid var(--ui-border); background: var(--ui-page); color: inherit; font: inherit; font-size: 12px; max-width: 96px; }
       #bag-panel .bag-head .bag-sort { padding: 4px 8px; font-size: 12px; }
       #bag-panel .bag-tabs { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
-      #bag-panel .bag-tabs button { padding: 3px 8px; background: #3a4560; color: #e8e4d8; } #bag-panel .bag-tabs button.active { background: #d6a94b; color: #1b1405; }
+      #bag-panel .bag-tabs button { padding: 3px 8px; background: var(--ui-border); color: var(--ui-text); } #bag-panel .bag-tabs button.active { background: var(--ui-accent); color: var(--ui-on-accent); }
       /* The whole 8x8 tab is shown; only the panel scrolls, and only when the window is too short for it. */
       /* Fixed row height (not aspect-ratio): with a capped panel height, aspect-ratio rows could shrink and overlap. */
       #bag-panel .bag-grid { display: grid; grid-auto-rows: 40px; align-content: start; gap: 3px; padding: 2px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; }
       #bag-panel::-webkit-scrollbar { width: 8px; }
-      #bag-panel::-webkit-scrollbar-thumb { background: #6b7a99; border-radius: 4px; }
+      #bag-panel::-webkit-scrollbar-thumb { background: var(--ui-muted); border-radius: 4px; }
       #bag-panel .bag-tabs button.bag-buy { background: #2f6b4f; color: #e8f5e9; }
-      #bag-panel .bag-cell { position: relative; height: 100%; min-width: 0; padding: 1px; background: rgba(255, 255, 255, 0.07); color: #e8e4d8; border: 1px solid #3a4560; overflow: hidden; }
+      #bag-panel .bag-cell { position: relative; height: 100%; min-width: 0; padding: 1px; background: rgba(255, 255, 255, 0.07); color: var(--ui-text); border: 1px solid var(--ui-border); overflow: hidden; }
       #bag-panel .bag-cell.rar-uncommon { border-color: #4fc3f7; } #bag-panel .bag-cell.rar-rare { border-color: #ba68c8; } #bag-panel .bag-cell.rar-epic { border-color: #ffb300; }
       #bag-panel .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; line-height: 1; text-shadow: 0 0 2px #000; pointer-events: none; }
-      #bag-panel .bag-mark.x { color: #ff5252; } #bag-panel .bag-mark.plus { color: #ffd54a; }
+      #bag-panel .bag-mark.x { color: #ff5252; } #bag-panel .bag-mark.plus { color: var(--ui-highlight); }
       #bag-panel .bag-actions button.active { background: #6fcf97; }
       /* Realm tags (LK, TC1...) are coloured by realm everywhere: Luyện Khí green, Trúc Cơ blue, Kim Đan orange, Nguyên Anh purple. */
       .realm-0 { --realm: var(--realm-0, #8bc34a); } .realm-1 { --realm: var(--realm-1, #4fc3f7); } .realm-2 { --realm: var(--realm-2, #ffb300); } .realm-3 { --realm: var(--realm-3, #e040fb); }
@@ -258,20 +260,20 @@
       .sk-tag[class*="realm-"] { background: var(--realm) !important; }
       /* The dragged copy of a cell lives outside the panel, so it carries its own styling. */
       .bag-ghost { position: fixed; z-index: 20; box-sizing: border-box; padding: 1px; border: 1px solid; border-radius: 6px; overflow: hidden; opacity: 0.9; pointer-events: none;
-        color: #e8e4d8; font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
+        color: var(--ui-text); font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
       .bag-ghost .bag-name { display: block; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
       .bag-ghost .bag-qty { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-weight: 700; }
-      .bag-ghost .bag-tag, #bag-panel .bag-tag { position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; line-height: 1; color: #ffd54a; text-shadow: 0 0 2px #000; }
+      .bag-ghost .bag-tag, #bag-panel .bag-tag { position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; line-height: 1; color: var(--ui-highlight); text-shadow: 0 0 2px #000; }
       .bag-ghost .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; }
-      .bag-ghost .bag-mark.x { color: #ff5252; } .bag-ghost .bag-mark.plus { color: #ffd54a; }
+      .bag-ghost .bag-mark.x { color: #ff5252; } .bag-ghost .bag-mark.plus { color: var(--ui-highlight); }
       #bag-panel .bag-cell .bag-name, .bag-ghost .bag-name { padding-top: 7px; }
-      .item-desc b { display: block; margin-bottom: 2px; } .item-desc .id-line { font-size: 12px; opacity: 0.85; line-height: 1.45; } .item-desc .st-max { color: #ffd54a; font-weight: 600; } .item-desc .st-min { color: #9e9e9e; } .item-desc .st-mid { color: #fff; }
-      #bag-panel .bag-compare { margin-top: 6px; padding-top: 4px; border-top: 1px dashed #3a4560; }
+      .item-desc b { display: block; margin-bottom: 2px; } .item-desc .id-line { font-size: 12px; opacity: 0.85; line-height: 1.45; } .item-desc .st-max { color: var(--ui-highlight); font-weight: 600; } .item-desc .st-min { color: #9e9e9e; } .item-desc .st-mid { color: #fff; }
+      #bag-panel .bag-compare { margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--ui-border); }
       #bag-panel .bag-detail { max-height: 240px; overflow-y: auto; }
       #eq-panel .eq-text { position: relative; padding-top: 9px; }
-      #eq-panel .eq-tag { position: absolute; top: 0; left: 0; font-size: 9px; font-weight: 700; line-height: 1; color: #ffd54a; }
+      #eq-panel .eq-tag { position: absolute; top: 0; left: 0; font-size: 9px; font-weight: 700; line-height: 1; color: var(--ui-highlight); }
       #bag-panel .bag-cell.broken { opacity: 0.45; filter: grayscale(1); }
-      #bag-panel .bag-cell.selected { border-color: #ffd54a; box-shadow: 0 0 0 1px #ffd54a inset; }
+      #bag-panel .bag-cell.selected { border-color: var(--ui-highlight); box-shadow: 0 0 0 1px var(--ui-highlight) inset; }
       #bag-panel .bag-cell.cat-equipment { background: rgba(255, 183, 77, 0.25); }
       #bag-panel .bag-cell.cat-skill_book { background: rgba(171, 71, 188, 0.35); }
       #bag-panel .bag-cell.cat-consumable { background: rgba(229, 57, 53, 0.35); } #bag-panel .bag-cell.cat-material { background: rgba(102, 187, 106, 0.3); }
@@ -279,49 +281,49 @@
       #bag-panel .bag-qty { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-weight: 700; text-shadow: 0 0 2px #000; }
       /* The detail box sits above the grid with a fixed minimum height, so selecting an item never shifts the cells under a finger. */
       #bag-panel .bag-detail { margin: 0 0 8px; padding: 6px 8px; min-height: 120px; box-sizing: border-box; background: rgba(255, 255, 255, 0.06); border-radius: 6px; }
-      #bag-panel .bag-mail { margin-top: 8px; padding-top: 6px; border-top: 1px solid #3a4560; }
+      #bag-panel .bag-mail { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--ui-border); }
       #bag-panel .muted { opacity: 0.65; font-size: 12px; }
       #bag-panel .bag-split { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-      #bag-panel .bag-split button { padding: 6px 10px; min-height: 32px; } #bag-panel .bag-split input { width: 64px; padding: 6px; border-radius: 6px; border: 1px solid #3a4560;
+      #bag-panel .bag-split button { padding: 6px 10px; min-height: 32px; } #bag-panel .bag-split input { width: 64px; padding: 6px; border-radius: 6px; border: 1px solid var(--ui-border);
         background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; text-align: center; }
       #bag-panel .bag-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; } #bag-panel .bag-actions button { padding: 6px 10px; min-height: 32px; }
       #bag-panel .bag-actions button.danger { background: #8e2b2b; color: #fff; }
       #bag-panel .mail-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; } #bag-panel .mail-row > div { flex: 1; }
       #bag-panel .mail-timer { color: #ff8a80; font-variant-numeric: tabular-nums; } #bag-panel .mail-row button { padding: 6px 10px; min-height: 32px; }
       #char-panel { position: fixed; right: 12px; top: 216px; width: min(300px, calc(100vw - 24px)); max-height: calc(100vh - 230px); overflow-y: auto;
-        padding: 12px; border-radius: 10px; background: rgba(27, 33, 48, 0.95); color: #e8e4d8; box-sizing: border-box;
+        padding: 12px; border-radius: 10px; background: rgba(27, 33, 48, 0.95); color: var(--ui-text); box-sizing: border-box;
         font: 14px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 5; }
-      #char-panel button { border: 0; border-radius: 6px; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; min-width: 32px; min-height: 32px; }
+      #char-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; min-width: 32px; min-height: 32px; }
       #char-panel button:disabled { opacity: 0.4; cursor: default; }
       .cp-head .cp-close { margin-left: auto; }
       .cp-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; } .cp-head span { flex: 1; color: #9db4e0; }
-      .cp-constitution { margin: -4px 0 8px; color: #c8a8ff; } .cp-realm { font-weight: 600; color: #ffd54a; } .cp-exp, .cp-points { margin: 4px 0; font-size: 13px; }
-      .cp-bar { height: 8px; border-radius: 4px; background: #10141c; overflow: hidden; } .cp-fill { height: 100%; background: #6fcf97; }
+      .cp-constitution { margin: -4px 0 8px; color: #c8a8ff; } .cp-realm { font-weight: 600; color: var(--ui-highlight); } .cp-exp, .cp-points { margin: 4px 0; font-size: 13px; }
+      .cp-bar { height: 8px; border-radius: 4px; background: var(--ui-page); overflow: hidden; } .cp-fill { height: 100%; background: #6fcf97; }
       .cp-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; } .cp-name { flex: 1; } .cp-val { min-width: 32px; text-align: center; }
       .cp-changed { color: #6fcf97; font-weight: 600; } .cp-confirm { width: 100%; margin: 8px 0; padding: 8px 12px; }
       .cp-bt { margin: 8px 0; padding: 8px; border-radius: 8px; background: rgba(214, 169, 75, 0.1); border: 1px solid #5a4a22; } .cp-bt:empty { display: none; }
       .cp-path[hidden] { display: none; } .cp-path-lines { flex: 1 1 100%; }
-      .cp-path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; font-size: 13px; color: #ffd54a; }
-      .cp-path-btn { padding: 4px 10px !important; min-height: 28px !important; } .cp-path-add { background: #3a4560 !important; color: #e8e4d8 !important; }
-      .cp-select { flex: 1; min-width: 0; padding: 4px 6px; border-radius: 6px; border: 1px solid #3a4560; background: #10141c; color: inherit; font: inherit; }
+      .cp-path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; font-size: 13px; color: var(--ui-highlight); }
+      .cp-path-btn { padding: 4px 10px !important; min-height: 28px !important; } .cp-path-add { background: var(--ui-border) !important; color: var(--ui-text) !important; }
+      .cp-select { flex: 1; min-width: 0; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--ui-border); background: var(--ui-page); color: inherit; font: inherit; }
       .cp-pathbox[hidden] { display: none; }
-      .cp-rate-pills { color: #ffd54a; font-weight: 600; } .cp-rate-over { color: #ff6b6b; font-weight: 600; }
+      .cp-rate-pills { color: var(--ui-highlight); font-weight: 600; } .cp-rate-over { color: #ff6b6b; font-weight: 600; }
       .cp-bt-line { margin: 3px 0; font-size: 13px; } .cp-bt-warn { margin: 6px 0; font-size: 12px; color: #ff8a80; }
-      .cp-derived { border-top: 1px solid #3a4560; padding-top: 6px; font-size: 13px; color: #c9d1e3; }
-      #chat { position: fixed; left: 12px; bottom: 12px; width: min(360px, calc(100vw - 24px)); font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; color: #e8e4d8; }
+      .cp-derived { border-top: 1px solid var(--ui-border); padding-top: 6px; font-size: 13px; color: #c9d1e3; }
+      #chat { position: fixed; left: 12px; bottom: 12px; width: min(360px, calc(100vw - 24px)); font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; color: var(--ui-text); }
       #chat[hidden] { display: none; }
       #chat-tabs { display: flex; gap: 2px; }
       #chat-tabs button { flex: 1; min-width: 0; padding: 3px 2px; border: 0; border-radius: 8px 8px 0 0; background: rgba(0, 0, 0, 0.35); color: #a9b2c6;
         font: 11px/1.3 "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; white-space: nowrap; position: relative; }
       #chat-tabs .badge { position: absolute; top: -7px; right: 0; padding: 0 4px; border-radius: 8px; background: #ff5252; color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; }
-      #chat-tabs button.active { background: rgba(0, 0, 0, 0.6); color: #e8e4d8; font-weight: 600; }
+      #chat-tabs button.active { background: rgba(0, 0, 0, 0.6); color: var(--ui-text); font-weight: 600; }
       /* Only as tall as its lines (up to a cap), and gone when empty, so it does not block tapping the map on a phone. */
       #chat-log { max-height: 140px; overflow-y: auto; padding: 6px 8px; background: rgba(0, 0, 0, 0.45); word-break: break-word; }
       #chat-log:empty { display: none; }
       @media (max-width: 600px) { #chat-log { max-height: 96px; } }
       #chat-log b { font-weight: 600; } #chat-log b.self { text-decoration: underline; } #chat-log b.replyable { cursor: pointer; }
       /* One colour per channel, so the "all" tab stays readable. */
-      #chat-log .ch-world { color: #ffb74d; } #chat-log .ch-map { color: #e8e4d8; } #chat-log .ch-whisper { color: #f48fb1; }
+      #chat-log .ch-world { color: #ffb74d; } #chat-log .ch-map { color: var(--ui-text); } #chat-log .ch-whisper { color: #f48fb1; }
       /* Teal (as before) for information (loot), red for what matters (death, map change, announcements) and for rejected chat. */
       #chat-log .ch-system { color: #80cbc4; font-style: italic; }
       #chat-log .ch-system.important, #chat-log .ch-system.err { color: #ff5252; font-style: normal; font-weight: 600; }
@@ -339,11 +341,11 @@
       /* The "all" tab leaves out routine system lines (loot, EXP); they live in the system tab. Red lines stay everywhere. */
       #chat-log.tab-all .line.ch-system:not(.important):not(.err) { display: none; }
       #chat-form { display: flex; gap: 4px; flex-wrap: wrap; }
-      #chat-channel { padding: 6px 4px; border-radius: 8px; border: 1px solid #3a4560; background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
-      #chat-to { width: 90px; padding: 6px 8px; border-radius: 8px; border: 1px solid #3a4560; background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
+      #chat-channel { padding: 6px 4px; border-radius: 8px; border: 1px solid var(--ui-border); background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
+      #chat-to { width: 90px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--ui-border); background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
       #chat-to[hidden] { display: none; }
-      #chat-input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid #3a4560; background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
-      #chat-send { padding: 6px 10px; border-radius: 8px; border: 0; background: #d6a94b; color: #1b1405; font: inherit; font-weight: 600; cursor: pointer; }
+      #chat-input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--ui-border); background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
+      #chat-send { padding: 6px 10px; border-radius: 8px; border: 0; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; }
       @media (max-width: 1200px) {
         #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout { padding: 4px 8px; font-size: 12px; }
         #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
@@ -351,7 +353,7 @@
       }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;
-        background: rgba(0, 0, 0, 0.55); color: #e8e4d8; font: 14px/1.4 "Be Vietnam Pro", system-ui, sans-serif;
+        background: rgba(0, 0, 0, 0.55); color: var(--ui-text); font: 14px/1.4 "Be Vietnam Pro", system-ui, sans-serif;
         pointer-events: none; user-select: none; max-width: calc(100vw - 130px); box-sizing: border-box;
       }
     </style>

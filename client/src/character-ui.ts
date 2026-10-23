@@ -2,7 +2,8 @@ import {
   STAGES_PER_REALM,
   PATHS,
   PATH_IDS,
-  PATH_SUB_FACTOR,
+  pathSubFactor,
+  pathBonusOf,
   PATH_MIN_REALM,
   SUB_PATH_COST,
   nextPathSlot,
@@ -339,7 +340,8 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       const def = PATHS[pick];
       const have = deps.countOf(def.item);
       box.append(el("div", "cp-bt-line", def.descVi));
-      const gives = (Object.keys(def.bonus) as Array<keyof typeof def.bonus>).filter((k) => def.bonus[k] > 0).map((k) => vi.paths.bonusLines[k]?.(def.bonus[k] * (isMain ? 1 : PATH_SUB_FACTOR)) ?? "");
+      const bonus = pathBonusOf(pick);
+      const gives = (Object.keys(bonus) as Array<keyof typeof bonus>).filter((k) => bonus[k] > 0).map((k) => vi.paths.bonusLines[k]?.(def.bonus[k] * (isMain ? 1 : pathSubFactor())) ?? "");
       box.append(el("div", "cp-bt-line", `${vi.paths.bonus} ${gives.join("; ")}`));
       box.append(el("div", "cp-bt-line", vi.paths.need(def.itemNameVi, have)));
       if (have === 0 && !deps.isAdmin) box.append(el("div", "cp-bt-line", vi.paths.whereToGet));

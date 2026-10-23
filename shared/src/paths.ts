@@ -1,4 +1,5 @@
-import { PATH_SUB_FACTOR, getSkill, maxSkillLevel, skillGrade, type SkillContext, type SkillDef } from "./skills";
+import { tuning } from "./tuning";
+import { pathSubFactor, getSkill, maxSkillLevel, skillGrade, type SkillContext, type SkillDef } from "./skills";
 import { REALMS } from "./progression-data";
 
 /**
@@ -15,7 +16,7 @@ export function isPathId(v: unknown): v is PathId {
   return typeof v === "string" && (PATH_IDS as readonly string[]).includes(v);
 }
 
-/** What a path adds, in percent, when it is the chủ tu. As a phụ tu every value is multiplied by PATH_SUB_FACTOR. */
+/** What a path adds, in percent, when it is the chủ tu. As a phụ tu every value is multiplied by `pathSubFactor()`. */
 export interface PathBonus {
   /** Percent of attack and defense, and of the maximum MP. */
   attackPct: number;
@@ -101,7 +102,7 @@ export const PATH_MIN_REALM = 1;
 export const SUB_PATH_COST: readonly number[] = [20_000, 50_000];
 /** The EXP gained is multiplied by 1 / (1 + PATH_EXP_K · phụ tu). */
 export const PATH_EXP_K = 0.25;
-export { PATH_SUB_FACTOR };
+export { pathSubFactor };
 
 /** The paths a character has: the chủ tu and the phụ tu in the order they were taken. */
 export interface PathState {
@@ -179,16 +180,20 @@ function withLevels(main: PathId | null, subs: PathId[], from: PathState): PathS
 }
 
 /** Linh Thạch to make a phụ tu the chủ tu (the old chủ tu takes its place): by the higher of the two levels. */
-export const PATH_SWAP_COST_BASE = 20_000;
+export function pathSwapCostBase(): number {
+  return tuning().paths.swapCostBase;
+}
 /** Linh Thạch to drop a path: by its level, double for the chủ tu. */
-export const PATH_DROP_COST_BASE = 30_000;
+export function pathDropCostBase(): number {
+  return tuning().paths.dropCostBase;
+}
 
 export function pathSwapCost(s: PathState, sub: PathId): number {
-  return PATH_SWAP_COST_BASE * (1 + Math.max(s.main ? pathLevel(s, s.main) : 0, pathLevel(s, sub)));
+  return pathSwapCostBase() * (1 + Math.max(s.main ? pathLevel(s, s.main) : 0, pathLevel(s, sub)));
 }
 
 export function pathDropCost(s: PathState, id: PathId): number {
-  return PATH_DROP_COST_BASE * (1 + pathLevel(s, id)) * (s.main === id ? 2 : 1);
+  return pathDropCostBase() * (1 + pathLevel(s, id)) * (s.main === id ? 2 : 1);
 }
 
 /** The paths after a phụ tu becomes the chủ tu: the old chủ tu goes into the slot it left. Null when `sub` is not a phụ tu. */
@@ -243,15 +248,20 @@ export function checkPathChoice(s: PathState, id: PathId, realm: number): PathEr
   return nextPathSlot(s, id) === null ? "full" : null;
 }
 
-/** The sum of what all of a character's paths add (a phụ tu counts PATH_SUB_FACTOR as much). */
+/** What a path adds as the chủ tu: the tuning (`pathBonuses`) over the numbers written in PATHS. */
+export function pathBonusOf(id: PathId): PathBonus {
+  return { ...PATHS[id].bonus, ...tuning().pathBonuses[id] };
+}
+
+/** The sum of what all of a character's paths add (a phụ tu counts `pathSubFactor()` as much). */
 export function pathBonuses(s: PathState): PathBonus {
   const t: PathBonus = { ...NONE };
   const add = (id: PathId, k: number) => {
-    const b = PATHS[id].bonus;
+    const b = pathBonusOf(id);
     for (const key of Object.keys(t) as Array<keyof PathBonus>) t[key] += b[key] * k;
   };
   if (s.main) add(s.main, 1);
-  for (const id of s.subs) add(id, PATH_SUB_FACTOR);
+  for (const id of s.subs) add(id, pathSubFactor());
   return t;
 }
 

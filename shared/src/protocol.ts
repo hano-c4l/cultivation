@@ -10,6 +10,8 @@ import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
 import type { EnhanceLevelDef } from "./smith";
 import type { Tuning } from "./tuning";
+import type { MerchantDef } from "./merchants";
+import type { NpcSpot } from "./map";
 import { isWaygateTown, type WaygateDest } from "./waygate";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type Carry, type BagPos, type SortMode } from "./inventory";
@@ -197,7 +199,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][] }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][]; tuning: Tuning; npcs: NpcSpot[] }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
@@ -230,7 +232,7 @@ export type ServerMessage =
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
   /** The merchant's stock for today: units this character can still buy of each offer that has a daily limit. */
-  | { t: "shop"; npc: string; left: Record<string, number>; tuning: Tuning }
+  | { t: "shop"; npc: string; left: Record<string, number>; tuning: Tuning; merchant: MerchantDef }
   /** A trade went through: `total` Linh Thạch paid (buy) or received (sell). */
   | { t: "shop_ok"; op: "buy" | "sell"; item: string; qty: number; total: number }
   /** A multi-item sale went through: `count` stacks sold for `total` Linh Thạch. */

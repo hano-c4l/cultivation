@@ -5,19 +5,16 @@ import type { Gender } from "./gender";
 import { BASE_SPEED } from "./pathfinding";
 import { effectiveSpeed } from "./movement";
 import { elementTuning } from "./element-tuning";
+import { tuning } from "./tuning";
 import {
   BASE_STAT_START,
-  KILLS_BASE,
-  KILLS_GROWTH,
   MAX_ALLOCATE_PER_STAT,
-  OVERFLOW_EXP_MAX,
   REALMS,
   ROOT_FAVOURED_STAT,
   ROOT_STAT_BONUS,
   STAGES_PER_REALM,
   STAT_KEYS,
   STARTING_POTENTIAL_POINTS,
-  STAGE_EXP_GROWTH,
   type BaseStats,
   ROOT_COUNTS,
   ROOT_GRADES,
@@ -65,9 +62,10 @@ export function levelIndex(realm: number, stage: number): number {
   return r * STAGES_PER_REALM + (s - 1);
 }
 
-/** Same-bậc normal monsters needed to finish a stage (see KILLS_BASE). */
+/** Same-bậc normal monsters needed to finish a stage (tuning `kills`). */
 export function killsToNext(realm: number, stage: number): number {
-  return Math.round(KILLS_BASE * KILLS_GROWTH ** levelIndex(realm, stage));
+  const k = tuning().kills;
+  return Math.round(k.base * k.growth ** levelIndex(realm, stage));
 }
 
 /** EXP of a normal monster of this realm and bậc: the stage's EXP divided by the kills it should take. */
@@ -75,10 +73,18 @@ export function monsterBaseExp(realm: number, tier: number): number {
   return Math.max(1, Math.round(expToNext(realm, tier) / killsToNext(realm, tier)));
 }
 
+/** Potential points granted on reaching each new stage of a realm (tuning `exp`). */
+export function pointsPerStage(realm: number): number {
+  const e = tuning().exp;
+  return e.realms[Math.min(Math.max(Math.trunc(realm), 0), e.realms.length - 1)]?.pointsPerStage ?? getRealm(realm).pointsPerStage;
+}
+
 /** EXP needed to finish the given stage. At stage 9 a full bar is what a breakthrough asks for (see breakthrough.ts). */
 export function expToNext(realm: number, stage: number): number {
   const s = Math.min(Math.max(Math.trunc(stage), 1), STAGES_PER_REALM);
-  return Math.round(getRealm(realm).expBase * STAGE_EXP_GROWTH ** (s - 1));
+  const e = tuning().exp;
+  const base = e.realms[Math.min(Math.max(Math.trunc(realm), 0), e.realms.length - 1)]?.expBase ?? getRealm(realm).expBase;
+  return Math.round(base * e.stageGrowth ** (s - 1));
 }
 
 export interface ExpResult extends CharacterProgress {
@@ -100,7 +106,7 @@ export function applyExp(progress: CharacterProgress, gain: number): ExpResult {
     exp -= need;
     stage += 1;
     stagesGained += 1;
-    potentialPoints += getRealm(realm).pointsPerStage;
+    potentialPoints += pointsPerStage(realm);
   }
   if (stage >= STAGES_PER_REALM) exp = Math.min(exp, expCap(realm, stage));
   return { realm, stage, exp, potentialPoints, stagesGained };
@@ -109,7 +115,7 @@ export function applyExp(progress: CharacterProgress, gain: number): ExpResult {
 /** Most EXP a character can hold at this stage: the stage's need, and at stage 9 also the overflow. */
 export function expCap(realm: number, stage: number): number {
   const need = expToNext(realm, stage);
-  return stage >= STAGES_PER_REALM ? need + Math.round(need * OVERFLOW_EXP_MAX) : need;
+  return stage >= STAGES_PER_REALM ? need + Math.round(need * tuning().exp.overflowMax) : need;
 }
 
 /** EXP held beyond a full stage-9 bar (0 below stage 9 or while the bar is not full). */
@@ -117,32 +123,43 @@ export function overflowExp(realm: number, stage: number, exp: number): number {
   return stage >= STAGES_PER_REALM ? Math.max(0, exp - expToNext(realm, stage)) : 0;
 }
 
+/** A root grade with the live numbers of the tuning (`roots.grades`) over the ones written in progression-data. */
 export function getRootGrade(grade: number): RootGradeDef {
-  const def = ROOT_GRADES[Math.min(Math.max(Math.trunc(grade), 0), ROOT_GRADES.length - 1)];
-  return def ?? (ROOT_GRADES[0] as RootGradeDef);
+  const i = Math.min(Math.max(Math.trunc(grade), 0), ROOT_GRADES.length - 1);
+  const base = ROOT_GRADES[i] ?? (ROOT_GRADES[0] as RootGradeDef);
+  const live = tuning().roots.grades[i];
+  return live ? { ...base, ...live } : base;
 }
 
 /** Maps a uniform integer roll in 0..99 to a root grade by the configured weights. */
 export function rootGradeFromRoll(roll: number): number {
+  const grades = tuning().roots.grades;
+  const total = grades.reduce((n, g) => n + g.weight, 0) || 100;
+  const at = (roll / 100) * total; // the weights need not add up to 100
   let acc = 0;
-  for (const g of ROOT_GRADES) {
-    acc += g.weight;
-    if (roll < acc) return g.id;
+  for (let i = 0; i < grades.length; i++) {
+    acc += grades[i]!.weight;
+    if (at < acc) return i;
   }
   return ROOT_GRADES.length - 1;
 }
 
 export function getRootCount(count: number): RootCountDef {
-  const def = ROOT_COUNTS[Math.min(Math.max(Math.trunc(count), 1), ROOT_COUNTS.length) - 1];
-  return def ?? (ROOT_COUNTS[0] as RootCountDef);
+  const i = Math.min(Math.max(Math.trunc(count), 1), ROOT_COUNTS.length) - 1;
+  const base = ROOT_COUNTS[i] ?? (ROOT_COUNTS[0] as RootCountDef);
+  const live = tuning().roots.counts[i];
+  return live ? { ...base, ...live } : base;
 }
 
 /** Maps a uniform integer roll in 0..99 to how many elements the root has, by the configured weights. */
 export function rootCountFromRoll(roll: number): number {
+  const counts = tuning().roots.counts;
+  const total = counts.reduce((n, c) => n + c.weight, 0) || 100;
+  const at = (roll / 100) * total;
   let acc = 0;
-  for (const c of ROOT_COUNTS) {
-    acc += c.weight;
-    if (roll < acc) return c.count;
+  for (let i = 0; i < counts.length; i++) {
+    acc += counts[i]!.weight;
+    if (at < acc) return i + 1;
   }
   return ROOT_COUNTS.length;
 }

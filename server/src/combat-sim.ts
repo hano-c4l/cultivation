@@ -1,36 +1,34 @@
 import {
   PLAYER_ATTACK_COOLDOWN_MS,
   PLAYER_ATTACK_RANGE,
-  REGEN_DELAY_MS,
+  regenDelayMs,
   REGEN_PER_S,
   CLUSTERS,
   GUARDS,
   getMap,
   GUARD_KIND,
-  GUARD_REALM_BONUS,
-  GUARD_TIER,
-  GUARD_SKILLS,
-  NAME_TIER_ORANGE_FROM,
+  guardRealmBonus,
+  guardTier,
+  guardSkills,
+  nameTierOrangeFrom,
   guardStats,
-  NAME_TIER_RED_FROM,
+  nameTierRedFrom,
   decayedSatNhan,
-  RANKS,
-  BOSSES,
+  isRank,
+  bossKind,
+  tuningGeneration,
   BOSS_SPOTS,
-  BOSS_EXP_MULT,
-  BOSS_ITEM_CHANCE_MULT,
-  BOSS_ITEM_ROUNDS,
-  BOSS_LINH_MULT,
-  BOSS_SPAWN_CHANCE,
-  BOSS_TIER,
+  bossReward,
+  bossSpawnChance,
+  bossTier,
   bossPityKills,
   bossShares,
   bossStats,
-  BOSS_SKILLS,
+  bossSkills,
   bossCone,
   bossRegenPerS,
   inCone,
-  BOSS_STAT_TIER,
+  bossStatTier,
   pickByShare,
   applyExp,
   getRootGrade,
@@ -44,13 +42,13 @@ import {
   rollPillDrop,
   rollOreDrop,
   rollRefineDrop,
-  MP_REGEN_DELAY_MS,
+  mpRegenDelayMs,
   modifierTotal,
   restoreVitals,
   type ConstitutionEffect,
   type GearAffinity,
   type Vitals,
-  MP_REGEN_PER_S,
+  mpRegenPerS,
   availableSkills,
   getSkill,
   type SkillDef,
@@ -99,7 +97,7 @@ import {
   type SpiritualRoot,
   addMastery,
   heroBonus,
-  GRAY_WINDOW_MS,
+  grayWindowMs,
   canStartPvp,
   isPkProtected,
   type PkMode,
@@ -183,7 +181,7 @@ export interface PlayerProfile extends ProfileSeed {
   potionReadyAt: number;
   /**
    * MP is stored as `mp` at time `mpAt` and worked out for any later time (currentMp), so regeneration never needs a tick:
-   * a room that is otherwise idle can pause. It regenerates from MP_REGEN_DELAY_MS after the last hit taken.
+   * a room that is otherwise idle can pause. It regenerates from mpRegenDelayMs() after the last hit taken.
    */
   maxMp: number;
   mp: number;
@@ -407,7 +405,7 @@ export class CombatSim {
       if (!home || !guardDef) continue;
       const id = `m${this.nextMonsterId++}`;
       const g: Monster = {
-        id, def: guardDef, tier: GUARD_TIER, rank: "normal", maxHp: 0,
+        id, def: guardDef, tier: guardTier(), rank: "normal", maxHp: 0,
         combatant: { attack: 0, defense: 0, critRate: 5, dodgeRate: 0, element: guardDef.element },
         damage: new Map(), home, hp: 0, state: "idle", path: [home], startedAt: now, targetId: null, nextAttackAt: 0, lastRepathAt: 0, respawnAt: 0, guard: true,
       };
@@ -438,7 +436,7 @@ export class CombatSim {
       return;
     }
     const [savedRank, savedElement] = (saved ?? "").split("|");
-    const known = savedRank !== undefined && savedRank in RANKS;
+    const known = savedRank !== undefined && isRank(savedRank);
     m.rank = known ? (savedRank as MonsterRank) : rollRank(this.rand());
     m.combatant.element = (SPIRITUAL_ROOTS as readonly string[]).includes(savedElement ?? "") ? (savedElement as SpiritualRoot) : known ? m.def.element : rollMonsterElement(this.rand());
     const stats = monsterStats(m.def, this.realm, m.tier, m.rank);
@@ -497,16 +495,38 @@ export class CombatSim {
   // ---- the map boss (phase 2h) ----
   private bossEnabled = false;
   private bossAsked = false;
+  /** Kills of this room not yet added to the map's shared counter (D1, `boss_kills`). */
   private pityKills = 0;
+  /** What the other rooms and earlier flushes of this one had added to that counter when it was last read. The boss is due when both together reach the pity number. */
+  private pityShared = 0;
 
-  /** Turns the boss rolls on (the room does, for a map that has a boss). */
-  enableBoss(pityKills = 0): void {
+  /** Turns the boss rolls on (the room does, for a map that has a boss). `pityKills` are this room's kills kept from before it slept, `shared` the map's counter. */
+  enableBoss(pityKills = 0, shared = 0): void {
     this.bossEnabled = true;
     this.pityKills = pityKills;
+    this.pityShared = shared;
   }
 
+  /** This room's kills not yet in the shared counter. */
   get pity(): number {
     return this.pityKills;
+  }
+
+  /** Hands the pending kills to the room to add to the shared counter (they leave this room's count). */
+  takePity(): number {
+    const n = this.pityKills;
+    this.pityKills = 0;
+    return n;
+  }
+
+  /** Gives kills back (a flush that failed). */
+  returnPity(n: number): void {
+    this.pityKills += n;
+  }
+
+  /** The shared counter as the last flush or read saw it, this room's own kills included. */
+  setSharedPity(total: number): void {
+    this.pityShared = total;
   }
 
   get hasBoss(): boolean {
@@ -529,6 +549,7 @@ export class CombatSim {
   bossAnswered(): void {
     this.bossAsked = false;
     this.pityKills = 0;
+    this.pityShared = 0;
   }
 
   /**
@@ -561,7 +582,7 @@ export class CombatSim {
    * random spot of the map. Null when it cannot (already one, no boss for this map).
    */
   spawnBoss(mapId: MapId, now: number, at?: Vec2): MonsterSnapshot | null {
-    const kind = BOSSES[mapId];
+    const kind = bossKind(mapId);
     const def = kind ? getMonsterDef(kind) : undefined;
     if (!def || this.hasBoss) return null;
     const home = (at ? nearestStandablePoint(this.map, at[0], at[1], 3) : null) ?? this.randomBossHome(mapId);
@@ -569,7 +590,7 @@ export class CombatSim {
     const m: Monster = {
       id: `m${this.nextMonsterId++}`,
       def,
-      tier: BOSS_TIER,
+      tier: bossTier(),
       rank: "rare2",
       maxHp: 0,
       combatant: { attack: 0, defense: 0, critRate: 5, dodgeRate: 0, element: rollMonsterElement(this.rand()) },
@@ -841,12 +862,12 @@ export class CombatSim {
     return effectiveSkill(def, skillContextOf(p, def));
   }
 
-  /** MP at time `now`: the stored value plus regeneration since it was stored (starting MP_REGEN_DELAY_MS after the last hit). */
+  /** MP at time `now`: the stored value plus regeneration since it was stored (starting mpRegenDelayMs() after the last hit). */
   currentMp(p: PlayerProfile, now: number): number {
     if (p.mp >= p.maxMp) return p.maxMp;
-    const from = Math.max(p.mpAt, p.lastHurtAt + MP_REGEN_DELAY_MS);
+    const from = Math.max(p.mpAt, p.lastHurtAt + mpRegenDelayMs());
     if (now <= from) return p.mp;
-    return Math.min(p.maxMp, p.mp + Math.floor(((now - from) / 1000) * Math.max(1, p.maxMp * MP_REGEN_PER_S)));
+    return Math.min(p.maxMp, p.mp + Math.floor(((now - from) / 1000) * Math.max(1, p.maxMp * mpRegenPerS())));
   }
 
   /** Stores the MP worked out for `now` (call before changing it or before `lastHurtAt` moves). */
@@ -856,7 +877,7 @@ export class CombatSim {
   }
 
   mpEvent(p: PlayerProfile, now: number): SimEvent {
-    return { t: "mp", playerId: p.id, mp: this.currentMp(p, now), maxMp: p.maxMp, regenInMs: Math.max(0, p.lastHurtAt + MP_REGEN_DELAY_MS - now) };
+    return { t: "mp", playerId: p.id, mp: this.currentMp(p, now), maxMp: p.maxMp, regenInMs: Math.max(0, p.lastHurtAt + mpRegenDelayMs() - now) };
   }
 
   /**
@@ -934,7 +955,7 @@ export class CombatSim {
   /** Whether `q` hit `p` in the last 3 minutes (a fight p did not start: it may defend itself whatever its PK state). */
   private hitRecently(p: PlayerProfile, qid: string): boolean {
     const at = p.hitBy.get(qid);
-    return at !== undefined && this.clock - at < GRAY_WINDOW_MS;
+    return at !== undefined && this.clock - at < grayWindowMs();
   }
 
   /** A player went through a portal: nobody keeps a "hit me" mark or a retaliation aimed at them. (A mere reconnect does not call this.) */
@@ -988,7 +1009,7 @@ export class CombatSim {
     return {
       id: m.id,
       kind: m.def.id,
-      tier: m.boss ? BOSS_STAT_TIER : m.tier,
+      tier: m.boss ? bossStatTier() : m.tier,
       rank: m.rank,
       element: m.combatant.element,
       path: m.path,
@@ -1043,7 +1064,7 @@ export class CombatSim {
       if (m.state === "dead") {
         if (now >= m.respawnAt) {
           this.applyRank(m); // every respawn rolls its class again
-          if (this.bossEnabled && !this.bossAsked && !m.guard && !this.hasBoss && (this.pityKills >= bossPityKills(this.realm) || this.rand() < BOSS_SPAWN_CHANCE)) {
+          if (this.bossEnabled && !this.bossAsked && !m.guard && !this.hasBoss && (this.pityKills + this.pityShared >= bossPityKills(this.realm) || this.rand() < bossSpawnChance())) {
             this.bossAsked = true;
             events.push({ t: "boss_request" });
           }
@@ -1125,7 +1146,7 @@ export class CombatSim {
   /** Whether a monster starts a chase on this player: any monster goes for anyone in range, a guard only for red names and the ones who hit it. */
   private wouldAggro(m: Monster, p: PlayerProfile): boolean {
     if (!m.guard) return true;
-    return m.damage.has(p.id) || this.satNhanNow(p) >= NAME_TIER_ORANGE_FROM;
+    return m.damage.has(p.id) || this.satNhanNow(p) >= nameTierOrangeFrom();
   }
 
   /** A player's sát nhân at the sim clock (the stored value less 5 a minute since it was set). */
@@ -1150,7 +1171,8 @@ export class CombatSim {
     };
     const left = (id: string) => (m.skillReadyAt?.[id] ?? 0) <= now;
     // The boss uses the same turn as a guard with its own numbers and without the buff (two attacks and a heal).
-    const sk = m.boss ? BOSS_SKILLS : GUARD_SKILLS;
+    const guardSk = guardSkills();
+    const sk = m.boss ? bossSkills() : guardSk;
     // The boss's special cone first: only in the last quarter of its HP, on a long cooldown.
     if (m.boss && m.hp < m.maxHp * bossCone().below && left("cone") && ready("cone", bossCone().cdMs)) return "cone";
     if (m.hp < m.maxHp * sk.mend.below && left("mend") && ready("mend", sk.mend.cdMs)) {
@@ -1158,11 +1180,11 @@ export class CombatSim {
       events.push({ t: "mon", monster: this.snapshot(m, now) });
       return null;
     }
-    if (!m.boss && now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", GUARD_SKILLS.ward.cdMs)) {
-      m.buffUntil = now + GUARD_SKILLS.ward.durationMs;
+    if (!m.boss && now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", guardSk.ward.cdMs)) {
+      m.buffUntil = now + guardSk.ward.durationMs;
       return null;
     }
-    const buff = now < (m.buffUntil ?? 0) ? 1 + GUARD_SKILLS.ward.attackPct / 100 : 1;
+    const buff = now < (m.buffUntil ?? 0) ? 1 + guardSk.ward.attackPct / 100 : 1;
     if (left("burst") && ready("burst", sk.burst.cdMs)) return sk.burst.power * buff;
     if (left("slash") && ready("slash", sk.slash.cdMs)) return sk.slash.power * buff;
     return buff;
@@ -1226,7 +1248,7 @@ export class CombatSim {
       // A retaliation lasts only while the player still has that attacker targeted.
       if (p.retaliateId !== null && p.targetId !== p.retaliateId) p.retaliateId = null;
 
-      if (p.hp < p.maxHp && now - p.lastHurtAt >= REGEN_DELAY_MS && now - p.lastRegenAt >= 1000) {
+      if (p.hp < p.maxHp && now - p.lastHurtAt >= regenDelayMs() && now - p.lastRegenAt >= 1000) {
         p.lastRegenAt = now;
         p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(p.maxHp * REGEN_PER_S)));
         events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
@@ -1527,7 +1549,7 @@ export class CombatSim {
 
   /**
    * The boss died: its reward is split by bossShares among the players still here and alive. Each gets their share of the EXP and of
-   * the Linh Thạch pool; the items (BOSS_ITEM_ROUNDS rounds of Đại Yêu loot with better chances) each go whole to one sharing player,
+   * the Linh Thạch pool; the items (`itemRounds` rounds of Đại Yêu loot with better chances) each go whole to one sharing player,
    * picked by share. The damage table is cleared and the room told, so it can release the claim and announce.
    */
   private payBoss(m: Monster, killer: PlayerProfile, events: SimEvent[]): void {
@@ -1536,28 +1558,29 @@ export class CombatSim {
       return !!q && !q.dead;
     });
     const items = new Map<string, LootDrop[]>();
-    for (let i = 0; i < BOSS_ITEM_ROUNDS; i++) {
-      const loot = rollLoot(m.rank, this.rand, BOSS_ITEM_CHANCE_MULT, this.realm);
-      const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+    const rw = bossReward();
+    for (let i = 0; i < rw.itemRounds; i++) {
+      const loot = rollLoot(m.rank, this.rand, rw.itemChanceMult, this.realm);
+      const gear = rollEquipmentDrop(this.realm, m.tier, m.rank, this.rand, rw.itemChanceMult);
       if (gear) loot.push({ item: gear.type, qty: 1, ...(gear.dur !== undefined ? { dur: gear.dur, max: gear.max } : {}) });
-      const book = rollBookDrop(m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const book = rollBookDrop(m.rank, this.rand, rw.itemChanceMult);
       if (book) loot.push({ item: book, qty: 1 });
-      const pill = rollPillDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const pill = rollPillDrop(this.realm, m.rank, this.rand, rw.itemChanceMult);
       if (pill) loot.push({ item: pill, qty: 1 });
-      const ore = rollOreDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const ore = rollOreDrop(this.realm, m.rank, this.rand, rw.itemChanceMult);
       if (ore) loot.push(ore);
-      const refine = rollRefineDrop(this.realm, m.rank, this.rand, BOSS_ITEM_CHANCE_MULT);
+      const refine = rollRefineDrop(this.realm, m.rank, this.rand, rw.itemChanceMult);
       if (refine) loot.push(refine);
       for (const drop of loot) {
         const to = pickByShare(shares, this.rand());
         if (to) items.set(to, [...(items.get(to) ?? []), drop]);
       }
     }
-    const pool = rollLinhThachDrop(levelIndex(this.realm, m.tier), "rare2", 0, 0.5) * BOSS_LINH_MULT;
+    const pool = rollLinhThachDrop(levelIndex(this.realm, m.tier), "rare2", 0, 0.5) * rw.linhMult;
     for (const { id, share } of shares) {
       const q = this.players.get(id);
       if (!q) continue;
-      const { stagesGained, gain } = this.reward(q, m, BOSS_EXP_MULT * share);
+      const { stagesGained, gain } = this.reward(q, m, rw.expMult * share);
       events.push({ t: "progress", playerId: id, stagesGained });
       events.push({ t: "kill", playerId: id, rare: true });
       events.push({ t: "refine", playerId: id, gain });
@@ -1607,9 +1630,14 @@ export class CombatSim {
 }
 
 const guardSnapshotCache = new Map<MapId, MonsterSnapshot[]>();
+let guardSnapshotGeneration = -1;
 
 /** The guards of a map as they stand at home, for a safe map that has no simulation running (so they can still be seen). */
 export function staticGuardSnapshots(mapId: MapId): MonsterSnapshot[] {
+  if (guardSnapshotGeneration !== tuningGeneration()) {
+    guardSnapshotCache.clear(); // the guards' stats and species come from the tuning
+    guardSnapshotGeneration = tuningGeneration();
+  }
   let list = guardSnapshotCache.get(mapId);
   if (!list) {
     list = new CombatSim(getMap(mapId), mapId, Math.random, 0).snapshots(0).filter((m) => m.guard);

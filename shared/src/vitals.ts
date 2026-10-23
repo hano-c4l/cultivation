@@ -1,5 +1,5 @@
-import { REGEN_DELAY_MS, REGEN_PER_S } from "./combat";
-import { MP_REGEN_DELAY_MS, MP_REGEN_PER_S } from "./skills";
+import { regenDelayMs, REGEN_PER_S } from "./combat";
+import { mpRegenDelayMs, mpRegenPerS } from "./skills";
 
 /**
  * What a character keeps when they leave a combat room or reload: HP, MP, the skills still cooling down and the buffs
@@ -52,8 +52,8 @@ export function restoreVitals(v: Vitals | null, now: number, maxHp: number, maxM
   const cooldowns: Record<string, number> = {};
   for (const [k, t] of Object.entries(v.cd ?? {})) if (t > now) cooldowns[k] = t;
   return {
-    hp: Math.max(1, regen(v.hp, maxHp, REGEN_PER_S, REGEN_DELAY_MS)),
-    mp: regen(v.mp, maxMp, MP_REGEN_PER_S, MP_REGEN_DELAY_MS),
+    hp: Math.max(1, regen(v.hp, maxHp, REGEN_PER_S, regenDelayMs())),
+    mp: regen(v.mp, maxMp, mpRegenPerS(), mpRegenDelayMs()),
     cooldowns,
     buffs: (v.buffs ?? []).filter((b) => b.until > now),
   };

@@ -20,13 +20,6 @@ export interface RealmDef {
 export const STAGES_PER_REALM = 9;
 
 /**
- * How many same-bậc normal monsters a player must kill to finish a stage: KILLS_BASE at Luyện Khí tầng 1, growing by
- * KILLS_GROWTH per level across realms (about 49 at tầng 5, about 100 at Trúc Cơ tầng 2). Monster EXP is derived from this
- * (see monsterBaseExp), so tune the pace here. EXP numbers are x10 of the first version so per-kill values stay integers.
- */
-export const KILLS_BASE = 30;
-export const KILLS_GROWTH = 1.13;
-/**
  * EXP multiplier per realm a monster is below the player (a high-level player farming a low map). 1 = no extra
  * penalty (the slower pace of low monsters is the only cost); lower it if farming low maps turns out too good.
  */

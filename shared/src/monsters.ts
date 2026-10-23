@@ -1,3 +1,4 @@
+import { tuning, tuningGeneration } from "./tuning";
 import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
 import { CAVE_CHAMBERS, FOREST_GLADES, KIMDAN_GLADES, MAP_IDS, MAP_REALM, MAP_SIZE, NGUYENANH_GLADES, screenToTile, type MapId } from "./map";
 import { levelIndex, monsterBaseExp } from "./progression";
@@ -47,12 +48,16 @@ export const MONSTERS: Readonly<Record<string, MonsterDef>> = {
 
 /**
  * Vệ binh (guards, phase 2f PR2): they stand at the gate of the forest and the cave and fight only red names (sát nhân from 501) and anyone
- * who hits them. They are one realm above the map's and at bậc `GUARD_TIER`, strong enough to beat a red player of the map's own level. Killing
+ * who hits them. They are one realm above the map's and at bậc `guardTier()`, strong enough to beat a red player of the map's own level. Killing
  * one pays nothing (no EXP, Linh Thạch or loot) and costs sát khí and sát nhân like killing a white name. Placeholder values.
  */
 export const GUARD_KIND = "ve_binh";
-export const GUARD_REALM_BONUS = 1;
-export const GUARD_TIER = 3;
+export function guardRealmBonus(): number {
+  return tuning().guard.realmBonus;
+}
+export function guardTier(): number {
+  return tuning().guard.tier;
+}
 /**
  * Guard positions per map (tile units, snapped to standable ground by the server): beside the arrival point, off the lane. Written in screen
  * units (see PlayRect) and converted, so they follow the map's layout.
@@ -68,8 +73,24 @@ export const GUARDS: Readonly<Record<MapId, readonly (readonly [number, number])
   nguyenanh: guardSpots("nguyenanh", [[-77, -4], [-77, 4]]),
 };
 
+const defCache = new Map<string, MonsterDef>();
+let defCacheGeneration = -1;
+
+/** A species with the live numbers of the tuning (`monsters.species`) over the ones written above; the names and element stay as written. */
 export function getMonsterDef(kind: string): MonsterDef | undefined {
-  return MONSTERS[kind];
+  const base = MONSTERS[kind];
+  if (!base) return undefined;
+  if (defCacheGeneration !== tuningGeneration()) {
+    defCache.clear();
+    defCacheGeneration = tuningGeneration();
+  }
+  let def = defCache.get(kind);
+  if (!def) {
+    const live = tuning().monsters.species[kind];
+    def = live ? { ...base, ...live } : base;
+    defCache.set(kind, def);
+  }
+  return def;
 }
 
 /**
@@ -89,16 +110,23 @@ export interface RankDef {
   tagVi: string | null;
 }
 
-export const RANKS: Readonly<Record<MonsterRank, RankDef>> = {
-  normal: { chance: 0, hpMult: 1, attackMult: 1, defenseMult: 1, expMult: 1, tagVi: null },
-  rare1: { chance: 0.08, hpMult: 1.8, attackMult: 1.2, defenseMult: 1.2, expMult: 2.5, tagVi: "Tinh Anh" },
-  rare2: { chance: 0.02, hpMult: 3, attackMult: 1.5, defenseMult: 1.5, expMult: 5, tagVi: "Đại Yêu" },
-};
+/** What is shown after the name of each class (the numbers are in the tuning, `monsters.ranks`). */
+const RANK_TAGS: Readonly<Record<MonsterRank, string | null>> = { normal: null, rare1: "Tinh Anh", rare2: "Đại Yêu" };
+
+/** The numbers of a class now in force and its tag. */
+export function rankDef(rank: MonsterRank): RankDef {
+  return { ...tuning().monsters.ranks[rank], tagVi: RANK_TAGS[rank] };
+}
+
+export function isRank(v: string): v is MonsterRank {
+  return v in RANK_TAGS;
+}
 
 /** Rolls a rank from a uniform [0, 1) number: rarest first so each configured chance holds. */
 export function rollRank(roll: number): MonsterRank {
-  if (roll < RANKS.rare2.chance) return "rare2";
-  if (roll < RANKS.rare2.chance + RANKS.rare1.chance) return "rare1";
+  const ranks = tuning().monsters.ranks;
+  if (roll < ranks.rare2.chance) return "rare2";
+  if (roll < ranks.rare2.chance + ranks.rare1.chance) return "rare1";
   return "normal";
 }
 
@@ -119,11 +147,12 @@ export interface MonsterStats {
 /** Combat stats of a monster: the realm/bậc curve (parallel to a typical player of that level) times species and rank. */
 export function monsterStats(def: MonsterDef, realm: number, tier: number, rank: MonsterRank): MonsterStats {
   const lv = levelIndex(realm, tier);
-  const r = RANKS[rank];
+  const r = rankDef(rank);
+  const c = tuning().combat.monsterCurve;
   return {
-    maxHp: Math.round((60 + lv * 30) * def.hpMult * r.hpMult),
-    attack: Math.round((10 + lv * 3.2) * def.attackMult * r.attackMult),
-    defense: Math.round((4 + lv * 2) * def.defenseMult * r.defenseMult),
+    maxHp: Math.round((c.hpBase + lv * c.hpPerLevel) * def.hpMult * r.hpMult),
+    attack: Math.round((c.attackBase + lv * c.attackPerLevel) * def.attackMult * r.attackMult),
+    defense: Math.round((c.defenseBase + lv * c.defensePerLevel) * def.defenseMult * r.defenseMult),
   };
 }
 
@@ -198,5 +227,5 @@ export function homeExpCap(realm: number, rank: MonsterRank): number | undefined
     if (MAP_REALM[id] !== realm) continue;
     for (const c of CLUSTERS[id]) best = Math.max(best, monsterBaseExp(realm, c.tier));
   }
-  return best > 0 ? best * RANKS[rank].expMult : undefined;
+  return best > 0 ? best * rankDef(rank).expMult : undefined;
 }

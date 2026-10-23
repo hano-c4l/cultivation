@@ -2,5 +2,5 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": { "types": ["@cloudflare/workers-types"], "lib": ["ES2022"] },
   "include": ["src"],
-  "exclude": ["src/economy.test.ts", "src/inventory.test.ts", "src/equipment.test.ts", "src/skills.test.ts", "src/breakthrough.test.ts", "src/paths.test.ts", "src/bagtab.test.ts", "src/shop.test.ts", "src/quests.test.ts", "src/pkdrop.test.ts", "src/boss.test.ts", "src/constitution-catalog.test.ts", "src/gear-master.test.ts", "src/enhance.test.ts", "src/tuning.test.ts", "src/test-db.ts"]
+  "exclude": ["src/economy.test.ts", "src/inventory.test.ts", "src/equipment.test.ts", "src/skills.test.ts", "src/breakthrough.test.ts", "src/paths.test.ts", "src/bagtab.test.ts", "src/shop.test.ts", "src/quests.test.ts", "src/pkdrop.test.ts", "src/boss.test.ts", "src/constitution-catalog.test.ts", "src/gear-master.test.ts", "src/enhance.test.ts", "src/tuning.test.ts", "src/merchants.test.ts", "src/npcs.test.ts", "src/pity.test.ts", "src/test-db.ts"]
 }

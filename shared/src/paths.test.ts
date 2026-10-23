@@ -14,7 +14,7 @@ import {
   PATHS,
   PATH_EXP_K,
   PATH_IDS,
-  PATH_SUB_FACTOR,
+  pathSubFactor,
   checkPathChoice,
   nextPathSlot,
   parsePaths,
@@ -69,11 +69,11 @@ describe("path state", () => {
 });
 
 describe("path bonuses", () => {
-  it("a phụ tu gives PATH_SUB_FACTOR of what the chủ tu gives", () => {
+  it("a phụ tu gives pathSubFactor() of what the chủ tu gives", () => {
     const main = pathBonuses(state("kiem"));
     const sub = pathBonuses(state("thuat", "kiem"));
     expect(main.attackPct).toBe(PATHS.kiem.bonus.attackPct);
-    expect(sub.attackPct).toBe(PATHS.kiem.bonus.attackPct * PATH_SUB_FACTOR);
+    expect(sub.attackPct).toBe(PATHS.kiem.bonus.attackPct * pathSubFactor());
     expect(sub.maxMpPct).toBe(PATHS.thuat.bonus.maxMpPct); // thuat is the chủ tu there
     expect(pathBonuses(state(null)).attackPct).toBe(0);
   });
@@ -138,7 +138,7 @@ describe("path skills and items", () => {
     const def = getSkill("kt_kiem_khi")!;
     const main = effectiveSkill(def, skillContextFor(def, { rootGrade: 1, realm: 1, level: 0, paths: state("kiem") }));
     const sub = effectiveSkill(def, skillContextFor(def, { rootGrade: 1, realm: 1, level: 0, paths: state("thuat", "kiem") }));
-    expect(sub.power).toBeCloseTo(main.power * PATH_SUB_FACTOR, 6);
+    expect(sub.power).toBeCloseTo(main.power * pathSubFactor(), 6);
     const higher = effectiveSkill(def, skillContextFor(def, { rootGrade: 1, realm: 2, level: 0, paths: state("kiem") }));
     expect(higher.power).toBeGreaterThan(main.power);
   });

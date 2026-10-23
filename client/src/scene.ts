@@ -1,9 +1,9 @@
 import Phaser from "phaser";
 import {
-  BOSSES,
-  BOSS_REALM_BONUS,
+  bossKinds,
+  bossRealmBonus,
   equipmentInfo,
-  MP_REGEN_PER_S,
+  mpRegenPerS,
   REGEN_PER_S,
   getItemDef,
   getSkill,
@@ -25,8 +25,8 @@ import {
   TILE_W,
   ATTACK_MIN_GAP_MS,
   MIN_MOVE_INTERVAL_MS,
-  GUARD_REALM_BONUS,
-  RANKS,
+  guardRealmBonus,
+  rankDef,
   REALMS,
   getMonsterDef,
   levelIndex,
@@ -50,7 +50,11 @@ import {
   walkSpeed,
   type EquipStatKey,
   setTuning,
+  setMerchant,
+  setMapNpcs,
+  npcsOf,
 } from "@game/shared";
+import { applyTuningTheme } from "./theme";
 import { initCharacterPanel, type CharacterPanel } from "./character-ui";
 import { initChat, type ChatUi } from "./chat-ui";
 import { setCatalog } from "./constitution-store";
@@ -65,7 +69,7 @@ import { Effects } from "./fx";
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
-import { setGearSetNames, setWornSkillSets, skillDisplayName, GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
+import { setGearSetNames, setWornSkillSets, skillDisplayName, grayWindowMs, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
 import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
@@ -120,7 +124,7 @@ interface Actor {
 }
 
 function isBossKind(kind: string): boolean {
-  return (Object.values(BOSSES) as Array<string | null>).includes(kind);
+  return bossKinds().includes(kind);
 }
 
 interface MonsterActor {
@@ -385,7 +389,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** (Re)draws the current map's tiles and portals, destroying whatever was drawn for the previous map. */
+  /** The NPC list the map was drawn with. */
+  private npcKey = "";
+
   private drawMap(): void {
+    this.npcKey = JSON.stringify(npcsOf(this.map));
     for (const obj of this.mapObjects) obj.destroy();
     this.mapObjects = [];
 
@@ -447,7 +455,7 @@ export class GameScene extends Phaser.Scene {
       this.mapObjects.push(glow, label);
     }
 
-    for (const npc of this.map.npcs) {
+    for (const npc of npcsOf(this.map)) {
       const p = toScreen(npc.x, npc.y);
       if (npc.kind === "waygate") {
         // A magic circle on the ground (nothing blocks it: characters arrive standing on it).
@@ -461,7 +469,7 @@ export class GameScene extends Phaser.Scene {
           const a = (i / 6) * Math.PI * 2;
           g.fillStyle(0xe8e0ff, 0.9).fillCircle(p.x + Math.cos(a) * rx * 0.67, p.y + Math.sin(a) * ry * 0.67, 2.5);
         }
-        const label = this.add.text(p.x, p.y - ry - 4, vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#e8e0ff", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(p.y + 2);
+        const label = this.add.text(p.x, p.y - ry - 4, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#e8e0ff", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(p.y + 2);
         this.mapObjects.push(g, label);
         continue;
       }
@@ -470,7 +478,7 @@ export class GameScene extends Phaser.Scene {
       body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
       body.fillStyle(0xf2d6b0, 1).fillCircle(p.x, p.y - 36, 7);
       const label = this.add
-        .text(p.x, p.y - 48, vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#ffe08a", stroke: "#000000", strokeThickness: 3 })
+        .text(p.x, p.y - 48, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#ffe08a", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1)
         .setDepth(p.y + 2);
       this.mapObjects.push(body, label);
@@ -490,7 +498,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private switchMap(mapId: string): void {
-    if (!isMapId(mapId) || this.map.id === mapId) return;
+    // Same map but the NPCs changed (they are data from D1, sent with each welcome): draw it again.
+    if (!isMapId(mapId) || (this.map.id === mapId && this.npcKey === JSON.stringify(npcsOf(this.map)))) return;
     this.map = getMap(mapId);
     this.shop.close();
     this.quests.close();
@@ -559,7 +568,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     // The figure stands up from its spot, so a click on its body lands on a ground tile behind it: test the drawn box too.
-    const npc = this.map.npcs.find((n) => {
+    const npc = npcsOf(this.map).find((n) => {
       const p = toScreen(n.x, n.y);
       if (n.kind === "waygate") return Math.hypot(tx - n.x, ty - n.y) <= WAYGATE_RADIUS; // a circle on the ground, nothing stands up from it
       return Math.hypot(tx - n.x, ty - n.y) <= 1 || (Math.abs(world.x - p.x) <= 18 && world.y >= p.y - 52 && world.y <= p.y + 10);
@@ -647,6 +656,9 @@ export class GameScene extends Phaser.Scene {
       case "welcome":
         this.selfId = msg.self;
         setGearSetNames(msg.gearSets); // the live names of the gear sets
+        setTuning(msg.tuning as unknown as Record<string, unknown>); // the live balance numbers (drops, kills, skills, theme...)
+        applyTuningTheme();
+        setMapNpcs(msg.map, msg.npcs); // who stands on this map (data from D1)
         setMounted(false); // the snapshot of yourself (below) says whether you still ride: it is kept across maps
         this.flightWorn = msg.equipped.some((e) => e.slot === "flight");
         this.refreshMountBtn();
@@ -700,7 +712,7 @@ export class GameScene extends Phaser.Scene {
         this.skillsUi.setSkills(msg.skills);
         this.hotbar.setSkills(msg.skills);
         this.hotbar.setSlots(msg.hotbar);
-        this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, MP_REGEN_PER_S);
+        this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, mpRegenPerS());
         this.hotbar.refresh(); // the slots were drawn before the MP was known (they dim what the MP cannot pay)
         this.buffs.set(msg.effects);
         for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
@@ -911,6 +923,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "shop":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
+        setMerchant(msg.merchant);
         this.shop.setStock(msg.npc, msg.left);
         break;
       case "smith":
@@ -1232,9 +1245,9 @@ export class GameScene extends Phaser.Scene {
   private monsterName(kind: string, tier: number, rank: MonsterRank, guard = false): string {
     // A guard shows its name only (no realm, no element, no HP bar), like a player.
     if (guard) return getMonsterDef(kind)?.nameVi ?? kind;
-    const tag = isBossKind(kind) ? vi.rank.bossTag : RANKS[rank].tagVi;
+    const tag = isBossKind(kind) ? vi.rank.bossTag : rankDef(rank).tagVi;
     // The bậc shows as the realm tag and the bậc ("TC2"), like on gear.
-    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[(this.map.realm ?? 0) + (isBossKind(kind) ? BOSS_REALM_BONUS : 0)]?.shortVi ?? ""}${tier}${tag ? ` · ${tag}` : ""}`;
+    return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[(this.map.realm ?? 0) + (isBossKind(kind) ? bossRealmBonus() : 0)]?.shortVi ?? ""}${tier}${tag ? ` · ${tag}` : ""}`;
   }
 
   /** Rare monsters have their own colours; normal ones are coloured by how their bậc compares to the player's level. */
@@ -1355,7 +1368,7 @@ export class GameScene extends Phaser.Scene {
     for (const a of this.actors.values()) {
       if (a.id === this.selfId) continue;
       const hitAt = this.hitMeAt.get(a.id);
-      if (this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < GRAY_WINDOW_MS)) continue;
+      if (this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < grayWindowMs())) continue;
       const pos = currentPos(a, now);
       const s = toScreen(pos.x, pos.y);
       const d = Math.hypot(s.x - wx, s.y - 20 - wy);

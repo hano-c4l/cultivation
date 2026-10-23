@@ -4,7 +4,7 @@ import { getItemDef } from "./items";
 import { getMap, npcNear } from "./map";
 import { STAT_KEYS, type BaseStats } from "./progression-data";
 import { DEFAULT_ENHANCE_TABLE, ENHANCE_MAX, enhanceStatMult, KEEP_LEVEL_ITEM, maxPityPct, planConsume, resolveUpgrade, rollOreDrop, setEnhanceTable, SMITH_ORES, upgradeCost } from "./smith";
-import { merchantOffers } from "./shop";
+import { merchantOffers } from "./merchants";
 import { isStandable } from "./map";
 
 afterEach(() => setEnhanceTable(null));
@@ -119,7 +119,7 @@ describe("the ore and the scroll", () => {
   });
 
   it("the merchant sells the scroll for Tiên Ngọc", () => {
-    const offer = merchantOffers("male", "town").find((o) => o.item === KEEP_LEVEL_ITEM);
+    const offer = merchantOffers("male", "merchant").find((o) => o.item === KEEP_LEVEL_ITEM);
     expect(offer).toMatchObject({ currency: "tien_ngoc", price: 50 });
   });
 });
@@ -223,8 +223,8 @@ describe("tuning", () => {
     expect(tuning().keepLevel.priceTienNgoc).toBe(99);
     expect(tuning().bossRegen).toEqual(DEFAULT_TUNING.bossRegen); // 7 is out of range
     expect(tuning().refine.materials).toBe(3);
-    expect(merchantOffers("male", "town").find((o) => o.item === KEEP_LEVEL_ITEM)!.price).toBe(99);
+    expect(merchantOffers("male", "merchant").find((o) => o.item === KEEP_LEVEL_ITEM)!.price).toBe(99);
     resetTuning();
-    expect(merchantOffers("male", "town").find((o) => o.item === KEEP_LEVEL_ITEM)!.price).toBe(50);
+    expect(merchantOffers("male", "merchant").find((o) => o.item === KEEP_LEVEL_ITEM)!.price).toBe(50);
   });
 });

@@ -1,6 +1,7 @@
 import type { ConstitutionEffect } from "./constitutions";
 import { gearStyleOf, type Gender } from "./gender";
 import type { MonsterRank } from "./monsters";
+import { tuning } from "./tuning";
 import { gearNamesVersion, gearSetName } from "./gear-names";
 import { enhanceStatMult } from "./smith";
 import { elementTuning } from "./element-tuning";
@@ -125,7 +126,7 @@ export const REPAIR_COST_PER_POINT = [1, 2, 4, 8] as const;
 /** Durability of generated gear. */
 export const DEFAULT_MAX_DURABILITY = 100;
 /** Share of the maximum durability every worn piece loses when its owner dies, by any cause. */
-export const DEATH_DURABILITY_FRACTION = 0.05;
+
 
 /**
  * Weapon families (kiếm, đao, thương, rìu, cung, quyền). The ids are the same as WEAPON_TAGS in constitutions.ts, so a
@@ -490,7 +491,7 @@ export function mustUnequip(items: readonly EquippedItem[], w: WearerCtx): Array
 }
 
 /** Durability a worn piece loses at death, or 0 for a piece that never wears out. */
-export function deathDurabilityLoss(max: number | undefined, fraction = DEATH_DURABILITY_FRACTION): number {
+export function deathDurabilityLoss(max: number | undefined, fraction = tuning().combat.deathDurabilityFraction): number {
   return max === undefined ? 0 : Math.max(1, Math.ceil(max * fraction));
 }
 
@@ -500,12 +501,6 @@ export function repairCost(grade: number, lost: number): number {
   return Math.max(0, Math.trunc(lost)) * per;
 }
 
-/** Chance (0..1) that a kill drops one piece of gear, and the weights over grades 1..4 for what drops. */
-export const EQUIP_DROP: Readonly<Record<MonsterRank, { chance: number; grades: readonly [number, number, number, number]; overLevel: number }>> = {
-  normal: { chance: 0.03, grades: [70, 25, 5, 0], overLevel: 0 },
-  rare1: { chance: 0.15, grades: [45, 35, 17, 3], overLevel: 0.1 },
-  rare2: { chance: 0.3, grades: [25, 35, 30, 10], overLevel: 0.25 },
-};
 
 export interface EquipDrop {
   type: string;
@@ -519,7 +514,7 @@ export interface EquipDrop {
  * a seeded sequence stays stable: chance, kind, style, bậc, grade, over-level, over-level bậc, element, weapon type.
  */
 export function rollEquipmentDrop(mapRealm: number, monsterTier: number, rank: MonsterRank, rand: () => number, chanceMult = 1): EquipDrop | null {
-  const cfg = EQUIP_DROP[rank];
+  const cfg = tuning().drops.equip[rank];
   const chance = rand();
   const kindRoll = rand();
   const styleRoll = rand();

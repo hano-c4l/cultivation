@@ -428,4 +428,29 @@ describe("the map boss", () => {
     expect(killOne(true)).toHaveLength(1);
     expect(killOne(false)).toHaveLength(0);
   });
+
+  it("counts the kills of the other channels too: the shared counter plus this room's own reaches the number", () => {
+    const killOne = (own: number, shared: number) => {
+      const sim = new CombatSim(getMap("forest"), "forest", noCrit, 0);
+      sim.addPlayer(seed("a", { realm: 0, stage: 9 }));
+      sim.enableBoss(own, shared);
+      const m = sim.snapshots(0).find((s) => s.tier === 1 && !s.guard)!;
+      const at: Vec2 = [m.path[0]![0] + 1, m.path[0]![1]];
+      sim.setMonsterHp(m.id, 1);
+      sim.setTarget("a", m.id);
+      return run(sim, 0, 60_000, new Map([["a", at]])).filter((e) => e.t === "boss_request").length;
+    };
+    expect(killOne(0, 499)).toBe(1); // 499 elsewhere + this kill is the 500th
+    expect(killOne(100, 300)).toBe(0);
+    expect(killOne(100, 400)).toBe(1);
+  });
+
+  it("hands the pending kills over for the shared counter and takes them back when the write fails", () => {
+    const sim = new CombatSim(getMap("forest"), "forest", noCrit, 0);
+    sim.enableBoss(7, 20);
+    expect(sim.takePity()).toBe(7);
+    expect(sim.pity).toBe(0);
+    sim.returnPity(7);
+    expect(sim.pity).toBe(7);
+  });
 });

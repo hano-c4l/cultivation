@@ -1,6 +1,7 @@
 import type { MonsterRank } from "./monsters";
+import { tuning } from "./tuning";
 import { expToNext, getRootGrade, overflowExp } from "./progression";
-import { BREAKTHROUGH_OVERFLOW_FROM, BREAKTHROUGH_OVERFLOW_FROM_BONUS, BREAKTHROUGH_OVERFLOW_MAX_BONUS, OVERFLOW_EXP_MAX, REALMS, STAGES_PER_REALM } from "./progression-data";
+import { REALMS, STAGES_PER_REALM } from "./progression-data";
 
 /**
  * Breakthrough (đột phá): moving from stage 9 of a realm to stage 1 of the next. Every number here is a placeholder
@@ -36,14 +37,17 @@ export const BREAKTHROUGHS: readonly BreakthroughDef[] = [
   { from: 2, to: 3, pill: breakthroughPillId(3), maxPills: 3, baseRatePct: 50, maxRatePct: 70, durationMs: 600_000, cost: 500_000, basePoints: 24 },
 ];
 
-/** A failed breakthrough costs this fraction of the stage-9 EXP need (on top of the cost and the pills). */
-export const BREAKTHROUGH_FAIL_EXP_LOSS = 0.3;
-/** Extra potential points per root-grade bonus point and per constitution tier (non-default constitutions only). */
-export const BREAKTHROUGH_GRADE_POINTS_MULT = 2;
-export const BREAKTHROUGH_CONSTITUTION_POINTS = 2;
 
+/** The breakthrough out of a realm with the live numbers of the tuning (`breakthrough.steps`) over the ones written above. */
 export function getBreakthrough(fromRealm: number): BreakthroughDef | undefined {
-  return BREAKTHROUGHS.find((b) => b.from === fromRealm);
+  const base = BREAKTHROUGHS.find((b) => b.from === fromRealm);
+  const live = tuning().breakthrough.steps[fromRealm];
+  return base && live ? { ...base, ...live } : base;
+}
+
+/** A failed breakthrough costs this fraction of the stage-9 EXP need (tuning `breakthrough.failExpLoss`). */
+export function breakthroughFailExpLoss(): number {
+  return tuning().breakthrough.failExpLoss;
 }
 
 /** Why a breakthrough did not start or did not finish. */
@@ -70,10 +74,11 @@ export function checkBreakthroughReady(realm: number, stage: number, exp: number
  * evenly to BREAKTHROUGH_OVERFLOW_MAX_BONUS at a full overflow (OVERFLOW_EXP_MAX of the need).
  */
 export function overflowBonus(realm: number, stage: number, exp: number): number {
+  const bt = tuning().breakthrough;
   const frac = overflowExp(realm, stage, exp) / expToNext(realm, stage);
-  if (frac < BREAKTHROUGH_OVERFLOW_FROM) return 0;
-  const t = Math.min(1, (frac - BREAKTHROUGH_OVERFLOW_FROM) / (OVERFLOW_EXP_MAX - BREAKTHROUGH_OVERFLOW_FROM));
-  return Math.round((BREAKTHROUGH_OVERFLOW_FROM_BONUS + (BREAKTHROUGH_OVERFLOW_MAX_BONUS - BREAKTHROUGH_OVERFLOW_FROM_BONUS) * t) * 100) / 100;
+  if (frac < bt.overflowFrom) return 0;
+  const t = Math.min(1, (frac - bt.overflowFrom) / Math.max(1e-9, tuning().exp.overflowMax - bt.overflowFrom));
+  return Math.round((bt.overflowFromBonus + (bt.overflowMaxBonus - bt.overflowFromBonus) * t) * 100) / 100;
 }
 
 /** EXP left when a breakthrough starts: the overflow is used up (like the pills), the bar stays full. */
@@ -117,7 +122,7 @@ export function rollBreakthrough(ratePct: number, rand: () => number): boolean {
 
 /** EXP left after a failed breakthrough: the bar (overflow already used up) loses 30% of the stage-9 need, so it is left at 70% (never below 0). */
 export function expAfterFailure(realm: number, stage: number, exp: number): number {
-  return Math.max(0, expAtStart(realm, stage, exp) - Math.round(expToNext(realm, stage) * BREAKTHROUGH_FAIL_EXP_LOSS));
+  return Math.max(0, expAtStart(realm, stage, exp) - Math.round(expToNext(realm, stage) * breakthroughFailExpLoss()));
 }
 
 /**
@@ -125,8 +130,8 @@ export function expAfterFailure(realm: number, stage: number, exp: number): numb
  * constitution by its tier (like the extras a new character starts with, but larger).
  */
 export function breakthroughPoints(def: BreakthroughDef, rootGrade: number, constitutionTier: number, defaultConstitution: boolean): number {
-  const grade = getRootGrade(rootGrade).bonusPoints * BREAKTHROUGH_GRADE_POINTS_MULT;
-  const constitution = defaultConstitution ? 0 : Math.max(1, Math.trunc(constitutionTier)) * BREAKTHROUGH_CONSTITUTION_POINTS;
+  const grade = getRootGrade(rootGrade).bonusPoints * tuning().breakthrough.gradePointsMult;
+  const constitution = defaultConstitution ? 0 : Math.max(1, Math.trunc(constitutionTier)) * tuning().breakthrough.constitutionPoints;
   return def.basePoints + grade + constitution;
 }
 
@@ -134,17 +139,12 @@ export function breakthroughPoints(def: BreakthroughDef, rootGrade: number, cons
  * Chance (0..1) that one kill by a monster of `rank` in a map of `realm` drops that realm's breakthrough pill. Rarer for
  * higher realms; the strongest pills are meant to come from bosses, shops and the one-time quest instead (later phases).
  */
-export const PILL_DROP_CHANCE: Readonly<Record<number, Readonly<Record<MonsterRank, number>>>> = {
-  0: { normal: 0.004, rare1: 0.04, rare2: 0.12 },
-  1: { normal: 0.0015, rare1: 0.02, rare2: 0.06 },
-  2: { normal: 0.0005, rare1: 0.008, rare2: 0.03 },
-};
 
 /** The pill dropped by one kill, or null. Draws exactly one number, after every other roll of the kill (so seeded sequences stay stable). */
 export function rollPillDrop(mapRealm: number, rank: MonsterRank, rand: () => number, chanceMult = 1): string | null {
   const roll = rand();
   const def = getBreakthrough(mapRealm);
-  const chance = PILL_DROP_CHANCE[mapRealm]?.[rank] ?? 0;
+  const chance = tuning().drops.pill[String(mapRealm)]?.[rank] ?? 0;
   return def && roll < chance * chanceMult ? def.pill : null;
 }
 
