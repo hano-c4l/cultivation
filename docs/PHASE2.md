@@ -535,8 +535,8 @@ Tất cả đã ở preview rồi production; chỉ `0029` là migration.
 - **Đòn đánh thường** (không có kỹ năng, thêm sau, chỉ client): mọi tin `hit` không mang `skill` được vẽ từ chính tin đó (`Effects.basic`): vệt chém khi hai bên đứng gần (khoảng cách trên màn hình tối đa 130 px, `basicFxOf`), đạn bay khi xa; đòn của người chơi màu vàng nhạt, của quái màu đỏ. Hit của kỹ năng đã có hiệu ứng riêng (`fx`) nên không vẽ hai lần. Đòn kỹ năng của boss (không mang `skill`) vẽ như đòn thường của quái.
 - Chưa làm: người vào giữa lúc đang niệm không thấy hiệu ứng (chỉ gửi lúc bắt đầu và kết thúc). Chưa xem bằng mắt trên trình duyệt (khung trình duyệt của app bị tạm dừng); cần xem trên preview, cả điện thoại và WebGL. Chưa có kỹ năng người chơi nào hình nón.
 
-## 2m. Đưa dữ liệu cứng vào D1 để chuẩn bị màn admin (2026-10-23, nhánh `features_admin-data`, migration `0032`)
-Chưa lên preview/production. Mọi con số giữ nguyên giá trị cũ (chỉ đổi chỗ ở).
+## 2m. Đưa dữ liệu cứng vào D1 để chuẩn bị màn admin (2026-10-23 đến 24, PR `features_admin-data` và `features_d1-finish`, migration `0032`-`0034`)
+Đã lên preview rồi production (2026-10-24; `db:migrate:remote` cho `0032`, `0033`, `0034` chạy trước, cùng đợt 2m-b). Mọi con số giữ nguyên giá trị cũ (chỉ đổi chỗ ở).
 
 ### Thương nhân thành dữ liệu
 - Hai bảng D1: `shop_merchants` (`npc_id`, `map_id`, `name_vi`, `sell_rate`, `buys`, `enabled`) và `shop_stock` (`npc_id`, `rule_id`, `sort`, `def` JSON, `enabled`), cùng dòng `config_versions.shop`. Gieo lười từ `DEFAULT_MERCHANTS`, chỉ những thương nhân chưa có dòng (kể cả đã tắt), nên thêm thương nhân mới vào code sẽ tự được gieo mà dòng đã sửa hay luật đã xóa không quay lại (`INSERT OR IGNORE` qua `json_each`), cache 30 giây, nạp lại khi `config_versions.shop` đổi (`server/src/merchants.ts`, `getMerchants`, gọi ở đầu mỗi lệnh thương nhân vì bảng đăng ký là trạng thái của isolate). Thương nhân hỏng thì dùng mặc định của nó (nếu có); luật hàng hỏng bị bỏ khỏi thương nhân đó.
