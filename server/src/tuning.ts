@@ -1,4 +1,4 @@
-import { DEFAULT_TUNING, setTuning, TUNING_GROUPS, tuning, type Tuning } from "@game/shared";
+import { DEFAULT_TUNING, setTuning, TUNING_GROUPS, tuning, validTuningGroup, type Tuning } from "@game/shared";
 
 /**
  * The 2j balance numbers in D1 (table `game_tuning`, migration 0030): seeded from the code defaults the first time they are read
@@ -21,7 +21,7 @@ async function load(db: D1Database): Promise<{ value: Tuning; version: number }>
   const read = () =>
     Promise.all([
       db.prepare("SELECT version FROM config_versions WHERE name = 'tuning'").first<{ version: number }>(),
-      db.prepare("SELECT name, value FROM game_tuning").all<{ name: string; value: string }>(),
+      db.prepare("SELECT name, value, updated_by FROM game_tuning").all<{ name: string; value: string; updated_by: string | null }>(),
     ]);
   let [versionRow, res] = await read();
   if (res.results.length < TUNING_GROUPS.length) {
@@ -29,12 +29,20 @@ async function load(db: D1Database): Promise<{ value: Tuning; version: number }>
     [versionRow, res] = await read();
   }
   const parsed: Record<string, unknown> = {};
+  const stale: string[] = [];
   for (const r of res.results) {
     try {
       parsed[r.name] = JSON.parse(r.value);
     } catch {
       console.error(`tuning group ${r.name} is not JSON`);
     }
+    // A row nobody has edited (no `updated_by`) that no longer fits the group's shape (the shape changed in a later release) is the old default: put the new one in.
+    if ((TUNING_GROUPS as string[]).includes(r.name) && r.updated_by === null && !validTuningGroup(r.name, parsed[r.name])) stale.push(r.name);
+  }
+  if (stale.length > 0) {
+    await db.batch(stale.map((name) => db.prepare("UPDATE game_tuning SET value = ?, updated_at = ? WHERE name = ? AND updated_by IS NULL").bind(JSON.stringify(DEFAULT_TUNING[name as keyof Tuning]), Date.now(), name)));
+    for (const name of stale) parsed[name] = DEFAULT_TUNING[name as keyof Tuning];
+    console.error(`tuning groups replaced by the new defaults: ${stale.join(", ")}`);
   }
   setTuning(parsed);
   return { value: tuning() as Tuning, version: versionRow?.version ?? 0 };

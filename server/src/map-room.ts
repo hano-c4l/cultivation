@@ -1,7 +1,7 @@
 import { addBossKills, bossHolder, claimBoss, getBossKills, refreshBoss, releaseBoss, resetBossKills } from "./boss";
 import { DurableObject } from "cloudflare:workers";
 import {
-  BREAKTHROUGH_FAIL_EXP_LOSS,
+  breakthroughFailExpLoss,
   NO_PATHS,
   PATHS,
   allPathSkills,
@@ -42,7 +42,7 @@ import {
   DEFAULT_CATALOG,
   EMPTY_WALLET,
   INV_MIN_GAP_MS,
-  MP_REGEN_PER_S,
+  mpRegenPerS,
   POTION_COOLDOWN_MS,
   HOTBAR_SLOTS,
   constitutionEffects,
@@ -50,15 +50,14 @@ import {
   parseRoots,
   parseVitals,
   restoreVitals,
-  MP_REGEN_DELAY_MS,
-  REGEN_DELAY_MS,
+  mpRegenDelayMs,
+  regenDelayMs,
   type ConstitutionCatalog,
   availableSkills,
   gearSkillInfo,
   parseSkillSlot,
   addMastery,
   skillGrade,
-  MASTERY_PILL_POINTS,
   gearSkillIds,
   canLearn,
   getSkill,
@@ -139,7 +138,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { tuning, npcsOf, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, BOSSES, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, NAME_TIER_ORANGE_FROM, applyGuardKill, planPkLoss, satNhanAfterDeath, GRAY_WINDOW_MS, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { tuning, npcsOf, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { getNpcs } from "./npcs";
@@ -182,7 +181,7 @@ import {
 import { CombatSim, staticGuardSnapshots, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
 import { getSetting } from "./settings";
-import { applyElementSettings } from "./element-settings";
+import { loadLiveConfig } from "./live-config";
 import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
@@ -428,11 +427,7 @@ export class MapRoom extends DurableObject<Env> {
       this.roomId = room;
       await this.ctx.storage.put("room", room);
     }
-    await applyElementSettings(this.env.DB).catch((err) => console.error("element settings unavailable", err));
-    await getGearMaster(this.env.DB); // installs the gear set names (never throws)
-    await getEnhanceTable(this.env.DB); // installs the blacksmith rules (never throws)
-    await getTuning(this.env.DB); // installs the 2j balance numbers (never throws)
-    await getNpcs(this.env.DB); // installs where the NPCs stand (never throws)
+    await loadLiveConfig(this.env.DB);
 
     const lock = this.env.CHAR_LOCK.get(this.env.CHAR_LOCK.idFromName(characterId));
     // Claim first: the previous holder (any room) kicks its socket and saves before we read the row.
@@ -576,7 +571,7 @@ export class MapRoom extends DurableObject<Env> {
         cd: profile && sim ? sim.cooldownsLeft(profile, Date.now()) : Object.fromEntries(Object.entries(away.cooldowns).map(([k, t]) => [k, t - Date.now()])),
         mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
         maxMp: profile?.maxMp ?? derived.maxMp,
-        regenInMs: profile ? Math.max(0, profile.lastHurtAt + Math.max(REGEN_DELAY_MS, MP_REGEN_DELAY_MS) - Date.now()) : 0,
+        regenInMs: profile ? Math.max(0, profile.lastHurtAt + Math.max(regenDelayMs(), mpRegenDelayMs()) - Date.now()) : 0,
         effects: profile && sim ? sim.effectsOf(profile, Date.now()) : away.buffs.filter((b) => b.until > Date.now() && getSkill(b.skill) !== undefined).map((b) => ({ id: `s:${b.skill}`, ms: b.until - Date.now() })),
       });
       if (staleLoss !== null) this.send(server, { t: "bt_end", ok: false, reason: "left", expLost: staleLoss });
@@ -621,12 +616,8 @@ export class MapRoom extends DurableObject<Env> {
     if (typeof raw !== "string") return;
     const msg = parseClientMessage(raw);
     if (!msg) return;
-    // The tuning is in this isolate's memory: a room that woke on this message reads it again (cached, cheap).
-    await applyElementSettings(this.env.DB).catch(() => undefined);
-    await getGearMaster(this.env.DB);
-    await getEnhanceTable(this.env.DB);
-    await getTuning(this.env.DB);
-    await getNpcs(this.env.DB);
+    // The balance numbers are in this isolate's memory: a room that woke on this message reads them again (cached, cheap).
+    await loadLiveConfig(this.env.DB);
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state || state.transferring) return;
 
@@ -853,6 +844,7 @@ export class MapRoom extends DurableObject<Env> {
 
   /** Debounced save of every player whose position changed. */
   async alarm(): Promise<void> {
+    await loadLiveConfig(this.env.DB); // a room that woke on its alarm in a fresh isolate (breakthrough and talisman timers, saves)
     let nextBreakthroughAt: number | null = null;
     for (const ws of this.ctx.getWebSockets()) {
       let state = ws.deserializeAttachment() as PlayerState | null;
@@ -896,6 +888,7 @@ export class MapRoom extends DurableObject<Env> {
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
     this.logSocketEnd("close", ws, { code, reason });
+    await loadLiveConfig(this.env.DB); // settling a breakthrough or a death on leaving uses the live numbers
     await this.handleLeave(ws);
     // 1005/1006 are reserved and cannot be sent in a close frame.
     ws.close(code >= 1000 && code !== 1005 && code !== 1006 && code !== 1015 ? code : 1000, reason);
@@ -903,6 +896,7 @@ export class MapRoom extends DurableObject<Env> {
 
   async webSocketError(ws: WebSocket): Promise<void> {
     this.logSocketEnd("error", ws, {});
+    await loadLiveConfig(this.env.DB);
     await this.handleLeave(ws);
   }
 
@@ -985,7 +979,7 @@ export class MapRoom extends DurableObject<Env> {
     const sim = this.sim;
     const room = await this.roomName();
     const mapId = room?.split(":")[0] as MapId | undefined;
-    if (!sim || !mapId || !room || !BOSSES[mapId]) return;
+    if (!sim || !mapId || !room || !bossKind(mapId)) return;
     sim.bossAnswered();
     await resetBossKills(this.env.DB, mapId).catch((err) => console.error("boss counter reset failed", err));
     if (sim.hasBoss || !(await claimBoss(this.env.DB, mapId, room))) return;
@@ -1089,9 +1083,9 @@ export class MapRoom extends DurableObject<Env> {
    * (for its guards) while one is here: otherwise it stays without one, so it can sleep.
    */
   private murdererPresent(joinerSatNhan = 0): boolean {
-    if (joinerSatNhan >= NAME_TIER_ORANGE_FROM) return true;
+    if (joinerSatNhan >= nameTierOrangeFrom()) return true;
     const now = Date.now();
-    return this.players().some((p) => !p.transferring && this.satNhanOf(p, now) >= NAME_TIER_ORANGE_FROM);
+    return this.players().some((p) => !p.transferring && this.satNhanOf(p, now) >= nameTierOrangeFrom());
   }
 
   /**
@@ -1135,7 +1129,7 @@ export class MapRoom extends DurableObject<Env> {
     if (this.sim) return; // another path created it while storage was read
     const sim = this.ensureSim(mapId, stored)!;
     this.ranksJson = stored ? JSON.stringify(stored) : null;
-    if (BOSSES[mapId]) {
+    if (bossKind(mapId)) {
       sim.enableBoss((await this.ctx.storage.get<number>("pity")) ?? 0, await getBossKills(this.env.DB, mapId).catch(() => 0));
       this.pityStored = sim.pity;
       // The claim says which room holds the map's boss; if it is this one, the boss stands again (at full health: its health is not kept across a sleep).
@@ -1411,7 +1405,7 @@ export class MapRoom extends DurableObject<Env> {
         return;
       case "mp": {
         const entry = sockets.get(ev.playerId);
-        if (entry) this.send(entry.ws, { t: "mp", mp: ev.mp, maxMp: ev.maxMp, regenInMs: ev.regenInMs, perSec: MP_REGEN_PER_S });
+        if (entry) this.send(entry.ws, { t: "mp", mp: ev.mp, maxMp: ev.maxMp, regenInMs: ev.regenInMs, perSec: mpRegenPerS() });
         return;
       }
       case "cast_ok": {
@@ -2107,7 +2101,7 @@ export class MapRoom extends DurableObject<Env> {
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
     if (!spot || spot.kind !== "quest") return this.send(ws, { t: "quest_error", reason: "far" });
-    if (this.satNhanOf(state, now) >= NAME_TIER_ORANGE_FROM) return this.send(ws, { t: "quest_error", reason: "murderer" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "quest_error", reason: "murderer" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
@@ -2209,7 +2203,7 @@ export class MapRoom extends DurableObject<Env> {
     const spot = npcNear(getMap(state.mapId), npcId, here.x, here.y);
     if (!spot) return this.send(ws, { t: "inv_error", reason: "far" });
     // Orange and red names (sát nhân over 200) may not deal with any NPC.
-    if (this.satNhanOf(state, now) >= NAME_TIER_ORANGE_FROM) return this.send(ws, spot.kind === "quest" ? { t: "quest_error", reason: "murderer" } : { t: "inv_error", reason: "murderer" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, spot.kind === "quest" ? { t: "quest_error", reason: "murderer" } : { t: "inv_error", reason: "murderer" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
@@ -2388,7 +2382,7 @@ export class MapRoom extends DurableObject<Env> {
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
     if (!spot || spot.kind !== "smith") return this.send(ws, { t: "inv_error", reason: "far" });
-    if (this.satNhanOf(state, now) >= NAME_TIER_ORANGE_FROM) return this.send(ws, { t: "inv_error", reason: "murderer" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "inv_error", reason: "murderer" });
     if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
@@ -2585,7 +2579,7 @@ export class MapRoom extends DurableObject<Env> {
   /** Tells the client its MP (after a change of max MP the client's extrapolation would otherwise use the old maximum). */
   private sendMp(ws: WebSocket, profile: PlayerProfile, now: number): void {
     const e = this.sim?.mpEvent(profile, now);
-    if (e?.t === "mp") this.send(ws, { t: "mp", mp: e.mp, maxMp: e.maxMp, regenInMs: e.regenInMs, perSec: MP_REGEN_PER_S });
+    if (e?.t === "mp") this.send(ws, { t: "mp", mp: e.mp, maxMp: e.maxMp, regenInMs: e.regenInMs, perSec: mpRegenPerS() });
   }
 
   /** Who is casting: the live profile in a combat map, otherwise the saved row. */
@@ -2700,7 +2694,7 @@ export class MapRoom extends DurableObject<Env> {
       const charRow = profileNow ? null : await getCharacterById(this.env.DB, id);
       const rootGrade = profileNow?.rootGrade ?? charRow?.root_grade ?? 0;
       // The hướng tu (Đan tu) add percent to the points of a Ngộ Đạo Đan.
-      const points = Math.round(MASTERY_PILL_POINTS * (1 + pathBonuses(profileNow?.paths ?? parsePaths(charRow?.paths)).masteryPct / 100));
+      const points = Math.round(tuning().skills.pillPoints * (1 + pathBonuses(profileNow?.paths ?? parsePaths(charRow?.paths)).masteryPct / 100));
       const next = addMastery(row.level, row.mastery, points, skillGrade(def, rootGrade));
       if (next.level === row.level && next.mastery === row.mastery) return this.send(ws, { t: "inv_error", reason: "not_needed" }); // already at the top
       const hasPill = (await this.getBag(id)).items.some((i) => getItemDef(i.type)?.masteryPills !== undefined);
@@ -2820,7 +2814,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!spot || spot.kind !== "waygate" || !isWaygateTown(state.mapId)) return void this.send(ws, { t: "inv_error", reason: "far" });
     const to = msg.to as MapId;
     if (!isWaygateTown(to) || to === state.mapId) return void this.send(ws, { t: "inv_error", reason: "invalid" });
-    if (this.satNhanOf(state, now) >= NAME_TIER_ORANGE_FROM) return void this.send(ws, { t: "inv_error", reason: "murderer" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return void this.send(ws, { t: "inv_error", reason: "murderer" });
     if (state.bt) return void this.send(ws, { t: "inv_error", reason: "breaking" });
     if (state.tp) return void this.send(ws, { t: "inv_error", reason: "busy" });
     if (this.isMoving(state)) return void this.send(ws, { t: "inv_error", reason: "moving" });
@@ -3135,7 +3129,7 @@ export class MapRoom extends DurableObject<Env> {
     const won = reason === "timeout" && rollBreakthrough(bt.ratePct, rand);
     if (mapId && !getMap(mapId).safe) await this.wake(mapId).catch((err) => console.error("wake failed", err));
     if (this.sim?.getPlayer(id)) await this.flushProgress(id);
-    const loss = Math.round(expToNext(bt.from, 9) * BREAKTHROUGH_FAIL_EXP_LOSS);
+    const loss = Math.round(expToNext(bt.from, 9) * breakthroughFailExpLoss());
     try {
       if (won) {
         const row = await getCharacterById(this.env.DB, id);
@@ -3420,7 +3414,7 @@ export class MapRoom extends DurableObject<Env> {
 
   /** A marker left in D1 by a room that was lost: counts as a failed breakthrough. Returns the EXP lost. */
   private async settleStaleBreakthrough(row: CharacterRow): Promise<number> {
-    const loss = Math.round(expToNext(row.realm, 9) * BREAKTHROUGH_FAIL_EXP_LOSS);
+    const loss = Math.round(expToNext(row.realm, 9) * breakthroughFailExpLoss());
     try {
       await commitBreakthroughFailure(this.env.DB, row.id, row.bt_started_at as number, loss, expToNext(row.realm, 9));
     } catch (err) {
@@ -3591,7 +3585,7 @@ export class MapRoom extends DurableObject<Env> {
 
   private noteBlow(from: string, to: string, now: number): void {
     this.blows.set(`${from}>${to}`, now);
-    if (this.blows.size > 400) for (const [k, t] of this.blows) if (now - t > GRAY_WINDOW_MS) this.blows.delete(k);
+    if (this.blows.size > 400) for (const [k, t] of this.blows) if (now - t > grayWindowMs()) this.blows.delete(k);
   }
 
   /** The PK switch: only the player's own choice, off at every join. A safe map keeps it but nobody can be attacked there. */
@@ -3631,7 +3625,7 @@ export class MapRoom extends DurableObject<Env> {
     const victimSn = this.satNhanOf(victim.state, now);
     const hitMeAt = this.blows.get(`${victimId}>${killerId}`);
     // Self defence: the victim hit the killer in the last 3 minutes and was showing white or yellow to the killer.
-    const selfDefense = nameTier(victimSn) <= 1 && hitMeAt !== undefined && now - hitMeAt < GRAY_WINDOW_MS;
+    const selfDefense = nameTier(victimSn) <= 1 && hitMeAt !== undefined && now - hitMeAt < grayWindowMs();
     const killerSn = this.satNhanOf(killer.state, now);
     const r = applyPvpKill(this.pkScoresOf(killer.state, now), this.pkScoresOf(victim.state, now), victimSn, selfDefense, killerSn);
     for (const [entry, scores] of [[killer, r.killer], [victim, r.victim]] as const) {

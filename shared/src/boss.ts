@@ -14,12 +14,22 @@ export function bossSpawnChance(): number {
   return tuning().bossSpawn.chance;
 }
 /** A claim older than this is treated as lost (a room that never came back), so a map cannot stay without a boss forever. */
-export const BOSS_CLAIM_TTL_MS = 24 * 60 * 60 * 1000;
+export function bossClaimTtlMs(): number {
+  return tuning().boss.claimTtlMs;
+}
 
 /** The species of the boss of each map (see MONSTERS) and its bậc: the highest of the realm, so a group is needed. */
-export const BOSSES: Readonly<Record<MapId, string | null>> = { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang" };
+export function bossKind(mapId: string): string | null {
+  return tuning().boss.species[mapId] ?? null;
+}
+/** Every species that is a boss on some map. */
+export function bossKinds(): string[] {
+  return Object.values(tuning().boss.species).filter((k): k is string => k !== null);
+}
 /** The bậc the boss pays out at (EXP and drops follow it, as for any monster): the top of the map's realm. */
-export const BOSS_TIER = 9;
+export function bossTier(): number {
+  return tuning().boss.tier;
+}
 /** Where the boss stands when no random spot could be found (tile units): the middle of the map, off the monster groups and the guards (see CombatSim.spawnBoss, which picks a random spot). */
 export const BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { town: null, forest: screenToTile(MAP_SIZE.forest, 0, 0), cave: screenToTile(MAP_SIZE.cave, 0, 0), town2: null, kimdan: screenToTile(MAP_SIZE.kimdan, 0, 0), nguyenanh: screenToTile(MAP_SIZE.nguyenanh, 0, 0) };
 /**

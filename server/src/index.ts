@@ -1,3 +1,4 @@
+import { loadLiveConfig } from "./live-config";
 import { isItemId, isMapId } from "@game/shared";
 import { getSession, handleApi } from "./auth";
 import { ChatHub } from "./chat-hub";
@@ -106,7 +107,10 @@ export default {
         const stub = env.MAP_ROOM.get(env.MAP_ROOM.idFromName(room), { locationHint: "apac" });
         return json({ evicted: await stub.devEvict(url.searchParams.get("force") === "1") });
       }
-      if (url.pathname.startsWith("/api/")) return await handleApi(request, env, url);
+      if (url.pathname.startsWith("/api/")) {
+        await loadLiveConfig(env.DB); // routes that roll a character or build a sheet use the live numbers (cached)
+        return await handleApi(request, env, url);
+      }
       if (url.pathname === "/ws") return await handleWebSocket(request, env, url);
       if (url.pathname === "/ws/chat") return await handleChatSocket(request, env);
       return new Response("Not found", { status: 404 });

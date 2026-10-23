@@ -126,7 +126,7 @@ export const REPAIR_COST_PER_POINT = [1, 2, 4, 8] as const;
 /** Durability of generated gear. */
 export const DEFAULT_MAX_DURABILITY = 100;
 /** Share of the maximum durability every worn piece loses when its owner dies, by any cause. */
-export const DEATH_DURABILITY_FRACTION = 0.05;
+
 
 /**
  * Weapon families (kiếm, đao, thương, rìu, cung, quyền). The ids are the same as WEAPON_TAGS in constitutions.ts, so a
@@ -491,7 +491,7 @@ export function mustUnequip(items: readonly EquippedItem[], w: WearerCtx): Array
 }
 
 /** Durability a worn piece loses at death, or 0 for a piece that never wears out. */
-export function deathDurabilityLoss(max: number | undefined, fraction = DEATH_DURABILITY_FRACTION): number {
+export function deathDurabilityLoss(max: number | undefined, fraction = tuning().combat.deathDurabilityFraction): number {
   return max === undefined ? 0 : Math.max(1, Math.ceil(max * fraction));
 }
 

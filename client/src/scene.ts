@@ -1,9 +1,9 @@
 import Phaser from "phaser";
 import {
-  BOSSES,
+  bossKinds,
   bossRealmBonus,
   equipmentInfo,
-  MP_REGEN_PER_S,
+  mpRegenPerS,
   REGEN_PER_S,
   getItemDef,
   getSkill,
@@ -26,7 +26,7 @@ import {
   ATTACK_MIN_GAP_MS,
   MIN_MOVE_INTERVAL_MS,
   guardRealmBonus,
-  RANKS,
+  rankDef,
   REALMS,
   getMonsterDef,
   levelIndex,
@@ -69,7 +69,7 @@ import { Effects } from "./fx";
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
-import { setGearSetNames, setWornSkillSets, skillDisplayName, GRAY_WINDOW_MS, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
+import { setGearSetNames, setWornSkillSets, skillDisplayName, grayWindowMs, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
 import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
@@ -124,7 +124,7 @@ interface Actor {
 }
 
 function isBossKind(kind: string): boolean {
-  return (Object.values(BOSSES) as Array<string | null>).includes(kind);
+  return bossKinds().includes(kind);
 }
 
 interface MonsterActor {
@@ -712,7 +712,7 @@ export class GameScene extends Phaser.Scene {
         this.skillsUi.setSkills(msg.skills);
         this.hotbar.setSkills(msg.skills);
         this.hotbar.setSlots(msg.hotbar);
-        this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, MP_REGEN_PER_S);
+        this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, mpRegenPerS());
         this.hotbar.refresh(); // the slots were drawn before the MP was known (they dim what the MP cannot pay)
         this.buffs.set(msg.effects);
         for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
@@ -1245,7 +1245,7 @@ export class GameScene extends Phaser.Scene {
   private monsterName(kind: string, tier: number, rank: MonsterRank, guard = false): string {
     // A guard shows its name only (no realm, no element, no HP bar), like a player.
     if (guard) return getMonsterDef(kind)?.nameVi ?? kind;
-    const tag = isBossKind(kind) ? vi.rank.bossTag : RANKS[rank].tagVi;
+    const tag = isBossKind(kind) ? vi.rank.bossTag : rankDef(rank).tagVi;
     // The bậc shows as the realm tag and the bậc ("TC2"), like on gear.
     return `${getMonsterDef(kind)?.nameVi ?? kind} · ${REALMS[(this.map.realm ?? 0) + (isBossKind(kind) ? bossRealmBonus() : 0)]?.shortVi ?? ""}${tier}${tag ? ` · ${tag}` : ""}`;
   }
@@ -1368,7 +1368,7 @@ export class GameScene extends Phaser.Scene {
     for (const a of this.actors.values()) {
       if (a.id === this.selfId) continue;
       const hitAt = this.hitMeAt.get(a.id);
-      if (this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < GRAY_WINDOW_MS)) continue;
+      if (this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < grayWindowMs())) continue;
       const pos = currentPos(a, now);
       const s = toScreen(pos.x, pos.y);
       const d = Math.hypot(s.x - wx, s.y - 20 - wy);

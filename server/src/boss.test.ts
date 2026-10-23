@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { BOSS_CLAIM_TTL_MS, equipScore, makeEquipmentId } from "@game/shared";
+import { bossClaimTtlMs, equipScore, makeEquipmentId } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { bossHolder, claimBoss, refreshBoss, releaseBoss } from "./boss";
 import { getLeaderboard, resetLeaderboardCache } from "./leaderboard";
@@ -31,17 +31,17 @@ describe("the boss claim", () => {
 
   it("a claim older than the limit is lost, so a room that never came back cannot block the map forever", async () => {
     await claimBoss(db, "forest", "forest:ch1", 1000);
-    expect(await bossHolder(db, "forest", 1000 + BOSS_CLAIM_TTL_MS + 1)).toBeNull();
-    expect(await claimBoss(db, "forest", "forest:ch2", 1000 + BOSS_CLAIM_TTL_MS + 1)).toBe(true);
+    expect(await bossHolder(db, "forest", 1000 + bossClaimTtlMs() + 1)).toBeNull();
+    expect(await claimBoss(db, "forest", "forest:ch2", 1000 + bossClaimTtlMs() + 1)).toBe(true);
   });
 });
 
 describe("keeping the claim", () => {
   it("a refresh moves the 24-hour limit; once another room has the map the old holder's refresh fails", async () => {
     await claimBoss(db, "forest", "forest:1", 1000);
-    expect(await refreshBoss(db, "forest", "forest:1", 1000 + BOSS_CLAIM_TTL_MS - 5)).toBe(true);
+    expect(await refreshBoss(db, "forest", "forest:1", 1000 + bossClaimTtlMs() - 5)).toBe(true);
     // Without the refresh the claim would have lapsed by now; with it, another channel is still refused.
-    expect(await claimBoss(db, "forest", "forest:2", 1000 + BOSS_CLAIM_TTL_MS + 10)).toBe(false);
+    expect(await claimBoss(db, "forest", "forest:2", 1000 + bossClaimTtlMs() + 10)).toBe(false);
     // A claim that did lapse is taken by another room, and then the first room's refresh finds nothing of its own.
     await releaseBoss(db, "forest", "forest:1");
     expect(await claimBoss(db, "forest", "forest:2", 5000)).toBe(true);

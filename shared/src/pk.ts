@@ -22,9 +22,13 @@ export interface PkScores {
 export const NO_PK: Readonly<PkScores> = { satKhi: 0, satNhan: 0, hero: 0 };
 
 /** Characters below this level (Luyện Khí tầng 5) cannot be attacked in PvP, and cannot attack players either. */
-export const PK_PROTECTED_BELOW = levelIndex(0, 5);
+/** The level (flat index) below which nobody can attack or be attacked: the tuning `pvp.protectedBelow`. */
+export function pkProtectedBelow(): number {
+  const p = tuning().pvp.protectedBelow;
+  return levelIndex(p.realm, p.stage);
+}
 export function isPkProtected(realm: number, stage: number): boolean {
-  return levelIndex(realm, stage) < PK_PROTECTED_BELOW;
+  return levelIndex(realm, stage) < pkProtectedBelow();
 }
 
 /** The PK state a player chooses: 0 off (starts no fight), 1 PK (fights those who are PK or Đồ sát), 2 Đồ sát (fights anyone). */
@@ -58,24 +62,27 @@ export function satNhanDecayPerMin(): number {
 
 /** 0 white, 1 yellow, 2 orange, 3 red. */
 export type NameTier = 0 | 1 | 2 | 3;
-export const NAME_TIER_YELLOW_FROM = 1;
-export const NAME_TIER_ORANGE_FROM = 201;
-export const NAME_TIER_RED_FROM = 501;
+/** Sát nhân from which a name is yellow, orange, red (tuning `pvp.nameTiers`). */
+export const nameTierYellowFrom = (): number => tuning().pvp.nameTiers.yellowFrom;
+export const nameTierOrangeFrom = (): number => tuning().pvp.nameTiers.orangeFrom;
+export const nameTierRedFrom = (): number => tuning().pvp.nameTiers.redFrom;
 
 export function nameTier(satNhan: number): NameTier {
-  if (satNhan >= NAME_TIER_RED_FROM) return 3;
-  if (satNhan >= NAME_TIER_ORANGE_FROM) return 2;
-  if (satNhan >= NAME_TIER_YELLOW_FROM) return 1;
+  if (satNhan >= nameTierRedFrom()) return 3;
+  if (satNhan >= nameTierOrangeFrom()) return 2;
+  if (satNhan >= nameTierYellowFrom()) return 1;
   return 0;
 }
 
 /** A player who attacked you in the last 3 minutes shows grey to YOU (not to anyone else), unless their name is orange or red. */
-export const GRAY_WINDOW_MS = 3 * 60_000;
+export function grayWindowMs(): number {
+  return tuning().combat.grayWindowMs;
+}
 
 /** How a name is shown to one viewer: the real tier, or "gray" when a white or yellow player recently attacked that viewer. */
 export type NameColor = NameTier | "gray";
 export function displayColor(tier: NameTier, lastAttackedViewerAt: number | undefined, now: number): NameColor {
-  return tier <= 1 && lastAttackedViewerAt !== undefined && now - lastAttackedViewerAt < GRAY_WINDOW_MS ? "gray" : tier;
+  return tier <= 1 && lastAttackedViewerAt !== undefined && now - lastAttackedViewerAt < grayWindowMs() ? "gray" : tier;
 }
 
 /** The sát nhân after `ms` of being online (it only falls while online; never below 0). */
@@ -84,10 +91,7 @@ export function decayedSatNhan(satNhan: number, ms: number): number {
 }
 
 // ---- anh hùng ----
-export const HERO_PER_ORANGE = 20;
-export const HERO_PER_RED = 50;
-export const HERO_TIER_1 = 200;
-export const HERO_TIER_2 = 500;
+// (the numbers of the anh hùng points are in the tuning, `pvp.hero`)
 
 export interface HeroBonus {
   /** Percent of extra maximum MP (linh lực). */
@@ -98,8 +102,9 @@ export interface HeroBonus {
 
 /** 200 points: +5% linh lực; 500 points: +10% linh lực and +5% drop chance. Not cumulative: the higher step replaces the lower. */
 export function heroBonus(hero: number): HeroBonus {
-  if (hero >= HERO_TIER_2) return { mpPct: 10, dropPct: 5 };
-  if (hero >= HERO_TIER_1) return { mpPct: 5, dropPct: 0 };
+  const h = tuning().pvp.hero;
+  if (hero >= h.tier2) return { ...h.bonus2 };
+  if (hero >= h.tier1) return { ...h.bonus1 };
   return { mpPct: 0, dropPct: 0 };
 }
 
@@ -118,7 +123,7 @@ export function applyPvpKill(killer: PkScores, victim: PkScores, victimSatNhan: 
   const next: PkScores = { satKhi: killer.satKhi + tuning().pvp.satKhi.perKill, satNhan: killerSatNhan, hero: killer.hero };
   if (tier >= 2) {
     // Killing an orange or red name: hero points while the killer's sát nhân is 0 (nothing carries over), otherwise it only brings sát nhân down.
-    if (killerSatNhan === 0) next.hero += tier === 3 ? HERO_PER_RED : HERO_PER_ORANGE;
+    if (killerSatNhan === 0) next.hero += tier === 3 ? tuning().pvp.hero.perRed : tuning().pvp.hero.perOrange;
     else next.satNhan = Math.max(0, killerSatNhan - (tier === 3 ? tuning().pvp.satNhan.lostKillingRed : tuning().pvp.satNhan.lostKillingOrange));
   } else if (!selfDefense) {
     // Sát nhân only rises while the killer has no hero points; a killer with hero points just loses them.

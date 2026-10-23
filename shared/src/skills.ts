@@ -1,4 +1,4 @@
-import { tuning } from "./tuning";
+import { tuning, tuningGeneration } from "./tuning";
 import type { SpiritualRoot } from "./character";
 import { ALL_ROOTS, SPIRITUAL_ROOTS } from "./character";
 import type { MonsterRank } from "./monsters";
@@ -226,9 +226,25 @@ export const SKILLS: readonly SkillDef[] = [
 ];
 
 const BY_ID = new Map(SKILLS.map((s) => [s.id, s]));
+const skillCache = new Map<string, SkillDef>();
+let skillCacheGeneration = -1;
 
+/** A skill with the numbers of the tuning (`skillOverrides`: power, MP cost, cooldown, range) over the ones the templates give. */
 export function getSkill(id: string): SkillDef | undefined {
-  return BY_ID.get(id);
+  const base = BY_ID.get(id);
+  if (!base) return undefined;
+  const live = tuning().skillOverrides[id];
+  if (!live) return base;
+  if (skillCacheGeneration !== tuningGeneration()) {
+    skillCache.clear();
+    skillCacheGeneration = tuningGeneration();
+  }
+  let def = skillCache.get(id);
+  if (!def) {
+    def = { ...base, ...live };
+    skillCache.set(id, def);
+  }
+  return def;
 }
 
 export function isSkillId(v: unknown): v is string {
@@ -384,9 +400,13 @@ export function skillGrade(def: SkillDef, rootGrade: number, gearGrade?: number)
 
 // ---- MP, hotbar ----
 
-/** MP regeneration: fraction of max MP per second, starting this long after the last time the character was hit. */
-export const MP_REGEN_PER_S = 0.02;
-export const MP_REGEN_DELAY_MS = 5000;
+/** MP regeneration (tuning `combat`): fraction of max MP per second, starting this long after the last time the character was hit. */
+export function mpRegenPerS(): number {
+  return tuning().combat.mpRegenPerS;
+}
+export function mpRegenDelayMs(): number {
+  return tuning().combat.mpRegenDelayMs;
+}
 
 /** Hotbar: 8 slots on keys 1-8. A slot is "" (empty), "s:<skill id>[:<element>]" or "i:<item type>". */
 export const HOTBAR_SLOTS = 8;

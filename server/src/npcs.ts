@@ -8,6 +8,7 @@ import { MAP_IDS, NPC_KINDS, setAllNpcs, startingNpcs, type NpcSpot } from "@gam
  */
 const TTL_MS = 30_000;
 type Spot = NpcSpot & { mapId: string };
+let starting: ReturnType<typeof startingNpcs> | undefined;
 let cache: { value: Spot[]; version: number; checkedAt: number } | null = null;
 
 interface Row {
@@ -46,7 +47,8 @@ function valid(r: Row): boolean {
 
 async function load(db: D1Database): Promise<{ value: Spot[]; version: number }> {
   const known = new Set((await db.prepare("SELECT map_id, npc_id FROM npc_spots").all<{ map_id: string; npc_id: string }>()).results.map((r) => `${r.map_id}:${r.npc_id}`));
-  const missing = startingNpcs().filter((n) => !known.has(`${n.mapId}:${n.id}`));
+  starting ??= startingNpcs(); // builds every map once per isolate
+  const missing = starting.filter((n) => !known.has(`${n.mapId}:${n.id}`));
   if (missing.length > 0) await seed(db, missing);
   const [versionRow, rows] = await Promise.all([
     db.prepare("SELECT version FROM config_versions WHERE name = 'npcs'").first<{ version: number }>(),

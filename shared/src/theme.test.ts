@@ -16,4 +16,13 @@ describe("theme", () => {
     expect(parseTheme(null)).toEqual(DEFAULT_THEME);
     expect(parseTheme({ gradeColors: ["rgba(1, 2, 3, 0.5)"] }).gradeColors[0]).toBe("rgba(1, 2, 3, 0.5)");
   });
+
+  it("takes palette entries that are colours with a safe name, and keeps the rest of the default palette", () => {
+    const t = parseTheme({ ui: { "ui-text": "#fff", "ui-border": "red; x", "bad name": "#000", "ui-new": "rgb(1, 2, 3)" } });
+    expect(t.ui["ui-text"]).toBe("#fff");
+    expect(t.ui["ui-border"]).toBe(DEFAULT_THEME.ui["ui-border"]);
+    expect(t.ui["bad name"]).toBeUndefined();
+    expect(t.ui["ui-new"]).toBe("rgb(1, 2, 3)");
+    expect(t.ui["ui-page"]).toBe(DEFAULT_THEME.ui["ui-page"]);
+  });
 });
