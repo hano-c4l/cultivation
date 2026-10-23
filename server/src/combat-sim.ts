@@ -1,7 +1,7 @@
 import {
   PLAYER_ATTACK_COOLDOWN_MS,
   PLAYER_ATTACK_RANGE,
-  REGEN_DELAY_MS,
+  regenDelayMs,
   REGEN_PER_S,
   CLUSTERS,
   GUARDS,
@@ -10,16 +10,17 @@ import {
   guardRealmBonus,
   guardTier,
   guardSkills,
-  NAME_TIER_ORANGE_FROM,
+  nameTierOrangeFrom,
   guardStats,
-  NAME_TIER_RED_FROM,
+  nameTierRedFrom,
   decayedSatNhan,
-  RANKS,
-  BOSSES,
+  isRank,
+  bossKind,
+  tuningGeneration,
   BOSS_SPOTS,
   bossReward,
   bossSpawnChance,
-  BOSS_TIER,
+  bossTier,
   bossPityKills,
   bossShares,
   bossStats,
@@ -41,13 +42,13 @@ import {
   rollPillDrop,
   rollOreDrop,
   rollRefineDrop,
-  MP_REGEN_DELAY_MS,
+  mpRegenDelayMs,
   modifierTotal,
   restoreVitals,
   type ConstitutionEffect,
   type GearAffinity,
   type Vitals,
-  MP_REGEN_PER_S,
+  mpRegenPerS,
   availableSkills,
   getSkill,
   type SkillDef,
@@ -96,7 +97,7 @@ import {
   type SpiritualRoot,
   addMastery,
   heroBonus,
-  GRAY_WINDOW_MS,
+  grayWindowMs,
   canStartPvp,
   isPkProtected,
   type PkMode,
@@ -180,7 +181,7 @@ export interface PlayerProfile extends ProfileSeed {
   potionReadyAt: number;
   /**
    * MP is stored as `mp` at time `mpAt` and worked out for any later time (currentMp), so regeneration never needs a tick:
-   * a room that is otherwise idle can pause. It regenerates from MP_REGEN_DELAY_MS after the last hit taken.
+   * a room that is otherwise idle can pause. It regenerates from mpRegenDelayMs() after the last hit taken.
    */
   maxMp: number;
   mp: number;
@@ -435,7 +436,7 @@ export class CombatSim {
       return;
     }
     const [savedRank, savedElement] = (saved ?? "").split("|");
-    const known = savedRank !== undefined && savedRank in RANKS;
+    const known = savedRank !== undefined && isRank(savedRank);
     m.rank = known ? (savedRank as MonsterRank) : rollRank(this.rand());
     m.combatant.element = (SPIRITUAL_ROOTS as readonly string[]).includes(savedElement ?? "") ? (savedElement as SpiritualRoot) : known ? m.def.element : rollMonsterElement(this.rand());
     const stats = monsterStats(m.def, this.realm, m.tier, m.rank);
@@ -581,7 +582,7 @@ export class CombatSim {
    * random spot of the map. Null when it cannot (already one, no boss for this map).
    */
   spawnBoss(mapId: MapId, now: number, at?: Vec2): MonsterSnapshot | null {
-    const kind = BOSSES[mapId];
+    const kind = bossKind(mapId);
     const def = kind ? getMonsterDef(kind) : undefined;
     if (!def || this.hasBoss) return null;
     const home = (at ? nearestStandablePoint(this.map, at[0], at[1], 3) : null) ?? this.randomBossHome(mapId);
@@ -589,7 +590,7 @@ export class CombatSim {
     const m: Monster = {
       id: `m${this.nextMonsterId++}`,
       def,
-      tier: BOSS_TIER,
+      tier: bossTier(),
       rank: "rare2",
       maxHp: 0,
       combatant: { attack: 0, defense: 0, critRate: 5, dodgeRate: 0, element: rollMonsterElement(this.rand()) },
@@ -861,12 +862,12 @@ export class CombatSim {
     return effectiveSkill(def, skillContextOf(p, def));
   }
 
-  /** MP at time `now`: the stored value plus regeneration since it was stored (starting MP_REGEN_DELAY_MS after the last hit). */
+  /** MP at time `now`: the stored value plus regeneration since it was stored (starting mpRegenDelayMs() after the last hit). */
   currentMp(p: PlayerProfile, now: number): number {
     if (p.mp >= p.maxMp) return p.maxMp;
-    const from = Math.max(p.mpAt, p.lastHurtAt + MP_REGEN_DELAY_MS);
+    const from = Math.max(p.mpAt, p.lastHurtAt + mpRegenDelayMs());
     if (now <= from) return p.mp;
-    return Math.min(p.maxMp, p.mp + Math.floor(((now - from) / 1000) * Math.max(1, p.maxMp * MP_REGEN_PER_S)));
+    return Math.min(p.maxMp, p.mp + Math.floor(((now - from) / 1000) * Math.max(1, p.maxMp * mpRegenPerS())));
   }
 
   /** Stores the MP worked out for `now` (call before changing it or before `lastHurtAt` moves). */
@@ -876,7 +877,7 @@ export class CombatSim {
   }
 
   mpEvent(p: PlayerProfile, now: number): SimEvent {
-    return { t: "mp", playerId: p.id, mp: this.currentMp(p, now), maxMp: p.maxMp, regenInMs: Math.max(0, p.lastHurtAt + MP_REGEN_DELAY_MS - now) };
+    return { t: "mp", playerId: p.id, mp: this.currentMp(p, now), maxMp: p.maxMp, regenInMs: Math.max(0, p.lastHurtAt + mpRegenDelayMs() - now) };
   }
 
   /**
@@ -954,7 +955,7 @@ export class CombatSim {
   /** Whether `q` hit `p` in the last 3 minutes (a fight p did not start: it may defend itself whatever its PK state). */
   private hitRecently(p: PlayerProfile, qid: string): boolean {
     const at = p.hitBy.get(qid);
-    return at !== undefined && this.clock - at < GRAY_WINDOW_MS;
+    return at !== undefined && this.clock - at < grayWindowMs();
   }
 
   /** A player went through a portal: nobody keeps a "hit me" mark or a retaliation aimed at them. (A mere reconnect does not call this.) */
@@ -1145,7 +1146,7 @@ export class CombatSim {
   /** Whether a monster starts a chase on this player: any monster goes for anyone in range, a guard only for red names and the ones who hit it. */
   private wouldAggro(m: Monster, p: PlayerProfile): boolean {
     if (!m.guard) return true;
-    return m.damage.has(p.id) || this.satNhanNow(p) >= NAME_TIER_ORANGE_FROM;
+    return m.damage.has(p.id) || this.satNhanNow(p) >= nameTierOrangeFrom();
   }
 
   /** A player's sát nhân at the sim clock (the stored value less 5 a minute since it was set). */
@@ -1247,7 +1248,7 @@ export class CombatSim {
       // A retaliation lasts only while the player still has that attacker targeted.
       if (p.retaliateId !== null && p.targetId !== p.retaliateId) p.retaliateId = null;
 
-      if (p.hp < p.maxHp && now - p.lastHurtAt >= REGEN_DELAY_MS && now - p.lastRegenAt >= 1000) {
+      if (p.hp < p.maxHp && now - p.lastHurtAt >= regenDelayMs() && now - p.lastRegenAt >= 1000) {
         p.lastRegenAt = now;
         p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(p.maxHp * REGEN_PER_S)));
         events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
@@ -1629,9 +1630,14 @@ export class CombatSim {
 }
 
 const guardSnapshotCache = new Map<MapId, MonsterSnapshot[]>();
+let guardSnapshotGeneration = -1;
 
 /** The guards of a map as they stand at home, for a safe map that has no simulation running (so they can still be seen). */
 export function staticGuardSnapshots(mapId: MapId): MonsterSnapshot[] {
+  if (guardSnapshotGeneration !== tuningGeneration()) {
+    guardSnapshotCache.clear(); // the guards' stats and species come from the tuning
+    guardSnapshotGeneration = tuningGeneration();
+  }
   let list = guardSnapshotCache.get(mapId);
   if (!list) {
     list = new CombatSim(getMap(mapId), mapId, Math.random, 0).snapshots(0).filter((m) => m.guard);

@@ -1,14 +1,14 @@
-import { BOSS_CLAIM_TTL_MS } from "@game/shared";
+import { bossClaimTtlMs } from "@game/shared";
 
 /**
  * The claim on a map's boss (table `world_boss`): one row per map, so one boss at a time across every channel of the map. The boss itself
  * (position, health) lives in the room that holds the claim; the row only says which room that is.
  */
 
-/** Tries to take the map's boss for `room`. A claim older than BOSS_CLAIM_TTL_MS is treated as lost and cleared first. True when this room now holds it. */
+/** Tries to take the map's boss for `room`. A claim older than bossClaimTtlMs() is treated as lost and cleared first. True when this room now holds it. */
 export async function claimBoss(db: D1Database, mapId: string, room: string, now = Date.now()): Promise<boolean> {
   const results = await db.batch([
-    db.prepare("DELETE FROM world_boss WHERE map_id = ? AND claimed_at < ?").bind(mapId, now - BOSS_CLAIM_TTL_MS),
+    db.prepare("DELETE FROM world_boss WHERE map_id = ? AND claimed_at < ?").bind(mapId, now - bossClaimTtlMs()),
     db.prepare("INSERT OR IGNORE INTO world_boss (map_id, room, claimed_at) VALUES (?, ?, ?)").bind(mapId, room, now),
     db.prepare("SELECT room FROM world_boss WHERE map_id = ?").bind(mapId),
   ]);
@@ -20,7 +20,7 @@ export async function claimBoss(db: D1Database, mapId: string, room: string, now
 export async function bossHolder(db: D1Database, mapId: string, now = Date.now()): Promise<string | null> {
   const row = await db
     .prepare("SELECT room FROM world_boss WHERE map_id = ? AND claimed_at >= ?")
-    .bind(mapId, now - BOSS_CLAIM_TTL_MS)
+    .bind(mapId, now - bossClaimTtlMs())
     .first<{ room: string }>();
   return row?.room ?? null;
 }

@@ -77,4 +77,16 @@ describe("the 2j tuning table", () => {
     expect(baseSkill.at(0)).toBeCloseTo(before * 2, 5);
     expect(got.theme).toEqual(DEFAULT_TUNING.theme);
   });
+
+  it("replaces a row nobody edited that no longer fits the group's shape, and leaves an admin's row alone", async () => {
+    await getTuning(db);
+    raw.prepare("UPDATE game_tuning SET value = ? WHERE name = 'pvp'").run(JSON.stringify({ satKhi: DEFAULT_TUNING.pvp.satKhi })); // an old shape, no updated_by
+    raw.prepare("UPDATE game_tuning SET value = ?, updated_by = 'admin' WHERE name = 'theme'").run(JSON.stringify({ broken: true }));
+    raw.exec("UPDATE config_versions SET version = version + 1 WHERE name = 'tuning'");
+    const got = await getTuning(db, Date.now() + 60_000);
+    expect(got.pvp).toEqual(DEFAULT_TUNING.pvp);
+    expect((JSON.parse((raw.prepare("SELECT value FROM game_tuning WHERE name = 'pvp'").get() as { value: string }).value) as { hero: unknown }).hero).toBeDefined();
+    expect(JSON.parse((raw.prepare("SELECT value FROM game_tuning WHERE name = 'theme'").get() as { value: string }).value)).toEqual({ broken: true }); // kept, served as the default
+    expect(got.theme).toEqual(DEFAULT_TUNING.theme);
+  });
 });

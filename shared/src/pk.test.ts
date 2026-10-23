@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { deathDurabilityLoss } from "./equipment-data";
 import { parseClientMessage } from "./protocol";
-import { deathDurabilityOf, satNhanAfterDeath, GRAY_WINDOW_MS, applyGuardKill, applyPvpKill, canStartPvp, decayedSatNhan, displayColor, heroBonus, isPkProtected, nameTier, satKhiDamagePct, type PkScores } from "./pk";
+import { deathDurabilityOf, satNhanAfterDeath, grayWindowMs, applyGuardKill, applyPvpKill, canStartPvp, decayedSatNhan, displayColor, heroBonus, isPkProtected, nameTier, satKhiDamagePct, type PkScores } from "./pk";
 
 const scores = (satKhi = 0, satNhan = 0, hero = 0): PkScores => ({ satKhi, satNhan, hero });
 
@@ -34,8 +34,8 @@ describe("name colours", () => {
   it("a white or yellow player who attacked the viewer in the last 3 minutes shows grey to that viewer only", () => {
     const now = 1_000_000;
     expect(displayColor(0, now - 1000, now)).toBe("gray");
-    expect(displayColor(1, now - GRAY_WINDOW_MS + 1, now)).toBe("gray");
-    expect(displayColor(1, now - GRAY_WINDOW_MS, now)).toBe(1); // 3 minutes without attacking: back to normal
+    expect(displayColor(1, now - grayWindowMs() + 1, now)).toBe("gray");
+    expect(displayColor(1, now - grayWindowMs(), now)).toBe(1); // 3 minutes without attacking: back to normal
     expect(displayColor(0, undefined, now)).toBe(0); // everyone else sees the real colour
     expect(displayColor(2, now - 1000, now)).toBe(2); // orange and red stay orange and red
     expect(displayColor(3, now - 1000, now)).toBe(3);

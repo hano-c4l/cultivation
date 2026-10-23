@@ -1,5 +1,5 @@
-import { LOW_MAP_EXP_MULT } from "./progression-data";
-import { RANKS, homeExpCap, type MonsterRank } from "./monsters";
+import { tuning } from "./tuning";
+import { rankDef, homeExpCap, type MonsterRank } from "./monsters";
 import { elementOutcome, monsterBaseExp, type Element } from "./progression";
 
 /** Server tick rate for combat (ms). */
@@ -7,10 +7,10 @@ export const TICK_MS = 100;
 /** Player melee reach in tiles and the delay between auto-attacks. */
 export const PLAYER_ATTACK_RANGE = 1.6;
 export const PLAYER_ATTACK_COOLDOWN_MS = 1000;
-/** Fraction of current-stage EXP lost on death (the stage itself is never lost). */
-export const DEATH_EXP_LOSS = 0.1;
-/** After this long without taking damage a character regenerates; fraction of max HP per second. */
-export const REGEN_DELAY_MS = 5000;
+/** After this long without taking damage a character regenerates (tuning `combat.hpRegenDelayMs`); fraction of max HP per second. */
+export function regenDelayMs(): number {
+  return tuning().combat.hpRegenDelayMs;
+}
 export const REGEN_PER_S = 0.02;
 export const ATTACK_MIN_GAP_MS = 200;
 
@@ -69,12 +69,12 @@ export interface KillSource {
  * your realm is scaled by LOW_MAP_EXP_MULT per realm of difference.
  */
 export function killExp(source: KillSource, playerRealm: number, expBonusPct: number): number {
-  let base = monsterBaseExp(source.realm, source.tier) * RANKS[source.rank].expMult;
+  let base = monsterBaseExp(source.realm, source.tier) * rankDef(source.rank).expMult;
   if (source.realm > playerRealm) {
     const cap = homeExpCap(playerRealm, source.rank);
     if (cap !== undefined) base = Math.min(base, cap);
   } else if (source.realm < playerRealm) {
-    base *= LOW_MAP_EXP_MULT ** (playerRealm - source.realm);
+    base *= tuning().exp.lowMapMult ** (playerRealm - source.realm);
   }
   return expForKill(base, expBonusPct);
 }
@@ -115,7 +115,7 @@ export function expForKill(baseExp: number, expBonusPct: number): number {
 }
 
 export function expLostOnDeath(exp: number): number {
-  return Math.floor(Math.max(0, exp) * DEATH_EXP_LOSS);
+  return Math.floor(Math.max(0, exp) * tuning().combat.deathExpLoss);
 }
 
 /** Valid monster instance id as sent by clients (m + digits). */

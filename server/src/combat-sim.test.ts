@@ -1,4 +1,4 @@
-import { masteryNeeded, CLUSTERS, GUARDS, RANKS, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
+import { masteryNeeded, CLUSTERS, GUARDS, rankDef, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, skillContextOf, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -304,7 +304,7 @@ describe("CombatSim", () => {
     expect(elite.rank).toBe("rare1");
     expect(elite.maxHp).toBeGreaterThan(normal.maxHp);
     expect(elite.maxHp).toBeLessThan(rare.maxHp);
-    expect(RANKS.rare1.expMult).toBeLessThan(RANKS.rare2.expMult);
+    expect(rankDef("rare1").expMult).toBeLessThan(rankDef("rare2").expMult);
   });
 
   it("a rare monster pays exactly one player (the rule itself is tested on topContributor)", () => {
@@ -327,7 +327,7 @@ describe("CombatSim", () => {
 
   it("EXP: pace table, rank multiplier, cap when hunting above your realm", () => {
     expect(killExp({ realm: 0, tier: 1, rank: "normal" }, 0, 0)).toBe(monsterBaseExp(0, 1));
-    expect(killExp({ realm: 0, tier: 1, rank: "rare2" }, 0, 0)).toBe(Math.floor(monsterBaseExp(0, 1) * RANKS.rare2.expMult));
+    expect(killExp({ realm: 0, tier: 1, rank: "rare2" }, 0, 0)).toBe(Math.floor(monsterBaseExp(0, 1) * rankDef("rare2").expMult));
     // A Luyện Khí player in the Trúc Cơ cave gets no more than the best Luyện Khí monster of the same rank (bậc 9 of the forest).
     const capped = killExp({ realm: 1, tier: 7, rank: "normal" }, 0, 0);
     expect(capped).toBe(monsterBaseExp(0, 9));

@@ -5,6 +5,7 @@ export function applyTheme(theme: UiTheme): void {
   const root = document.documentElement.style;
   theme.realmColors.forEach((c, i) => root.setProperty(`--realm-${i}`, c));
   theme.gradeColors.forEach((c, i) => root.setProperty(`--grade-${i}`, c));
+  for (const [name, c] of Object.entries(theme.ui)) root.setProperty(`--${name}`, c);
 }
 
 /** Applies the colours of the live tuning (group `theme`, edited from D1) over the defaults; anything not a colour keeps its default. */

@@ -1,3 +1,4 @@
+import { getNpcs } from "./npcs";
 import {
   allNpcIds,
   SEED_QUESTS,
@@ -49,6 +50,7 @@ export async function loadQuestCatalog(db: D1Database): Promise<{ defs: QuestDef
   ]);
   // Columns win over the JSON for the fields an admin toggles; a row that is not valid JSON is a hard error (never half a catalogue).
   const defs = rows.results.map((r) => ({ ...(JSON.parse(r.def) as QuestDef), enabled: r.enabled === 1 }));
+  await getNpcs(db); // an NPC that exists only in D1 can be a giver: make sure the NPCs are installed before the check
   const problems = validateQuests(defs, allNpcIds());
   if (problems.length > 0) throw new Error(`quest catalogue is invalid: ${problems.join("; ")}`);
   return { defs, version: versionRow?.version ?? 0 };
