@@ -1,0 +1,77 @@
+:root {
+  --bg: #10141c;
+  --panel: #1b2130;
+  --line: #2a3248;
+  --text: #e8e4d8;
+  --muted: #9aa3b8;
+  --accent: #d6a94b;
+  --accent-text: #1b1405;
+  --link: #7fd6ff;
+  --err: #ff8a80;
+  --ok: #8bc34a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 "Be Vietnam Pro", system-ui, sans-serif; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button, input, select, textarea { font: inherit; color: inherit; }
+input, select, textarea { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #3a4560; background: var(--panel); }
+button { padding: 8px 14px; border-radius: 6px; border: 1px solid #3a4560; background: var(--panel); cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-text); font-weight: 600; border: 0; }
+button:disabled { opacity: 0.5; cursor: default; }
+.err { color: var(--err); }
+.ok { color: var(--ok); }
+.muted { color: var(--muted); }
+
+.layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+.side { background: var(--panel); border-right: 1px solid var(--line); padding: 12px; }
+.side h2 { font-size: 15px; margin: 4px 0 12px; }
+.side a, .side span.planned { display: block; padding: 6px 8px; border-radius: 6px; color: var(--text); }
+.side a.active { background: #2a3248; }
+.side a:hover { background: #232b3e; text-decoration: none; }
+.side span.planned { color: var(--muted); cursor: default; }
+.side .group { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; color: var(--muted); }
+.content { padding: 16px 20px; min-width: 0; }
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.topbar h1 { font-size: 20px; margin: 0; }
+.who { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+.toggle { display: none; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.card { display: block; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); }
+a.card:hover { border-color: var(--accent); text-decoration: none; }
+.card b { display: block; margin-bottom: 4px; }
+.card small { color: var(--muted); }
+.card.planned { opacity: 0.55; }
+
+.toolbar { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.toolbar input { max-width: 320px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th.sortable { cursor: pointer; user-select: none; }
+tbody tr.link { cursor: pointer; }
+tbody tr.link:hover { background: #1f2638; }
+.pager { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.pager select { width: auto; }
+
+.detail { max-width: 860px; }
+.fields { display: grid; grid-template-columns: 160px 1fr; gap: 6px 12px; margin: 12px 0; }
+.fields dt { color: var(--muted); }
+.fields dd { margin: 0; overflow-wrap: anywhere; }
+pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow: auto; max-height: 360px; margin: 0; }
+.actions { display: flex; gap: 8px; margin-top: 12px; }
+
+.login { max-width: 360px; margin: 12vh auto 0; padding: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.login h1 { font-size: 18px; margin: 0 0 12px; }
+.login label { display: block; margin-top: 10px; }
+.login button { width: 100%; margin-top: 14px; }
+.login .msg { min-height: 1.5em; margin-top: 10px; }
+
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr; }
+  .side { display: none; }
+  .side.open { display: block; }
+  .toggle { display: inline-block; }
+  .fields { grid-template-columns: 1fr; }
+}

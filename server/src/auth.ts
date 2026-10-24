@@ -20,7 +20,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminConstitutions, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
+import { adminAudit, adminAuditEntry, adminBagTabs, adminConstitutions, adminMe, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
 import { getCharacterByAccount, grantExp, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
@@ -276,6 +276,12 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return leaderboardApi(request, env);
     case "POST /api/character":
       return createCharacter(request, env);
+    case "GET /api/admin/me":
+      return adminMe(request, env);
+    case "GET /api/admin/audit":
+      return adminAudit(request, env, url);
+    case "GET /api/admin/audit-entry":
+      return adminAuditEntry(request, env, url);
     case "POST /api/admin/grant":
       return adminGrant(request, env);
     case "GET /api/admin/lookup":
