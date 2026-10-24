@@ -3,6 +3,7 @@
 // Usage: node tools/economy-smoke.mjs [http://localhost:8787]
 import { execFileSync } from "node:child_process";
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const base = process.argv[2] ?? "http://localhost:8787";
 if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(base)) {
   console.error("economy-smoke only runs against localhost");
@@ -72,8 +73,9 @@ check("bad currency is 400", (await grant(admin, { ...g, currency: "vang", amoun
 
 const view = await api(`/api/admin/character?id=${charId0}`, { cookie: admin.cookie });
 check(
-  "character view shows wallet and 2 ledger rows, newest first, with the actor's email",
-  view.status === 200 && view.data.wallet.linh_thach === 60 && view.data.ledger.length === 2 && view.data.ledger[0].delta === -40 && view.data.ledger[0].actor_email === admin.email,
+  "character view shows the wallet, the totals of the admin_grant group and the admin's two changes in the history, newest first, with the actor's email",
+  view.status === 200 && view.data.wallet.linh_thach === 60 && view.data.history.linh_thach.length === 2 && view.data.history.linh_thach[0].delta === -40 && view.data.history.linh_thach[0].actor_email === admin.email &&
+    view.data.totals.linh_thach.length === 1 && view.data.totals.linh_thach[0].group === "admin_grant" && view.data.totals.linh_thach[0].totalIn === 100 && view.data.totals.linh_thach[0].totalOut === 40,
   JSON.stringify(view.data),
 );
 
@@ -87,12 +89,17 @@ const sql = (q) => {
 };
 const charId = sql(`SELECT id FROM characters WHERE name='${player.name}'`)[0].id;
 const adminId = sql(`SELECT id FROM accounts WHERE email='${admin.email}'`)[0].id;
-const rows = sql(`SELECT delta, reason, actor, idempotency_key FROM currency_ledger WHERE character_id='${charId}' ORDER BY id`);
-check("ledger has exactly 2 rows (duplicate and overdraft left nothing)", rows.length === 2, `${rows.length}`);
-check("first ledger row is the +100 admin grant with the admin as actor",
-  rows[0]?.delta === 100 && rows[0]?.actor === adminId && rows[0]?.idempotency_key === `admin:${k1}` && rows[0]?.reason === "admin_grant:smoke", JSON.stringify(rows[0]));
-const sums = sql(`SELECT (SELECT SUM(delta) FROM currency_ledger WHERE character_id='${charId}') AS s, (SELECT balance FROM currency_balances WHERE character_id='${charId}' AND currency='linh_thach') AS b`)[0];
-check("SUM(delta) equals the balance", sums.s === sums.b && sums.b === 60, JSON.stringify(sums));
+const rows = sql(`SELECT delta, reason, actor FROM linh_thach_ledger WHERE character_id='${charId}' ORDER BY id`);
+check("the history has exactly 2 rows (duplicate and overdraft left nothing; both are admin changes, so both are traced)", rows.length === 2, `${rows.length}`);
+check("first history row is the +100 admin grant with the admin as actor",
+  rows[0]?.delta === 100 && rows[0]?.actor === adminId && rows[0]?.reason === "admin_grant:smoke", JSON.stringify(rows[0]));
+check("the grant's key is remembered (it expires after a week)", sql(`SELECT expires_at FROM currency_dedupe WHERE key = 'admin:${k1}'`)[0]?.expires_at > Date.now());
+const sums = sql(`SELECT (SELECT SUM(total_in) - SUM(total_out) FROM linh_thach_totals WHERE character_id='${charId}') AS s, (SELECT balance FROM currency_balances WHERE character_id='${charId}' AND currency='linh_thach') AS b`)[0];
+check("the totals add up to the balance", sums.s === sums.b && sums.b === 60, JSON.stringify(sums));
+await sleep(3000); // a request straight after wrangler d1 execute can be reset
+const chk = await api("/api/admin/economy-check", { cookie: admin.cookie });
+check("the economy check lists no mismatch for this character", chk.status === 200 && !chk.data.checks.flatMap((c) => c.mismatches).some((m) => m.characterId === charId), JSON.stringify(chk.data).slice(0, 200));
+check("the economy check is for admins only", (await api("/api/admin/economy-check", { cookie: player.cookie })).status === 403);
 
 console.log(failures === 0 ? "ECONOMY SMOKE PASSED" : `ECONOMY SMOKE FAILED (${failures})`);
 process.exit(failures === 0 ? 0 : 1);

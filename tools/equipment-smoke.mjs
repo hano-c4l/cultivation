@@ -138,13 +138,13 @@ c = await connect(reg.cookie);
 r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 check("repair without Linh Thạch is refused", r.some((m) => m.t === "inv_error" && m.reason === "funds"));
 sql(`INSERT INTO currency_balances (character_id, currency, balance) VALUES ('${charId}', 'linh_thach', 1000)`);
-sql(`INSERT INTO currency_ledger (character_id, currency, delta, reason, actor, idempotency_key, created_at) VALUES ('${charId}', 'linh_thach', 1000, 'test', 'smoke', 'eq-smoke-${run}', 0)`);
+sql(`INSERT INTO linh_thach_totals (character_id, grp, total_in, total_out, entries, updated_at) VALUES ('${charId}', 'test', 1000, 0, 1, 0) ON CONFLICT (character_id, grp) DO UPDATE SET total_in = total_in + 1000`);
 r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 const rep = r.find((m) => m.t === "repaired");
 check("repairing 50 lost points of a Hạ phẩm hat costs 50 Linh Thạch", rep?.cost === 50);
 check("the wallet shows the debit", r.some((m) => m.t === "wallet" && m.balance === 950));
 check("the hat is whole again", sql(`SELECT durability FROM item_instances WHERE owner_character_id = '${charId}' AND equip_slot = 'hat'`)[0].durability === 100);
-check("ledger and balance agree", sql(`SELECT (SELECT SUM(delta) FROM currency_ledger WHERE character_id = '${charId}') AS l, (SELECT balance FROM currency_balances WHERE character_id = '${charId}') AS b`)[0].l === 950);
+check("totals and balance agree", sql(`SELECT (SELECT SUM(total_in) - SUM(total_out) FROM linh_thach_totals WHERE character_id = '${charId}') AS l, (SELECT balance FROM currency_balances WHERE character_id = '${charId}') AS b`)[0].l === 950);
 r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 check("nothing left to repair", r.some((m) => m.t === "inv_error" && m.reason === "nothing"));
 

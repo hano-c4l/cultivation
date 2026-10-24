@@ -167,7 +167,6 @@ describe("durability", () => {
   it("repair debits Linh Thạch and restores durability in one batch; too little money changes nothing", async () => {
     const id = await wear("eq.weapon.u.0.1.4", 90); // grade 4: 8 per point, 10 points lost
     raw.exec("INSERT INTO currency_balances (character_id, currency, balance) VALUES ('char-a', 'linh_thach', 79)");
-    raw.exec("INSERT INTO currency_ledger (character_id, currency, delta, reason, actor, idempotency_key, created_at) VALUES ('char-a', 'linh_thach', 79, 'seed', 'test', 'seed-1', 0)");
     const bag = await loadBag(db, A);
     const plan = planRepair(st(bag), "all");
     expect(plan.ok && plan.cost).toBe(80);

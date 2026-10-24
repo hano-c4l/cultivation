@@ -60,10 +60,10 @@ describe("buying a bag tab", () => {
     expect(balance()).toBe(4000);
   });
 
-  it("a free tab (price 0) needs no ledger entry and is still guarded against a stale count", async () => {
+  it("a free tab (price 0) needs no currency entry and is still guarded against a stale count", async () => {
     await db.batch(addBagTabStatements(db, A, 1));
     expect(tabs()).toBe(2);
-    expect(raw.prepare("SELECT COUNT(*) AS n FROM currency_ledger").get()).toEqual({ n: 0 });
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM linh_thach_totals").get()).toEqual({ n: 0 });
     await expect(db.batch(addBagTabStatements(db, A, 1))).rejects.toThrow();
     expect(tabs()).toBe(2);
   });

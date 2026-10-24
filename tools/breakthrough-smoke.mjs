@@ -80,7 +80,7 @@ const give = (item, qty = 1) => fetch(`${httpBase}/api/dev/loot?room=${ROOM}&cha
 let ledgerN = 0;
 const fund = (amount) => {
   sql(`INSERT OR IGNORE INTO currency_balances (character_id, currency, balance) VALUES ('${charId}', 'linh_thach', 0)`);
-  sql(`INSERT INTO currency_ledger (character_id, currency, delta, reason, actor, idempotency_key, created_at) VALUES ('${charId}', 'linh_thach', ${amount}, 'test', 'smoke', 'bt-smoke-${run}-${++ledgerN}', 0)`);
+  sql(`INSERT INTO linh_thach_totals (character_id, grp, total_in, total_out, entries, updated_at) VALUES ('${charId}', 'test', ${amount}, 0, 1, 0) ON CONFLICT (character_id, grp) DO UPDATE SET total_in = total_in + ${amount}`);
   sql(`UPDATE currency_balances SET balance = balance + ${amount} WHERE character_id = '${charId}' AND currency = 'linh_thach'`);
 };
 

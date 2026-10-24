@@ -13,6 +13,17 @@ export type Wallet = Record<Currency, number>;
 
 export const EMPTY_WALLET: Readonly<Wallet> = { linh_thach: 0, cong_hien: 0, tien_ngoc: 0 };
 
+/**
+ * The reason group of a ledger reason: the part before the first ":" ("shop_buy:ren_giu_cap:1" -> "shop_buy"). Totals are kept per group
+ * (tables `<currency>_totals`); migration 0036 builds the same groups in SQL, so the two must stay the same rule. Any new reason is its own
+ * group with no migration.
+ */
+export function reasonGroup(reason: string): string {
+  const i = reason.indexOf(":");
+  const group = (i < 0 ? reason : reason.slice(0, i)).trim().slice(0, 40);
+  return group || "other";
+}
+
 /** Largest single amount a ledger entry may carry; keeps balances far below 2^53. */
 export const MAX_LEDGER_AMOUNT = 1_000_000_000;
 

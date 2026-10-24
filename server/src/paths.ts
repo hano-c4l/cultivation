@@ -69,7 +69,7 @@ export function levelUpStatements(db: D1Database, characterId: string, path: Pat
 export async function commitPathBatch(db: D1Database, characterId: string, statements: D1PreparedStatement[], cost: number, key: string, reason = "path"): Promise<PathCommit> {
   try {
     if (cost > 0) {
-      const r = await applyCurrencyDelta(db, { characterId, currency: "linh_thach", delta: -cost, reason, actor: "system", idempotencyKey: key }, statements);
+      const r = await applyCurrencyDelta(db, { characterId, currency: "linh_thach", delta: -cost, reason, actor: "system" }, statements); // `key` is unique per attempt anyway: the path guards (inv_guard, character_paths) are what stop a repeat
       if (r.status === "insufficient") return { status: "insufficient" };
       if (r.status === "duplicate") return { status: "duplicate" };
       return { status: "ok", balance: r.balance };
