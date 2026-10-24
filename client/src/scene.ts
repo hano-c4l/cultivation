@@ -50,6 +50,7 @@ import {
   walkSpeed,
   type EquipStatKey,
   setTuning,
+  setItemOverlays,
   setMerchant,
   setMapNpcs,
   npcsOf,
@@ -659,6 +660,7 @@ export class GameScene extends Phaser.Scene {
         setTuning(msg.tuning as unknown as Record<string, unknown>); // the live balance numbers (drops, kills, skills, theme...)
         applyTuningTheme();
         setMapNpcs(msg.map, msg.npcs); // who stands on this map (data from D1)
+        setItemOverlays(msg.items ?? []); // what admins changed in the item catalogue (before the bag below is drawn)
         setMounted(false); // the snapshot of yourself (below) says whether you still ride: it is kept across maps
         this.flightWorn = msg.equipped.some((e) => e.slot === "flight");
         this.refreshMountBtn();

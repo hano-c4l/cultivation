@@ -180,7 +180,7 @@ export async function claimGiftMail(db: D1Database, characterId: string, mailId:
   if (!mail || !gift) return { status: "not_found" };
   if (mail.claimed_at !== null) return { status: "already_claimed" };
   if (mail.expires_at !== null && mail.expires_at <= now) return { status: "expired" };
-  if (giftProblem(gift) !== null) return { status: "not_found" }; // an item left the catalogue: it cannot be given
+  if (giftProblem(gift, true) !== null) return { status: "not_found" }; // an item left the catalogue: it cannot be given
 
   // Plan the items against a copy of the bag: merge into a stack with room, otherwise the first free cell.
   const ops: BagOp[] = [];

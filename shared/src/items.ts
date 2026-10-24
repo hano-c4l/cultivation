@@ -45,6 +45,8 @@ export interface ItemDef {
   teleportTo?: MapId;
   /** Path items: the hướng tu it takes up. Spent from the path section of the character window, not from the bag. */
   pathItem?: string;
+  /** Taken out of play by an admin (soft delete): it still shows in bags, but it no longer drops, is sold, gifted or given as a reward. */
+  disabled?: boolean;
 }
 
 /** One bí tịch per book skill, made from the skill list so a new book skill needs no item entry. */
@@ -216,9 +218,90 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
 const EQUIPMENT_RARITY: readonly ItemRarity[] = ["common", "uncommon", "rare", "epic"];
 const equipmentDefs = new Map<string, ItemDef>();
 
-/** Plain items come from ITEMS; equipment is generated from its id (shared/src/equipment-data.ts) and cached. */
+/**
+ * What an admin changed in the catalogue (table `items`, docs/PHASE3.md 3g). Only items an admin touched have a row, so the generated items
+ * (books, pills, ores) keep following the code. For an item of the code (`custom: false`) `def` holds the edited fields (the ones in
+ * EDITABLE_ITEM_FIELDS); for an item an admin made (`custom: true`) it is the whole definition. `disabled` is the soft delete of a custom item.
+ */
+export interface ItemOverlay {
+  id: string;
+  custom: boolean;
+  disabled: boolean;
+  def: Partial<ItemDef>;
+}
+
+/** The fields an admin may change on an item that belongs to the code (its mechanics stay as written). */
+export const EDITABLE_ITEM_FIELDS = ["nameVi", "descVi", "rarity", "grade"] as const;
+/** The categories an admin can create (equipment comes from its templates, books from the skill list). */
+export const CUSTOM_ITEM_CATEGORIES = ["consumable", "material"] as const;
+export const ITEM_NAME_MAX = 60;
+export const ITEM_DESC_MAX = 300;
+/** An id of a new item: lower-case words; the prefixes of the equipment ids are taken and so is every id of the code. */
+export const CUSTOM_ITEM_ID = /^[a-z][a-z0-9_]{0,39}$/;
+
+let overlays = new Map<string, ItemOverlay>();
+let itemsGen = 0;
+const mergedDefs = new Map<string, ItemDef>();
+
+/** Installs the catalogue rows (the server from D1, the client from `welcome`). */
+export function setItemOverlays(list: readonly ItemOverlay[]): void {
+  overlays = new Map(list.map((o) => [o.id, o]));
+  mergedDefs.clear();
+  itemsGen++;
+}
+
+/** Changes whenever setItemOverlays installs rows: anything cached from item definitions keys on it. */
+export function itemsGeneration(): number {
+  return itemsGen;
+}
+
+export function itemOverlays(): readonly ItemOverlay[] {
+  return [...overlays.values()];
+}
+
+/** Whether an overlay row is well formed (used for rows read from D1 and for an admin save). Returns the problem, or null. */
+export function itemOverlayProblem(o: ItemOverlay): string | null {
+  if (typeof o.id !== "string" || !/^[a-z0-9_]{1,40}$/.test(o.id)) return "bad id";
+  const d = o.def;
+  if (typeof d !== "object" || d === null) return "bad definition";
+  const text = (v: unknown, max: number) => typeof v === "string" && v.trim().length > 0 && [...v].length <= max;
+  const isInt = (v: unknown, min: number, max: number) => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
+  if (d.nameVi !== undefined && !text(d.nameVi, ITEM_NAME_MAX)) return "bad name";
+  if (d.descVi !== undefined && !text(d.descVi, ITEM_DESC_MAX)) return "bad description";
+  if (d.rarity !== undefined && !(ITEM_RARITIES as readonly string[]).includes(d.rarity)) return "bad rarity";
+  if (d.grade !== undefined && !isInt(d.grade, 1, MAX_ITEM_GRADE)) return "bad grade";
+  if (!o.custom) return null;
+  if (!CUSTOM_ITEM_ID.test(o.id) || Object.prototype.hasOwnProperty.call(ITEMS, o.id)) return "this id belongs to the code";
+  if (d.id !== o.id || !text(d.nameVi, ITEM_NAME_MAX) || !text(d.descVi, ITEM_DESC_MAX) || d.rarity === undefined || d.grade === undefined) return "a custom item needs its whole definition";
+  if (!(CUSTOM_ITEM_CATEGORIES as readonly string[]).includes(d.category as string)) return "bad category";
+  if (!isInt(d.maxStack, 1, 9999)) return "bad stack size";
+  if (d.healFraction !== undefined && !(typeof d.healFraction === "number" && d.healFraction > 0 && d.healFraction <= 1)) return "bad heal";
+  if (d.healOverMs !== undefined && (d.healFraction === undefined || !isInt(d.healOverMs, 1, 600_000))) return "bad heal time";
+  if (d.masteryPills !== undefined && !isInt(d.masteryPills, 1, 1_000_000)) return "bad mastery points";
+  if (d.category !== "consumable" && (d.healFraction !== undefined || d.masteryPills !== undefined)) return "only consumables heal or teach";
+  if (d.healFraction !== undefined && d.masteryPills !== undefined) return "a consumable heals or raises mastery, not both";
+  return null;
+}
+
+function merged(id: string, base: ItemDef | undefined, o: ItemOverlay | undefined): ItemDef | undefined {
+  if (!o) return base;
+  if (o.custom) return { ...(o.def as ItemDef), id, ...(o.disabled ? { disabled: true } : {}) };
+  if (!base) return undefined;
+  const edited: Partial<ItemDef> = {};
+  for (const k of EDITABLE_ITEM_FIELDS) if (o.def[k] !== undefined) (edited as Record<string, unknown>)[k] = o.def[k];
+  return { ...base, ...edited };
+}
+
+/** Plain items come from ITEMS (plus what an admin changed or made); equipment is generated from its id (shared/src/equipment-data.ts) and cached. */
 export function getItemDef(id: string): ItemDef | undefined {
-  if (Object.prototype.hasOwnProperty.call(ITEMS, id)) return ITEMS[id];
+  const own = Object.prototype.hasOwnProperty.call(ITEMS, id);
+  if (own || overlays.has(id)) {
+    const hit = mergedDefs.get(id);
+    if (hit) return hit;
+    const def = merged(id, own ? ITEMS[id] : undefined, overlays.get(id));
+    if (def) mergedDefs.set(id, def);
+    return def;
+  }
   const cached = equipmentDefs.get(id);
   if (cached) return cached;
   const equip = equipmentInfo(id);
@@ -235,6 +318,20 @@ export function getItemDef(id: string): ItemDef | undefined {
   };
   equipmentDefs.set(id, def);
   return def;
+}
+
+/** Every plain item (not equipment): the code's items with the admin's changes, and the ones an admin made. */
+export function allItemDefs(): ItemDef[] {
+  const out: ItemDef[] = [];
+  for (const id of Object.keys(ITEMS)) {
+    const def = getItemDef(id);
+    if (def) out.push(def);
+  }
+  for (const o of overlays.values()) {
+    const def = o.custom ? getItemDef(o.id) : undefined;
+    if (def) out.push(def);
+  }
+  return out;
 }
 
 export function isItemId(v: unknown): v is string {

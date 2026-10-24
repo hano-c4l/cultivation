@@ -1,4 +1,4 @@
-import { MAP_IDS, PATHS, PATH_IDS, REALMS, SEED_QUESTS, allNpcIds, giftableItems, isEquipmentType, validateQuests, type QuestDef, type QuestObjective, type QuestRewards } from "@game/shared";
+import { MAP_IDS, PATHS, PATH_IDS, REALMS, SEED_QUESTS, allNpcIds, getItemDef, giftableItems, isEquipmentType, validateQuests, type QuestDef, type QuestObjective, type QuestRewards } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { getNpcs } from "./npcs";
 import { getQuestCatalog, resetQuestCache } from "./quests";
@@ -176,6 +176,7 @@ async function extraProblems(db: D1Database, only: readonly QuestDef[]): Promise
     if (!givers.has(q.giver)) problems.push(`quest ${q.id}: ${q.giver} is not an NPC that gives quests`);
     if (q.objective.kind === "kill" && q.objective.map !== undefined && !(MAP_IDS as readonly string[]).includes(q.objective.map)) problems.push(`quest ${q.id}: unknown map ${q.objective.map}`);
     const items = [...(q.rewards.items ?? []).map((i) => i.item), ...(q.objective.kind === "collect" ? [q.objective.item, ...(q.objective.also ?? []).map((i) => i.item)] : [])];
+    for (const item of items) if (getItemDef(item)?.disabled) problems.push(`quest ${q.id}: ${item} was deleted and cannot be used`);
     for (const item of items) if (isEquipmentType(item)) problems.push(`quest ${q.id}: equipment (${item}) cannot be a reward or a requested item yet`);
   }
   return problems;

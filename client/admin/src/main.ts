@@ -3,6 +3,7 @@ import { api, h } from "./kit";
 import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { MENU } from "./menu";
 import { giftsPage } from "./gifts";
+import { itemEditPage, itemListPage } from "./items";
 import { questEditPage, questListPage } from "./quests";
 import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
@@ -72,6 +73,12 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/items") {
+    title = "Vật phẩm";
+    content = itemListPage();
+  } else if (path === "/admin/items/edit") {
+    title = "Vật phẩm · Sửa";
+    content = itemEditPage();
   } else if (path === "/admin/quests") {
     title = "Nhiệm vụ";
     content = questListPage();

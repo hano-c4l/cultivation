@@ -1,6 +1,6 @@
 import { MAX_LEDGER_AMOUNT, type Currency } from "./economy";
 import { isEquipmentType } from "./equipment-data";
-import { getItemDef, ITEMS } from "./items";
+import { allItemDefs, getItemDef } from "./items";
 
 /**
  * What an admin gift carries (docs/PHASE3.md 3d). Stored as JSON in `mailbox.gift`; the currency and the items are created when the player
@@ -29,13 +29,16 @@ export const GIFT_BATCH_ID = /^[a-z0-9]{8,24}$/;
 
 /** Items an admin may attach: everything in the catalogue except equipment, which is not catalogued by id. */
 export function giftableItems(): Array<{ id: string; nameVi: string; maxStack: number }> {
-  return Object.values(ITEMS)
-    .filter((d) => !isEquipmentType(d.id))
+  return allItemDefs()
+    .filter((d) => !isEquipmentType(d.id) && !d.disabled)
     .map((d) => ({ id: d.id, nameVi: d.nameVi, maxStack: d.maxStack }));
 }
 
-/** The problem with a gift, in a word the screen can show, or null when it can be sent (and claimed). */
-export function giftProblem(gift: GiftAttachments): "empty" | "currency" | "item" | "too_many_items" | "duplicate_item" | "quantity" | null {
+/**
+ * The problem with a gift, in a word the screen can show, or null when it can be sent (and claimed). `claiming`: the gift was sent earlier, so an item an admin
+ * has since taken out of play (soft delete) is still given; only an item that no longer exists, or is equipment, is a problem then.
+ */
+export function giftProblem(gift: GiftAttachments, claiming = false): "empty" | "currency" | "item" | "too_many_items" | "duplicate_item" | "quantity" | null {
   let any = false;
   for (const c of GIFT_CURRENCIES) {
     const v = gift[c];
@@ -48,7 +51,7 @@ export function giftProblem(gift: GiftAttachments): "empty" | "currency" | "item
   const seen = new Set<string>();
   for (const it of gift.items) {
     const def = it && typeof it.type === "string" ? getItemDef(it.type) : undefined;
-    if (!def || isEquipmentType(def.id)) return "item";
+    if (!def || isEquipmentType(def.id) || (def.disabled && !claiming)) return "item";
     if (seen.has(def.id)) return "duplicate_item";
     seen.add(def.id);
     if (!Number.isInteger(it.qty) || it.qty < 1 || it.qty > def.maxStack) return "quantity";
