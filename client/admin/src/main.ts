@@ -4,6 +4,7 @@ import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { MENU } from "./menu";
 import { giftsPage } from "./gifts";
 import { itemEditPage, itemListPage } from "./items";
+import { constitutionEditPage, constitutionListPage, rootsPage } from "./talents";
 import { skillEditPage, skillListPage } from "./skills";
 import { questEditPage, questListPage } from "./quests";
 import { miscPage, tuningPage } from "./misc";
@@ -74,6 +75,15 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/talents") {
+    title = "Thiên phú · Linh căn";
+    content = rootsPage();
+  } else if (path === "/admin/talents/constitutions") {
+    title = "Thiên phú · Thể chất";
+    content = constitutionListPage();
+  } else if (path === "/admin/talents/constitutions/edit") {
+    title = "Thiên phú · Sửa thể chất";
+    content = constitutionEditPage();
   } else if (path === "/admin/skills") {
     title = "Kỹ năng";
     content = skillListPage();

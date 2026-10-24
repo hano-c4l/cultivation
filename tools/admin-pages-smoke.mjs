@@ -106,6 +106,13 @@ check("tuning lists pvp, waygate, aoi, combat and theme with fields and defaults
 const realmsPage = await json("/api/admin/tuning?page=realms", adminCookie);
 const potentialPage = await json("/api/admin/tuning?page=potential", adminCookie);
 check("the realms and potential pages list their own groups", realmsPage.data.groups?.map((g) => g.group).join() === "exp,breakthrough,kills" && potentialPage.data.groups?.map((g) => g.group).join() === "stats" && potentialPage.data.groups[0].stored === true);
+const talentsPage = await json("/api/admin/tuning?page=talents", adminCookie);
+const settingsAll = await json("/api/admin/settings", adminCookie);
+check("the talents page lists the roots group, and the mutant settings moved there", talentsPage.data.groups?.map((g) => g.group).join() === "roots" && settingsAll.data.settings?.filter((x) => x.page === "talents").map((x) => x.key).join() === "mutant_root_chance,mutant_skill_bonus,mutant_gear_bonus,mutant_gear_drop" && settingsAll.data.settings.filter((x) => x.page === "misc").length === 2, JSON.stringify(settingsAll.data.settings?.map((x) => [x.key, x.page])));
+const cons = await json("/api/admin/constitutions", adminCookie);
+check("the constitutions come with the holders", cons.status === 200 && Array.isArray(cons.data.holders) && cons.data.constitutions.length >= 2);
+const consSame = await post("/api/admin/constitutions", { expectedVersion: cons.data.version, constitutions: cons.data.constitutions }, adminCookie);
+check("saving the catalogue unchanged is refused", consSame.status === 400 && consSame.data.error === "unchanged", JSON.stringify(consSame.data));
 const verOf = () => sql("SELECT version FROM config_versions WHERE name='tuning'")[0].version;
 const v0 = verOf();
 const origWg = wg.value;

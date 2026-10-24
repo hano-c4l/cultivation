@@ -81,7 +81,7 @@ export function resetConstitutionCatalogCache(): void {
   cache = null;
 }
 
-export type SaveCatalogResult = { ok: true; version: number } | { ok: false; error: "invalid" | "version_conflict" | "missing_constitution" | "default_changed"; problems?: string[] };
+export type SaveCatalogResult = { ok: true; version: number } | { ok: false; error: "invalid" | "version_conflict" | "missing_constitution" | "default_changed" | "too_large"; problems?: string[] };
 
 /**
  * The admin write path: replaces the whole catalogue in ONE batch that also bumps `config_versions`. The first statement of the batch makes the version
@@ -89,7 +89,10 @@ export type SaveCatalogResult = { ok: true; version: number } | { ok: false; err
  * each other even if they save at the same moment. Rules (see shared/src/constitutions.ts): the catalogue must pass validateCatalog, no constitution of
  * the stored one may disappear (characters refer to the id: use `enabled: false` instead), and the default constitution stays the same one.
  */
-export async function saveConstitutionCatalog(db: D1Database, expectedVersion: number, next: ConstitutionCatalog, now = Date.now()): Promise<SaveCatalogResult> {
+/** D1 allows 50 statements in one batch (Free plan); the save keeps a margin under it. */
+export const MAX_SAVE_STATEMENTS = 45;
+
+export async function saveConstitutionCatalog(db: D1Database, expectedVersion: number, next: ConstitutionCatalog, now = Date.now(), extra: D1PreparedStatement[] = []): Promise<SaveCatalogResult> {
   let problems: string[];
   try {
     problems = validateCatalog(next);
@@ -137,6 +140,8 @@ export async function saveConstitutionCatalog(db: D1Database, expectedVersion: n
     7,
     next.constitutions.flatMap((c) => c.tiers.flatMap((t) => t.effects.map((e) => [c.id, t.tier, e.stat, e.targetKind, e.targetTag, e.mode, e.value]))),
   );
+  statements.push(...extra);
+  if (statements.length > MAX_SAVE_STATEMENTS) return { ok: false, error: "too_large", problems: [`the catalogue needs ${statements.length} statements, more than one batch may hold (${MAX_SAVE_STATEMENTS})`] };
   try {
     await db.batch(statements);
   } catch (err) {

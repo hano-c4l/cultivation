@@ -21,10 +21,11 @@ interface Group {
   stored: boolean;
 }
 
-type Page = "misc" | "realms" | "potential";
+type Page = "misc" | "realms" | "potential" | "talents";
 
 interface Setting {
   key: string;
+  page: string;
   labelVi: string;
   value: number;
   default: number;
@@ -122,12 +123,28 @@ function groupBlock(g: Group, page: Page, refresh: (notice?: string, isError?: b
     const def = getPath(g.default, f.path);
     const mark = () => input.classList.toggle("changed", (f.kind === "color" ? input.value : Number(input.value)) !== getPath(g.value, f.path));
     input.addEventListener("input", mark);
+    const weight = g.group === "roots" ? /^(grades|counts)\.\d+\.weight$/.exec(f.path) : null;
+    const share = weight ? h("span", { class: "muted" }) : null;
+    if (weight && share) {
+      // The weights need not add up to 100: each one's chance is its share of the five together.
+      const update = () => {
+        const family = [...inputs].filter(([p]) => p.startsWith(`${weight[1]}.`) && p.endsWith(".weight"));
+        const total = family.reduce((n, [, el]) => n + (Number(el.value) || 0), 0);
+        for (const [, el] of family) {
+          const cell = el.closest("td")?.querySelector(".share");
+          if (cell) cell.textContent = total > 0 ? ` = ${Math.round(((Number(el.value) || 0) / total) * 1000) / 10}%` : "";
+        }
+      };
+      share.className = "muted share";
+      input.addEventListener("input", update);
+      queueMicrotask(update);
+    }
     const reset = h("button", { type: "button", title: "Đặt ô này về giá trị mặc định" }, `mặc định ${def}`);
     reset.addEventListener("click", () => {
       input.value = String(def);
       mark();
     });
-    return [heading, h("tr", null, h("td", null, f.label), h("td", { class: "num-cell" }, input, f.kind === "color" ? swatch(input) : null), h("td", { class: "muted" }, fieldHint(f)), h("td", null, reset))].filter((n): n is HTMLTableRowElement => n !== null);
+    return [heading, h("tr", null, h("td", null, f.label), h("td", { class: "num-cell" }, input, f.kind === "color" ? swatch(input) : null, share), h("td", { class: "muted" }, fieldHint(f)), h("td", null, reset))].filter((n): n is HTMLTableRowElement => n !== null);
   });
   const save = h("button", { type: "button", class: "primary" }, "Lưu");
   const resetAll = h("button", { type: "button" }, "Điền mặc định cả nhóm");
@@ -185,7 +202,7 @@ function groupBlock(g: Group, page: Page, refresh: (notice?: string, isError?: b
   );
 }
 
-function settingsBlock(settings: Setting[], reload: () => void): HTMLElement {
+function settingsBlock(settings: Setting[], reload: () => void, title = "Cài đặt game"): HTMLElement {
   const rows = settings.map((s) => {
     const input = h("input", { type: "number", step: "1", min: String(s.min), max: String(s.max) });
     input.value = String(s.value);
@@ -209,13 +226,15 @@ function settingsBlock(settings: Setting[], reload: () => void): HTMLElement {
     });
     return h("tr", null, h("td", null, s.labelVi), h("td", { class: "num-cell" }, input), h("td", null, reset), h("td", null, save, " ", msg));
   });
-  return h("section", { class: "form" }, h("h3", null, "Cài đặt game"), h("p", { class: "muted" }, `Mỗi dòng lưu riêng. Có hiệu lực sau tối đa 30 giây.`), h("div", { class: "table-wrap" }, h("table", null, h("tbody", null, ...rows))));
+  return h("section", { class: "form" }, h("h3", null, title), h("p", { class: "muted" }, `Mỗi dòng lưu riêng. Có hiệu lực sau tối đa 30 giây.`), h("div", { class: "table-wrap" }, h("table", null, h("tbody", null, ...rows))));
 }
 
 const PAGE_NOTES: Record<Page, string> = {
   misc: "Máy chủ nhận số mới trong vòng khoảng 30 giây (quái và boss đã sinh giữ số cũ tới khi sinh lại). Người đang chơi chỉ nhận số mới của giao diện (màu tên, mốc bảo hộ...) khi vào lại game hoặc đổi bản đồ.",
   realms:
     "Tên và ký hiệu cảnh giới chưa chỉnh được ở đây (chúng còn nằm trong code và tên các vật phẩm sinh từ chúng, chờ các màn Vật phẩm, Kỹ năng, Quái, Bản đồ); thêm cảnh giới mới cũng chờ các màn đó. Màu thẻ cảnh giới chỉnh ở \"Chỉ số khác\" → Màu giao diện. Hạ EXP cần hoặc hệ số tăng có thể làm nhân vật lên nhiều tầng ở lần giết kế tiếp. Số mới có hiệu lực với máy chủ sau tối đa 30 giây; nhân vật đang online thấy thanh EXP mới khi vào lại game.",
+  talents:
+    "Linh căn: lúc tạo nhân vật máy chủ tung phẩm cấp và số hệ theo trọng số; cho nhân vật tạo sau đó. Hệ biến dị (Lôi, Băng, Phong) chỉ có ở đơn linh căn; chỉnh tỉ lệ và độ mạnh ở cuối trang. Thêm hệ mới, điều kiện xuất hiện của thiên phú và hệ số khắc (còn trong code) chưa chỉnh được ở đây. Thể chất ở tab bên cạnh.",
   potential: "Máy chủ dùng hệ số mới sau tối đa 30 giây cho người vào game sau đó. Người đang online giữ chỉ số cũ tới khi vào lại game, lên tầng hoặc đổi trang bị.",
 };
 
@@ -236,12 +255,12 @@ export function tuningPage(page: Page): HTMLElement {
     return el;
   };
   const load = async () => {
-    const [tuning, settings] = await Promise.all([api<{ groups: Group[] }>(`/api/admin/tuning?page=${page}`), page === "misc" ? api<{ settings: Setting[] }>("/api/admin/settings") : Promise.resolve(null)]);
+    const [tuning, settings] = await Promise.all([api<{ groups: Group[] }>(`/api/admin/tuning?page=${page}`), page === "misc" || page === "talents" ? api<{ settings: Setting[] }>("/api/admin/settings") : Promise.resolve(null)]);
     if (tuning.status !== 200 || (settings && settings.status !== 200)) {
       root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
       return;
     }
-    root.replaceChildren(h("p", { class: "muted" }, PAGE_NOTES[page]), ...tuning.data.groups.map((g) => block(g)), ...(settings ? [settingsBlock(settings.data.settings, () => void load())] : []));
+    root.replaceChildren(h("p", { class: "muted" }, PAGE_NOTES[page]), ...tuning.data.groups.map((g) => block(g)), ...(settings ? [settingsBlock(settings.data.settings.filter((x) => x.page === page), () => void load(), page === "talents" ? "Hệ biến dị và rơi đồ" : "Cài đặt game")] : []));
   };
   void load();
   return root;

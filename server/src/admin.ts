@@ -7,7 +7,8 @@ import { expandBag } from "./inventory";
 import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
-import { loadConstitutionCatalog, saveConstitutionCatalog } from "./constitution-catalog";
+import { loadConstitutionCatalog } from "./constitution-catalog";
+import { constitutionHolders, saveConstitutionAdmin } from "./constitution-admin";
 import { listSkills, saveSkillOverride } from "./skills-admin";
 import { deleteItem, listItems, saveItem } from "./items-admin";
 import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
@@ -251,7 +252,7 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
   if (before?.value === body.value) return errorResponse("unchanged", 400);
   await setSetting(env.DB, key, body.value as number, admin);
   console.log("setting changed", admin, key, body.value);
-  await log(env, session, TUNING_LOG_SCREEN, `Đổi cài đặt game "${before?.labelVi ?? key}": ${String(before?.value ?? null)} → ${String(body.value)}`);
+  await log(env, session, before?.page === "talents" ? "Thiên phú" : TUNING_LOG_SCREEN, `Đổi cài đặt game "${before?.labelVi ?? key}": ${String(before?.value ?? null)} → ${String(body.value)}`);
   return json({ ok: true, settings: await allSettings(env.DB) });
 }
 
@@ -262,7 +263,7 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
 export async function adminTuning(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
-  const pageOf = (raw: unknown): TuningPage => (raw === "realms" || raw === "potential" ? raw : "misc");
+  const pageOf = (raw: unknown): TuningPage => (raw === "realms" || raw === "potential" || raw === "talents" ? raw : "misc");
   if (request.method === "GET") return json({ groups: await listTuningGroups(env.DB, pageOf(new URL(request.url).searchParams.get("page"))) });
   const body = await readJson(request);
   if (typeof body?.group !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
@@ -279,15 +280,14 @@ export async function adminTuning(request: Request, env: Env): Promise<Response>
 export async function adminConstitutions(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
-  const admin = session.accountId;
-  if (request.method === "GET") return json({ ...(await loadConstitutionCatalog(env.DB)), vocabulary: { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS } });
+  const vocabulary = { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS };
+  if (request.method === "GET") return json({ ...(await loadConstitutionCatalog(env.DB)), vocabulary, holders: await constitutionHolders(env.DB) });
   const body = await readJson(request, 512 * 1024); // a whole catalogue is much bigger than the usual request
   if (typeof body?.expectedVersion !== "number" || !Array.isArray(body?.constitutions)) return errorResponse("invalid_body", 400);
-  const result = await saveConstitutionCatalog(env.DB, body.expectedVersion, { version: body.expectedVersion, constitutions: body.constitutions as never });
+  const result = await saveConstitutionAdmin(env.DB, session.email, body.expectedVersion, { version: body.expectedVersion, constitutions: body.constitutions as never });
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : 400);
-  console.log("constitution catalogue saved", admin, "version", result.version);
-  await log(env, session, "Thiên phú", `Lưu danh mục thể chất (phiên bản ${result.version}, ${(body.constitutions as unknown[]).length} thể chất)`);
-  return json({ ok: true, ...(await loadConstitutionCatalog(env.DB)), vocabulary: { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS } });
+  console.log("constitution catalogue saved", session.accountId, "version", result.version);
+  return json({ ok: true, warnings: result.warnings ?? [], ...(await loadConstitutionCatalog(env.DB)), vocabulary, holders: await constitutionHolders(env.DB) });
 }
 
 /** What the screen "Gửi quà" needs to start: the items that can be attached, the limits and how many characters "the whole server" is right now. */
