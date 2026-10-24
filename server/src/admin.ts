@@ -8,6 +8,7 @@ import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
 import { loadConstitutionCatalog, saveConstitutionCatalog } from "./constitution-catalog";
+import { deleteItem, listItems, saveItem } from "./items-admin";
 import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
@@ -376,5 +377,39 @@ export async function adminQuestDelete(request: Request, env: Env): Promise<Resp
   const result = await deleteQuest(env.DB, session.email, body.id, body.updatedAt);
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, QUEST_ERROR_STATUS[result.error] ?? 400);
   console.log("quest deleted", session.accountId, body.id, result.mode);
+  return json({ ok: true, mode: result.mode });
+}
+
+/** The item catalogue for the admin screen: every plain item (the code's, with the admin's changes, and the ones admins made) with owners and sell value. */
+export async function adminItems(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await listItems(env.DB));
+}
+
+const ITEM_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, bound: 400, locked_field: 409, exists: 409, has_owner: 409, version_conflict: 409, busy: 409, deleted: 409, in_use: 409, not_found: 404 };
+
+/** Saves an item (POST `{item, isNew, updatedAt, value?, valueToken}`): its fields, and its sell value in the same batch. */
+export async function adminItemSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 16 * 1024);
+  if (!body || typeof body.item !== "object" || body.item === null || typeof body.isNew !== "boolean") return errorResponse("invalid_body", 400);
+  const value = body.value === undefined ? undefined : body.value === null ? null : (body.value as number);
+  const result = await saveItem(env.DB, session.email, body.item as Record<string, unknown>, body.isNew, typeof body.updatedAt === "number" ? body.updatedAt : 0, value, typeof body.valueToken === "number" ? body.valueToken : 0);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, ITEM_ERROR_STATUS[result.error] ?? 400);
+  console.log("item saved", session.accountId, (body.item as { id?: string }).id);
+  return json({ ok: true, updatedAt: result.updatedAt });
+}
+
+/** Deletes an item an admin made (POST `{id, updatedAt}`): refused while a quest or merchant names it, soft when characters own it, else hard. */
+export async function adminItemDelete(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 16 * 1024);
+  if (typeof body?.id !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await deleteItem(env.DB, session.email, body.id, body.updatedAt);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, ITEM_ERROR_STATUS[result.error] ?? 400);
+  console.log("item deleted", session.accountId, body.id, result.mode);
   return json({ ok: true, mode: result.mode });
 }

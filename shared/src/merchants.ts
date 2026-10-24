@@ -1,7 +1,7 @@
 import { ALL_ROOTS, MUTANT_ROOTS, SPIRITUAL_ROOTS } from "./character";
 import { GENDERED_KINDS, WEAPON_TYPES, makeEquipmentId, type EquipKind } from "./equipment-data";
 import { gearStyleOf, type Gender } from "./gender";
-import { getItemDef } from "./items";
+import { getItemDef, itemsGeneration } from "./items";
 import { KEEP_LEVEL_ITEM, keepLevelPrice } from "./smith";
 import { tuningGeneration } from "./tuning";
 import { bookItemId } from "./skills";
@@ -126,6 +126,7 @@ export function validStockRule(r: unknown): r is StockRule {
       return (
         typeof o.item === "string" &&
         getItemDef(o.item) !== undefined &&
+        getItemDef(o.item)?.disabled !== true &&
         (o.price === undefined ? itemValue(o.item) > 0 : isInt(o.price, 1, 1_000_000_000)) &&
         (o.currency === undefined || o.currency === "tien_ngoc") &&
         (o.dailyLimit === undefined || isInt(o.dailyLimit, 1, 100_000))
@@ -209,7 +210,7 @@ export function merchantOffers(gender: Gender, npc: string): readonly ShopOffer[
   const style = gearStyleOf(gender) === "male" ? "m" : "f";
   // The scroll's price and the value of every item are tuning numbers that can change while the game runs, so the generation of the tuning is part of the key, as is the version of the data.
   const keepPrice = keepLevelPrice();
-  const key = `${style}:${npc}:${keepPrice}:${liveVersion}:${tuningGeneration()}`;
+  const key = `${style}:${npc}:${keepPrice}:${liveVersion}:${tuningGeneration()}:${itemsGeneration()}`;
   let list = OFFER_CACHE.get(key);
   if (!list) {
     if (OFFER_CACHE.size > 64) OFFER_CACHE.clear();
