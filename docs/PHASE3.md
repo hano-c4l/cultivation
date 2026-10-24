@@ -8,10 +8,10 @@ Trạng thái: **ĐÃ CHỐT KẾ HOẠCH (2026-10-24), chưa làm hạng mục 
 ## Quyết định đã chốt (2026-10-24)
 1. **Phạm vi cơ chế mới:** làm màn hình cho phần **đã có cơ chế trong game**; cơ chế mới mở rộng dần khi tới hạng mục tương ứng. Chưa làm ngay: luyện đan theo công thức, kỹ năng vòng tròn/định hướng/tự bám mục tiêu, điều kiện dùng kỹ năng (ví dụ chỉ khi dưới 25% máu), nhiều loại boss xoay vòng trong một bản đồ, tỉ lệ rơi đồ theo hệ, số vệ binh theo từng cổng.
 2. **Đan Sư** là NPC luyện đan **mới** (loại `alchemist`), không phải NPC hướng tu: đan dược chuyển từ Thương nhân sang Đan Sư. Lúc đầu Đan Sư chỉ bán đan có giá (dùng lại luật hàng của thương nhân); đan đặc biệt cần nguyên liệu để chế tạo là công thức mở rộng sau.
-3. **Tiên Ngọc:** làm lịch sử trước. Mọi biến động Tiên Ngọc (mua đồ, admin chỉnh tay, sau này là nạp) đều phải ghi lịch sử. Cổng thanh toán làm sau (giai đoạn 5); hiện **chưa có bảng đơn nạp**.
+3. **Tiên Ngọc:** làm lịch sử trước. Mọi biến động Tiên Ngọc (mua đồ, admin chỉnh tay, sau này là nạp) đều phải ghi lịch sử. Đơn nạp làm ở giai đoạn 4 và cổng thanh toán ở giai đoạn 5; hiện **chưa có bảng đơn nạp**.
 4. **Tràn EXP:** thanh tu vi 100% khi đầy, thêm tối đa 100% tràn, tức 200%. Con số này (trần tràn) phải chỉnh được ở màn Cảnh giới.
 5. **Xóa hai cách tùy điều kiện:** nếu có nhân vật đang sở hữu (hoặc đang dùng) thì **xóa mềm**: vẫn dùng được nhưng không phát sinh mới (không rơi, không bán ở đâu khác) và **tự gỡ khỏi mọi chỗ liên quan** (hàng của thương nhân, bảng rơi của quái/boss, phần thưởng...); nếu không ai sở hữu thì **xóa cứng** để không để lại dữ liệu rác. "Sở hữu" gồm cả đồ trong túi, đồ đang mặc, đồ trong hòm thư, kỹ năng đã học, nhiệm vụ đang làm, cảnh giới của nhân vật.
-6. **Sửa nhân vật:** bấm Sửa thì nếu nhân vật đang online hiện hộp xác nhận "nhân vật đang online, có kick ra không"; Hủy thì chỉ xem, không sửa được; OK thì kick ra. Dù online hay offline, bấm Sửa đều đặt **trạng thái đang xem xét** cho nhân vật; ai đăng nhập vào lúc đó bị chặn với thông báo kiểu "Nhân vật đang được xem xét, vui lòng thử lại sau 30 phút". Lưu xong trả trạng thái về bình thường. **Bổ sung của kế hoạch (chờ xác nhận):** trạng thái tự hết hạn sau 30 phút và có nút "Hủy sửa", để admin bỏ dở thì người chơi không bị khóa mãi.
+6. **Sửa nhân vật:** bấm Sửa thì nếu nhân vật đang online hiện hộp xác nhận "nhân vật đang online, có kick ra không"; Hủy thì chỉ xem, không sửa được; OK thì kick ra. Dù online hay offline, bấm Sửa đều đặt **trạng thái đang xem xét** cho nhân vật; ai đăng nhập vào lúc đó bị chặn với thông báo kiểu "Nhân vật đang được xem xét, vui lòng thử lại sau 30 phút". Lưu xong trả trạng thái về bình thường. **Bổ sung (đã đồng ý):** trạng thái tự hết hạn sau 30 phút và có nút "Hủy sửa", để admin bỏ dở thì người chơi không bị khóa mãi.
 7. **Ban tài khoản:** có thời hạn hoặc vĩnh viễn, nhập lý do; người bị ban khi đăng nhập thấy thời hạn và lý do. Ban xóa phiên và kick socket đang mở.
 8. **Reset mật khẩu:** admin đặt mật khẩu tạm, hiển thị một lần. Gửi email để sau (cần dịch vụ gửi mail, xem `docs/PLAN.md` mục 11).
 9. **Giao diện admin:** một ứng dụng admin riêng **trong cùng repo và cùng Worker** (một đầu vào Vite riêng, tách khỏi client game). Không tách Worker hay repo riêng: admin dùng chung D1, `shared/`, cookie phiên (cùng origin) và `config_versions`; tách ra phải khai báo lại binding, xử lý cookie và CORS khác origin và deploy hai nơi. Muốn thêm một lớp bảo vệ thì có thể bật Cloudflare Access trước `/admin*` sau này (tùy chọn).
@@ -69,7 +69,7 @@ Mỗi hạng mục là một nhánh `features_admin-xxx` theo quy trình trong `
 - **Kiểm thử:** truy cập không phiên và phiên thường bị chuyển hướng hoặc từ chối; admin vào được; smoke script mới.
 
 ### 3b. Lịch sử Tiên Ngọc
-Màn xem toàn bộ biến động Tiên Ngọc (đọc `currency_ledger`): lọc theo nhân vật, lý do (mua đồ, admin chỉnh tay, nạp sau này), khoảng thời gian; thống kê theo người; tổng cung. Việc kèm theo: rà mọi đường dùng Tiên Ngọc, bảo đảm đều ghi sổ cái với lý do rõ ràng; admin chỉnh tay Tiên Ngọc cũng phải ghi vào lịch sử. Bảng đơn nạp và cổng thanh toán làm ở giai đoạn 5.
+Màn xem toàn bộ biến động Tiên Ngọc (đọc `currency_ledger`): lọc theo nhân vật, lý do (mua đồ, admin chỉnh tay, nạp sau này), khoảng thời gian; thống kê theo người; tổng cung. Việc kèm theo: rà mọi đường dùng Tiên Ngọc, bảo đảm đều ghi sổ cái với lý do rõ ràng; admin chỉnh tay Tiên Ngọc cũng phải ghi vào lịch sử. Bảng đơn nạp làm ở giai đoạn 4 (cùng kinh tế), cổng thanh toán ở giai đoạn 5.
 
 ### 3c. Chỉ số khác
 Các nhóm `game_tuning` lẻ chưa thuộc màn nào: sát khí (điểm cộng khi giết, điểm trừ khi chết, mốc tăng sát thương), sát nhân (màu theo mốc, điểm cộng/trừ, xác suất rơi đồ, độ bền hao), anh hùng, phí Truyền Tống Trận theo khoảng cách (`waygate`), vùng nhìn (`aoi`), cùng `game_settings` (giá mở tab túi, tỉ lệ biến dị...). Dựng màn dạng cây có nhãn tiếng Việt (`TUNING_LABELS_VI`), có nút về mặc định. Lưu ý: đổi một số làm có hiệu lực ngay cho mọi người; quái và boss mới sinh mới dùng số mới.
@@ -136,6 +136,5 @@ Màn list/detail trên `npc_spots` (đã là D1), thêm các loại NPC:
 
 ## Câu hỏi còn mở (quyết định khi tới hạng mục tương ứng)
 - 3k: chỗ đứng của Đan Sư ở từng thành, và cách chuyển hàng đan khỏi Thương nhân (thương nhân hiện bán đan hồi máu và Ngộ Đạo Đan).
-- 3m: thời hạn tự hết của trạng thái "đang xem xét" (đề xuất 30 phút) và nút "Hủy sửa".
 - 3b: có cần xuất báo cáo (CSV) không.
 - 3l: có cần vẽ tay hay nhập bản đồ từ Tiled không (hiện chỉ làm công thức).
