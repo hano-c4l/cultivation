@@ -8,6 +8,7 @@ import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
 import { loadConstitutionCatalog, saveConstitutionCatalog } from "./constitution-catalog";
+import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
 
 /** Returns the admin's session, or the error response to send (401 anonymous, 403 not an admin). */
 async function requireAdminSession(request: Request, env: Env): Promise<AuthedSession | Response> {
@@ -242,11 +243,28 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
   const body = await readJson(request);
   const key = typeof body?.key === "string" ? body.key : "";
   if (!validSettingValue(key, body?.value)) return errorResponse("invalid_setting", 400);
-  const before = (await allSettings(env.DB)).find((s) => s.key === key)?.value ?? null;
+  const before = (await allSettings(env.DB)).find((s) => s.key === key);
+  if (before?.value === body.value) return errorResponse("unchanged", 400);
   await setSetting(env.DB, key, body.value as number, admin);
   console.log("setting changed", admin, key, body.value);
-  await log(env, session, "Cài đặt game", `Đổi cài đặt ${key}: ${String(before)} → ${String(body.value)}`);
+  await log(env, session, TUNING_LOG_SCREEN, `Đổi cài đặt game "${before?.labelVi ?? key}": ${String(before?.value ?? null)} → ${String(body.value)}`);
   return json({ ok: true, settings: await allSettings(env.DB) });
+}
+
+/**
+ * The `game_tuning` groups of the "Chỉ số khác" screen (GET: each group with its fields, value, default and version token) and the save of
+ * one group (POST `{group, updatedAt, value}`, see saveTuningGroup). 409 when someone saved the group since the admin loaded it.
+ */
+export async function adminTuning(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  if (request.method === "GET") return json({ groups: await listTuningGroups(env.DB) });
+  const body = await readJson(request);
+  if (typeof body?.group !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await saveTuningGroup(env.DB, body.group, body.value, body.updatedAt, session.email);
+  if (!result.ok) return errorResponse(result.error, result.error === "version_conflict" ? 409 : result.error === "unknown_group" ? 404 : 400);
+  console.log("tuning group saved", session.accountId, body.group);
+  return json({ ok: true, changes: result.changes, groups: await listTuningGroups(env.DB) });
 }
 
 /**

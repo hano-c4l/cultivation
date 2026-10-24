@@ -1,0 +1,215 @@
+import { api, h } from "./kit";
+
+/** "Chỉ số khác" (PHASE3 3c): the `game_tuning` groups listed by the server, one editable block each, and the `game_settings` numbers. */
+
+interface Field {
+  path: string;
+  label: string;
+  kind: "int" | "num" | "frac";
+  unit?: string;
+}
+
+interface Group {
+  group: string;
+  title: string;
+  note: string;
+  fields: Field[];
+  value: unknown;
+  default: unknown;
+  updatedAt: number;
+  updatedBy: string | null;
+  stored: boolean;
+}
+
+interface Setting {
+  key: string;
+  labelVi: string;
+  value: number;
+  default: number;
+  min: number;
+  max: number;
+}
+
+function getPath(value: unknown, path: string): number {
+  let cur: unknown = value;
+  for (const part of path.split(".")) cur = (cur as Record<string, unknown> | undefined)?.[part];
+  return cur as number;
+}
+
+/** Rules that tie several fields together; the server checks them again. Returns a sentence per broken rule. */
+function crossProblems(group: string, v: (path: string) => number): string[] {
+  const out: string[] = [];
+  if (group === "pvp") {
+    if (!(v("nameTiers.yellowFrom") < v("nameTiers.orangeFrom") && v("nameTiers.orangeFrom") < v("nameTiers.redFrom"))) out.push("Mốc màu tên phải tăng dần: vàng < cam < đỏ.");
+    if (!(v("satKhi.bonusFullAt") > v("satKhi.bonusAbove"))) out.push("Mức sát khí đạt tăng sát thương tối đa phải lớn hơn mức bắt đầu.");
+    if (!(v("hero.tier2") >= v("hero.tier1"))) out.push("Mốc anh hùng thứ hai không được nhỏ hơn mốc thứ nhất.");
+    if (!(v("protectedBelow.stage") >= 1 && v("protectedBelow.stage") <= 9)) out.push("Tầng bảo hộ tân thủ phải từ 1 đến 9.");
+  }
+  if (group === "aoi") {
+    if (!(v("leave.x") >= v("enter.x") && v("leave.y") >= v("enter.y"))) out.push("Tầm rời không được nhỏ hơn tầm vào.");
+    if (!(v("everyTicks") >= 1)) out.push("Chu kỳ cập nhật phải từ 1 tick.");
+  }
+  return out;
+}
+
+const SUBHEADS: Record<string, string> = {
+  satKhi: "Sát khí",
+  satNhan: "Sát nhân",
+  nameTiers: "Màu tên theo sát nhân",
+  dropChance: "Xác suất mất đồ khi bị giết, theo màu tên",
+  deathDurability: "Độ bền hao khi chết, theo màu tên",
+  hero: "Anh hùng",
+  protectedBelow: "Bảo hộ tân thủ",
+};
+
+const ERRORS: Record<string, string> = {
+  version_conflict: "Người khác vừa lưu nhóm này. Đã tải lại số liệu mới, hãy kiểm tra rồi lưu lại.",
+  invalid: "Máy chủ từ chối: có số ngoài khoảng cho phép hoặc sai quy tắc.",
+  unchanged: "Không có gì thay đổi.",
+  unknown_group: "Nhóm không tồn tại.",
+};
+
+function fieldHint(f: Field): string {
+  if (f.kind === "frac") return "0 đến 1 (0,25 = 25%)";
+  return f.unit ?? "";
+}
+
+/** `refresh(notice, isError)` re-reads the group from the server and redraws only this block, leaving the other blocks' edits alone. */
+function groupBlock(g: Group, refresh: (notice?: string, isError?: boolean) => void, notice?: { text: string; error: boolean }): HTMLElement {
+  const inputs = new Map<string, HTMLInputElement>();
+  const msg = h("div", { class: notice?.error ? "msg err" : "msg ok" }, notice?.text);
+  let lastTop = "";
+  const rows = g.fields.flatMap((f) => {
+    const top = f.path.split(".")[0]!;
+    const heading = top !== lastTop && g.fields.length > 6 ? h("tr", null, h("th", { colspan: "4", class: "subhead" }, SUBHEADS[top] ?? top)) : null;
+    lastTop = top;
+    const input = h("input", { type: "number", step: f.kind === "int" ? "1" : "any" });
+    input.value = String(getPath(g.value, f.path));
+    inputs.set(f.path, input);
+    const def = getPath(g.default, f.path);
+    const mark = () => input.classList.toggle("changed", Number(input.value) !== getPath(g.value, f.path));
+    input.addEventListener("input", mark);
+    const reset = h("button", { type: "button", title: "Đặt ô này về giá trị mặc định" }, `mặc định ${def}`);
+    reset.addEventListener("click", () => {
+      input.value = String(def);
+      mark();
+    });
+    return [heading, h("tr", null, h("td", null, f.label), h("td", { class: "num-cell" }, input), h("td", { class: "muted" }, fieldHint(f)), h("td", null, reset))].filter((n): n is HTMLTableRowElement => n !== null);
+  });
+  const save = h("button", { type: "button", class: "primary" }, "Lưu");
+  const resetAll = h("button", { type: "button" }, "Điền mặc định cả nhóm");
+  const undo = h("button", { type: "button" }, "Hoàn tác");
+  resetAll.addEventListener("click", () => {
+    for (const f of g.fields) {
+      const input = inputs.get(f.path)!;
+      input.value = String(getPath(g.default, f.path));
+      input.dispatchEvent(new Event("input"));
+    }
+    msg.textContent = "Đã điền giá trị mặc định vào ô; bấm Lưu để áp dụng.";
+    msg.className = "msg muted";
+  });
+  undo.addEventListener("click", () => refresh());
+  save.addEventListener("click", async () => {
+    const body: unknown = {};
+    for (const f of g.fields) {
+      const raw = inputs.get(f.path)!.value.trim();
+      const n = Number(raw);
+      if (raw === "" || !Number.isFinite(n)) return fail(`"${f.label}" chưa nhập số hợp lệ.`);
+      if (f.kind === "int" && !Number.isInteger(n)) return fail(`"${f.label}" phải là số nguyên.`);
+      if (f.kind === "frac" && (n < 0 || n > 1)) return fail(`"${f.label}" phải từ 0 đến 1.`);
+      let cur = body as Record<string, unknown>;
+      const parts = f.path.split(".");
+      parts.slice(0, -1).forEach((p, i) => {
+        cur[p] ??= /^\d+$/.test(parts[i + 1]!) ? [] : {};
+        cur = cur[p] as Record<string, unknown>;
+      });
+      cur[parts[parts.length - 1]!] = n;
+    }
+    const broken = crossProblems(g.group, (p) => getPath(body, p));
+    if (broken.length) return fail(broken.join(" "));
+    save.disabled = true;
+    msg.textContent = "Đang lưu...";
+    msg.className = "msg muted";
+    const res = await api<{ error?: string; changes?: number }>("/api/admin/tuning", { method: "POST", body: { group: g.group, updatedAt: g.updatedAt, value: body } });
+    save.disabled = false;
+    if (res.status === 200) return refresh(`Đã lưu ${res.data.changes ?? 0} thay đổi.`);
+    if (res.status === 409) return refresh(ERRORS.version_conflict, true);
+    fail(ERRORS[res.data.error ?? ""] ?? `Lỗi ${res.status}.`);
+    function fail(text: string): void {
+      msg.textContent = text;
+      msg.className = "msg err";
+    }
+  });
+  const saved = g.updatedBy ? `Lưu lần cuối bởi ${g.updatedBy}` : "Chưa chỉnh lần nào (đang là mặc định)";
+  return h(
+    "section",
+    { class: "form" },
+    h("h3", null, g.title),
+    g.note ? h("p", { class: "muted" }, g.note) : null,
+    g.stored ? null : h("p", { class: "err" }, "Dữ liệu đang lưu không còn hợp lệ nên game đang dùng giá trị mặc định. Lưu lại để thay thế."),
+    h("div", { class: "table-wrap" }, h("table", null, h("tbody", null, ...rows))),
+    h("div", { class: "toolbar" }, save, resetAll, undo, h("span", { class: "muted" }, saved)),
+    msg,
+  );
+}
+
+function settingsBlock(settings: Setting[], reload: () => void): HTMLElement {
+  const rows = settings.map((s) => {
+    const input = h("input", { type: "number", step: "1", min: String(s.min), max: String(s.max) });
+    input.value = String(s.value);
+    const msg = h("span", { class: "muted" });
+    const save = h("button", { type: "button", class: "primary" }, "Lưu");
+    save.addEventListener("click", async () => {
+      const n = Number(input.value);
+      if (input.value.trim() === "" || !Number.isInteger(n) || n < s.min || n > s.max) {
+        msg.textContent = `Phải là số nguyên từ ${s.min} đến ${s.max}.`;
+        msg.className = "err";
+        return;
+      }
+      const res = await api<{ error?: string }>("/api/admin/settings", { method: "POST", body: { key: s.key, value: n } });
+      if (res.status === 200) return reload();
+      msg.textContent = res.data.error === "unchanged" ? "Không có gì thay đổi." : "Máy chủ từ chối giá trị này.";
+      msg.className = "err";
+    });
+    const reset = h("button", { type: "button" }, `mặc định ${s.default}`);
+    reset.addEventListener("click", () => {
+      input.value = String(s.default);
+    });
+    return h("tr", null, h("td", null, s.labelVi), h("td", { class: "num-cell" }, input), h("td", null, reset), h("td", null, save, " ", msg));
+  });
+  return h("section", { class: "form" }, h("h3", null, "Cài đặt game"), h("p", { class: "muted" }, `Mỗi dòng lưu riêng. Có hiệu lực sau tối đa 30 giây.`), h("div", { class: "table-wrap" }, h("table", null, h("tbody", null, ...rows))));
+}
+
+export function miscPage(): HTMLElement {
+  const root = h("div", { class: "detail wide" });
+  const block = (g: Group, notice?: { text: string; error: boolean }): HTMLElement => {
+    const el: HTMLElement = groupBlock(
+      g,
+      (text, error) =>
+        void api<{ groups: Group[] }>("/api/admin/tuning").then((res) => {
+          const fresh = res.data.groups?.find((x) => x.group === g.group);
+          if (res.status === 200 && fresh) el.replaceWith(block(fresh, text ? { text, error: error === true } : undefined));
+        }),
+      notice,
+    );
+    return el;
+  };
+  const load = async () => {
+    const [tuning, settings] = await Promise.all([api<{ groups: Group[] }>("/api/admin/tuning"), api<{ settings: Setting[] }>("/api/admin/settings")]);
+    if (tuning.status !== 200 || settings.status !== 200) {
+      root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
+      return;
+    }
+    root.replaceChildren(
+      h(
+        "p",
+        { class: "muted" },
+        "Máy chủ nhận số mới trong vòng khoảng 30 giây (quái và boss đã sinh giữ số cũ tới khi sinh lại). Người đang chơi chỉ nhận số mới của giao diện (màu tên, mốc bảo hộ...) khi vào lại game hoặc đổi bản đồ.",
+      ),
+      ...tuning.data.groups.map((g) => block(g)),
+      settingsBlock(settings.data.settings, () => void load()),
+    );
+  };
+  void load();
+  return root;
+}
