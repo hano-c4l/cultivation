@@ -1,5 +1,6 @@
 import { CONSTITUTION_STATS, ELEMENT_TAGS, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
 import { getSession, type AuthedSession } from "./auth";
+import { HISTORY_SORTS, TOTALS_SORTS, listHistory, listTotals, parseCurrencyFilter, parsePageQuery } from "./admin-ledger";
 import { checkAll } from "./economy-check";
 import { getAuditEntry, listAudit, parseAuditQuery, recordAudit } from "./admin-audit";
 import { applyCurrencyDelta, getWallet } from "./economy";
@@ -183,6 +184,24 @@ export async function adminBagTabs(request: Request, env: Env): Promise<Response
   console.log("bag expanded", admin, characterId, tabs);
   await audit(env, session, { action: "bag_tabs_add", targetType: "character", targetId: characterId, summary: `+${by} bag tab(s), now ${tabs}`, after: { bagTabs: tabs } });
   return json({ ok: true, bagTabs: tabs });
+}
+
+/** One page of the detailed history of Tiên Ngọc or Linh Thạch (GET: currency, q, reason, character, from, to, sort, dir, page, size), with totals and the per-reason breakdown. */
+export async function adminCurrencyHistory(request: Request, env: Env, url: URL): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  const page = parsePageQuery(url.searchParams, HISTORY_SORTS, "id");
+  const filter = parseCurrencyFilter(url.searchParams, ["tien_ngoc", "linh_thach"]);
+  return json({ currency: filter.currency, ...(await listHistory(env.DB, filter, page)), page: page.page, size: page.size });
+}
+
+/** The totals of one currency per character (GET: currency, q, group, character, sort, dir, page, size): in, out, net, the balance and the difference between them. */
+export async function adminCurrencyTotals(request: Request, env: Env, url: URL): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  const page = parsePageQuery(url.searchParams, TOTALS_SORTS, "net");
+  const filter = parseCurrencyFilter(url.searchParams, ["tien_ngoc", "linh_thach", "cong_hien"]);
+  return json({ currency: filter.currency, ...(await listTotals(env.DB, filter, page)), page: page.page, size: page.size });
 }
 
 /** Total supply per currency (sum of all balances), the start of the PLAN section 4 monitoring dashboard. */

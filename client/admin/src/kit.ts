@@ -55,6 +55,18 @@ export interface ListQuery {
   dir: "asc" | "desc";
   page: number;
   size: number;
+  /** Values of the extra filters (by key), plus the fixed parameters of the screen. */
+  extra: Record<string, string>;
+}
+
+/** A filter control next to the search box; its value goes into `ListQuery.extra[key]`. */
+export interface FilterDef {
+  key: string;
+  label: string;
+  kind: "select" | "date" | "text";
+  /** For "select": [value, label] pairs. */
+  options?: Array<[string, string]>;
+  initial?: string;
 }
 
 export interface ListOptions<T> {
@@ -62,7 +74,13 @@ export interface ListOptions<T> {
   defaultSort: { key: string; dir: "asc" | "desc" };
   searchPlaceholder?: string;
   /** Fetches one page; the server does the searching, sorting and paging. */
-  fetchPage: (query: ListQuery) => Promise<{ rows: T[]; total: number } | null>;
+  fetchPage: (query: ListQuery) => Promise<{ rows: T[]; total: number; summary?: unknown } | null>;
+  /** Extra filters, drawn in the toolbar; changing one reloads from page 1. */
+  filters?: FilterDef[];
+  /** Parameters sent with every request that the user cannot change here (for example one character). */
+  fixedParams?: Record<string, string>;
+  /** Draws a block above the table from `summary` of the latest page (totals, breakdowns...). */
+  renderSummary?: (summary: unknown) => Child;
   /** Where a click on a row goes (the detail screen). */
   rowHref?: (row: T) => string;
   /** Extra buttons next to the search box (for example "Thêm"). */
@@ -73,7 +91,29 @@ const PAGE_SIZES = [10, 20, 50, 100];
 
 /** A list screen: search box, sortable headers, a pager. The same view serves every catalogue, only the columns and `fetchPage` change. */
 export function listView<T>(opts: ListOptions<T>): HTMLElement {
-  const state: ListQuery = { q: "", sort: opts.defaultSort.key, dir: opts.defaultSort.dir, page: 1, size: 20 };
+  const state: ListQuery = { q: "", sort: opts.defaultSort.key, dir: opts.defaultSort.dir, page: 1, size: 20, extra: { ...(opts.fixedParams ?? {}) } };
+  for (const f of opts.filters ?? []) if (f.initial) state.extra[f.key] = f.initial;
+  const summaryBox = h("div");
+  const filterControls = (opts.filters ?? []).map((f) => {
+    const control =
+      f.kind === "select"
+        ? h("select", null, ...(f.options ?? []).map(([v, label]) => h("option", { value: v }, label)))
+        : h("input", { type: f.kind === "date" ? "date" : "text", maxlength: "40" });
+    control.value = f.initial ?? "";
+    const apply = () => {
+      if (control.value) state.extra[f.key] = control.value;
+      else delete state.extra[f.key];
+      state.page = 1;
+      void load();
+    };
+    control.addEventListener(f.kind === "text" ? "input" : "change", () => {
+      if (f.kind !== "text") return apply();
+      window.clearTimeout(filterTimer);
+      filterTimer = window.setTimeout(apply, 300);
+    });
+    return h("label", { class: "filter" }, f.label, control);
+  });
+  let filterTimer = 0;
   const search = h("input", { type: "search", placeholder: opts.searchPlaceholder ?? "Tìm kiếm...", maxlength: "64" });
   const head = h("thead");
   const body = h("tbody");
@@ -122,6 +162,7 @@ export function listView<T>(opts: ListOptions<T>): HTMLElement {
       status.className = "err";
       return;
     }
+    summaryBox.replaceChildren(...(opts.renderSummary && res.summary !== undefined ? [opts.renderSummary(res.summary)].filter((n): n is Node | string => Boolean(n)) : []));
     status.textContent = res.rows.length === 0 ? "Không có dòng nào." : "";
     status.className = "muted";
     total = res.total;
@@ -165,7 +206,8 @@ export function listView<T>(opts: ListOptions<T>): HTMLElement {
   return h(
     "div",
     null,
-    h("div", { class: "toolbar" }, search, ...(opts.toolbar ?? [])),
+    h("div", { class: "toolbar" }, search, ...filterControls, ...(opts.toolbar ?? [])),
+    summaryBox,
     h("div", { class: "table-wrap" }, h("table", null, head, body)),
     status,
     h("div", { class: "pager" }, prev, next, info, sizeSel),
