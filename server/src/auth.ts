@@ -20,7 +20,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminAudit, adminAuditEntry, adminBagTabs, adminConstitutions, adminCurrencyHistory, adminCurrencyTotals, adminEconomyCheck, adminMe, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
+import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
 import { getCharacterByAccount, grantExp, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
@@ -279,22 +279,28 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return createCharacter(request, env);
     case "GET /api/admin/me":
       return adminMe(request, env);
-    case "GET /api/admin/audit":
-      return adminAudit(request, env, url);
-    case "GET /api/admin/audit-entry":
-      return adminAuditEntry(request, env, url);
-    case "GET /api/admin/currency-history":
+    case "GET /api/admin/log":
+      return adminLog(request, env, url);
+    case "GET /api/admin/currency/meta":
+      return adminCurrencyMeta(request, env);
+    case "GET /api/admin/currency/search":
+      return adminCurrencySearch(request, env, url);
+    case "GET /api/admin/currency/detail":
+      return adminCurrencyDetail(request, env, url);
+    case "GET /api/admin/currency/history":
       return adminCurrencyHistory(request, env, url);
-    case "GET /api/admin/currency-totals":
-      return adminCurrencyTotals(request, env, url);
-    case "GET /api/admin/economy-check":
-      return adminEconomyCheck(request, env);
+    case "GET /api/admin/currency/audit":
+      return adminCurrencyAudit(request, env, url);
+    case "POST /api/admin/currency/audit/run":
+      return adminCurrencyAuditRun(request, env);
+    case "POST /api/admin/currency/audit/confirm":
+      return adminCurrencyConfirm(request, env);
+    case "POST /api/admin/currency/audit/handle":
+      return adminCurrencyHandle(request, env);
     case "POST /api/admin/grant":
       return adminGrant(request, env);
     case "GET /api/admin/lookup":
       return adminLookup(request, env, url);
-    case "GET /api/admin/character":
-      return adminCharacter(request, env, url);
     case "POST /api/admin/bag-tabs":
       return adminBagTabs(request, env);
     case "GET /api/admin/settings":

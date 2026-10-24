@@ -1,4 +1,4 @@
-import { api, detailShell, formatTime, h, jsonBlock, listView, type Column } from "./kit";
+import { api, h } from "./kit";
 import { MENU } from "./menu";
 
 const LOGIN_ERRORS: Record<string, string> = {
@@ -57,58 +57,4 @@ export function plannedPage(label: string, phase: string): HTMLElement {
 
 export function notFoundPage(): HTMLElement {
   return h("div", null, h("p", null, "Không có trang này."), h("a", { href: "/admin" }, "‹ Về trang chính"));
-}
-
-interface AuditRow {
-  id: number;
-  at: number;
-  adminEmail: string;
-  action: string;
-  targetType: string;
-  targetId: string;
-  summary: string;
-}
-
-const AUDIT_COLUMNS: Column<AuditRow>[] = [
-  { key: "at", label: "Thời gian", sortable: true, render: (r) => formatTime(r.at) },
-  { key: "admin_email", label: "Admin", sortable: true, render: (r) => r.adminEmail },
-  { key: "action", label: "Hành động", sortable: true, render: (r) => r.action },
-  { key: "target_type", label: "Đối tượng", sortable: true, render: (r) => (r.targetId ? `${r.targetType} · ${r.targetId}` : r.targetType) },
-  { key: "summary", label: "Tóm tắt", render: (r) => r.summary },
-];
-
-/** The change log list (the first screen built on the shared list view). */
-export function auditListPage(): HTMLElement {
-  return listView<AuditRow>({
-    columns: AUDIT_COLUMNS,
-    defaultSort: { key: "id", dir: "desc" },
-    searchPlaceholder: "Tìm theo admin, hành động, đối tượng, tóm tắt",
-    rowHref: (r) => `/admin/audit/${r.id}`,
-    fetchPage: async (q) => {
-      const params = new URLSearchParams({ q: q.q, sort: q.sort, dir: q.dir, page: String(q.page), size: String(q.size) });
-      const res = await api<{ rows: AuditRow[]; total: number }>(`/api/admin/audit?${params}`);
-      return res.status === 200 ? res.data : null;
-    },
-  });
-}
-
-/** One change log row with its before and after values (the first screen built on the shared detail shell). */
-export async function auditDetailPage(id: number): Promise<HTMLElement> {
-  const res = await api<{ entry?: AuditRow & { adminId: string; before: unknown; after: unknown } }>(`/api/admin/audit-entry?id=${id}`);
-  const e = res.data.entry;
-  if (res.status !== 200 || !e) return notFoundPage();
-  return detailShell({
-    backHref: "/admin/audit",
-    backLabel: "Nhật ký thay đổi",
-    title: `Thay đổi #${e.id}`,
-    fields: [
-      { label: "Thời gian", value: formatTime(e.at) },
-      { label: "Admin", value: e.adminEmail },
-      { label: "Hành động", value: e.action },
-      { label: "Đối tượng", value: e.targetId ? `${e.targetType} · ${e.targetId}` : e.targetType },
-      { label: "Tóm tắt", value: e.summary || "—" },
-      { label: "Trước", value: jsonBlock(e.before) },
-      { label: "Sau", value: jsonBlock(e.after) },
-    ],
-  });
 }

@@ -14,14 +14,66 @@ export type Wallet = Record<Currency, number>;
 export const EMPTY_WALLET: Readonly<Wallet> = { linh_thach: 0, cong_hien: 0, tien_ngoc: 0 };
 
 /**
- * The reason group of a ledger reason: the part before the first ":" ("shop_buy:ren_giu_cap:1" -> "shop_buy"). Totals are kept per group
- * (tables `<currency>_totals`); migration 0036 builds the same groups in SQL, so the two must stay the same rule. Any new reason is its own
- * group with no migration.
+ * The groups money is totalled by (tables `<currency>_totals`: one row per character and group with the money in and out). A change is
+ * put in a group by its reason (see `currencyGroupOf`); the groups are fixed here in code and the admin screens show these labels.
  */
-export function reasonGroup(reason: string): string {
+export const CURRENCY_GROUPS = [
+  { id: "farm", labelVi: "Farm (quái, boss, người chơi rơi)" },
+  { id: "shop", labelVi: "Mua bán (thương nhân, đan sư)" },
+  { id: "quest", labelVi: "Nhiệm vụ" },
+  { id: "trade", labelVi: "Giao dịch người chơi" },
+  { id: "enhance", labelVi: "Cường hoá (nâng cấp, tinh luyện, đột phá, sửa đồ, hướng tu)" },
+  { id: "travel", labelVi: "Di chuyển (truyền tống)" },
+  { id: "admin", labelVi: "Admin (chỉnh tay, gửi quà, điều chỉnh khi kiểm duyệt)" },
+  { id: "other", labelVi: "Khác" },
+] as const;
+
+export type CurrencyGroup = (typeof CURRENCY_GROUPS)[number]["id"];
+
+export function isCurrencyGroup(v: unknown): v is CurrencyGroup {
+  return typeof v === "string" && CURRENCY_GROUPS.some((g) => g.id === v);
+}
+
+export function currencyGroupLabel(id: string): string {
+  return CURRENCY_GROUPS.find((g) => g.id === id)?.labelVi ?? id;
+}
+
+/** The part of a reason before its first ":" ("shop_buy:ren_giu_cap:1" -> "shop_buy"): the code of the kind of change. */
+export function reasonKind(reason: string): string {
   const i = reason.indexOf(":");
-  const group = (i < 0 ? reason : reason.slice(0, i)).trim().slice(0, 40);
-  return group || "other";
+  return (i < 0 ? reason : reason.slice(0, i)).trim();
+}
+
+/**
+ * Reason kind -> group. A kind matches an entry by equality, or by prefix for the entries ending in "*". Anything not listed is "other",
+ * so a new reason works at once and only needs an entry here to leave "other" (docs/PHASE3.md lists the table).
+ */
+const GROUP_OF_KIND: ReadonlyArray<readonly [string, CurrencyGroup]> = [
+  ["monster_drop", "farm"],
+  ["shop_buy", "shop"],
+  ["shop_sell", "shop"],
+  ["alchemist_buy", "shop"],
+  ["alchemist_sell", "shop"],
+  ["quest", "quest"],
+  ["trade", "trade"],
+  ["market", "trade"],
+  ["auction", "trade"],
+  ["smith_upgrade", "enhance"],
+  ["smith_refine", "enhance"],
+  ["repair", "enhance"],
+  ["breakthrough", "enhance"],
+  ["path*", "enhance"],
+  ["waygate", "travel"],
+  ["admin*", "admin"],
+];
+
+/** The group a reason belongs to. */
+export function currencyGroupOf(reason: string): CurrencyGroup {
+  const kind = reasonKind(reason);
+  for (const [pattern, group] of GROUP_OF_KIND) {
+    if (pattern.endsWith("*") ? kind.startsWith(pattern.slice(0, -1)) : kind === pattern) return group;
+  }
+  return "other";
 }
 
 /** Largest single amount a ledger entry may carry; keeps balances far below 2^53. */

@@ -1,4 +1,4 @@
-import { CURRENCIES, EMPTY_WALLET, MAX_LEDGER_AMOUNT, reasonGroup, type Currency, type Wallet } from "@game/shared";
+import { CURRENCIES, EMPTY_WALLET, MAX_LEDGER_AMOUNT, currencyGroupOf, type Currency, type Wallet } from "@game/shared";
 import { getSetting } from "./settings";
 
 export interface CurrencyChange {
@@ -6,7 +6,7 @@ export interface CurrencyChange {
   currency: Currency;
   /** Non-zero integer; negative spends. */
   delta: number;
-  /** Machine-readable cause, e.g. "monster_drop", "admin_grant", "mail_claim". Its group (the part before ":") is what the totals are kept by. */
+  /** Machine-readable cause, e.g. "monster_drop", "admin_grant", "mail_claim". Its group (`currencyGroupOf`) is what the totals are kept by. */
   reason: string;
   /** Who caused it: "system", or an account id for admin actions. */
   actor: string;
@@ -25,8 +25,11 @@ export type CurrencyResult =
   | { status: "duplicate" }
   | { status: "insufficient" };
 
-/** The ledger tables written per currency: every Tiên Ngọc change, only the big Linh Thạch ones, no history for Cống Hiến. */
-const TOTALS_TABLE: Record<Currency, string> = { tien_ngoc: "tien_ngoc_totals", linh_thach: "linh_thach_totals", cong_hien: "cong_hien_totals" };
+/** The totals table of each currency (one row per character and group, see CURRENCY_GROUPS in shared/src/economy.ts). */
+export const TOTALS_TABLE: Record<Currency, string> = { tien_ngoc: "tien_ngoc_totals", linh_thach: "linh_thach_totals", cong_hien: "cong_hien_totals" };
+
+/** The history tables: every Tiên Ngọc change, only the big Linh Thạch ones and the admin's, none for Cống Hiến. */
+export const HISTORY_TABLE: Partial<Record<Currency, string>> = { tien_ngoc: "tien_ngoc_ledger", linh_thach: "linh_thach_ledger" };
 
 /** True when a change is written to the currency's history table (the totals are always updated). */
 export function isTraced(c: Pick<CurrencyChange, "currency" | "delta" | "actor">, linhThachTraceMin: number): boolean {
@@ -54,16 +57,16 @@ export function currencyStatements(db: D1Database, c: CurrencyChange, traceMin: 
     out.push(db.prepare("INSERT INTO currency_dedupe (key, expires_at) VALUES (?, ?)").bind(c.idempotencyKey, c.keyTtlMs === undefined ? null : now + c.keyTtlMs));
   }
   if (isTraced(c, traceMin)) {
-    const table = c.currency === "tien_ngoc" ? "tien_ngoc_ledger" : "linh_thach_ledger";
+    const table = HISTORY_TABLE[c.currency];
     out.push(db.prepare(`INSERT INTO ${table} (character_id, delta, reason, actor, created_at) VALUES (?, ?, ?, ?, ?)`).bind(c.characterId, c.delta, c.reason, c.actor, now));
   }
   out.push(
     db
       .prepare(
-        `INSERT INTO ${TOTALS_TABLE[c.currency]} (character_id, grp, total_in, total_out, entries, updated_at) VALUES (?, ?, ?, ?, 1, ?) ` +
-          "ON CONFLICT (character_id, grp) DO UPDATE SET total_in = total_in + excluded.total_in, total_out = total_out + excluded.total_out, entries = entries + 1, updated_at = excluded.updated_at",
+        `INSERT INTO ${TOTALS_TABLE[c.currency]} (character_id, grp, total_in, total_out, updated_at) VALUES (?, ?, ?, ?, ?) ` +
+          "ON CONFLICT (character_id, grp) DO UPDATE SET total_in = total_in + excluded.total_in, total_out = total_out + excluded.total_out, updated_at = excluded.updated_at",
       )
-      .bind(c.characterId, reasonGroup(c.reason), c.delta > 0 ? c.delta : 0, c.delta < 0 ? -c.delta : 0, now),
+      .bind(c.characterId, currencyGroupOf(c.reason), c.delta > 0 ? c.delta : 0, c.delta < 0 ? -c.delta : 0, now),
     // Ensure the row exists (balance 0) so the UPDATE below always matches and its CHECK can fire. An upsert
     // would not do: SQLite checks the proposed INSERT row (a negative delta) before it resolves the conflict.
     db.prepare("INSERT OR IGNORE INTO currency_balances (character_id, currency, balance) VALUES (?, ?, 0)").bind(c.characterId, c.currency),

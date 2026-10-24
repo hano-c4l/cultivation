@@ -85,6 +85,14 @@ export interface ListOptions<T> {
   rowHref?: (row: T) => string;
   /** Extra buttons next to the search box (for example "Thêm"). */
   toolbar?: Child[];
+  /** False: nothing is loaded until `controls.search()` is called (a form with its own "Tìm kiếm" button). Default true. */
+  autoLoad?: boolean;
+  /** Leaves the search box out (the screen has its own form). */
+  hideSearch?: boolean;
+  /** Read at every load: values from a form outside the list, merged into the query. */
+  params?: () => Record<string, string>;
+  /** Filled in by listView: `search()` goes to page 1 and loads, `reload()` loads the current page again. */
+  controls?: { search: () => void; reload: () => void };
 }
 
 const PAGE_SIZES = [10, 20, 50, 100];
@@ -155,7 +163,7 @@ export function listView<T>(opts: ListOptions<T>): HTMLElement {
     const mine = ++token;
     renderHead();
     status.textContent = "Đang tải...";
-    const res = await opts.fetchPage({ ...state });
+    const res = await opts.fetchPage({ ...state, extra: { ...state.extra, ...(opts.params?.() ?? {}) } });
     if (mine !== token) return; // a newer request replaced this one
     if (!res) {
       status.textContent = "Không tải được dữ liệu.";
@@ -178,6 +186,14 @@ export function listView<T>(opts: ListOptions<T>): HTMLElement {
     prev.disabled = state.page <= 1;
     next.disabled = state.page >= pages;
   };
+
+  if (opts.controls) {
+    opts.controls.search = () => {
+      state.page = 1;
+      void load();
+    };
+    opts.controls.reload = () => void load();
+  }
 
   let timer = 0;
   search.addEventListener("input", () => {
@@ -202,11 +218,14 @@ export function listView<T>(opts: ListOptions<T>): HTMLElement {
     void load();
   });
 
-  void load();
+  if (opts.autoLoad === false) {
+    renderHead();
+    status.textContent = "";
+  } else void load();
   return h(
     "div",
     null,
-    h("div", { class: "toolbar" }, search, ...filterControls, ...(opts.toolbar ?? [])),
+    opts.hideSearch && filterControls.length === 0 && !(opts.toolbar ?? []).length ? null : h("div", { class: "toolbar" }, opts.hideSearch ? null : search, ...filterControls, ...(opts.toolbar ?? [])),
     summaryBox,
     h("div", { class: "table-wrap" }, h("table", null, head, body)),
     status,
