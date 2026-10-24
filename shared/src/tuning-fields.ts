@@ -1,3 +1,4 @@
+import { REALMS } from "./progression-data";
 import { DEFAULT_TUNING, type Tuning, type TuningGroup } from "./tuning";
 
 /**
@@ -15,8 +16,12 @@ export interface TuningField {
   unit?: string;
 }
 
+/** The admin screen a group is shown on: "misc" (Chỉ số khác), "realms" (Cảnh giới) or "potential" (Chỉ số tiềm năng). */
+export type TuningPage = "misc" | "realms" | "potential";
+
 export interface TuningScreenGroup {
   group: TuningGroup;
+  page: TuningPage;
   title: string;
   /** A sentence under the title (what the numbers do, anything to know before changing them). */
   note?: string;
@@ -28,6 +33,7 @@ const TIERS = ["Tên trắng", "Tên vàng", "Tên cam", "Tên đỏ"];
 export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
   {
     group: "pvp",
+    page: "misc",
     title: "PvP: sát khí, sát nhân, anh hùng",
     note: "Điểm sát khí và sát nhân, màu tên theo mốc sát nhân, xác suất mất đồ và độ bền hao khi chết theo màu tên, thưởng anh hùng, bảo hộ tân thủ.",
     fields: [
@@ -61,6 +67,7 @@ export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
   },
   {
     group: "waygate",
+    page: "misc",
     title: "Truyền Tống Trận: phí",
     note: "Phí (Linh Thạch) = phí cơ bản + phí mỗi đơn vị × khoảng cách giữa hai thành trên bản đồ thế giới.",
     fields: [
@@ -70,6 +77,7 @@ export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
   },
   {
     group: "aoi",
+    page: "misc",
     title: "Vùng nhìn",
     note: "Người và quái chỉ báo cho người ở trong tầm. Đơn vị là ô màn hình 32 px. Tầm rời không nhỏ hơn tầm vào.",
     fields: [
@@ -82,6 +90,7 @@ export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
   },
   {
     group: "combat",
+    page: "misc",
     title: "Chiến đấu cơ bản",
     note: "Mất EXP và độ bền khi chết, hồi máu và linh lực, cửa sổ tên xám (PvP), đường cong chỉ số quái theo cấp (quyết định quái mạnh cỡ nào ở mỗi cảnh giới; mốc thời gian tính bằng mili giây, 1000 = 1 giây). Chỉ số của từng loài quái nằm ở màn Quái / BOSS sau này.",
     fields: [
@@ -101,6 +110,7 @@ export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
   },
   {
     group: "theme",
+    page: "misc",
     title: "Màu giao diện",
     note: "Chỉ đổi cách hiển thị, không đổi cách chơi. Nhập màu CSS (#rrggbb, rgb(...), rgba(...)); ô vuông bên cạnh là bản xem trước. Người chơi nhận màu mới khi vào lại game hoặc đổi bản đồ.",
     fields: [
@@ -114,6 +124,83 @@ export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
       { path: "ui.ui-highlight", label: "Trang: màu nổi bật", kind: "color" },
       { path: "ui.ui-panel", label: "Trang: nền bảng, cửa sổ", kind: "color" },
       { path: "ui.ui-page", label: "Trang: nền trang", kind: "color" },
+    ],
+  },
+  {
+    group: "exp",
+    page: "realms",
+    title: "EXP và điểm tiềm năng theo cảnh giới",
+    note: "EXP cần để qua tầng 1 của mỗi cảnh giới (các tầng sau nhân với hệ số tăng theo tầng) và điểm tiềm năng nhận được ở mỗi tầng mới. Tràn EXP: ở tầng 9 thanh EXP vẫn đầy thêm tối đa một phần của mức cần (1 = 100%, tức thanh tối đa 200%); phần tràn làm tăng tỉ lệ đột phá.",
+    fields: [
+      ...REALMS.flatMap((r, i): TuningField[] => [
+        { path: `realms.${i}.expBase`, label: `${r.nameVi}: EXP để qua tầng 1`, kind: "int", unit: "EXP" },
+        { path: `realms.${i}.pointsPerStage`, label: `${r.nameVi}: điểm tiềm năng mỗi tầng mới`, kind: "int", unit: "điểm" },
+      ]),
+      { path: "stageGrowth", label: "Hệ số tăng EXP cần cho mỗi tầng kế tiếp", kind: "num" },
+      { path: "lowMapMult", label: "EXP săn bản đồ thấp hơn cảnh giới: nhân mỗi cảnh giới chênh (1 = không phạt thêm)", kind: "num" },
+      { path: "overflowMax", label: "Trần tràn EXP ở tầng 9 (1 = 100%, thanh tối đa 200%)", kind: "num" },
+    ],
+  },
+  {
+    group: "breakthrough",
+    page: "realms",
+    title: "Đột phá cảnh giới",
+    note: "Đan tối đa, tỉ lệ thành công cơ bản và tối đa (khi dùng đủ đan), thời gian đứng yên, chi phí Linh Thạch và điểm tiềm năng khi thành công, cho từng bước. Phần thưởng tỉ lệ từ EXP tràn: không có dưới mốc bắt đầu, cộng điểm tại mốc đó rồi tăng đều tới mức tràn tối đa.",
+    fields: [
+      ...DEFAULT_TUNING.breakthrough.steps.flatMap((_, i): TuningField[] => {
+        const step = `${REALMS[i]?.nameVi ?? i} → ${REALMS[i + 1]?.nameVi ?? i + 1}`;
+        return [
+          { path: `steps.${i}.maxPills`, label: `${step}: số đan tối đa`, kind: "int" },
+          { path: `steps.${i}.baseRatePct`, label: `${step}: tỉ lệ cơ bản (không đan)`, kind: "num", unit: "%" },
+          { path: `steps.${i}.maxRatePct`, label: `${step}: tỉ lệ tối đa (đủ đan, không nhỏ hơn cơ bản)`, kind: "num", unit: "%" },
+          { path: `steps.${i}.durationMs`, label: `${step}: thời gian đứng yên`, kind: "int", unit: "ms (60000 = 1 phút)" },
+          { path: `steps.${i}.cost`, label: `${step}: chi phí`, kind: "int", unit: "Linh Thạch" },
+          { path: `steps.${i}.basePoints`, label: `${step}: điểm tiềm năng khi thành công`, kind: "int", unit: "điểm" },
+        ];
+      }),
+      { path: "failExpLoss", label: "Thất bại: phần EXP tầng 9 bị mất", kind: "frac" },
+      { path: "gradePointsMult", label: "Điểm tiềm năng thêm theo phẩm cấp linh căn (nhân)", kind: "num" },
+      { path: "constitutionPoints", label: "Điểm tiềm năng thêm theo thể chất", kind: "num", unit: "điểm" },
+      { path: "overflowFrom", label: "EXP tràn: mốc bắt đầu cộng tỉ lệ (phần của mức cần)", kind: "frac" },
+      { path: "overflowFromBonus", label: "EXP tràn: điểm tỉ lệ cộng tại mốc bắt đầu", kind: "num", unit: "%" },
+      { path: "overflowMaxBonus", label: "EXP tràn: điểm tỉ lệ cộng khi tràn tối đa", kind: "num", unit: "%" },
+    ],
+  },
+  {
+    group: "kills",
+    page: "realms",
+    title: "Nhịp lên tầng theo số quái",
+    note: "Số quái cùng bậc cần giết để hết một tầng = gốc x hệ số tăng ^ cấp (cấp tính phẳng qua các cảnh giới). EXP của một quái suy ra từ đây.",
+    fields: [
+      { path: "base", label: "Số quái cần giết ở Luyện Khí tầng 1", kind: "num" },
+      { path: "growth", label: "Hệ số tăng mỗi cấp", kind: "num" },
+    ],
+  },
+  {
+    group: "stats",
+    page: "potential",
+    title: "Chỉ số chiến đấu từ chỉ số gốc và cấp",
+    note: "Mỗi chỉ số chiến đấu = giá trị gốc + (điểm của chỉ số gốc x hệ số) + (cấp x hệ số), rồi cộng trang bị. Cấp = cảnh giới x 9 + tầng - 1. Căn cốt → sinh lực, công, thủ; Linh lực → linh lực, công; Thần thức → chí mạng; Thân pháp → né; Ngộ tính → EXP; Phúc duyên → rơi đồ. Boss và vệ binh dùng cùng công thức nên cũng đổi theo (boss tính lại khi xuất hiện, vệ binh khi bản đồ dựng lại), sinh lực của họ còn nhân với hệ số riêng ở màn Quái / BOSS sau này. Tốc độ chạy theo Thân pháp chưa chỉnh được (máy khách tự dự đoán chuyển động). Người đang online giữ chỉ số cũ tới khi vào lại game, lên tầng hoặc đổi trang bị.",
+    fields: [
+      { path: "maxHp.base", label: "Sinh lực: gốc", kind: "num" },
+      { path: "maxHp.perCanCot", label: "Sinh lực: mỗi điểm Căn cốt", kind: "num" },
+      { path: "maxHp.perLevel", label: "Sinh lực: mỗi cấp", kind: "num" },
+      { path: "maxMp.base", label: "Linh lực: gốc", kind: "num" },
+      { path: "maxMp.perLinhLuc", label: "Linh lực: mỗi điểm Linh lực", kind: "num" },
+      { path: "maxMp.perLevel", label: "Linh lực: mỗi cấp", kind: "num" },
+      { path: "attack.base", label: "Công: gốc", kind: "num" },
+      { path: "attack.perLinhLuc", label: "Công: mỗi điểm Linh lực", kind: "num" },
+      { path: "attack.perCanCot", label: "Công: mỗi điểm Căn cốt", kind: "num" },
+      { path: "attack.perLevel", label: "Công: mỗi cấp", kind: "num" },
+      { path: "defense.base", label: "Thủ: gốc", kind: "num" },
+      { path: "defense.perCanCot", label: "Thủ: mỗi điểm Căn cốt", kind: "num" },
+      { path: "defense.perLevel", label: "Thủ: mỗi cấp", kind: "num" },
+      { path: "critRate.base", label: "Chí mạng: gốc", kind: "num", unit: "%" },
+      { path: "critRate.perThanThuc", label: "Chí mạng: mỗi điểm Thần thức", kind: "num", unit: "%" },
+      { path: "dodgeRate.perThanPhap", label: "Né: mỗi điểm Thân pháp", kind: "num", unit: "%" },
+      { path: "expBonus.perNgoTinh", label: "Thưởng EXP: mỗi điểm Ngộ tính", kind: "num", unit: "%" },
+      { path: "dropBonus.perPhucDuyen", label: "Thưởng rơi đồ: mỗi điểm Phúc duyên", kind: "num", unit: "%" },
+      { path: "rateCap", label: "Trần chí mạng và né", kind: "num", unit: "%" },
     ],
   },
 ];

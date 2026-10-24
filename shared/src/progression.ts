@@ -228,7 +228,10 @@ export interface DerivedStats {
   moveSpeed: number;
 }
 
-export const RATE_CAP = 60;
+/** The highest percent crit and dodge reach (tuning `stats.rateCap`). */
+export function rateCap(): number {
+  return tuning().stats.rateCap;
+}
 
 /** Walking speed (tiles per second) from the base stats, the speed percent of worn gear and any other percent modifiers. */
 export function walkSpeed(base: BaseStats, gearPct: number, speedMods: readonly number[] = []): number {
@@ -241,15 +244,17 @@ export function walkSpeed(base: BaseStats, gearPct: number, speedMods: readonly 
  */
 export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number, gear?: EquipStats, rootCount = 1, speedMods: readonly number[] = []): DerivedStats {
   const lv = levelIndex(realm, stage);
+  const t = tuning().stats; // the coefficients are tuning numbers (docs/PHASE3.md 3f); the caps of the percent stats stay as written
+  const cap = rateCap();
   return {
-    maxHp: 100 + base.canCot * 15 + lv * 25 + (gear?.maxHp ?? 0),
-    maxMp: 50 + base.linhLuc * 10 + lv * 12,
-    attack: Math.floor(5 + base.linhLuc * 2 + base.canCot * 0.5 + lv * 3 + (gear?.attack ?? 0)),
-    defense: Math.floor(2 + base.canCot * 1.5 + lv * 2 + (gear?.defense ?? 0)),
-    critRate: Math.min(RATE_CAP, 5 + base.thanThuc * 0.5 + (gear?.critRate ?? 0)),
-    dodgeRate: Math.min(RATE_CAP, base.thanPhap * 0.5 + (gear?.dodgeRate ?? 0)),
-    expBonus: Math.max(-50, base.ngoTinh + getRootGrade(rootGrade).expBonusPct + getRootCount(rootCount).expBonusPct),
-    dropBonus: Math.min(RATE_CAP, base.phucDuyen * 0.5),
+    maxHp: t.maxHp.base + base.canCot * t.maxHp.perCanCot + lv * t.maxHp.perLevel + (gear?.maxHp ?? 0),
+    maxMp: t.maxMp.base + base.linhLuc * t.maxMp.perLinhLuc + lv * t.maxMp.perLevel,
+    attack: Math.floor(t.attack.base + base.linhLuc * t.attack.perLinhLuc + base.canCot * t.attack.perCanCot + lv * t.attack.perLevel + (gear?.attack ?? 0)),
+    defense: Math.floor(t.defense.base + base.canCot * t.defense.perCanCot + lv * t.defense.perLevel + (gear?.defense ?? 0)),
+    critRate: Math.min(cap, t.critRate.base + base.thanThuc * t.critRate.perThanThuc + (gear?.critRate ?? 0)),
+    dodgeRate: Math.min(cap, base.thanPhap * t.dodgeRate.perThanPhap + (gear?.dodgeRate ?? 0)),
+    expBonus: Math.max(-50, base.ngoTinh * t.expBonus.perNgoTinh + getRootGrade(rootGrade).expBonusPct + getRootCount(rootCount).expBonusPct),
+    dropBonus: Math.min(cap, base.phucDuyen * t.dropBonus.perPhucDuyen),
     moveSpeed: walkSpeed(base, gear?.moveSpeed ?? 0, speedMods),
   };
 }

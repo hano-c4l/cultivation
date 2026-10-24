@@ -3,7 +3,7 @@ import type { SpiritualRoot } from "./character";
 import { ALL_ROOTS, SPIRITUAL_ROOTS } from "./character";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
-import { RATE_CAP, getRootGrade, levelIndex, type Element } from "./progression";
+import { rateCap, getRootGrade, levelIndex, type Element } from "./progression";
 
 /**
  * Skills (phase 2c, reworked with realms, grades and mastery levels). Placeholder game-design values (listed under "giá trị
@@ -371,8 +371,8 @@ export function withPassives<T extends { attack: number; defense: number; critRa
     ...d,
     attack: Math.floor(d.attack + d.attack * t.attackPct),
     defense: Math.floor(d.defense + d.defense * t.defensePct),
-    critRate: Math.min(RATE_CAP, d.critRate + t.critPoints),
-    dodgeRate: Math.min(RATE_CAP, d.dodgeRate + t.dodgePoints),
+    critRate: Math.min(rateCap(), d.critRate + t.critPoints),
+    dodgeRate: Math.min(rateCap(), d.dodgeRate + t.dodgePoints),
   };
 }
 

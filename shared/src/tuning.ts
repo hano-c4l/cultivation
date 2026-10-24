@@ -106,6 +106,19 @@ export interface Tuning {
     deathDurabilityFraction: number;
     monsterCurve: { hpBase: number; hpPerLevel: number; attackBase: number; attackPerLevel: number; defenseBase: number; defensePerLevel: number };
   };
+  /** How the base stats and the level turn into combat stats (`deriveStats`): each stat is its `base` plus the listed amounts per point of a base stat or per level index (realm x 9 + stage - 1); worn gear is added on top. The percent caps and the walking speed stay in code. */
+  stats: {
+    maxHp: { base: number; perCanCot: number; perLevel: number };
+    maxMp: { base: number; perLinhLuc: number; perLevel: number };
+    attack: { base: number; perLinhLuc: number; perCanCot: number; perLevel: number };
+    defense: { base: number; perCanCot: number; perLevel: number };
+    critRate: { base: number; perThanThuc: number };
+    dodgeRate: { perThanPhap: number };
+    expBonus: { perNgoTinh: number };
+    dropBonus: { perPhucDuyen: number };
+    /** The highest percent crit and dodge reach. */
+    rateCap: number;
+  };
   /** The spiritual root rolls: quality grades (weight out of the total, EXP bonus, starting points, damage bonus) and the element counts (weight, EXP bonus). Names stay in code. */
   roots: { grades: Array<{ weight: number; expBonusPct: number; bonusPoints: number; elementDamagePct: number }>; counts: Array<{ weight: number; expBonusPct: number }> };
   /** What each path adds as the chủ tu (see paths.ts), by path id. */
@@ -298,6 +311,17 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     deathDurabilityFraction: 0.05,
     monsterCurve: { hpBase: 60, hpPerLevel: 30, attackBase: 10, attackPerLevel: 3.2, defenseBase: 4, defensePerLevel: 2 },
   },
+  stats: {
+    maxHp: { base: 100, perCanCot: 15, perLevel: 25 },
+    maxMp: { base: 50, perLinhLuc: 10, perLevel: 12 },
+    attack: { base: 5, perLinhLuc: 2, perCanCot: 0.5, perLevel: 3 },
+    defense: { base: 2, perCanCot: 1.5, perLevel: 2 },
+    critRate: { base: 5, perThanThuc: 0.5 },
+    dodgeRate: { perThanPhap: 0.5 },
+    expBonus: { perNgoTinh: 1 },
+    dropBonus: { perPhucDuyen: 0.5 },
+    rateCap: 60,
+  },
   roots: {
     grades: [
       { weight: 50, expBonusPct: -10, bonusPoints: 0, elementDamagePct: 0 },
@@ -357,6 +381,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   breakthrough: "Đột phá: đan tối đa, tỉ lệ, thời gian, chi phí, điểm; mất EXP khi thất bại, thưởng tràn",
   paths: "Hướng tu: phí đổi chủ tu và phí bỏ hướng",
   combat: "Chiến đấu: mất EXP khi chết, hồi HP/MP, cửa sổ tên xám, hao độ bền cơ bản, đường cong chỉ số quái",
+  stats: "Chỉ số chiến đấu từ chỉ số gốc và cấp: sinh lực, linh lực, công, thủ, chí mạng, né, EXP, rơi đồ",
   roots: "Linh căn: tỉ lệ và thưởng theo phẩm cấp và theo số hệ",
   pathBonuses: "Thưởng chỉ số của từng hướng tu (khi là chủ tu)",
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
@@ -572,6 +597,20 @@ export function validTuningGroup(group: string, value: unknown): boolean {
         num(value.deathDurabilityFraction, 0, 1) &&
         obj(c) &&
         ["hpBase", "hpPerLevel", "attackBase", "attackPerLevel", "defenseBase", "defensePerLevel"].every((k) => num(c[k], 0, 1_000_000))
+      );
+    }
+    case "stats": {
+      const part = (v: unknown, keys: string[]) => obj(v) && keys.every((k) => num(v[k], 0, 100_000));
+      return (
+        part(value.maxHp, ["base", "perCanCot", "perLevel"]) &&
+        part(value.maxMp, ["base", "perLinhLuc", "perLevel"]) &&
+        part(value.attack, ["base", "perLinhLuc", "perCanCot", "perLevel"]) &&
+        part(value.defense, ["base", "perCanCot", "perLevel"]) &&
+        part(value.critRate, ["base", "perThanThuc"]) &&
+        part(value.dodgeRate, ["perThanPhap"]) &&
+        part(value.expBonus, ["perNgoTinh"]) &&
+        part(value.dropBonus, ["perPhucDuyen"]) &&
+        num(value.rateCap, 0, 100)
       );
     }
     case "roots": {

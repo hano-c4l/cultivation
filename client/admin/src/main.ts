@@ -4,7 +4,7 @@ import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { MENU } from "./menu";
 import { giftsPage } from "./gifts";
 import { questEditPage, questListPage } from "./quests";
-import { miscPage } from "./misc";
+import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
 const app = document.getElementById("app")!;
@@ -81,6 +81,12 @@ async function render(): Promise<void> {
   } else if (path === "/admin/gifts") {
     title = "Gửi quà";
     content = giftsPage();
+  } else if (path === "/admin/realms") {
+    title = "Cảnh giới";
+    content = tuningPage("realms");
+  } else if (path === "/admin/potential") {
+    title = "Chỉ số tiềm năng";
+    content = tuningPage("potential");
   } else if (path === "/admin/misc") {
     title = "Chỉ số khác";
     content = miscPage();
