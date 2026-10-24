@@ -1,6 +1,6 @@
 # Kế hoạch: Web game tu tiên (MMO nhỏ-vừa, 2.5D isometric)
 
-Trạng thái: **ĐANG THỰC HIỆN** — xem `docs/STATUS.md` (giai đoạn nào xong, đang làm, làm tiếp), `docs/TECHNICAL.md` (hạ tầng, cách chạy, kiểm thử), `docs/PHASE1.md` và `docs/PHASE2.md` (chi tiết từng giai đoạn). Mọi mục "Mặc định" bên dưới đều có thể sửa.
+Trạng thái: **ĐANG THỰC HIỆN** — xem `docs/STATUS.md` (giai đoạn nào xong, đang làm, làm tiếp), `docs/TECHNICAL.md` (hạ tầng, cách chạy, kiểm thử), `docs/PHASE1.md`, `docs/PHASE2.md`, `docs/PHASE3.md` (chi tiết từng giai đoạn). Mọi mục "Mặc định" bên dưới đều có thể sửa.
 
 ## 1. Yêu cầu đã chốt
 | Hạng mục | Quyết định |
@@ -20,7 +20,7 @@ Trạng thái: **ĐANG THỰC HIỆN** — xem `docs/STATUS.md` (giai đoạn n�
 
 > **Các mục 2 (hình dạng deploy), 2a (gói Cloudflare Free/Paid), 3 (bảng sở hữu trạng thái), 5 (vòng đời Map DO và netcode), 6 (đặc tả asset) và 8 (xác thực) đã chuyển sang `docs/TECHNICAL.md`, giữ nguyên số mục.**
 
-## 4. Toàn vẹn kinh tế (làm từ Giai đoạn 1, dù chợ/giao dịch ra ở GĐ3)
+## 4. Toàn vẹn kinh tế (làm từ Giai đoạn 1, dù chợ/giao dịch ra ở GĐ4)
 - Mỗi vật phẩm là một **instance có ID duy nhất** (`item_instances`), không dùng số lượng gộp cho trang bị/đồ hiếm.
 - **Sổ cái tiền tệ append-only** (`currency_ledger`): `id, character_id, currency, delta, reason, actor, idempotency_key, created_at`. `idempotency_key` unique để chống ghi lặp. Cộng tiền admin, đơn nạp, thưởng nhiệm vụ, thuế chợ đều ghi cùng một bảng.
 - Số dư cập nhật bằng **batch D1 atomic với điều kiện** (`UPDATE ... WHERE balance >= ?`), không đọc-rồi-ghi.
@@ -70,7 +70,7 @@ Chi tiết kỹ thuật và giá trị nằm ở `docs/PHASE2.md`; đây chỉ l
 - **Đột phá cảnh giới (2d-A):** phải có **Đan Đột Phá** đúng bước (thêm đan thì dễ hơn), tốn Linh Thạch, và phải **đứng yên** một khoảng thời gian (1 phút ở Luyện Khí, lâu hơn ở cảnh giới cao); bị đánh, di chuyển, tấn công hay mất kết nối giữa chừng thì **thất bại** (mất đan, tiền, phần tu vi tràn và 30% tu vi tầng 9). Tu vi đầy ở tầng 9 vẫn tràn thêm tối đa 100%: tràn 50% được +5% tỉ lệ, tăng đều tới +15% khi tràn 100%; phần tràn mất khi bắt đầu đột phá, thất bại thì thanh tu vi còn 70%. Thành công: tầng 1 của cảnh giới mới, điểm tiềm năng theo linh căn và thể chất, 2 kỹ năng linh căn mới. Đan rơi từ quái (càng cao cấp càng hiếm); đan Đột Phá Trúc Cơ còn có từ nhiệm vụ đột phá làm một lần của Trưởng Lão (2e-B, đã làm; thương nhân NPC không bán đan đột phá); đan cao cấp sẽ có thêm từ boss (2h) và chợ. Chi tiết và giá trị tạm: `docs/PHASE2.md` mục 2d.
 - **Hệ của quái và đa linh căn (2026-10-18):** mỗi lần quái sinh ra hoặc hồi sinh **tung một hệ ngẫu nhiên** (mỗi lần độc lập, không xoay vòng), hiện ở tên và màu thân quái. Ngũ hành tính **một chiều từ phía người đánh**: so từng hệ của người đánh với từng hệ của người bị đánh, mỗi cặp +1 nếu khắc, −1 nếu bị khắc, 0 nếu còn lại, rồi cộng: tổng dương ×1.2, âm ×0.8, bằng 0 ×1. Kỹ năng có một hệ, đòn thường dùng mọi hệ của người đánh. Chi tiết và ví dụ: `docs/PHASE2.md` mục "Hệ của quái".
 - **Hướng tu (2d-B, 2026-10-18):** từ Trúc Cơ nhận vật phẩm hướng tu (qua nhiệm vụ nhập môn của NPC Đạo Sư riêng từng hướng, xem bên dưới) rồi chọn hướng; hướng đầu là **chủ tu**, sau đó tối đa 2 **phụ tu** (tốn thêm Linh Thạch). Chủ tu mạnh hơn phụ tu (phụ tu cho một nửa); mỗi phụ tu làm tu vi nhận được nhân `1 / (1 + 0,25·số phụ tu)`. Mỗi hướng có các cấp (ví dụ Kiếm Tâm, Kiếm Ý, Nhân Kiếm Hợp Nhất; Học Đồ, Đan Sư): khi các kỹ năng của cấp hiện tại đạt thuần thục tối đa thì lên cấp và nhận kỹ năng mới. Có thể đổi chủ tu hoặc bỏ một hướng nhưng tốn Linh Thạch theo cấp hướng tu (bỏ chủ tu tốn gấp đôi). Kiếm tu: công kích và sát thương kỹ năng khi cầm kiếm; Thuật tu: linh lực tối đa và sát thương kỹ năng theo hệ; Đan tu: phòng thủ, hồi máu từ đan và thuần thục từ Ngộ Đạo Đan. Chi tiết và giá trị tạm: `docs/PHASE2.md` mục 2d-B.
-- **Thương nhân NPC (2e-A, 2026-10-19):** trong thành có một thương nhân (bấm vào để mở cửa sổ; đi ra xa thì cửa sổ tự đóng). Bán đan hồi máu, Ngộ Đạo Đan, trang bị và pháp bảo cơ bản Luyện Khí (chọn hệ), vài bí tịch (hai quyển cơ bản của Luyện Khí và bí tịch hệ của Trúc Cơ; không giới hạn số lần mua) bằng Linh Thạch, **không bán đan đột phá**; có món không giới hạn, có món giới hạn mỗi ngày (đặt lại 0 giờ giờ Việt Nam). Mua lại đồ của người chơi ở **15% giá trị** (trang bị mòn rẻ hơn), không thu mua đan đột phá, vật phẩm hướng tu, bí tịch hay đồ đang mặc; có bán nhanh nhiều món một lần. **Thêm cơ chế vật phẩm mới: Truyền Tống Phù** (niệm 5 giây rồi về thành đó, bị ngắt nếu di chuyển hoặc bị đánh và khi đó không mất phù; giá 2.000 Linh Thạch cho Thanh Vân Thành, thành cấp cao đắt hơn; mỗi thành thương nhân bán phù của thành đó, không rơi từ quái, giao dịch giữa người chơi để GĐ3). Mọi giá và giới hạn là giá trị tạm. Chi tiết: `docs/PHASE2.md` mục 2e-A.
+- **Thương nhân NPC (2e-A, 2026-10-19):** trong thành có một thương nhân (bấm vào để mở cửa sổ; đi ra xa thì cửa sổ tự đóng). Bán đan hồi máu, Ngộ Đạo Đan, trang bị và pháp bảo cơ bản Luyện Khí (chọn hệ), vài bí tịch (hai quyển cơ bản của Luyện Khí và bí tịch hệ của Trúc Cơ; không giới hạn số lần mua) bằng Linh Thạch, **không bán đan đột phá**; có món không giới hạn, có món giới hạn mỗi ngày (đặt lại 0 giờ giờ Việt Nam). Mua lại đồ của người chơi ở **15% giá trị** (trang bị mòn rẻ hơn), không thu mua đan đột phá, vật phẩm hướng tu, bí tịch hay đồ đang mặc; có bán nhanh nhiều món một lần. **Thêm cơ chế vật phẩm mới: Truyền Tống Phù** (niệm 5 giây rồi về thành đó, bị ngắt nếu di chuyển hoặc bị đánh và khi đó không mất phù; giá 2.000 Linh Thạch cho Thanh Vân Thành, thành cấp cao đắt hơn; mỗi thành thương nhân bán phù của thành đó, không rơi từ quái, giao dịch giữa người chơi để GĐ4). Mọi giá và giới hạn là giá trị tạm. Chi tiết: `docs/PHASE2.md` mục 2e-A.
 - **Nhiệm vụ (2e-B, 2026-10-19):** NPC nhiệm vụ riêng (Trưởng Lão) trong thành giao nhiệm vụ theo chuỗi; chuỗi tân thủ 6 bước (gặp Thương nhân, giết quái, nộp vật liệu, đạt tầng 5, hạ quái Tinh Anh, đạt tầng 9). Thưởng Linh Thạch, vật phẩm và EXP (EXP theo luật EXP của quái: vượt thanh thì lên tầng, tầng 9 tràn tối đa 100%, phần dư mất; đột phá cảnh giới vẫn cần đan). **Mọi định nghĩa nhiệm vụ là dữ liệu trong D1** (mục tiêu giết quái, nộp vật phẩm, đạt cảnh giới, nói chuyện; phần thưởng) để màn admin chỉnh và thêm nhiệm vụ sau mà không sửa code. Mỗi hướng tu có **NPC Đạo Sư riêng** giao nhiệm vụ nhập môn **khác nhau theo hướng** (từ Trúc Cơ; kiếm: hạ 30 quái, thuật: nộp Yêu Đan và Linh Thảo, đan: nộp Linh Thảo và Hồi Huyết Đan; nhận vật phẩm hướng tu; bỏ hướng thì làm lại được); Trưởng Lão giao nhiệm vụ đột phá một lần (nộp nguyên liệu nhận Đan Đột Phá Trúc Cơ). Nút nhận vật phẩm hướng tu tạm chỉ còn cho admin (server kiểm). Chi tiết: `docs/PHASE2.md` mục 2e-B.
 - **PvP, sát khí, sát nhân, anh hùng (2f, 2026-10-20):** có **công tắc PK** (mặc định tắt mỗi lần vào, chỉ bản đồ ngoài thành); dưới Luyện Khí tầng 5 không bị đánh và cũng không đánh được người. Ba điểm riêng: **sát khí** (+10 mỗi người giết, −50 khi bị người giết, trên 200 thì tăng sát thương 5% đến 15% ở 1000), **sát nhân** (+100 khi giết người trắng/vàng; màu tên trắng 0, vàng 1-200, cam 201-500, đỏ từ 501; giảm 5 mỗi phút online, −50 khi bị giết, −50/−100 khi giết người cam/đỏ), **anh hùng** (chỉ khi sát nhân 0: giết cam +20, đỏ +50; mốc 200 cộng 5% linh lực, mốc 500 cộng 10% linh lực và 5% tỉ lệ rơi đồ; giết trắng/vàng thì về 0). Tên xám chỉ hiện với người bị đánh trong 3 phút. **Rơi đồ (2026-10-21):** người tên vàng/cam/đỏ bị người chơi giết thì có 10%/25%/50% mất một món (cả chồng vật phẩm trong túi hoặc một món đang mặc, trừ pháp bảo bản mệnh) sang hòm thư người giết (không hết hạn); mọi cái chết của tên cam/đỏ hao độ bền nặng hơn (10%/20% thay vì 5%). **Vệ binh** ở mọi cổng (thành, rừng, hang) chỉ đánh người tên cam/đỏ (sát nhân từ 201) và ai đánh nó, mạnh như người mặc đủ đồ cảnh giới cao hơn bản đồ một bậc với HP ×5 và 4 kỹ năng; đánh vệ binh cần bật PK; giết vệ binh không nhận gì và tăng sát khí, sát nhân như giết người tên trắng. Chi tiết: `docs/PHASE2.md` mục 2f.
 - **Nhiệm vụ: cửa sổ và hướng tu hai bước (2026-10-20):** nút "Nhiệm vụ" dưới "Túi đồ" mở cửa sổ 2 tab (Đang làm / Đã xong), có Theo dõi (tối đa 3, hiện dưới HP/MP) và Bỏ nhiệm vụ (về như chưa nhận); NPC chỉ liệt kê nhiệm vụ nhận được hoặc đang làm, theo thứ tự đã nhận, và ẩn nhiệm vụ nhập môn của hướng tu nhân vật đã có. Mỗi hướng tu có **2 nhiệm vụ làm lần lượt** (khác nhau theo hướng); chỉ bước 2 phát vật phẩm hướng tu. Mục chỉ admin thấy trong giao diện chính có tiền tố "GM · ". Chi tiết: `docs/PHASE2.md` mục 2e-B PR3.
@@ -83,6 +83,7 @@ Chi tiết kỹ thuật và giá trị nằm ở `docs/PHASE2.md`; đây chỉ l
 - **Mở rộng thế giới (2k, 2026-10-24), chi tiết `docs/PHASE2.md` mục 2k:** (1) bản đồ chơi trong một **hình chữ nhật trên màn hình** (lưới vẫn vuông, phần ngoài là void), lớn gấp nhiều lần, camera kẹp trong đó nên không còn nền đen; (2) **vùng nhìn** ở bản đồ chiến đấu (người và quái chỉ báo cho người ở gần; thành vẫn báo hết); (3) các hằng số của 2j nằm trong D1 (`game_tuning`) cho màn admin sau; (4) **thế giới có hai thành**: rừng → hang → Thiên Hà Thành (an toàn, đủ NPC, thương nhân bán đồ Kim Đan/Nguyên Anh) → Xích Diễm Sơn (Kim Đan) và Vạn Cổ Hàn Uyên (Nguyên Anh), thêm quái, boss, kỹ năng, đan và nhiệm vụ đan đột phá cho hai cảnh giới này; chết thì về thành gần nhất.
 - **Đợt hoàn thiện 2l (2026-10-24), chi tiết `docs/PHASE2.md` mục 2l:** **Truyền Tống Trận** giữa mỗi thành chính (đi tới thành chính khác, phí tăng theo khoảng cách, trả cùng lúc với việc chuyển bản đồ); nhiệm vụ nhận **đan đột phá chỉ hiện và nhận được từ tầng 9** của cảnh giới trước; thương nhân Thanh Vân Thành bán đồ Luyện Khí và Trúc Cơ; **bãi quái xếp lưới đều** (bậc theo khoảng cách từ chỗ vào) và **boss mỗi lần xuất hiện ở một chỗ ngẫu nhiên** (đổi so với luật cũ "chỗ cố định"); **hiệu ứng** cho kỹ năng (gần, xa, nón, tốc biến, buff, hồi máu), đột phá, truyền tống phù và truyền tống trận.
 - **Dữ liệu cho màn admin (2m, 2026-10-23), chi tiết `docs/PHASE2.md` mục 2m:** để màn admin sau này không cần migration mới, hầu hết số cân bằng đã vào D1; còn trong code là công thức (`deriveStats`, đường cong trang bị, bảng khắc ngũ hành), mẫu kỹ năng, bố cục bản đồ và tên (danh sách đúng ở `docs/PHASE2.md` mục 2m, đợt 2m-b): thương nhân (luật hàng, tỉ lệ và loại đồ thu mua, hàng hệ biến dị; giới hạn mua mỗi ngày tính riêng từng thương nhân), vị trí và tên NPC (bảng `npc_spots`, máy khách vẽ theo `welcome`), chiến đấu cơ bản (mất EXP khi chết, hồi, đường cong chỉ số quái), linh căn (tỉ lệ, thưởng), thưởng từng hướng tu, số của boss (cả loài boss từng bản đồ)/vệ binh/PvP (cả anh hùng và mốc màu tên)/vùng nhìn/rơi đồ/số quái mỗi tầng/giá trị vật phẩm/loài và hạng quái/EXP và đột phá/phí hướng tu/kỹ năng (ghi đè theo mã)/màu giao diện (`game_tuning`, nay gửi tới máy khách qua `welcome`), bộ đếm giết boss chung các kênh (`boss_kills`). Thương nhân ẩn thẻ trống; có icon linh thạch.
+- **Giai đoạn admin (2026-10-24):** giai đoạn 3 nay là làm lại hệ thống admin (`docs/PHASE3.md`); kinh tế và xã hội thành giai đoạn 4, hoàn thiện và vận hành thành giai đoạn 5. Nguyên tắc từ đây: thiết kế mở rộng và tùy chỉnh được bằng admin, đưa số liệu và danh mục vào D1.
 - **Giao diện:** thanh buff dưới thanh HP/MP (kỹ năng buff và đan hồi dần, kèm thời gian còn lại); cửa sổ trang bị 2 tab (trang bị / pháp bảo).
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
@@ -111,10 +112,24 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 2k. Mở rộng thế giới: bản đồ chữ nhật, vùng nhìn, hằng số 2j vào D1, thành thứ hai và bản đồ Kim Đan/Nguyên Anh
   - 2l. Đợt hoàn thiện: truyền tống trận, bãi quái đều và boss ngẫu nhiên, ràng cấp đan đột phá, hiệu ứng
   - 2m. Đưa dữ liệu cứng vào D1 để chuẩn bị màn admin: thương nhân (nhiều thương nhân mỗi thành, kho riêng), vị trí và tên NPC, số của boss, vệ binh, PvP, vùng nhìn, rơi đồ, kỹ năng, màu giao diện, bộ đếm boss chung; icon trang web
-- **Giai đoạn 3**: Kinh tế và xã hội (chưa chia hạng mục)
-- **Giai đoạn 4**: Hoàn thiện và vận hành (chưa chia hạng mục)
+- **Giai đoạn 3**: Hệ thống Admin (`docs/PHASE3.md`)
+  - 3a. Nền: `/admin/*`, đăng nhập, menu, nhật ký thay đổi, khung list/detail
+  - 3b. Lịch sử Tiên Ngọc
+  - 3c. Chỉ số khác (sát khí, sát nhân, anh hùng, phí truyền tống, vùng nhìn...)
+  - 3d. Gửi quà (thư có tiền, vật phẩm, tiêu đề, mô tả)
+  - 3e. Quản lý nhiệm vụ
+  - 3f. Cảnh giới và chỉ số tiềm năng
+  - 3g. Vật phẩm
+  - 3h. Kỹ năng
+  - 3i. Thiên phú (linh căn, thể chất, hệ biến dị)
+  - 3j. Quái và BOSS
+  - 3k. NPC (nhiệm vụ, thương nhân, Đan Sư, thợ rèn, hướng tu, vệ binh)
+  - 3l. Bản đồ
+  - 3m. Tài khoản và nhân vật
+- **Giai đoạn 4**: Kinh tế và xã hội (chưa chia hạng mục)
+- **Giai đoạn 5**: Hoàn thiện và vận hành (chưa chia hạng mục)
 
-Giai đoạn 3, 4 và các giai đoạn sau sẽ có file `docs/PHASE3.md`, `docs/PHASE4.md`... khi bắt đầu làm.
+Giai đoạn 4, 5 và các giai đoạn sau sẽ có file `docs/PHASE4.md`, `docs/PHASE5.md`... khi bắt đầu làm.
 
 ### Giai đoạn 0: Lát cắt rủi ro nhất (xương sống kỹ thuật)
 Làm: `git init`, monorepo, Worker + DO + D1 migration deploy lên Cloudflare, map isometric mẫu, tap/click để di chuyển, **người chơi thứ hai hiển thị**.
@@ -137,11 +152,16 @@ Nghiệm thu:
 Túi đồ, trang bị, pháp bảo, kỹ năng/bí pháp, chọn chủ tu/phụ tu, NPC thương nhân, nhiệm vụ (chuỗi), ngũ hành đầy đủ, PvP + sát khí, vệ binh NPC, bảng xếp hạng.
 **Chat nhiều chế độ** (xem mục 9a). Nghiệm thu: một nhân vật đi trọn chuỗi nhiệm vụ tân thủ; công thức sát thương ngũ hành đúng test; sát khí/rơi đồ/vệ binh theo đúng luật mặc định.
 
-### Giai đoạn 3: Kinh tế và xã hội
-Giao dịch trực tiếp, chợ đăng bán + đấu giá, thú cưỡi, nghề phụ (luyện đan, luyện khí), tông môn (Cống Hiến), đơn nạp Tiên Ngọc + trang admin.
+### Giai đoạn 3: Hệ thống Admin
+(Kế hoạch chi tiết, quyết định đã chốt và thứ tự: `docs/PHASE3.md`.)
+Làm lại toàn bộ admin: mọi màn dưới `xxx/admin/yyy`, kiểm quyền Admin (chưa đăng nhập hoặc không phải admin thì về `/admin/login`), màn chính có menu tới các màn quản lý: tài khoản và nhân vật (ban, đặt mật khẩu tạm, sửa nhân vật), bản đồ, NPC, quái/BOSS, vật phẩm, kỹ năng, thiên phú, nhiệm vụ, cảnh giới, chỉ số tiềm năng, lịch sử Tiên Ngọc, chỉ số khác, gửi quà. Danh mục trong code (cảnh giới, vật phẩm, kỹ năng, quái, bản đồ...) chuyển thành dữ liệu D1.
+Nghiệm thu: `/admin/*` không vào được nếu không phải admin; thêm/sửa/xóa từng loại nội dung bằng giao diện có hiệu lực trong game mà không sửa code; xóa theo luật (xóa mềm nếu có người sở hữu, xóa cứng nếu không); sửa nhân vật đang online không bị phòng ghi đè; mọi thay đổi có nhật ký.
+
+### Giai đoạn 4: Kinh tế và xã hội
+Giao dịch trực tiếp, chợ đăng bán + đấu giá, thú cưỡi, nghề phụ (luyện đan, luyện khí), tông môn (Cống Hiến), đơn nạp Tiên Ngọc (phần admin xem lịch sử đã làm ở giai đoạn 3).
 Nghiệm thu: giao dịch/mua bán chạy atomic, **test đua (race) không tạo dupe**; đấu giá kết thúc đúng; người bán offline nhận tiền qua hòm thư; tổng cung tiền có dashboard.
 
-### Giai đoạn 4: Hoàn thiện và vận hành
+### Giai đoạn 5: Hoàn thiện và vận hành
 Tối ưu mobile, boss thế giới, bí cảnh, động phủ, thể tu + trận/phù tu, tích hợp cổng thanh toán (sau khi chọn nhà cung cấp), quên mật khẩu qua email, giám sát và log, cân bằng.
 
 ## 11. Phụ thuộc bạn cần cung cấp sau
@@ -152,6 +172,6 @@ Tối ưu mobile, boss thế giới, bí cảnh, động phủ, thể tu + trậ
 
 ## 12. Rủi ro chính
 - Giới hạn 1 luồng/DO → cần giới hạn dân số kênh, đo ở GĐ0.
-- Dupe/lạm phát tiền → sổ cái + atomic từ GĐ1, test đua ở GĐ3.
+- Dupe/lạm phát tiền → sổ cái + atomic từ GĐ1, test đua ở GĐ4.
 - Asset isometric nhân vật 8 hướng khó kiếm CC0 → dùng placeholder theo đặc tả chuẩn.
 - Mobile hiệu năng → area-of-interest, atlas nén, giới hạn số sprite.

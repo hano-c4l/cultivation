@@ -18,10 +18,13 @@ Consult the advisor at these three points:
 - Never commit directly to `main` or `preview`, and never skip the preview stage.
 - Commit, push, PR, merge and deploy are outward-facing: do each only when the user asks or has approved that step in the current session.
 
+## Design principle
+- Always think and design for extension and for customization through the Admin features: game numbers and catalogues (items, skills, realms, monsters, maps, NPCs, quests...) live in D1 as data that Admin screens can edit, not in code, so that building the Admin screens later needs as few code changes as possible. Code holds formulas and mechanisms only. When adding a feature, put its numbers and catalogue in D1 from the start, with a reload path (`config_versions`, `loadLiveConfig`).
+
 ## Docs and how to update them
 - `docs/PLAN.md`: the overall plan: requirements, game rules, the list of phases and sub-phases (names only) with acceptance criteria, and **overview changes** compared with the original plan.
 - `docs/TECHNICAL.md`: infrastructure (Cloudflare Free/Paid plan), architecture, environments and where things run, how to run and test, deploy procedure, traps already hit.
-- `docs/PHASE1.md`, `docs/PHASE2.md`, `docs/PHASExx.md` (one file per phase, and the same applies to every later phase): details of that phase: decisions, how it was built, temporary values, leftover issues. Put each fact under the section of the matching sub-phase (1a-1f, 2a-2i, ...).
+- `docs/PHASE1.md`, `docs/PHASE2.md`, `docs/PHASE3.md` (the Admin phase), `docs/PHASExx.md` (one file per phase, and the same applies to every later phase): details of that phase: decisions, how it was built, temporary values, leftover issues. Put each fact under the section of the matching sub-phase (1a-1f, 2a-2i, ...).
 - `docs/STATUS.md`: **only** which phases are done, what is in progress (what is done and what is left in a half-finished phase, leftovers), and what comes next. No technical or feature details here.
 - When the user says "cập nhật docs" or "cập nhật status" (update docs / status): put each piece of information in the **right file and the right section** as above (never dump everything into STATUS.md), fix cross references, then summarize STATUS.md again.
 - Docs are written in Vietnamese, this file in English.
