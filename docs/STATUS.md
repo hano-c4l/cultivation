@@ -1,6 +1,6 @@
 # Trạng thái dự án
 
-Cập nhật: 2026-10-24 (2a-2m xong; preview và production cùng code, D1 ở `0034`). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
+Cập nhật: 2026-10-24 (2a-2m xong; preview và production cùng code, D1 ở `0034`; kế hoạch giai đoạn 3 Admin đã chốt, chưa làm). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md`, `docs/PHASE3.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
 
 ## Đã xong
 - **Giai đoạn 0** (xương sống kỹ thuật) và **giai đoạn 1** (MVP: tài khoản, thế giới, chat, chỉ số/cảnh giới, quái và chiến đấu, kinh tế khung xương). Riêng 1f (đo tải thật 50 client trên Cloudflare) **hoãn theo quyết định của người dùng**.
@@ -25,10 +25,10 @@ Cập nhật: 2026-10-24 (2a-2m xong; preview và production cùng code, D1 ở 
 - **Chưa thử tay (2k, 2l):** bản đồ chữ nhật (góc, cạnh, điện thoại, WebGL), vùng nhìn khi đông người, đi hết hang tới Thiên Hà Thành và hai bản đồ mới (quái, boss ngẫu nhiên, thương nhân, Thợ Rèn, Trưởng Lão), Truyền Tống Trận, nhiệm vụ đan đột phá ràng cấp 9, và **mọi hiệu ứng, kể cả đòn đánh thường** (chưa xem bằng mắt được ở khung trình duyệt của app). Cần đo tải thật (tick trung bình khoảng 16 ms ở 50 client trên máy local).
 
 ## Làm tiếp
-1. **Giai đoạn 2 coi như xong** (đã có thế giới hai thành); chưa mở giai đoạn 3 (kinh tế và xã hội, xem `docs/PLAN.md` mục 10). Còn các việc phụ: cân lại độ mạnh boss nếu thử tay thấy quá khó). Còn lại của 2d: cấp hướng tu ảnh hưởng chỉ số. Các màn admin (chỉnh nhiệm vụ, giá thương nhân...; màn thể chất đã xong ở 2i) **làm sau** theo người dùng. **2e đã xong**; màn admin chỉnh nhiệm vụ làm sau.
+1. **Giai đoạn 2 coi như xong** (đã có thế giới hai thành). **Giai đoạn 3 (làm lại hệ thống Admin) đã có kế hoạch chốt, chưa làm hạng mục nào**; bắt đầu từ 3a (Nền: `/admin/*`, đăng nhập, menu, nhật ký). Kế hoạch, quyết định và thứ tự: `docs/PHASE3.md`. Kinh tế và xã hội lùi thành giai đoạn 4, hoàn thiện và vận hành thành giai đoạn 5 (`docs/PLAN.md` mục 10). Còn các việc phụ của giai đoạn 2: cân lại độ mạnh boss nếu thử tay thấy quá khó; cấp hướng tu ảnh hưởng chỉ số (2d).
 2. Việc nhỏ tồn đọng (chi tiết ở `docs/PHASE2.md`, mục "Việc nhỏ đang chờ quyết định hoặc chưa làm"): kỹ năng tông môn và học từ NPC, tiền tệ trong thư, nhận thể chất qua vật phẩm, tung lại số hệ cho nhân vật có sẵn, admin chỉnh màu giao diện và giá/giới hạn của thương nhân, thang đo thật `rows_written` của thương nhân và nhiệm vụ trên Cloudflare, giao diện thương nhân và nhiệm vụ trên điện thoại chưa thử, đường tính quái hiếm của nhiệm vụ trong phòng mới có unit test.
 
-3. **Các màn admin** (người dùng hoãn, làm khi sẵn sàng): nhiệm vụ, `game_tuning` (mọi nhóm), thương nhân và NPC (`shop_merchants`, `shop_stock`, `npc_spots`), bảng master trang bị và tên bộ, bảng Thợ Rèn, hệ biến dị. Dữ liệu và code đọc đã sẵn nên không cần migration mới; mỗi lần lưu phải tăng `config_versions` tương ứng (`tuning`, `shop`, `npcs`, `quests`, `gear_master`, `enhance`).
+3. **Giai đoạn 3 (Admin)**: các hạng mục 3a-3m nằm ở `docs/PHASE3.md` (không còn là việc "làm sau"). Phạm vi lớn hơn dự kiến ở 2m: thêm bản đồ, quái, vật phẩm, kỹ năng, cảnh giới cần chuyển nội dung từ code sang D1 (migration và sửa lõi game), không chỉ làm màn hình.
 
 ## Vấn đề tồn đọng cần để ý
 - Đo tải thật trên Cloudflare chưa làm; chỉ nâng Workers Paid khi gặp dấu hiệu ở `docs/TECHNICAL.md` (mục "Giới hạn gói Free").
