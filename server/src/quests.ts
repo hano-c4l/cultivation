@@ -46,7 +46,8 @@ export async function loadQuestCatalog(db: D1Database): Promise<{ defs: QuestDef
   }
   const [versionRow, rows] = await Promise.all([
     db.prepare("SELECT version FROM config_versions WHERE name = 'quests'").first<{ version: number }>(),
-    db.prepare("SELECT def, enabled FROM quests ORDER BY chain, seq, id").all<{ def: string; enabled: number }>(),
+    // A tombstone is a seeded quest an admin deleted for good: it stays as a row only so the seeding does not put it back.
+    db.prepare("SELECT def, enabled FROM quests WHERE tomb = 0 ORDER BY chain, seq, id").all<{ def: string; enabled: number }>(),
   ]);
   // Columns win over the JSON for the fields an admin toggles; a row that is not valid JSON is a hard error (never half a catalogue).
   const defs = rows.results.map((r) => ({ ...(JSON.parse(r.def) as QuestDef), enabled: r.enabled === 1 }));
