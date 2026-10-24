@@ -5,7 +5,7 @@ import { api, h } from "./kit";
 interface Field {
   path: string;
   label: string;
-  kind: "int" | "num" | "frac";
+  kind: "int" | "num" | "frac" | "color";
   unit?: string;
 }
 
@@ -34,6 +34,18 @@ function getPath(value: unknown, path: string): number {
   let cur: unknown = value;
   for (const part of path.split(".")) cur = (cur as Record<string, unknown> | undefined)?.[part];
   return cur as number;
+}
+
+/** A colour field also shows a swatch of what is typed. */
+function swatch(input: HTMLInputElement): HTMLElement {
+  const box = h("span", { class: "swatch", title: "Xem trước" });
+  const paint = () => {
+    box.style.background = "";
+    box.style.background = input.value; // an invalid colour leaves it empty
+  };
+  input.addEventListener("input", paint);
+  paint();
+  return box;
 }
 
 /** Rules that tie several fields together; the server checks them again. Returns a sentence per broken rule. */
@@ -69,8 +81,20 @@ const ERRORS: Record<string, string> = {
   unknown_group: "Nhóm không tồn tại.",
 };
 
+/** Writes `a.b.0` into a value, making the objects and arrays on the way. */
+function setAt(root: unknown, path: string, to: unknown): void {
+  let cur = root as Record<string, unknown>;
+  const parts = path.split(".");
+  parts.slice(0, -1).forEach((p, i) => {
+    cur[p] ??= /^\d+$/.test(parts[i + 1]!) ? [] : {};
+    cur = cur[p] as Record<string, unknown>;
+  });
+  cur[parts[parts.length - 1]!] = to;
+}
+
 function fieldHint(f: Field): string {
   if (f.kind === "frac") return "0 đến 1 (0,25 = 25%)";
+  if (f.kind === "color") return "màu CSS";
   return f.unit ?? "";
 }
 
@@ -83,18 +107,18 @@ function groupBlock(g: Group, refresh: (notice?: string, isError?: boolean) => v
     const top = f.path.split(".")[0]!;
     const heading = top !== lastTop && g.fields.length > 6 ? h("tr", null, h("th", { colspan: "4", class: "subhead" }, SUBHEADS[top] ?? top)) : null;
     lastTop = top;
-    const input = h("input", { type: "number", step: f.kind === "int" ? "1" : "any" });
+    const input = h("input", f.kind === "color" ? { type: "text", maxlength: "60" } : { type: "number", step: f.kind === "int" ? "1" : "any" });
     input.value = String(getPath(g.value, f.path));
     inputs.set(f.path, input);
     const def = getPath(g.default, f.path);
-    const mark = () => input.classList.toggle("changed", Number(input.value) !== getPath(g.value, f.path));
+    const mark = () => input.classList.toggle("changed", (f.kind === "color" ? input.value : Number(input.value)) !== getPath(g.value, f.path));
     input.addEventListener("input", mark);
     const reset = h("button", { type: "button", title: "Đặt ô này về giá trị mặc định" }, `mặc định ${def}`);
     reset.addEventListener("click", () => {
       input.value = String(def);
       mark();
     });
-    return [heading, h("tr", null, h("td", null, f.label), h("td", { class: "num-cell" }, input), h("td", { class: "muted" }, fieldHint(f)), h("td", null, reset))].filter((n): n is HTMLTableRowElement => n !== null);
+    return [heading, h("tr", null, h("td", null, f.label), h("td", { class: "num-cell" }, input, f.kind === "color" ? swatch(input) : null), h("td", { class: "muted" }, fieldHint(f)), h("td", null, reset))].filter((n): n is HTMLTableRowElement => n !== null);
   });
   const save = h("button", { type: "button", class: "primary" }, "Lưu");
   const resetAll = h("button", { type: "button" }, "Điền mặc định cả nhóm");
@@ -113,17 +137,16 @@ function groupBlock(g: Group, refresh: (notice?: string, isError?: boolean) => v
     const body: unknown = {};
     for (const f of g.fields) {
       const raw = inputs.get(f.path)!.value.trim();
+      if (f.kind === "color") {
+        if (raw === "") return fail(`"${f.label}" chưa nhập màu.`);
+        setAt(body, f.path, raw);
+        continue;
+      }
       const n = Number(raw);
       if (raw === "" || !Number.isFinite(n)) return fail(`"${f.label}" chưa nhập số hợp lệ.`);
       if (f.kind === "int" && !Number.isInteger(n)) return fail(`"${f.label}" phải là số nguyên.`);
       if (f.kind === "frac" && (n < 0 || n > 1)) return fail(`"${f.label}" phải từ 0 đến 1.`);
-      let cur = body as Record<string, unknown>;
-      const parts = f.path.split(".");
-      parts.slice(0, -1).forEach((p, i) => {
-        cur[p] ??= /^\d+$/.test(parts[i + 1]!) ? [] : {};
-        cur = cur[p] as Record<string, unknown>;
-      });
-      cur[parts[parts.length - 1]!] = n;
+      setAt(body, f.path, n);
     }
     const broken = crossProblems(g.group, (p) => getPath(body, p));
     if (broken.length) return fail(broken.join(" "));

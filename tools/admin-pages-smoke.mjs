@@ -102,7 +102,7 @@ check("anonymous tuning is 401, a player's is 403", (await get("/api/admin/tunin
 check("a player cannot save a tuning group", (await post("/api/admin/tuning", { group: "waygate", updatedAt: 0, value: { base: 1, perUnit: 1 } }, playerCookie)).status === 403);
 const tn = await json("/api/admin/tuning", adminCookie);
 const wg = tn.data.groups?.find((g) => g.group === "waygate");
-check("tuning lists pvp, waygate and aoi with fields and defaults", tn.data.groups?.map((g) => g.group).join() === "pvp,waygate,aoi" && wg?.fields?.length === 2 && wg.stored === true, JSON.stringify(tn.data.groups?.map((g) => g.group)));
+check("tuning lists pvp, waygate, aoi, combat and theme with fields and defaults", tn.data.groups?.map((g) => g.group).join() === "pvp,waygate,aoi,combat,theme" && wg?.fields?.length === 2 && wg.stored === true, JSON.stringify(tn.data.groups?.map((g) => g.group)));
 const verOf = () => sql("SELECT version FROM config_versions WHERE name='tuning'")[0].version;
 const v0 = verOf();
 const origWg = wg.value;

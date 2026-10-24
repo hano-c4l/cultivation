@@ -112,7 +112,8 @@ export async function saveTuningGroup(db: D1Database, group: string, posted: unk
   const next = clone(current);
   for (const f of screen.fields) {
     const v = getPath(posted, f.path);
-    if (typeof v !== "number" || !Number.isFinite(v) || (f.kind === "int" && !Number.isInteger(v))) return { ok: false, error: "invalid" };
+    const typeOk = f.kind === "color" ? typeof v === "string" && v.length > 0 && v.length <= 60 : typeof v === "number" && Number.isFinite(v) && (f.kind !== "int" || Number.isInteger(v));
+    if (!typeOk) return { ok: false, error: "invalid" };
     if (!setPath(next, f.path, v)) return { ok: false, error: "invalid" };
   }
   if (!validTuningGroup(group, next)) return { ok: false, error: "invalid" };

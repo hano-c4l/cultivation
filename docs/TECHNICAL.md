@@ -132,7 +132,7 @@ tools/   smoke.mjs
 Cần `wrangler dev` chạy ở cổng 8787 và `.dev.vars` có `DISABLE_RATE_LIMIT=1` và `ENABLE_DEV_GRANT=1`. Các script tự từ chối host không phải localhost, trừ `smoke.mjs` còn chạy được trên preview.
 | Lệnh | Kiểm gì |
 |---|---|
-| `npm run typecheck`, `npm test` | Kiểu và toàn bộ test đơn vị (khoảng 780 test; một số dùng SQLite thật qua `server/src/test-db.ts`, loại khỏi `tsc` vì cần kiểu Node) |
+| `npm run typecheck`, `npm test` | Kiểu và toàn bộ test đơn vị (khoảng 781 test; một số dùng SQLite thật qua `server/src/test-db.ts`, loại khỏi `tsc` vì cần kiểu Node) |
 | `node tools/smoke.mjs [ws://localhost:8787]` | Luồng chính: đăng ký, tạo nhân vật, quái, EXP, chết, cổng bản đồ |
 | `node tools/economy-smoke.mjs` | Admin: tra cứu, cộng/trừ tiền, idempotency (bảng khóa), lịch sử Linh Thạch của admin, tổng theo nhóm (nhóm `admin`) khớp số dư, chi tiết tiền, kiểm duyệt chỉ cho admin |
 | `node tools/chat-smoke.mjs` | Chat Thế giới/Bản đồ/Truyền âm/Hệ thống, giới hạn, socket chat bị thay thế |

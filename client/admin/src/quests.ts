@@ -65,6 +65,7 @@ const ERRORS: Record<string, string> = {
   not_found: "Không tìm thấy nhiệm vụ.",
   unchanged: "Không có gì thay đổi.",
   busy: "Dữ liệu vừa đổi (có người nhận nhiệm vụ). Hãy thử lại.",
+  in_use: "Không xóa được: nhiệm vụ này đang là điều kiện tiền đề của các nhiệm vụ dưới đây. Hãy gỡ liên kết ở các nhiệm vụ đó trước (sửa ô \"Phải xong nhiệm vụ\"):",
   locked_field: "Nhiệm vụ đã có người chơi giữ tiến độ nên không đổi được loại yêu cầu, hướng tu hoặc chế độ lặp.",
 };
 
@@ -287,8 +288,8 @@ function form(meta: Meta, all: Item[], current: Item | undefined): HTMLElement {
   del.disabled = locked || current === undefined;
   del.addEventListener("click", async () => {
     if (!current) return;
-    const dependents = all.filter((x) => x.def.requires === current.def.id).map((x) => x.def.id);
-    const text = `Xóa «${current.def.titleVi}»?\n${hasRows ? "Có nhân vật đang giữ tiến độ nên nhiệm vụ chỉ ngừng phát (xóa mềm), người đang làm vẫn hoàn thành được." : "Không ai giữ tiến độ nên sẽ xóa hẳn."}${dependents.length ? `\nNhiệm vụ phía sau (${dependents.join(", ")}) sẽ nối lại vào nhiệm vụ trước của nhiệm vụ này.` : ""}`;
+    const text = `Xóa «${current.def.titleVi}»?
+${hasRows ? "Có nhân vật đang giữ tiến độ nên nhiệm vụ chỉ ngừng phát (xóa mềm), người đang làm vẫn hoàn thành được." : "Không ai giữ tiến độ nên sẽ xóa hẳn."}`;
     if (!window.confirm(text)) return;
     const res = await api<{ error?: string; problems?: string[] }>("/api/admin/quests/delete", { method: "POST", body: { id: current.def.id, updatedAt: current.updatedAt } });
     if (res.status === 200) return navigate("/admin/quests");

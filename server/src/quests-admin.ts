@@ -9,8 +9,8 @@ import { getQuestCatalog, resetQuestCache } from "./quests";
  * admin saw), the quests whose prerequisite was removed, the `config_versions.quests` bump and the admin log row.
  *
  * Deleting: a quest any character has a row for (active or done) is only taken out of play (soft delete: disabled, read-only, kept so they can finish it);
- * otherwise it is removed. A removed quest of the seed catalogue leaves a tombstone row so the seeding does not put it back. Either way the quests that
- * required it now require what it required (the chain closes up).
+ * otherwise it is removed. A removed quest of the seed catalogue leaves a tombstone row so the seeding does not put it back. A quest that another quest
+ * still requires is refused (`in_use`, with the list): the admin first takes the link out of those quests.
  */
 export const QUEST_LOG_SCREEN = "Nhiệm vụ";
 const TITLE_MAX = 80;
@@ -203,7 +203,7 @@ function changedFields(before: QuestDef, after: QuestDef): string[] {
 
 export type QuestSaveResult =
   | { ok: true; updatedAt: number; changed: string[] }
-  | { ok: false; error: "invalid" | "exists" | "has_progress" | "not_found" | "deleted" | "version_conflict" | "locked_field" | "unchanged" | "busy"; problems?: string[] };
+  | { ok: false; error: "invalid" | "exists" | "has_progress" | "not_found" | "deleted" | "version_conflict" | "locked_field" | "unchanged" | "busy" | "in_use"; problems?: string[] };
 
 type QuestFailure = Exclude<QuestSaveResult, { ok: true }>;
 
@@ -268,7 +268,7 @@ export async function saveQuest(db: D1Database, adminEmail: string, posted: unkn
   return { ok: true, updatedAt: stamp, changed };
 }
 
-export type QuestDeleteResult = { ok: true; mode: "soft" | "hard"; relinked: string[] } | Exclude<QuestSaveResult, { ok: true }>;
+export type QuestDeleteResult = { ok: true; mode: "soft" | "hard" } | Exclude<QuestSaveResult, { ok: true }>;
 
 /** Deletes a quest (see the top of the file): soft when any character has a row for it, otherwise hard (a tombstone for a seeded one). */
 export async function deleteQuest(db: D1Database, adminEmail: string, id: string, updatedAt: number, now = Date.now()): Promise<QuestDeleteResult> {
@@ -279,9 +279,10 @@ export async function deleteQuest(db: D1Database, adminEmail: string, id: string
   if (row.updated_at !== updatedAt) return { ok: false, error: "version_conflict" };
   const target = liveDef(row);
   const soft = await hasProgress(db, id);
-  // The quests that required this one now require what it required.
-  const dependents = rows.filter((r) => r.tomb === 0 && r.id !== id && liveDef(r).requires === id).map((r) => ({ row: r, def: { ...liveDef(r), requires: target.requires } }));
-  const remaining = rows.filter((r) => r.tomb === 0 && r.id !== id).map((r) => dependents.find((d) => d.row.id === r.id)?.def ?? liveDef(r));
+  // A quest that another quest still requires cannot be deleted: the admin must take the link out of those quests first.
+  const users = rows.filter((r) => r.tomb === 0 && r.id !== id && liveDef(r).requires === id).map((r) => `${r.id} — ${liveDef(r).titleVi}`);
+  if (users.length > 0) return { ok: false, error: "in_use", problems: users };
+  const remaining = rows.filter((r) => r.tomb === 0 && r.id !== id).map(liveDef);
   const after = soft ? [...remaining, { ...target, enabled: false }] : remaining;
   const problems = validateQuests(after, allNpcIds());
   if (problems.length > 0) return { ok: false, error: "invalid", problems };
@@ -300,7 +301,6 @@ export async function deleteQuest(db: D1Database, adminEmail: string, id: string
         : db.prepare("DELETE FROM quests WHERE id = ?").bind(id),
     );
   }
-  for (const d of dependents) statements.push(db.prepare("UPDATE quests SET def = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(d.def), stamp, d.row.id));
   statements.push(
     bump(db, stamp),
     logStatement(
@@ -308,7 +308,7 @@ export async function deleteQuest(db: D1Database, adminEmail: string, id: string
       {
         adminEmail,
         screen: QUEST_LOG_SCREEN,
-        content: `Xóa ${soft ? "mềm" : "cứng"} nhiệm vụ «${target.titleVi}» (${id})${soft ? ": còn người chơi giữ tiến độ nên chỉ ngừng phát" : ""}${dependents.length ? `; nối lại nhiệm vụ trước của: ${dependents.map((d) => d.row.id).join(", ")} → ${target.requires ?? "không có"}` : ""}`,
+        content: `Xóa ${soft ? "mềm" : "cứng"} nhiệm vụ «${target.titleVi}» (${id})${soft ? ": còn người chơi giữ tiến độ nên chỉ ngừng phát" : ""}`,
       },
       now,
     ),
@@ -322,5 +322,5 @@ export async function deleteQuest(db: D1Database, adminEmail: string, id: string
     return failure;
   }
   resetQuestCache();
-  return { ok: true, mode: soft ? "soft" : "hard", relinked: dependents.map((d) => d.row.id) };
+  return { ok: true, mode: soft ? "soft" : "hard" };
 }

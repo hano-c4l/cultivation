@@ -5,13 +5,13 @@ import { DEFAULT_TUNING, type Tuning, type TuningGroup } from "./tuning";
  * screen "Chỉ số khác" (PHASE3 3c) is driven by ADMIN_TUNING_SCREENS; the server only accepts these leaves when it saves a group, and a test
  * fails when a leaf of a listed group has no field here, so adding a number to a group means adding its label in the same change.
  *
- * kind: `int` a whole number, `num` any number, `frac` a share between 0 and 1 (the screen says so: 0,25 means 25%).
+ * kind: `int` a whole number, `num` any number, `frac` a share between 0 and 1 (the screen says so: 0,25 means 25%), `color` a CSS colour (#rgb, #rrggbb, rgb()/rgba()/hsl()).
  */
 export interface TuningField {
   /** Dot path inside the group's value; array indexes are numbers ("dropChance.2"). */
   path: string;
   label: string;
-  kind: "int" | "num" | "frac";
+  kind: "int" | "num" | "frac" | "color";
   unit?: string;
 }
 
@@ -80,6 +80,42 @@ export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
       { path: "everyTicks", label: "Cập nhật vùng nhìn mỗi", kind: "int", unit: "tick (10 tick = 1 giây)" },
     ],
   },
+  {
+    group: "combat",
+    title: "Chiến đấu cơ bản",
+    note: "Mất EXP và độ bền khi chết, hồi máu và linh lực, cửa sổ tên xám (PvP), đường cong chỉ số quái theo cấp (quyết định quái mạnh cỡ nào ở mỗi cảnh giới; mốc thời gian tính bằng mili giây, 1000 = 1 giây). Chỉ số của từng loài quái nằm ở màn Quái / BOSS sau này.",
+    fields: [
+      { path: "deathExpLoss", label: "Chết: phần EXP của tầng bị mất", kind: "frac" },
+      { path: "deathDurabilityFraction", label: "Chết: phần độ bền trang bị bị hao (cơ bản, trước hệ số theo màu tên)", kind: "frac" },
+      { path: "hpRegenDelayMs", label: "Hồi sinh lực: chờ sau khi bị đánh hoặc hết hành động", kind: "int", unit: "ms" },
+      { path: "mpRegenDelayMs", label: "Hồi linh lực: chờ sau khi dùng kỹ năng", kind: "int", unit: "ms" },
+      { path: "mpRegenPerS", label: "Hồi linh lực: phần linh lực tối đa hồi mỗi giây", kind: "frac" },
+      { path: "grayWindowMs", label: "Tên xám: thời gian người bị đánh được đánh trả dù đang tắt PK", kind: "int", unit: "ms (180000 = 3 phút)" },
+      { path: "monsterCurve.hpBase", label: "Quái: sinh lực gốc (cấp 0)", kind: "num" },
+      { path: "monsterCurve.hpPerLevel", label: "Quái: sinh lực cộng thêm mỗi cấp", kind: "num" },
+      { path: "monsterCurve.attackBase", label: "Quái: công gốc (cấp 0)", kind: "num" },
+      { path: "monsterCurve.attackPerLevel", label: "Quái: công cộng thêm mỗi cấp", kind: "num" },
+      { path: "monsterCurve.defenseBase", label: "Quái: thủ gốc (cấp 0)", kind: "num" },
+      { path: "monsterCurve.defensePerLevel", label: "Quái: thủ cộng thêm mỗi cấp", kind: "num" },
+    ],
+  },
+  {
+    group: "theme",
+    title: "Màu giao diện",
+    note: "Chỉ đổi cách hiển thị, không đổi cách chơi. Nhập màu CSS (#rrggbb, rgb(...), rgba(...)); ô vuông bên cạnh là bản xem trước. Người chơi nhận màu mới khi vào lại game hoặc đổi bản đồ.",
+    fields: [
+      ...["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"].map((n, i): TuningField => ({ path: `realmColors.${i}`, label: `Màu thẻ cảnh giới: ${n}`, kind: "color" })),
+      ...["Hạ phẩm (phẩm 1)", "Trung phẩm (phẩm 2)", "Thượng phẩm (phẩm 3)", "Cực phẩm (phẩm 4)", "Phẩm 5"].map((n, i): TuningField => ({ path: `gradeColors.${i}`, label: `Màu nền phẩm cấp vật phẩm: ${n}`, kind: "color" })),
+      { path: "ui.ui-text", label: "Trang: màu chữ", kind: "color" },
+      { path: "ui.ui-muted", label: "Trang: màu chữ phụ", kind: "color" },
+      { path: "ui.ui-border", label: "Trang: màu viền", kind: "color" },
+      { path: "ui.ui-accent", label: "Trang: màu nhấn (nút chính, tiêu đề)", kind: "color" },
+      { path: "ui.ui-on-accent", label: "Trang: màu chữ trên nền nhấn", kind: "color" },
+      { path: "ui.ui-highlight", label: "Trang: màu nổi bật", kind: "color" },
+      { path: "ui.ui-panel", label: "Trang: nền bảng, cửa sổ", kind: "color" },
+      { path: "ui.ui-page", label: "Trang: nền trang", kind: "color" },
+    ],
+  },
 ];
 
 export function adminTuningScreen(group: string): TuningScreenGroup | undefined {
@@ -109,9 +145,9 @@ export function setPath(value: unknown, path: string, to: unknown): boolean {
   return true;
 }
 
-/** Every numeric leaf path of a value ("a.b", "list.2"). */
+/** Every number or string leaf path of a value ("a.b", "list.2"). */
 export function leafPaths(value: unknown, prefix = ""): string[] {
-  if (typeof value === "number") return [prefix];
+  if (typeof value === "number" || typeof value === "string") return [prefix];
   if (typeof value !== "object" || value === null) return [];
   return Object.entries(value).flatMap(([k, v]) => leafPaths(v, prefix ? `${prefix}.${k}` : k));
 }
