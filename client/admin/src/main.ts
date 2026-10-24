@@ -4,6 +4,7 @@ import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { MENU } from "./menu";
 import { giftsPage } from "./gifts";
 import { itemEditPage, itemListPage } from "./items";
+import { skillEditPage, skillListPage } from "./skills";
 import { questEditPage, questListPage } from "./quests";
 import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
@@ -73,6 +74,12 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/skills") {
+    title = "Kỹ năng";
+    content = skillListPage();
+  } else if (path === "/admin/skills/edit") {
+    title = "Kỹ năng · Sửa";
+    content = skillEditPage();
   } else if (path === "/admin/items") {
     title = "Vật phẩm";
     content = itemListPage();

@@ -8,6 +8,7 @@ import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
 import { loadConstitutionCatalog, saveConstitutionCatalog } from "./constitution-catalog";
+import { listSkills, saveSkillOverride } from "./skills-admin";
 import { deleteItem, listItems, saveItem } from "./items-admin";
 import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
@@ -412,4 +413,23 @@ export async function adminItemDelete(request: Request, env: Env): Promise<Respo
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, ITEM_ERROR_STATUS[result.error] ?? 400);
   console.log("item deleted", session.accountId, body.id, result.mode);
   return json({ ok: true, mode: result.mode });
+}
+
+/** The skills for the admin screen: each skill and each root template with the code's numbers, the admin's changes and the numbers that come out. */
+export async function adminSkills(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await listSkills(env.DB));
+}
+
+/** Changes the entry of one skill or root template (POST `{key, fields | null, token}`): `null` puts it back to the code's numbers. */
+export async function adminSkillSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 16 * 1024);
+  if (typeof body?.key !== "string" || typeof body?.token !== "number" || (body.fields !== null && (typeof body.fields !== "object" || Array.isArray(body.fields)))) return errorResponse("invalid_body", 400);
+  const result = await saveSkillOverride(env.DB, session.email, body.key, body.fields as Record<string, unknown> | null, body.token);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : result.error === "unknown_skill" ? 404 : 400);
+  console.log("skill saved", session.accountId, body.key, result.reset ? "reset" : "changed");
+  return json({ ok: true, updatedAt: result.updatedAt, reset: result.reset });
 }

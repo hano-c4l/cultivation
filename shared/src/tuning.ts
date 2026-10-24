@@ -80,7 +80,7 @@ export interface Tuning {
   theme: { realmColors: string[]; gradeColors: string[]; ui: Record<string, string> };
   /** Monster species (numbers on the realm/bậc curve, see monsters.ts) and the classes: chance of rolling it and the multiples on stats and EXP. */
   monsters: { species: Record<string, MonsterNumbers>; ranks: Record<MonsterRank, RankNumbers> };
-  /** Changes to single skills by id (power, MP cost, cooldown, range); the skills themselves are generated from templates in skills.ts. Empty by default. */
+  /** Changes to skills by id, or by the id of a root template (every realm of it): see SkillNumbers; the skills themselves are generated from templates in skills.ts. Empty by default. */
   skillOverrides: Record<string, Partial<SkillNumbers>>;
   /** EXP and potential points by realm, how the need grows per stage, the EXP of farming a map below you, and how far the bar overflows at stage 9. */
   exp: { realms: Array<{ expBase: number; pointsPerStage: number }>; stageGrowth: number; lowMapMult: number; overflowMax: number };
@@ -150,6 +150,13 @@ export interface SkillNumbers {
   mpCost: number;
   cooldownMs: number;
   range: number;
+  /** Text shown in the skill windows (kept short: it travels with the tuning). */
+  nameVi: string;
+  descVi: string;
+  /** Buffs: how long they last. */
+  buffDurationMs: number;
+  /** Attacks: the effect others see. */
+  fx: "melee" | "ranged";
 }
 
 export type TuningGroup = keyof Tuning;
@@ -376,7 +383,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   skills: "Kỹ năng: sức mạnh và hồi chiêu theo cấp thuần thục, điểm thuần thục, hệ số theo cảnh giới",
   theme: "Màu giao diện: màu cảnh giới, màu nền phẩm cấp và bảng màu chung của trang",
   monsters: "Loài quái (hệ số HP, công, thủ, tốc độ, tầm, hồi sinh) và các hạng quái (xác suất, hệ số, EXP)",
-  skillOverrides: "Chỉnh từng kỹ năng theo mã: sức mạnh, MP, hồi chiêu, tầm",
+  skillOverrides: "Chỉnh từng kỹ năng theo mã hoặc theo mẫu: tên, mô tả, sức mạnh, MP, hồi chiêu, tầm, thời gian buff, hiệu ứng",
   exp: "EXP mỗi cảnh giới, điểm tiềm năng mỗi tầng, tăng trưởng theo tầng, EXP săn bản đồ thấp, mức tràn",
   breakthrough: "Đột phá: đan tối đa, tỉ lệ, thời gian, chi phí, điểm; mất EXP khi thất bại, thưởng tràn",
   paths: "Hướng tu: phí đổi chủ tu và phí bỏ hướng",
@@ -549,15 +556,20 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return speciesOk && rankOk && num((rk.rare1 as { chance: number }).chance + (rk.rare2 as { chance: number }).chance, 0, 1);
     }
     case "skillOverrides":
+      // Structural only (the whole group is valid or not): which skills exist and which fields fit a kind of skill are checked where an admin saves.
       return Object.entries(value).every(
         ([id, v]) =>
           /^[a-z0-9_]{1,40}$/.test(id) &&
           obj(v) &&
-          Object.keys(v).every((k) => ["power", "mpCost", "cooldownMs", "range"].includes(k)) &&
+          Object.keys(v).every((k) => ["power", "mpCost", "cooldownMs", "range", "nameVi", "descVi", "buffDurationMs", "fx"].includes(k)) &&
           (v.power === undefined || num(v.power, 0, 1000)) &&
           (v.mpCost === undefined || int(v.mpCost, 0, 100_000)) &&
           (v.cooldownMs === undefined || int(v.cooldownMs, 0, 3_600_000)) &&
-          (v.range === undefined || num(v.range, 0, 100)),
+          (v.range === undefined || num(v.range, 0, 100)) &&
+          (v.nameVi === undefined || (typeof v.nameVi === "string" && v.nameVi.trim().length >= 1 && v.nameVi.length <= 60)) &&
+          (v.descVi === undefined || (typeof v.descVi === "string" && v.descVi.trim().length >= 1 && v.descVi.length <= 300)) &&
+          (v.buffDurationMs === undefined || int(v.buffDurationMs, 0, 3_600_000)) &&
+          (v.fx === undefined || v.fx === "melee" || v.fx === "ranged"),
       );
     case "exp": {
       const realms = value.realms;
