@@ -115,16 +115,16 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 2l. Đợt hoàn thiện: truyền tống trận, bãi quái đều và boss ngẫu nhiên, ràng cấp đan đột phá, hiệu ứng
   - 2m. Đưa dữ liệu cứng vào D1 để chuẩn bị màn admin: thương nhân (nhiều thương nhân mỗi thành, kho riêng), vị trí và tên NPC, số của boss, vệ binh, PvP, vùng nhìn, rơi đồ, kỹ năng, màu giao diện, bộ đếm boss chung; icon trang web
 - **Giai đoạn 3**: Hệ thống Admin (`docs/PHASE3.md`)
-  - 3a. Nền: `/admin/*`, đăng nhập, menu, nhật ký thay đổi, khung list/detail
-  - 3b. Quản lý tiền tệ (đã thay "Lịch sử Tiên Ngọc")
-  - 3c. Chỉ số khác (sát khí, sát nhân, anh hùng, phí truyền tống, vùng nhìn...)
-  - 3d. Gửi quà (thư có tiền, vật phẩm, tiêu đề, mô tả)
-  - 3e. Quản lý nhiệm vụ
-  - 3f. Cảnh giới và chỉ số tiềm năng
-  - 3g. Vật phẩm
-  - 3h. Kỹ năng
-  - 3i. Thiên phú (linh căn, thể chất, hệ biến dị)
-  - 3j. Quái và BOSS
+  - 3a. Nền: `/admin/*`, đăng nhập, menu, nhật ký thay đổi, khung list/detail — xong
+  - 3b. Quản lý tiền tệ (đã thay "Lịch sử Tiên Ngọc") — xong
+  - 3c. Chỉ số khác (sát khí, sát nhân, anh hùng, phí truyền tống, vùng nhìn, chiến đấu cơ bản, màu giao diện...) — xong
+  - 3d. Gửi quà (thư có tiền, vật phẩm, tiêu đề, mô tả; nhiều người hoặc toàn server) — xong
+  - 3e. Quản lý nhiệm vụ — xong
+  - 3f. Cảnh giới và chỉ số tiềm năng — xong (trừ sửa tên và thêm cảnh giới)
+  - 3g. Vật phẩm — xong (3g-b: bảng master trang bị, tên bộ, bảng Thợ Rèn chưa làm)
+  - 3h. Kỹ năng — xong (trừ tạo kỹ năng mới)
+  - 3i. Thiên phú (linh căn, thể chất, hệ biến dị) — xong (trừ thêm hệ mới)
+  - 3j. Quái và BOSS — xong (trừ loài quái mới)
   - 3k. NPC (nhiệm vụ, thương nhân, Đan Sư, thợ rèn, hướng tu, vệ binh)
   - 3l. Bản đồ
   - 3m. Tài khoản và nhân vật
