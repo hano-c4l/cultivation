@@ -102,22 +102,34 @@ describe("saving a quest", () => {
 });
 
 describe("deleting a quest", () => {
-  it("removes a quest nobody holds, and the quest after it now needs the one before", async () => {
+  it("removes a quest nobody holds once nothing requires it any more", async () => {
     await saveQuest(db, ADMIN, base({ id: "step_a", seq: 1 }), true, 0);
     await saveQuest(db, ADMIN, base({ id: "step_b", seq: 2, requires: "step_a" }), true, 0);
     await saveQuest(db, ADMIN, base({ id: "step_c", seq: 3, requires: "step_b" }), true, 0);
-    const res = await deleteQuest(db, ADMIN, "step_b", (await find("step_b"))!.updatedAt);
-    expect(res).toEqual({ ok: true, mode: "hard", relinked: ["step_c"] });
+    // step_c still needs step_b: refused, with the quests that use it listed, and nothing changes.
+    const before = version();
+    const refused = await deleteQuest(db, ADMIN, "step_b", (await find("step_b"))!.updatedAt);
+    expect(refused).toEqual({ ok: false, error: "in_use", problems: ["step_c — Thử thách mới"] });
+    expect(await find("step_b")).toBeDefined();
+    expect((await find("step_c"))!.def.requires).toBe("step_b");
+    expect(version()).toBe(before);
+    // Take the link out of step_c first, then it goes.
+    const c = (await find("step_c"))!;
+    expect(await saveQuest(db, ADMIN, { ...c.def, requires: null }, false, c.updatedAt, c.updatedAt + 5)).toMatchObject({ ok: true });
+    expect(await deleteQuest(db, ADMIN, "step_b", (await find("step_b"))!.updatedAt)).toEqual({ ok: true, mode: "hard" });
     expect(await find("step_b")).toBeUndefined();
-    expect((await find("step_c"))!.def.requires).toBe("step_a");
     expect(n("SELECT COUNT(*) AS n FROM quests WHERE id = 'step_b'")).toBe(0); // an admin-made quest leaves no row
-    expect((await listAdminLog(db, parseLogQuery(new URLSearchParams()))).rows[0]!.content).toContain("step_c");
+    expect((await listAdminLog(db, parseLogQuery(new URLSearchParams({ q: "Xóa cứng" })))).total).toBe(1);
   });
 
   it("only takes a quest out of play when a character holds it, even a finished one, and then it is read-only", async () => {
     give("newbie_2", "done");
+    // newbie_3 requires it: refused until that link is removed.
+    expect(await deleteQuest(db, ADMIN, "newbie_2", (await find("newbie_2"))!.updatedAt)).toMatchObject({ ok: false, error: "in_use" });
+    const next = (await find("newbie_3"))!;
+    await saveQuest(db, ADMIN, { ...next.def, requires: "newbie_1" }, false, next.updatedAt, next.updatedAt + 5);
     const res = await deleteQuest(db, ADMIN, "newbie_2", (await find("newbie_2"))!.updatedAt);
-    expect(res).toMatchObject({ ok: true, mode: "soft", relinked: ["newbie_3"] });
+    expect(res).toEqual({ ok: true, mode: "soft" });
     const gone = (await find("newbie_2"))!;
     expect(gone).toMatchObject({ deleted: true, done: 1 });
     expect(gone.def.enabled).toBe(false);
@@ -130,14 +142,15 @@ describe("deleting a quest", () => {
   });
 
   it("does not bring a deleted quest of the seed catalogue back, and its id stays taken", async () => {
-    await deleteQuest(db, ADMIN, "newbie_3", (await find("newbie_3"))!.updatedAt);
-    expect(n("SELECT tomb AS n FROM quests WHERE id = 'newbie_3'")).toBe(1);
+    // Nothing requires daily_kill (it requires newbie_3), so it can go.
+    expect(await deleteQuest(db, ADMIN, "daily_kill", (await find("daily_kill"))!.updatedAt)).toEqual({ ok: true, mode: "hard" });
+    expect(n("SELECT tomb AS n FROM quests WHERE id = 'daily_kill'")).toBe(1);
     resetQuestCache();
     const defs = await getQuestCatalog(db);
-    expect(defs.find((d) => d.id === "newbie_3")).toBeUndefined();
-    expect(defs.find((d) => d.id === "newbie_4")?.requires).toBe("newbie_2");
-    expect(await find("newbie_3")).toBeUndefined();
-    expect(await saveQuest(db, ADMIN, base({ id: "newbie_3" }), true, 0)).toMatchObject({ ok: false, error: "exists" });
+    expect(defs.find((d) => d.id === "daily_kill")).toBeUndefined();
+    expect(defs.find((d) => d.id === "daily_herb")).toBeDefined();
+    expect(await find("daily_kill")).toBeUndefined();
+    expect(await saveQuest(db, ADMIN, base({ id: "daily_kill" }), true, 0)).toMatchObject({ ok: false, error: "exists" });
   });
 
   it("refuses a delete that would break the catalogue, a stale token and an unknown quest", async () => {

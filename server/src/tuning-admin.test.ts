@@ -21,7 +21,7 @@ const version = async () => (await db.prepare("SELECT version FROM config_versio
 describe("saving a tuning group", () => {
   it("lists the groups of the screen with defaults and a token, seeding the rows", async () => {
     const groups = await listTuningGroups(db);
-    expect(groups.map((g) => g.group)).toEqual(["pvp", "waygate", "aoi"]);
+    expect(groups.map((g) => g.group)).toEqual(["pvp", "waygate", "aoi", "combat", "theme"]);
     expect(groups[1]).toMatchObject({ value: DEFAULT_TUNING.waygate, default: DEFAULT_TUNING.waygate, stored: true, updatedBy: null });
   });
 
@@ -68,6 +68,22 @@ describe("saving a tuning group", () => {
     share.dropChance[2] = 1.5;
     expect(await saveTuningGroup(db, "pvp", share, token, "a@x.test")).toEqual({ ok: false, error: "invalid" });
     expect(getPath((await group("pvp")).value, "nameTiers.yellowFrom")).toBe(1);
+  });
+
+  it("saves combat numbers and theme colours, and refuses a colour that is not one", async () => {
+    const c = await group("combat");
+    (c.value as { deathExpLoss: number }).deathExpLoss = 0.2;
+    expect(await saveTuningGroup(db, "combat", c.value, c.token, "a@x.test", c.token + 5)).toMatchObject({ ok: true });
+    const t = await group("theme");
+    const bad = JSON.parse(JSON.stringify(t.value));
+    bad.ui["ui-accent"] = "javascript:alert(1)";
+    expect(await saveTuningGroup(db, "theme", bad, t.token, "a@x.test")).toEqual({ ok: false, error: "invalid" });
+    const next = JSON.parse(JSON.stringify(t.value));
+    next.realmColors[0] = "#112233";
+    next.ui["ui-page"] = "rgba(1, 2, 3, 0.5)";
+    expect(await saveTuningGroup(db, "theme", next, t.token, "a@x.test", t.token + 5)).toMatchObject({ ok: true, changes: 2 });
+    expect((await getTuning(db, Date.now() + 120_000)).theme.ui["ui-page"]).toBe("rgba(1, 2, 3, 0.5)");
+    expect((await getTuning(db, Date.now() + 120_000)).combat.deathExpLoss).toBe(0.2);
   });
 
   it("ignores keys that are not fields and keeps what the screen does not show", async () => {

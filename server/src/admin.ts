@@ -352,7 +352,7 @@ export async function adminQuests(request: Request, env: Env): Promise<Response>
   return json({ quests, meta: await questMeta(env.DB, quests.map((q) => q.def.chain)) });
 }
 
-const QUEST_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, locked_field: 409, exists: 409, has_progress: 409, version_conflict: 409, busy: 409, deleted: 409, not_found: 404 };
+const QUEST_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, locked_field: 409, in_use: 409, exists: 409, has_progress: 409, version_conflict: 409, busy: 409, deleted: 409, not_found: 404 };
 
 /** Saves a quest (POST `{quest, isNew, updatedAt}`); 400 with the list of problems when the catalogue would no longer be valid, 409 when someone else saved it first. */
 export async function adminQuestSave(request: Request, env: Env): Promise<Response> {
@@ -366,7 +366,7 @@ export async function adminQuestSave(request: Request, env: Env): Promise<Respon
   return json({ ok: true, updatedAt: result.updatedAt });
 }
 
-/** Deletes a quest (POST `{id, updatedAt}`): soft when characters hold it, else hard; the quests that required it are relinked. */
+/** Deletes a quest (POST `{id, updatedAt}`): soft when characters hold it, else hard; refused (409 `in_use` with the list) while another quest requires it. */
 export async function adminQuestDelete(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
@@ -375,5 +375,5 @@ export async function adminQuestDelete(request: Request, env: Env): Promise<Resp
   const result = await deleteQuest(env.DB, session.email, body.id, body.updatedAt);
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, QUEST_ERROR_STATUS[result.error] ?? 400);
   console.log("quest deleted", session.accountId, body.id, result.mode);
-  return json({ ok: true, mode: result.mode, relinked: result.relinked });
+  return json({ ok: true, mode: result.mode });
 }

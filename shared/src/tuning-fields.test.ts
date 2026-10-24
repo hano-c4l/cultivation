@@ -16,6 +16,10 @@ describe("admin tuning fields", () => {
       expect(validTuningGroup(g.group, defaultOfGroup(g.group)), g.group).toBe(true);
       for (const f of g.fields) {
         const v = getPath(DEFAULT_TUNING[g.group], f.path) as number;
+        if (f.kind === "color") {
+          expect(typeof v, `${g.group}.${f.path}`).toBe("string");
+          continue;
+        }
         if (f.kind === "int") expect(Number.isInteger(v), `${g.group}.${f.path}`).toBe(true);
         if (f.kind === "frac") expect(v >= 0 && v <= 1, `${g.group}.${f.path}`).toBe(true);
       }
