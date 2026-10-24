@@ -1,4 +1,4 @@
-import { ADMIN_TUNING_SCREENS, DEFAULT_TUNING, adminTuningScreen, getPath, setPath, validTuningGroup, type Tuning, type TuningField } from "@game/shared";
+import { ADMIN_TUNING_SCREENS, DEFAULT_TUNING, adminTuningScreen, getPath, setPath, validTuningGroup, type Tuning, type TuningField, type TuningPage } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { getTuning, resetTuningCache } from "./tuning";
 
@@ -55,10 +55,10 @@ function usable(group: string, raw: string | undefined): unknown | undefined {
   }
 }
 
-/** Every group of the screen with its value and version token. */
-export async function listTuningGroups(db: D1Database): Promise<TuningGroupView[]> {
+/** Every group of an admin page (default: "Chỉ số khác") with its value and version token. */
+export async function listTuningGroups(db: D1Database, page: TuningPage = "misc"): Promise<TuningGroupView[]> {
   const rows = await readRows(db);
-  return ADMIN_TUNING_SCREENS.map((g) => {
+  return ADMIN_TUNING_SCREENS.filter((g) => g.page === page).map((g) => {
     const row = rows.get(g.group);
     const stored = usable(g.group, row?.value);
     return {

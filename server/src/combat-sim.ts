@@ -88,7 +88,7 @@ import {
   type MonsterRank,
   type MonsterSnapshot,
   type Vec2,
-  RATE_CAP,
+  rateCap,
   type BuffStat,
   type EffectView,
   type EffectiveSkill,
@@ -334,7 +334,7 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
   attack = Math.floor(attack * (1 + pb.attackPct / 100));
   defense = Math.floor(defense * (1 + pb.defensePct / 100));
   return {
-    stats: { attack, defense, critRate: Math.min(RATE_CAP, crit), dodgeRate: Math.min(RATE_CAP, dodge), element: seed.element, roots: seed.roots ?? [seed.element] },
+    stats: { attack, defense, critRate: Math.min(rateCap(), crit), dodgeRate: Math.min(rateCap(), dodge), element: seed.element, roots: seed.roots ?? [seed.element] },
     maxHp: d.maxHp,
     maxMp: Math.floor(d.maxMp * (1 + (pb.maxMpPct + heroBonus(seed.hero ?? 0).mpPct) / 100)),
     // The EXP gained is multiplied by 1 / (1 + k * phu tu): folded into the bonus percentage the kill reward takes.

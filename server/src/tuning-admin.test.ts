@@ -25,6 +25,20 @@ describe("saving a tuning group", () => {
     expect(groups[1]).toMatchObject({ value: DEFAULT_TUNING.waygate, default: DEFAULT_TUNING.waygate, stored: true, updatedBy: null });
   });
 
+  it("lists the realms and potential pages separately, and saves an exp group", async () => {
+    expect((await listTuningGroups(db, "realms")).map((g) => g.group)).toEqual(["exp", "breakthrough", "kills"]);
+    expect((await listTuningGroups(db, "potential")).map((g) => g.group)).toEqual(["stats"]);
+    const e = (await listTuningGroups(db, "realms")).find((g) => g.group === "exp")!;
+    const value = JSON.parse(JSON.stringify(e.value));
+    value.overflowMax = 0.5;
+    expect(await saveTuningGroup(db, "exp", value, e.updatedAt, "a@x.test", e.updatedAt + 5)).toMatchObject({ ok: true, changes: 1 });
+    expect((await getTuning(db, Date.now() + 120_000)).exp.overflowMax).toBe(0.5);
+    const s = (await listTuningGroups(db, "potential"))[0]!;
+    const stats = JSON.parse(JSON.stringify(s.value));
+    stats.rateCap = 150;
+    expect(await saveTuningGroup(db, "stats", stats, s.updatedAt)).toEqual({ ok: false, error: "invalid" });
+  });
+
   it("saves, bumps the version, writes the log and is read back by the game", async () => {
     const { token, value } = await group("waygate");
     const before = await version();

@@ -1,4 +1,4 @@
-import { CONSTITUTION_STATS, CURRENCY_GROUPS, ELEMENT_TAGS, GIFT_BODY_MAX, GIFT_MAX_ITEM_KINDS, GIFT_MAX_RECIPIENTS, GIFT_SUBJECT_MAX, giftableItems, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
+import { CONSTITUTION_STATS, CURRENCY_GROUPS, ELEMENT_TAGS, GIFT_BODY_MAX, type TuningPage, GIFT_MAX_ITEM_KINDS, GIFT_MAX_RECIPIENTS, GIFT_SUBJECT_MAX, giftableItems, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
 import { getSession, type AuthedSession } from "./auth";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
@@ -260,13 +260,14 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
 export async function adminTuning(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
-  if (request.method === "GET") return json({ groups: await listTuningGroups(env.DB) });
+  const pageOf = (raw: unknown): TuningPage => (raw === "realms" || raw === "potential" ? raw : "misc");
+  if (request.method === "GET") return json({ groups: await listTuningGroups(env.DB, pageOf(new URL(request.url).searchParams.get("page"))) });
   const body = await readJson(request);
   if (typeof body?.group !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
   const result = await saveTuningGroup(env.DB, body.group, body.value, body.updatedAt, session.email);
   if (!result.ok) return errorResponse(result.error, result.error === "version_conflict" ? 409 : result.error === "unknown_group" ? 404 : 400);
   console.log("tuning group saved", session.accountId, body.group);
-  return json({ ok: true, changes: result.changes, groups: await listTuningGroups(env.DB) });
+  return json({ ok: true, changes: result.changes, groups: await listTuningGroups(env.DB, pageOf(body.page)) });
 }
 
 /**

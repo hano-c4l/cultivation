@@ -103,6 +103,9 @@ check("a player cannot save a tuning group", (await post("/api/admin/tuning", { 
 const tn = await json("/api/admin/tuning", adminCookie);
 const wg = tn.data.groups?.find((g) => g.group === "waygate");
 check("tuning lists pvp, waygate, aoi, combat and theme with fields and defaults", tn.data.groups?.map((g) => g.group).join() === "pvp,waygate,aoi,combat,theme" && wg?.fields?.length === 2 && wg.stored === true, JSON.stringify(tn.data.groups?.map((g) => g.group)));
+const realmsPage = await json("/api/admin/tuning?page=realms", adminCookie);
+const potentialPage = await json("/api/admin/tuning?page=potential", adminCookie);
+check("the realms and potential pages list their own groups", realmsPage.data.groups?.map((g) => g.group).join() === "exp,breakthrough,kills" && potentialPage.data.groups?.map((g) => g.group).join() === "stats" && potentialPage.data.groups[0].stored === true);
 const verOf = () => sql("SELECT version FROM config_versions WHERE name='tuning'")[0].version;
 const v0 = verOf();
 const origWg = wg.value;

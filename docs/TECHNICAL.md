@@ -132,7 +132,7 @@ tools/   smoke.mjs
 Cần `wrangler dev` chạy ở cổng 8787 và `.dev.vars` có `DISABLE_RATE_LIMIT=1` và `ENABLE_DEV_GRANT=1`. Các script tự từ chối host không phải localhost, trừ `smoke.mjs` còn chạy được trên preview.
 | Lệnh | Kiểm gì |
 |---|---|
-| `npm run typecheck`, `npm test` | Kiểu và toàn bộ test đơn vị (khoảng 781 test; một số dùng SQLite thật qua `server/src/test-db.ts`, loại khỏi `tsc` vì cần kiểu Node) |
+| `npm run typecheck`, `npm test` | Kiểu và toàn bộ test đơn vị (khoảng 785 test; một số dùng SQLite thật qua `server/src/test-db.ts`, loại khỏi `tsc` vì cần kiểu Node) |
 | `node tools/smoke.mjs [ws://localhost:8787]` | Luồng chính: đăng ký, tạo nhân vật, quái, EXP, chết, cổng bản đồ |
 | `node tools/economy-smoke.mjs` | Admin: tra cứu, cộng/trừ tiền, idempotency (bảng khóa), lịch sử Linh Thạch của admin, tổng theo nhóm (nhóm `admin`) khớp số dư, chi tiết tiền, kiểm duyệt chỉ cho admin |
 | `node tools/chat-smoke.mjs` | Chat Thế giới/Bản đồ/Truyền âm/Hệ thống, giới hạn, socket chat bị thay thế |
@@ -166,6 +166,7 @@ Cần `wrangler dev` chạy ở cổng 8787 và `.dev.vars` có `DISABLE_RATE_LI
 Các cổng chỉ có ở local (production/preview phải trả 404): `/api/dev/grant-exp`, `/api/dev/tick-stats`, `/api/dev/evict`, `/api/dev/loot`, `/api/dev/boss-hp`.
 
 ## Bẫy đã gặp
+- **Chỉ số chiến đấu là số của `tuning().stats` (3f):** `deriveStats` đọc hệ số và trần chí mạng/né (`rateCap()`) từ tuning; `walkSpeed` vẫn là code. Đừng thêm một nơi tự tính chỉ số bằng công thức cũ. Nhân vật online giữ chỉ số đã tính cho tới khi vào lại, lên tầng hoặc đổi trang bị. Thêm một chỉ số vào nhóm `stats` phải thêm nhãn ở `ADMIN_TUNING_SCREENS` (test báo) và cập nhật test so khớp công thức cũ.
 - **Xóa nhiệm vụ (3e):** `loadQuestCatalog` gieo `SEED_QUESTS` bằng `INSERT OR IGNORE` ở mỗi isolate mới, nên xóa cứng một nhiệm vụ gốc phải để lại dòng `tomb = 1` (nếu `DELETE` thì nó hồi sinh ở lần deploy sau). Nhiệm vụ bị xóa mềm (`deleted_at`) vẫn nằm trong danh mục (tắt) để người giữ tiến độ hoàn thành. Chạy migration `0039` **trước** khi deploy worker (danh mục chọn `WHERE tomb = 0`). Smoke `quests-admin-smoke` mất khoảng 40 giây vì phải chờ bộ nhớ đệm 30 giây của danh mục.
 - **Quà của admin (3d):** thư quà có mã `<lô>:<nhân vật>` (có dấu `:`), thư rơi đồ có mã uuid; `claimMail` của phòng dựa vào dấu `:` để chọn đường nhận quà. Mã lô tối đa 24 ký tự (mã thư tối đa 64 theo giao thức). Chạy migration `0038` **trước** khi deploy worker (`listMail` chọn cột `gift` ở mỗi lần vào game). Gửi cho cả server chỉ ghi một dòng `mailbox` mỗi nhân vật nhưng vẫn là khoảng 3 dòng ghi D1 mỗi người (hạn mức Free 100.000/ngày dùng chung). `readJson` của các API gửi quà được nâng lên 64 KB. Trang bị chưa gửi được.
 - **Màn "Chỉ số khác" và dòng `game_tuning` đã sửa (3c):** admin lưu một nhóm thì `updated_by` có giá trị; nếu bản phát hành sau đổi dạng nhóm đó, dòng không còn hợp lệ, `setTuning` dùng mặc định và bước thay "dòng cũ chưa ai sửa" (`server/src/tuning.ts`) bỏ qua nó, nên không tự sửa. GET `/api/admin/tuning` báo `stored: false` và màn hiện cảnh báo; lưu lại là thay thế. Thêm một số vào nhóm đã liệt kê ở `ADMIN_TUNING_SCREENS` thì phải thêm nhãn cùng lúc (test báo). Smoke `admin-pages-smoke` sửa rồi trả lại `waygate`.

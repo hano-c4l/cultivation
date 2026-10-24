@@ -21,6 +21,8 @@ interface Group {
   stored: boolean;
 }
 
+type Page = "misc" | "realms" | "potential";
+
 interface Setting {
   key: string;
   labelVi: string;
@@ -56,6 +58,13 @@ function crossProblems(group: string, v: (path: string) => number): string[] {
     if (!(v("satKhi.bonusFullAt") > v("satKhi.bonusAbove"))) out.push("Mức sát khí đạt tăng sát thương tối đa phải lớn hơn mức bắt đầu.");
     if (!(v("hero.tier2") >= v("hero.tier1"))) out.push("Mốc anh hùng thứ hai không được nhỏ hơn mốc thứ nhất.");
     if (!(v("protectedBelow.stage") >= 1 && v("protectedBelow.stage") <= 9)) out.push("Tầng bảo hộ tân thủ phải từ 1 đến 9.");
+  }
+  if (group === "breakthrough") {
+    for (let i = 0; i < 3; i++) {
+      if (!(v(`steps.${i}.maxRatePct`) >= v(`steps.${i}.baseRatePct`))) out.push(`Bước đột phá ${i + 1}: tỉ lệ tối đa không được nhỏ hơn tỉ lệ cơ bản.`);
+      if (!(v(`steps.${i}.maxRatePct`) <= 100)) out.push(`Bước đột phá ${i + 1}: tỉ lệ không quá 100%.`);
+    }
+    if (!(v("overflowFrom") <= 1)) out.push("Mốc bắt đầu tính EXP tràn không quá 1.");
   }
   if (group === "aoi") {
     if (!(v("leave.x") >= v("enter.x") && v("leave.y") >= v("enter.y"))) out.push("Tầm rời không được nhỏ hơn tầm vào.");
@@ -99,7 +108,7 @@ function fieldHint(f: Field): string {
 }
 
 /** `refresh(notice, isError)` re-reads the group from the server and redraws only this block, leaving the other blocks' edits alone. */
-function groupBlock(g: Group, refresh: (notice?: string, isError?: boolean) => void, notice?: { text: string; error: boolean }): HTMLElement {
+function groupBlock(g: Group, page: Page, refresh: (notice?: string, isError?: boolean) => void, notice?: { text: string; error: boolean }): HTMLElement {
   const inputs = new Map<string, HTMLInputElement>();
   const msg = h("div", { class: notice?.error ? "msg err" : "msg ok" }, notice?.text);
   let lastTop = "";
@@ -153,7 +162,7 @@ function groupBlock(g: Group, refresh: (notice?: string, isError?: boolean) => v
     save.disabled = true;
     msg.textContent = "Đang lưu...";
     msg.className = "msg muted";
-    const res = await api<{ error?: string; changes?: number }>("/api/admin/tuning", { method: "POST", body: { group: g.group, updatedAt: g.updatedAt, value: body } });
+    const res = await api<{ error?: string; changes?: number }>("/api/admin/tuning", { method: "POST", body: { group: g.group, page, updatedAt: g.updatedAt, value: body } });
     save.disabled = false;
     if (res.status === 200) return refresh(`Đã lưu ${res.data.changes ?? 0} thay đổi.`);
     if (res.status === 409) return refresh(ERRORS.version_conflict, true);
@@ -203,13 +212,22 @@ function settingsBlock(settings: Setting[], reload: () => void): HTMLElement {
   return h("section", { class: "form" }, h("h3", null, "Cài đặt game"), h("p", { class: "muted" }, `Mỗi dòng lưu riêng. Có hiệu lực sau tối đa 30 giây.`), h("div", { class: "table-wrap" }, h("table", null, h("tbody", null, ...rows))));
 }
 
-export function miscPage(): HTMLElement {
+const PAGE_NOTES: Record<Page, string> = {
+  misc: "Máy chủ nhận số mới trong vòng khoảng 30 giây (quái và boss đã sinh giữ số cũ tới khi sinh lại). Người đang chơi chỉ nhận số mới của giao diện (màu tên, mốc bảo hộ...) khi vào lại game hoặc đổi bản đồ.",
+  realms:
+    "Tên và ký hiệu cảnh giới chưa chỉnh được ở đây (chúng còn nằm trong code và tên các vật phẩm sinh từ chúng, chờ các màn Vật phẩm, Kỹ năng, Quái, Bản đồ); thêm cảnh giới mới cũng chờ các màn đó. Màu thẻ cảnh giới chỉnh ở \"Chỉ số khác\" → Màu giao diện. Hạ EXP cần hoặc hệ số tăng có thể làm nhân vật lên nhiều tầng ở lần giết kế tiếp. Số mới có hiệu lực với máy chủ sau tối đa 30 giây; nhân vật đang online thấy thanh EXP mới khi vào lại game.",
+  potential: "Máy chủ dùng hệ số mới sau tối đa 30 giây cho người vào game sau đó. Người đang online giữ chỉ số cũ tới khi vào lại game, lên tầng hoặc đổi trang bị.",
+};
+
+/** A tuning screen: the `game_tuning` groups of one admin page, and on "Chỉ số khác" also the game settings. */
+export function tuningPage(page: Page): HTMLElement {
   const root = h("div", { class: "detail wide" });
   const block = (g: Group, notice?: { text: string; error: boolean }): HTMLElement => {
     const el: HTMLElement = groupBlock(
       g,
+      page,
       (text, error) =>
-        void api<{ groups: Group[] }>("/api/admin/tuning").then((res) => {
+        void api<{ groups: Group[] }>(`/api/admin/tuning?page=${page}`).then((res) => {
           const fresh = res.data.groups?.find((x) => x.group === g.group);
           if (res.status === 200 && fresh) el.replaceWith(block(fresh, text ? { text, error: error === true } : undefined));
         }),
@@ -218,21 +236,15 @@ export function miscPage(): HTMLElement {
     return el;
   };
   const load = async () => {
-    const [tuning, settings] = await Promise.all([api<{ groups: Group[] }>("/api/admin/tuning"), api<{ settings: Setting[] }>("/api/admin/settings")]);
-    if (tuning.status !== 200 || settings.status !== 200) {
+    const [tuning, settings] = await Promise.all([api<{ groups: Group[] }>(`/api/admin/tuning?page=${page}`), page === "misc" ? api<{ settings: Setting[] }>("/api/admin/settings") : Promise.resolve(null)]);
+    if (tuning.status !== 200 || (settings && settings.status !== 200)) {
       root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
       return;
     }
-    root.replaceChildren(
-      h(
-        "p",
-        { class: "muted" },
-        "Máy chủ nhận số mới trong vòng khoảng 30 giây (quái và boss đã sinh giữ số cũ tới khi sinh lại). Người đang chơi chỉ nhận số mới của giao diện (màu tên, mốc bảo hộ...) khi vào lại game hoặc đổi bản đồ.",
-      ),
-      ...tuning.data.groups.map((g) => block(g)),
-      settingsBlock(settings.data.settings, () => void load()),
-    );
+    root.replaceChildren(h("p", { class: "muted" }, PAGE_NOTES[page]), ...tuning.data.groups.map((g) => block(g)), ...(settings ? [settingsBlock(settings.data.settings, () => void load())] : []));
   };
   void load();
   return root;
 }
+
+export const miscPage = (): HTMLElement => tuningPage("misc");
