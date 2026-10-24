@@ -131,8 +131,8 @@ await sleep(600);
 const row = sql(`SELECT map_id FROM characters WHERE id = '${p.id}'`)[0];
 const after1 = sql(`SELECT balance FROM currency_balances WHERE character_id = '${p.id}' AND currency = 'linh_thach'`)[0].balance;
 check("the character is saved in the second town and 4500 Linh Thạch went in the same step", row.map_id === "town2" && after1 === before - 4500, `${row.map_id}, ${before} -> ${after1}`);
-const ledger = sql(`SELECT delta, reason FROM currency_ledger WHERE character_id = '${p.id}' AND reason = 'waygate'`);
-check("the ledger has one entry for the trip", ledger.length === 1 && ledger[0].delta === -4500, JSON.stringify(ledger));
+const ledger = sql(`SELECT total_in, total_out, entries FROM linh_thach_totals WHERE character_id = '${p.id}' AND grp = 'waygate'`);
+check("the totals count one trip of 4500", ledger.length === 1 && ledger[0].total_out === 4500 && ledger[0].entries === 1, JSON.stringify(ledger));
 c.ws.close();
 cw.ws.close();
 

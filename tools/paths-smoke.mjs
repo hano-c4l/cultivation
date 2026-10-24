@@ -72,7 +72,7 @@ sql(`UPDATE accounts SET role='admin' WHERE email='pa-${run}@example.test'`);
 let ledgerN = 0;
 const fund = (amount) => {
   sql(`INSERT OR IGNORE INTO currency_balances (character_id, currency, balance) VALUES ('${id}', 'linh_thach', 0)`);
-  sql(`INSERT INTO currency_ledger (character_id, currency, delta, reason, actor, idempotency_key, created_at) VALUES ('${id}', 'linh_thach', ${amount}, 'test', 'smoke', 'pa-smoke-${run}-${++ledgerN}', 0)`);
+  sql(`INSERT INTO linh_thach_totals (character_id, grp, total_in, total_out, entries, updated_at) VALUES ('${id}', 'test', ${amount}, 0, 1, 0) ON CONFLICT (character_id, grp) DO UPDATE SET total_in = total_in + ${amount}`);
   sql(`UPDATE currency_balances SET balance = balance + ${amount} WHERE character_id = '${id}' AND currency = 'linh_thach'`);
 };
 const lastStats = (c) => [...c.log].reverse().find((m) => m.t === "stats")?.character;

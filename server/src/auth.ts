@@ -20,7 +20,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminAudit, adminAuditEntry, adminBagTabs, adminConstitutions, adminMe, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
+import { adminAudit, adminAuditEntry, adminBagTabs, adminConstitutions, adminEconomyCheck, adminMe, adminCharacter, adminGrant, adminLookup, adminSettings, adminSupply } from "./admin";
 import { getCharacterByAccount, grantExp, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
@@ -89,6 +89,7 @@ async function allowAttempt(env: Env, key: string, limit: number, windowSeconds:
     await env.DB.batch([
       env.DB.prepare("DELETE FROM auth_attempts WHERE window < ?").bind(nowSeconds - 86400),
       env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(Date.now()),
+      env.DB.prepare("DELETE FROM currency_dedupe WHERE expires_at IS NOT NULL AND expires_at < ?").bind(Date.now()),
     ]);
   }
   return (row?.count ?? 1) <= limit;
@@ -282,6 +283,8 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return adminAudit(request, env, url);
     case "GET /api/admin/audit-entry":
       return adminAuditEntry(request, env, url);
+    case "GET /api/admin/economy-check":
+      return adminEconomyCheck(request, env);
     case "POST /api/admin/grant":
       return adminGrant(request, env);
     case "GET /api/admin/lookup":
