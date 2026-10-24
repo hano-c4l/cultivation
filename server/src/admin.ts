@@ -8,6 +8,7 @@ import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
 import { loadConstitutionCatalog, saveConstitutionCatalog } from "./constitution-catalog";
+import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
 
@@ -341,4 +342,38 @@ export async function adminGiftSend(request: Request, env: Env): Promise<Respons
     }
   }
   return json({ ok: true, recipients: result.recipients, duplicate: result.duplicate });
+}
+
+/** The quest catalogue for the admin screen: every quest with how many characters are on it, and what the pickers of the form need. */
+export async function adminQuests(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const quests = await listQuests(env.DB);
+  return json({ quests, meta: await questMeta(env.DB, quests.map((q) => q.def.chain)) });
+}
+
+const QUEST_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, locked_field: 409, exists: 409, has_progress: 409, version_conflict: 409, busy: 409, deleted: 409, not_found: 404 };
+
+/** Saves a quest (POST `{quest, isNew, updatedAt}`); 400 with the list of problems when the catalogue would no longer be valid, 409 when someone else saved it first. */
+export async function adminQuestSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 32 * 1024);
+  if (!body || typeof body.quest !== "object" || typeof body.isNew !== "boolean") return errorResponse("invalid_body", 400);
+  const result = await saveQuest(env.DB, session.email, body.quest, body.isNew, typeof body.updatedAt === "number" ? body.updatedAt : 0);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, QUEST_ERROR_STATUS[result.error] ?? 400);
+  console.log("quest saved", session.accountId, (body.quest as { id?: string }).id);
+  return json({ ok: true, updatedAt: result.updatedAt });
+}
+
+/** Deletes a quest (POST `{id, updatedAt}`): soft when characters hold it, else hard; the quests that required it are relinked. */
+export async function adminQuestDelete(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 32 * 1024);
+  if (typeof body?.id !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await deleteQuest(env.DB, session.email, body.id, body.updatedAt);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, QUEST_ERROR_STATUS[result.error] ?? 400);
+  console.log("quest deleted", session.accountId, body.id, result.mode);
+  return json({ ok: true, mode: result.mode, relinked: result.relinked });
 }
