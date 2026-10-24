@@ -30,9 +30,9 @@ export async function getSetting(db: D1Database, key: string, now = Date.now()):
 }
 
 /** Every setting with its effective value (the admin screen). Reads D1 directly. */
-export async function allSettings(db: D1Database): Promise<Array<{ key: string; labelVi: string; value: number; default: number; min: number; max: number }>> {
+export async function allSettings(db: D1Database): Promise<Array<{ key: string; page: string; labelVi: string; value: number; default: number; min: number; max: number }>> {
   const values = await load(db);
-  return SETTINGS.map((s) => ({ key: s.key, labelVi: s.labelVi, value: values.get(s.key) ?? s.default, default: s.default, min: s.min, max: s.max }));
+  return SETTINGS.map((s) => ({ key: s.key, page: s.page, labelVi: s.labelVi, value: values.get(s.key) ?? s.default, default: s.default, min: s.min, max: s.max }));
 }
 
 /** Stores an override. The caller has checked `validSettingValue`. */

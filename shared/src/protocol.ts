@@ -13,6 +13,7 @@ import type { Tuning } from "./tuning";
 import type { MerchantDef } from "./merchants";
 import type { NpcSpot } from "./map";
 import type { ItemOverlay } from "./items";
+import type { ElementTuning } from "./element-tuning";
 import { isWaygateTown, type WaygateDest } from "./waygate";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type Carry, type BagPos, type SortMode } from "./inventory";
@@ -206,7 +207,7 @@ export interface PlayerSnapshot {
 }
 
 export type ServerMessage =
-  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][]; tuning: Tuning; npcs: NpcSpot[]; items?: ItemOverlay[] }
+  | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][]; tuning: Tuning; npcs: NpcSpot[]; items?: ItemOverlay[]; mutant?: Pick<ElementTuning, "mutantRootChancePermille" | "mutantSkillBonusPct" | "mutantGearBonusPct" | "mutantGearDropPermille"> }
   | { t: "joined"; player: PlayerSnapshot }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }

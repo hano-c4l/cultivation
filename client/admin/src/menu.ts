@@ -14,7 +14,7 @@ export const MENU: MenuItem[] = [
   { path: "/admin/monsters", label: "Quái / BOSS", hint: "Chỉ số, kỹ năng, bảng rơi", phase: "3j" },
   { path: "/admin/items", label: "Vật phẩm", hint: "Đan, nguyên liệu, bí tịch (trang bị: 3g-b)", phase: "3g", ready: true },
   { path: "/admin/skills", label: "Kỹ năng", hint: "Tên, sức mạnh, MP, hồi chiêu, tầm, hiệu ứng", phase: "3h", ready: true },
-  { path: "/admin/talents", label: "Thiên phú", hint: "Linh căn, thể chất, hệ biến dị", phase: "3i" },
+  { path: "/admin/talents", label: "Thiên phú", hint: "Linh căn, hệ biến dị, thể chất", phase: "3i", ready: true },
   { path: "/admin/quests", label: "Nhiệm vụ", hint: "Yêu cầu, điều kiện nhận, thưởng", phase: "3e", ready: true },
   { path: "/admin/realms", label: "Cảnh giới", hint: "EXP, đột phá, tràn EXP", phase: "3f", ready: true },
   { path: "/admin/potential", label: "Chỉ số tiềm năng", hint: "Hệ số tiềm năng sang chỉ số", phase: "3f", ready: true },

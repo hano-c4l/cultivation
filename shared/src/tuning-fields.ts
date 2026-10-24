@@ -1,4 +1,4 @@
-import { REALMS } from "./progression-data";
+import { REALMS, ROOT_COUNTS, ROOT_GRADES } from "./progression-data";
 import { DEFAULT_TUNING, type Tuning, type TuningGroup } from "./tuning";
 
 /**
@@ -16,8 +16,8 @@ export interface TuningField {
   unit?: string;
 }
 
-/** The admin screen a group is shown on: "misc" (Chỉ số khác), "realms" (Cảnh giới) or "potential" (Chỉ số tiềm năng). */
-export type TuningPage = "misc" | "realms" | "potential";
+/** The admin screen a group is shown on: "misc" (Chỉ số khác), "realms" (Cảnh giới), "potential" (Chỉ số tiềm năng) or "talents" (Thiên phú: linh căn). */
+export type TuningPage = "misc" | "realms" | "potential" | "talents";
 
 export interface TuningScreenGroup {
   group: TuningGroup;
@@ -201,6 +201,24 @@ export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
       { path: "expBonus.perNgoTinh", label: "Thưởng EXP: mỗi điểm Ngộ tính", kind: "num", unit: "%" },
       { path: "dropBonus.perPhucDuyen", label: "Thưởng rơi đồ: mỗi điểm Phúc duyên", kind: "num", unit: "%" },
       { path: "rateCap", label: "Trần chí mạng và né", kind: "num", unit: "%" },
+    ],
+  },
+  {
+    group: "roots",
+    page: "talents",
+    title: "Linh căn: phẩm cấp và số hệ",
+    note: "Lúc tạo nhân vật, máy chủ tung một phẩm cấp và một số hệ theo trọng số (không cần cộng đủ 100: phần trăm là phần của tổng, hiện bên cạnh). Trọng số và điểm khởi đầu chỉ áp cho nhân vật tạo sau đó; thưởng EXP và thưởng sát thương theo hệ áp cho mọi người sau tối đa 30 giây (người đang online thấy sau khi vào lại game). Tên phẩm cấp và tên số hệ còn nằm trong code.",
+    fields: [
+      ...ROOT_GRADES.flatMap((g, i): TuningField[] => [
+        { path: `grades.${i}.weight`, label: `${g.nameVi}: trọng số tung`, kind: "num" },
+        { path: `grades.${i}.expBonusPct`, label: `${g.nameVi}: thưởng EXP`, kind: "num", unit: "%" },
+        { path: `grades.${i}.bonusPoints`, label: `${g.nameVi}: điểm tiềm năng khởi đầu thêm`, kind: "int", unit: "điểm" },
+        { path: `grades.${i}.elementDamagePct`, label: `${g.nameVi}: thưởng sát thương theo hệ của mình`, kind: "num", unit: "%" },
+      ]),
+      ...ROOT_COUNTS.flatMap((c, i): TuningField[] => [
+        { path: `counts.${i}.weight`, label: `${c.nameVi}: trọng số tung`, kind: "num" },
+        { path: `counts.${i}.expBonusPct`, label: `${c.nameVi}: thưởng EXP`, kind: "num", unit: "%" },
+      ]),
     ],
   },
 ];
