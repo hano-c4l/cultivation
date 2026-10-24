@@ -1,5 +1,7 @@
 import { loadLiveConfig } from "./live-config";
 import { isItemId, isMapId } from "@game/shared";
+import { isAdminPagePath } from "./admin-page-rules";
+import { handleAdminPage } from "./admin-pages";
 import { getSession, handleApi } from "./auth";
 import { ChatHub } from "./chat-hub";
 import { CharacterLock } from "./character-lock";
@@ -111,6 +113,7 @@ export default {
         await loadLiveConfig(env.DB); // routes that roll a character or build a sheet use the live numbers (cached)
         return await handleApi(request, env, url);
       }
+      if (isAdminPagePath(url.pathname)) return await handleAdminPage(request, env, url);
       if (url.pathname === "/ws") return await handleWebSocket(request, env, url);
       if (url.pathname === "/ws/chat") return await handleChatSocket(request, env);
       return new Response("Not found", { status: 404 });
