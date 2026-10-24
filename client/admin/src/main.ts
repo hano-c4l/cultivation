@@ -1,5 +1,6 @@
 import "./style.css";
 import { api, h } from "./kit";
+import { jadeLogPage, jadePeoplePage } from "./jade";
 import { MENU } from "./menu";
 import { auditDetailPage, auditListPage, homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
@@ -63,6 +64,12 @@ async function render(): Promise<void> {
   } else if (path === "/admin/audit") {
     title = "Nhật ký thay đổi";
     content = auditListPage();
+  } else if (path === "/admin/jade") {
+    title = "Lịch sử Tiên Ngọc";
+    content = jadeLogPage();
+  } else if (path === "/admin/jade/people") {
+    title = "Lịch sử Tiên Ngọc · Theo người";
+    content = jadePeoplePage();
   } else if (audit) {
     title = "Chi tiết thay đổi";
     content = auditDetailPage(Number(audit[1]));
@@ -84,7 +91,7 @@ document.addEventListener("click", (ev) => {
   const url = new URL(a.href, location.href);
   if (url.origin !== location.origin || !(url.pathname === "/admin" || url.pathname.startsWith("/admin/"))) return;
   ev.preventDefault();
-  history.pushState(null, "", url.pathname);
+  history.pushState(null, "", url.pathname + url.search);
   void render();
 });
 window.addEventListener("popstate", () => void render());

@@ -1,5 +1,6 @@
 import { CONSTITUTION_STATS, ELEMENT_TAGS, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
 import { getSession, type AuthedSession } from "./auth";
+import { LEDGER_SORTS, PEOPLE_SORTS, listLedger, listPeople, parseLedgerFilter, parsePageQuery } from "./admin-ledger";
 import { getAuditEntry, listAudit, parseAuditQuery, recordAudit } from "./admin-audit";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
@@ -163,6 +164,22 @@ export async function adminBagTabs(request: Request, env: Env): Promise<Response
   console.log("bag expanded", admin, characterId, tabs);
   await audit(env, session, { action: "bag_tabs_add", targetType: "character", targetId: characterId, summary: `+${by} bag tab(s), now ${tabs}`, after: { bagTabs: tabs } });
   return json({ ok: true, bagTabs: tabs });
+}
+
+/** One page of the currency ledger (GET: currency, q, reason, character, from, to, sort, dir, page, size), with totals and the per-reason breakdown. */
+export async function adminLedger(request: Request, env: Env, url: URL): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  const page = parsePageQuery(url.searchParams, LEDGER_SORTS, "id");
+  return json({ ...(await listLedger(env.DB, parseLedgerFilter(url.searchParams), page)), page: page.page, size: page.size });
+}
+
+/** The ledger summed per character (same filters): money in, money out, net and the balance now. */
+export async function adminLedgerPeople(request: Request, env: Env, url: URL): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  const page = parsePageQuery(url.searchParams, PEOPLE_SORTS, "net");
+  return json({ ...(await listPeople(env.DB, parseLedgerFilter(url.searchParams), page)), page: page.page, size: page.size });
 }
 
 /** Total supply per currency (sum of all balances), the start of the PLAN section 4 monitoring dashboard. */

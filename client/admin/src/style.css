@@ -75,3 +75,18 @@ pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6p
   .toggle { display: inline-block; }
   .fields { grid-template-columns: 1fr; }
 }
+
+.filter { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
+.filter input, .filter select { width: auto; min-width: 130px; color: var(--text); font-size: 14px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 8px 0; }
+.stat { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 8px 10px; }
+.stat small { display: block; color: var(--muted); }
+.stat b { font-size: 17px; }
+.pos { color: var(--ok); }
+.neg { color: var(--err); }
+.tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.tabs a { padding: 5px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); }
+.tabs a.active { background: #2a3248; border-color: var(--accent); }
+.chip { display: inline-flex; gap: 8px; align-items: center; padding: 3px 10px; border: 1px solid var(--accent); border-radius: 14px; margin-bottom: 8px; }
+.groups { margin: 6px 0 10px; font-size: 13px; color: var(--muted); }
+.groups span { margin-right: 14px; white-space: nowrap; }

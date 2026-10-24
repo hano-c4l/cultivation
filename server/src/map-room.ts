@@ -2253,7 +2253,7 @@ export class MapRoom extends DurableObject<Env> {
       ...(offer.dailyLimit !== undefined ? limitStatements(this.env.DB, id, npcId, offer.id, qty, offer.dailyLimit, now) : []),
     ];
     try {
-      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency, delta: -total, reason: "shop_buy", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency, delta: -total, reason: `shop_buy:${offer.id}:${qty}`, actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
       if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
