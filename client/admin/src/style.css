@@ -92,3 +92,16 @@ pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6p
 .groups span { margin-right: 14px; white-space: nowrap; }
 .stat b { overflow-wrap: anywhere; }
 h2 { font-size: 16px; margin: 16px 0 6px; }
+
+.form { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 12px; margin-bottom: 12px; }
+.form .toolbar { margin: 8px 0 0; align-items: center; }
+.form .toolbar input, .form .toolbar select { max-width: 260px; }
+.radios { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.radio { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.radio input { width: auto; }
+.msg { min-height: 1.4em; margin-top: 8px; }
+section { margin: 14px 0; }
+section h3 { font-size: 15px; margin: 0 0 6px; }
+.modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: flex-start; justify-content: center; padding: 5vh 12px; z-index: 20; overflow-y: auto; }
+.modal-box { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; width: min(900px, 100%); }
+.modal-box h3 { margin: 0 0 8px; }

@@ -76,7 +76,7 @@ async function makeChar(tag, x, y) {
   await sleep(700);
   sql(`UPDATE characters SET map_id = 'forest', x = ${x}, y = ${y} WHERE id = '${id}'`);
   sql(`INSERT OR IGNORE INTO currency_balances (character_id, currency, balance) VALUES ('${id}', 'linh_thach', 0)`);
-  sql(`INSERT INTO linh_thach_totals (character_id, grp, total_in, total_out, entries, updated_at) VALUES ('${id}', 'test', ${COST}, 0, 1, 0) ON CONFLICT (character_id, grp) DO UPDATE SET total_in = total_in + ${COST}`);
+  sql(`INSERT INTO linh_thach_totals (character_id, grp, total_in, total_out, updated_at) VALUES ('${id}', 'other', ${COST}, 0, 0) ON CONFLICT (character_id, grp) DO UPDATE SET total_in = total_in + ${COST}`);
   sql(`UPDATE currency_balances SET balance = balance + ${COST} WHERE character_id = '${id}' AND currency = 'linh_thach'`);
   return { id, cookie: reg.cookie };
 }

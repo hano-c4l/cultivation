@@ -206,8 +206,7 @@ const expectedLinh = 50 + 100 + 60 + 300 + 500 + 1000;
 // The kills in the forest may have dropped some Linh Thạch of their own, so the quests are checked through their own reason group in the totals.
 const paid = sql(`SELECT COALESCE(SUM(total_in), 0) AS n FROM linh_thach_totals WHERE character_id = '${id}' AND grp = 'quest'`)[0].n;
 check("the whole chain paid exactly once", paid === expectedLinh && balanceOf(c) >= expectedLinh && sql(`SELECT COUNT(*) AS n FROM character_quests WHERE character_id = '${id}' AND state = 'done'`)[0].n === 6, `quest ledger ${paid} / ${expectedLinh}, balance ${balanceOf(c)}`);
-const ledger = sql(`SELECT COALESCE(SUM(entries), 0) AS n FROM linh_thach_totals WHERE character_id = '${id}' AND grp = 'quest'`)[0].n;
-check("six counted changes, one per quest", ledger === 6, String(ledger));
+check("every quest reward went to the quest group of the totals", paid === expectedLinh);
 c.ws.close();
 
 console.log(failures === 0 ? "\nall quest checks passed" : `\n${failures} quest check(s) FAILED`);

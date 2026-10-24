@@ -138,7 +138,7 @@ c = await connect(reg.cookie);
 r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 check("repair without Linh Thạch is refused", r.some((m) => m.t === "inv_error" && m.reason === "funds"));
 sql(`INSERT INTO currency_balances (character_id, currency, balance) VALUES ('${charId}', 'linh_thach', 1000)`);
-sql(`INSERT INTO linh_thach_totals (character_id, grp, total_in, total_out, entries, updated_at) VALUES ('${charId}', 'test', 1000, 0, 1, 0) ON CONFLICT (character_id, grp) DO UPDATE SET total_in = total_in + 1000`);
+sql(`INSERT INTO linh_thach_totals (character_id, grp, total_in, total_out, updated_at) VALUES ('${charId}', 'other', 1000, 0, 0) ON CONFLICT (character_id, grp) DO UPDATE SET total_in = total_in + 1000`);
 r = await after(c, { t: "smith_repair", npc: "smith", slot: "all" });
 const rep = r.find((m) => m.t === "repaired");
 check("repairing 50 lost points of a Hạ phẩm hat costs 50 Linh Thạch", rep?.cost === 50);

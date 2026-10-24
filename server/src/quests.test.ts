@@ -375,8 +375,8 @@ describe("Cống Hiến and daily quests", () => {
     expect(r).toMatchObject({ status: "done", balance: 100, congHien: 8 });
     expect(wallet("linh_thach")).toBe(100);
     expect(wallet("cong_hien")).toBe(8);
-    expect(raw.prepare("SELECT total_in, entries FROM linh_thach_totals WHERE character_id = ? AND grp = 'quest'").get(A)).toEqual({ total_in: 100, entries: 1 });
-    expect(raw.prepare("SELECT total_in, entries FROM cong_hien_totals WHERE character_id = ? AND grp = 'quest'").get(A)).toEqual({ total_in: 8, entries: 1 });
+    expect(raw.prepare("SELECT total_in FROM linh_thach_totals WHERE character_id = ? AND grp = 'quest'").get(A)).toEqual({ total_in: 100 });
+    expect(raw.prepare("SELECT total_in FROM cong_hien_totals WHERE character_id = ? AND grp = 'quest'").get(A)).toEqual({ total_in: 8 });
   });
 
   it("a Cống Hiến-only reward works too", async () => {

@@ -71,11 +71,11 @@ check("unknown character is 404", (await grant(admin, { ...g, characterId: "khon
 check("zero amount is 400", (await grant(admin, { ...g, amount: 0, idempotencyKey: key() })).status === 400);
 check("bad currency is 400", (await grant(admin, { ...g, currency: "vang", amount: 1, idempotencyKey: key() })).status === 400);
 
-const view = await api(`/api/admin/character?id=${charId0}`, { cookie: admin.cookie });
+const view = await api(`/api/admin/currency/detail?currency=linh_thach&character=${charId0}`, { cookie: admin.cookie });
 check(
-  "character view shows the wallet, the totals of the admin_grant group and the admin's two changes in the history, newest first, with the actor's email",
-  view.status === 200 && view.data.wallet.linh_thach === 60 && view.data.history.linh_thach.length === 2 && view.data.history.linh_thach[0].delta === -40 && view.data.history.linh_thach[0].actor_email === admin.email &&
-    view.data.totals.linh_thach.length === 1 && view.data.totals.linh_thach[0].group === "admin_grant" && view.data.totals.linh_thach[0].totalIn === 100 && view.data.totals.linh_thach[0].totalOut === 40,
+  "the detail shows the balance, the admin group of the history (in 100, out 40) and that they match",
+  view.status === 200 && view.data.detail.balance === 60 && view.data.detail.historyAmount === 60 && view.data.detail.matches === true &&
+    view.data.detail.groups.length === 1 && view.data.detail.groups[0].group === "admin" && view.data.detail.groups[0].totalIn === 100 && view.data.detail.groups[0].totalOut === 40,
   JSON.stringify(view.data),
 );
 
@@ -97,9 +97,7 @@ check("the grant's key is remembered (it expires after a week)", sql(`SELECT exp
 const sums = sql(`SELECT (SELECT SUM(total_in) - SUM(total_out) FROM linh_thach_totals WHERE character_id='${charId}') AS s, (SELECT balance FROM currency_balances WHERE character_id='${charId}' AND currency='linh_thach') AS b`)[0];
 check("the totals add up to the balance", sums.s === sums.b && sums.b === 60, JSON.stringify(sums));
 await sleep(3000); // a request straight after wrangler d1 execute can be reset
-const chk = await api("/api/admin/economy-check", { cookie: admin.cookie });
-check("the economy check lists no mismatch for this character", chk.status === 200 && !chk.data.checks.flatMap((c) => c.mismatches).some((m) => m.characterId === charId), JSON.stringify(chk.data).slice(0, 200));
-check("the economy check is for admins only", (await api("/api/admin/economy-check", { cookie: player.cookie })).status === 403);
+check("the audit run is for admins only", (await api("/api/admin/currency/audit/run", { cookie: player.cookie, method: "POST", body: { currency: "linh_thach" } })).status === 403);
 
 console.log(failures === 0 ? "ECONOMY SMOKE PASSED" : `ECONOMY SMOKE FAILED (${failures})`);
 process.exit(failures === 0 ? 0 : 1);

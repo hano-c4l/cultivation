@@ -18,11 +18,8 @@ export const MENU: MenuItem[] = [
   { path: "/admin/quests", label: "Nhiệm vụ", hint: "Yêu cầu, điều kiện nhận, thưởng", phase: "3e" },
   { path: "/admin/realms", label: "Cảnh giới", hint: "EXP, đột phá, tràn EXP", phase: "3f" },
   { path: "/admin/potential", label: "Chỉ số tiềm năng", hint: "Hệ số tiềm năng sang chỉ số", phase: "3f" },
-  { path: "/admin/jade", label: "Lịch sử Tiên Ngọc", hint: "Chi tiết, theo người, tổng cung", phase: "3b", ready: true },
-  { path: "/admin/linh-thach", label: "Linh Thạch", hint: "Giao dịch lớn, tổng theo nhóm", phase: "3b", ready: true },
-  { path: "/admin/cong-hien", label: "Cống Hiến", hint: "Tổng theo nhóm lý do", phase: "3b", ready: true },
-  { path: "/admin/economy-check", label: "Kiểm tra số dư", hint: "Tổng theo nhóm có khớp số dư không", phase: "3b", ready: true },
   { path: "/admin/misc", label: "Chỉ số khác", hint: "Sát khí, sát nhân, anh hùng, truyền tống...", phase: "3c" },
   { path: "/admin/gifts", label: "Gửi quà", hint: "Tiền, vật phẩm vào hòm thư", phase: "3d" },
-  { path: "/admin/audit", label: "Nhật ký thay đổi", hint: "Ai sửa gì, khi nào", phase: "3a", ready: true },
+  { path: "/admin/currency", label: "Quản lý tiền tệ", hint: "Tìm theo nhóm, chi tiết, kiểm duyệt số dư", phase: "3b", ready: true },
+  { path: "/admin/log", label: "Nhật ký admin", hint: "Admin đã thay đổi gì, ở đâu, khi nào", phase: "3a", ready: true },
 ];

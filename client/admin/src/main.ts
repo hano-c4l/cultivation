@@ -1,8 +1,8 @@
 import "./style.css";
 import { api, h } from "./kit";
-import { checkPage, historyPage, totalsPage } from "./currency";
+import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { MENU } from "./menu";
-import { auditDetailPage, auditListPage, homePage, loginPage, notFoundPage, plannedPage } from "./pages";
+import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
 const app = document.getElementById("app")!;
 
@@ -57,34 +57,21 @@ async function render(): Promise<void> {
   }
   let title = "Không tìm thấy";
   let content: HTMLElement | Promise<HTMLElement> = notFoundPage();
-  const audit = /^\/admin\/audit\/(\d+)$/.exec(path);
   if (path === "/admin") {
     title = "Trang chính";
     content = homePage();
-  } else if (path === "/admin/audit") {
-    title = "Nhật ký thay đổi";
-    content = auditListPage();
-  } else if (path === "/admin/jade") {
-    title = "Lịch sử Tiên Ngọc";
-    content = historyPage("tien_ngoc");
-  } else if (path === "/admin/jade/people") {
-    title = "Tiên Ngọc · Theo người";
-    content = totalsPage("tien_ngoc");
-  } else if (path === "/admin/linh-thach") {
-    title = "Linh Thạch · Lịch sử chi tiết";
-    content = historyPage("linh_thach");
-  } else if (path === "/admin/linh-thach/people") {
-    title = "Linh Thạch · Theo người";
-    content = totalsPage("linh_thach");
-  } else if (path === "/admin/cong-hien") {
-    title = "Cống Hiến · Theo người";
-    content = totalsPage("cong_hien");
-  } else if (path === "/admin/economy-check") {
-    title = "Kiểm tra số dư";
-    content = checkPage();
-  } else if (audit) {
-    title = "Chi tiết thay đổi";
-    content = auditDetailPage(Number(audit[1]));
+  } else if (path === "/admin/currency") {
+    title = "Quản lý tiền tệ";
+    content = searchPage();
+  } else if (path === "/admin/currency/audit") {
+    title = "Quản lý tiền tệ · Kiểm duyệt";
+    content = auditPage();
+  } else if (path === "/admin/currency/detail") {
+    title = "Quản lý tiền tệ · Chi tiết";
+    content = detailPage();
+  } else if (path === "/admin/log") {
+    title = "Nhật ký admin";
+    content = logPage();
   } else {
     const planned = MENU.find((m) => !m.ready && (path === m.path || path.startsWith(`${m.path}/`)));
     if (planned) {
