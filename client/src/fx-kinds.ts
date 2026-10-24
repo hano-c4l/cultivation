@@ -20,6 +20,7 @@ const templateOf = (id: string): string => id.replace(/_\d+$/, "");
 
 export function skillFxOf(def: SkillDef | undefined): SkillFx {
   if (!def) return "ranged";
+  if (def.fx) return def.fx; // an admin picked the effect
   const listed = SKILL_FX[def.id] ?? SKILL_FX[templateOf(def.id)];
   if (listed) return listed;
   switch (def.kind) {
