@@ -111,3 +111,7 @@ section h3 { font-size: 15px; margin: 0 0 6px; }
 input.changed { border-color: var(--accent); }
 td button { font-size: 12px; padding: 4px 8px; }
 th.subhead { padding-top: 12px; color: var(--accent); font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.found { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.wide-field { display: flex; margin: 8px 0; }
+.wide-field input, .wide-field textarea { max-width: 560px; }

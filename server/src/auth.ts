@@ -20,7 +20,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning } from "./admin";
+import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend } from "./admin";
 import { getCharacterByAccount, grantExp, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
@@ -306,6 +306,14 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     case "GET /api/admin/settings":
     case "POST /api/admin/settings":
       return adminSettings(request, env);
+    case "GET /api/admin/gifts/meta":
+      return adminGiftMeta(request, env);
+    case "POST /api/admin/gifts/resolve":
+      return adminGiftResolve(request, env);
+    case "POST /api/admin/gifts/send":
+      return adminGiftSend(request, env);
+    case "GET /api/admin/gifts/history":
+      return adminGiftHistory(request, env, url);
     case "GET /api/admin/tuning":
     case "POST /api/admin/tuning":
       return adminTuning(request, env);

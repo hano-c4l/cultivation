@@ -1,4 +1,4 @@
-import { MAIL_ITEM_EXPIRY_MS, START_BAG_TABS, parseRolledStats, type Carry, type RolledStats, carried, firstFreeCell, stackLimit, type BagItem, type BagOp, type EquippedItem, type EquipSlot, type MailView } from "@game/shared";
+import { MAIL_ITEM_EXPIRY_MS, START_BAG_TABS, parseGift, type GiftAttachments, parseRolledStats, type Carry, type RolledStats, carried, firstFreeCell, stackLimit, type BagItem, type BagOp, type EquippedItem, type EquipSlot, type MailView } from "@game/shared";
 
 /**
  * D1 side of the bag. The room plans changes against its in-memory copy (shared/src/inventory.ts) and this module
@@ -311,6 +311,8 @@ export interface MailEntry {
   currency: string | null;
   amount: number;
   item: ({ type: string; qty: number } & Carry) | null;
+  /** The attachments of an admin gift (the mail then has no `item`). */
+  gift: GiftAttachments | null;
   /** Epoch ms, or null when it never expires. */
   expiresAt: number | null;
 }
@@ -319,12 +321,12 @@ export interface MailEntry {
 export async function listMail(db: D1Database, characterId: string, now = Date.now()): Promise<MailEntry[]> {
   const { results } = await db
     .prepare(
-      "SELECT m.id, m.subject, m.body, m.currency, m.amount, m.expires_at, i.item_type, i.qty, i.durability, i.max_durability, i.refine_level, i.refine_exp, i.rolled_stats, i.enhance_level " +
+      "SELECT m.id, m.subject, m.body, m.currency, m.amount, m.expires_at, m.gift, i.item_type, i.qty, i.durability, i.max_durability, i.refine_level, i.refine_exp, i.rolled_stats, i.enhance_level " +
         "FROM mailbox m LEFT JOIN item_instances i ON i.id = m.item_id " +
         "WHERE m.character_id = ? AND m.claimed_at IS NULL AND (m.expires_at IS NULL OR m.expires_at > ?) ORDER BY m.created_at, m.id",
     )
     .bind(characterId, now)
-    .all<{ id: string; subject: string; body: string; currency: string | null; amount: number; expires_at: number | null; item_type: string | null; qty: number | null; durability: number | null; max_durability: number | null; refine_level: number | null; refine_exp: number | null; rolled_stats: string | null; enhance_level: number | null }>();
+    .all<{ id: string; subject: string; body: string; currency: string | null; amount: number; expires_at: number | null; gift: string | null; item_type: string | null; qty: number | null; durability: number | null; max_durability: number | null; refine_level: number | null; refine_exp: number | null; rolled_stats: string | null; enhance_level: number | null }>();
   return results.map((r) => ({
     id: r.id,
     subject: r.subject,
@@ -332,6 +334,7 @@ export async function listMail(db: D1Database, characterId: string, now = Date.n
     currency: r.currency,
     amount: r.amount,
     item: r.item_type && r.qty ? { type: r.item_type, qty: r.qty, ...wearOf(r) } : null,
+    gift: parseGift(r.gift),
     expiresAt: r.expires_at,
   }));
 }
@@ -449,11 +452,17 @@ export function diffBag(before: readonly BagItem[], after: readonly BagItem[]): 
   return { items, removed: before.filter((i) => !now.has(i.id)).map((i) => i.id) };
 }
 
-/** Mail as sent to clients: item mails only (currency mail has no way to be claimed yet), with a relative expiry. */
+/** Mail as sent to clients: item mails and admin gifts (mail with only an old currency attachment has no way to be claimed), with a relative expiry. */
 export function mailViews(entries: readonly MailEntry[], now = Date.now()): MailView[] {
   return entries
-    .filter((m) => m.item !== null)
-    .map((m) => ({ id: m.id, subject: m.subject, item: m.item, expiresInMs: m.expiresAt === null ? null : Math.max(0, m.expiresAt - now) }));
+    .filter((m) => m.item !== null || m.gift !== null)
+    .map((m) => ({
+      id: m.id,
+      subject: m.subject,
+      item: m.item,
+      expiresInMs: m.expiresAt === null ? null : Math.max(0, m.expiresAt - now),
+      ...(m.gift ? { body: m.body, gift: { linh_thach: m.gift.linh_thach, cong_hien: m.gift.cong_hien, tien_ngoc: m.gift.tien_ngoc, items: m.gift.items } } : {}),
+    }));
 }
 
 /**

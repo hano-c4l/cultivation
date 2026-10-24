@@ -76,6 +76,8 @@ export type ClientMessage =
   | { t: "inv_expand"; price: number }
   /** Claim the item attached to a mail into the bag. */
   | { t: "mail_claim"; id: string }
+  /** Ask for the mail list again (a gift was sent while the player is online); the server answers with `mail` and limits how often. */
+  | { t: "mail_refresh" }
   /** Wear the bag item at (tab, cell). Without `slot` the server picks the first empty slot of its kind (or replaces the first). */
   | { t: "eq_equip"; tab: number; cell: number; slot?: EquipSlot }
   | { t: "eq_unequip"; slot: EquipSlot }
@@ -152,6 +154,10 @@ export interface MailView {
   subject: string;
   item: ({ type: string; qty: number } & Carry) | null;
   expiresInMs: number | null;
+  /** The text of an admin gift (the subject is shown as written). */
+  body?: string;
+  /** What an admin gift carries; the claim gives all of it or nothing. */
+  gift?: { linh_thach?: number; cong_hien?: number; tien_ngoc?: number; items: Array<{ type: string; qty: number }> };
 }
 
 /** The bag as the client sees it. */
@@ -231,6 +237,8 @@ export type ServerMessage =
   | { t: "loot"; items: Array<{ type: string; qty: number; mailed: boolean }> }
   /** The current unclaimed mail (full list). */
   | { t: "mail"; mail: MailView[] }
+  /** Sent on the chat socket when a gift was sent to the player: the client answers with `mail_refresh` on the game socket. */
+  | { t: "mail_new" }
   /** The merchant's stock for today: units this character can still buy of each offer that has a daily limit. */
   | { t: "shop"; npc: string; left: Record<string, number>; tuning: Tuning; merchant: MerchantDef }
   /** A trade went through: `total` Linh Thạch paid (buy) or received (sell). */
@@ -491,6 +499,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isNpcId(m.npc) && typeof m.quest === "string" && /^[a-z0-9_]{1,40}$/.test(m.quest) ? { t: m.t, npc: m.npc, quest: m.quest } : null;
     case "quest_abandon":
       return typeof m.quest === "string" && /^[a-z0-9_]{1,40}$/.test(m.quest) ? { t: "quest_abandon", quest: m.quest } : null;
+    case "mail_refresh":
+      return { t: "mail_refresh" };
     case "mail_claim":
       return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:
