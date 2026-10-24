@@ -35,7 +35,7 @@ function reasonText(reason: string): string {
 }
 
 const num = (n: number) => n.toLocaleString("vi-VN");
-const signed = (n: number) => (n > 0 ? `+${num(n)}` : num(n));
+const signed = (n: number) => (n > 0 ? `+${num(n)}` : n === 0 ? "0" : num(n)); // never "-0"
 const sign = (n: number) => h("span", { class: n > 0 ? "pos" : n < 0 ? "neg" : "" }, signed(n));
 const stat = (label: string, value: string | Node, small?: string) => h("div", { class: "stat" }, h("small", null, label), h("b", null, value), small ? h("small", null, small) : null);
 
