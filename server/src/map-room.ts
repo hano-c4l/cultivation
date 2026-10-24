@@ -162,7 +162,7 @@ import {
   type CharacterRow,
 } from "./characters";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { applyCurrencyDelta, currencyStatements, getWallet } from "./economy";
+import { applyCurrencyDelta, currencyStatements, getWallet, linhThachTraceMin } from "./economy";
 import {
   addBagTabStatements,
   claimMailItem,
@@ -1503,6 +1503,7 @@ export class MapRoom extends DurableObject<Env> {
             reason: "monster_drop",
             actor: "system",
             idempotencyKey: key,
+            keyTtlMs: 24 * 3600 * 1000,
           });
           if (r.status === "applied") {
             for (const ws of this.ctx.getWebSockets()) {
@@ -1951,7 +1952,7 @@ export class MapRoom extends DurableObject<Env> {
       }
       const r = await applyCurrencyDelta(
         this.env.DB,
-        { characterId: id, currency: "linh_thach", delta: -price, reason: "bag_tab", actor: "system", idempotencyKey: `bagtab:${crypto.randomUUID()}` },
+        { characterId: id, currency: "linh_thach", delta: -price, reason: "bag_tab", actor: "system" },
         extra,
       );
       if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
@@ -2253,7 +2254,7 @@ export class MapRoom extends DurableObject<Env> {
       ...(offer.dailyLimit !== undefined ? limitStatements(this.env.DB, id, npcId, offer.id, qty, offer.dailyLimit, now) : []),
     ];
     try {
-      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency, delta: -total, reason: `shop_buy:${offer.id}:${qty}`, actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency, delta: -total, reason: `shop_buy:${offer.id}:${qty}`, actor: "system" }, extra);
       if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
@@ -2283,7 +2284,7 @@ export class MapRoom extends DurableObject<Env> {
     const total = unit * qty;
     const extra = ops.flatMap((op) => opStatements(this.env.DB, id, op, Date.now()));
     try {
-      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: total, reason: "shop_sell", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: total, reason: "shop_sell", actor: "system" }, extra);
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
       const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
@@ -2316,7 +2317,7 @@ export class MapRoom extends DurableObject<Env> {
     }
     const extra = ops.flatMap((op) => opStatements(this.env.DB, id, op, Date.now()));
     try {
-      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: total, reason: "shop_sell", actor: "system", idempotencyKey: `shop:${crypto.randomUUID()}` }, extra);
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: total, reason: "shop_sell", actor: "system" }, extra);
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
       const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
@@ -2427,7 +2428,7 @@ export class MapRoom extends DurableObject<Env> {
       this.env.DB.prepare("UPDATE item_instances SET enhance_level = ?, enhance_bonus = ? WHERE id = ? AND owner_character_id = ?").bind(out.level, out.pity, piece.id, id),
     ];
     try {
-      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -cost.linhThach, reason: "smith_upgrade", actor: "system", idempotencyKey: `smith:${crypto.randomUUID()}` }, extra);
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -cost.linhThach, reason: "smith_upgrade", actor: "system" }, extra);
       if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       // Reload: the level of a worn piece changes the stats, so the gear refresh follows.
@@ -2477,7 +2478,7 @@ export class MapRoom extends DurableObject<Env> {
       this.env.DB.prepare("UPDATE item_instances SET rolled_stats = ? WHERE id = ? AND owner_character_id = ?").bind(JSON.stringify(result.rs), piece.id, id),
     ];
     try {
-      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -cost.linhThach, reason: "smith_refine", actor: "system", idempotencyKey: `smith:${crypto.randomUUID()}` }, extra);
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -cost.linhThach, reason: "smith_refine", actor: "system" }, extra);
       if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       this.bags.delete(id);
@@ -2504,7 +2505,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!plan.ok) return this.resync(ws, id, plan.error);
     const extra = plan.ops.flatMap((op) => opStatements(this.env.DB, id, op, Date.now()));
     try {
-      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -plan.cost, reason: "repair", actor: "system", idempotencyKey: `repair:${crypto.randomUUID()}` }, extra);
+      const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -plan.cost, reason: "repair", actor: "system" }, extra);
       if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
       if (r.status !== "applied") return this.resync(ws, id, "busy");
       const next = applyBag({ items: bag.items, equipped: bag.equipped }, plan.ops);
@@ -2913,7 +2914,7 @@ export class MapRoom extends DurableObject<Env> {
     const fresh = ws.deserializeAttachment() as PlayerState | null;
     if (!fresh || fresh.id !== id || fresh.transferring || fresh.bt || fresh.tp || this.isMoving(fresh)) return;
     const spawn = getMap(to).spawn;
-    const before = currencyStatements(this.env.DB, { characterId: id, currency: "linh_thach", delta: -fee, reason: "waygate", actor: "system", idempotencyKey: `waygate:${id}:${endsAt}` });
+    const before = currencyStatements(this.env.DB, { characterId: id, currency: "linh_thach", delta: -fee, reason: "waygate", actor: "system", idempotencyKey: `waygate:${id}:${endsAt}`, keyTtlMs: 24 * 3600 * 1000 }, await linhThachTraceMin(this.env.DB));
     if (await this.handoff(ws, fresh, to, spawn[0] + 0.5, spawn[1] + 0.5, false, before)) return; // the socket is closed: the client sees the transfer
     const again = ws.deserializeAttachment() as PlayerState | null;
     if (again && !again.transferring) this.send(ws, { t: "tp_end", ok: false, reason: "other" });
@@ -3068,7 +3069,7 @@ export class MapRoom extends DurableObject<Env> {
     try {
       const r = await applyCurrencyDelta(
         this.env.DB,
-        { characterId: id, currency: "linh_thach", delta: -def.cost, reason: "breakthrough", actor: "system", idempotencyKey: `bt:${crypto.randomUUID()}` },
+        { characterId: id, currency: "linh_thach", delta: -def.cost, reason: "breakthrough", actor: "system" },
         startStatements(this.env.DB, id, realm, ops, startedAt, expAtStart(realm, stage, exp)),
       );
       if (r.status === "insufficient") return this.btError(ws, "funds");

@@ -1,6 +1,6 @@
 import "./style.css";
 import { api, h } from "./kit";
-import { jadeLogPage, jadePeoplePage } from "./jade";
+import { checkPage, historyPage, totalsPage } from "./currency";
 import { MENU } from "./menu";
 import { auditDetailPage, auditListPage, homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
@@ -66,10 +66,22 @@ async function render(): Promise<void> {
     content = auditListPage();
   } else if (path === "/admin/jade") {
     title = "Lịch sử Tiên Ngọc";
-    content = jadeLogPage();
+    content = historyPage("tien_ngoc");
   } else if (path === "/admin/jade/people") {
-    title = "Lịch sử Tiên Ngọc · Theo người";
-    content = jadePeoplePage();
+    title = "Tiên Ngọc · Theo người";
+    content = totalsPage("tien_ngoc");
+  } else if (path === "/admin/linh-thach") {
+    title = "Linh Thạch · Lịch sử chi tiết";
+    content = historyPage("linh_thach");
+  } else if (path === "/admin/linh-thach/people") {
+    title = "Linh Thạch · Theo người";
+    content = totalsPage("linh_thach");
+  } else if (path === "/admin/cong-hien") {
+    title = "Cống Hiến · Theo người";
+    content = totalsPage("cong_hien");
+  } else if (path === "/admin/economy-check") {
+    title = "Kiểm tra số dư";
+    content = checkPage();
   } else if (audit) {
     title = "Chi tiết thay đổi";
     content = auditDetailPage(Number(audit[1]));

@@ -92,29 +92,35 @@ const detail = await get(`/api/admin/audit-entry?id=${row?.id}`, adminCookie);
 check("the entry shows before and after", detail.status === 200 && JSON.parse(detail.text).entry.after === 1234, detail.text.slice(0, 120));
 check("an unknown entry is 404", (await get("/api/admin/audit-entry?id=99999999", adminCookie)).status === 404);
 check("a bad id is 400", (await get("/api/admin/audit-entry?id=abc", adminCookie)).status === 400);
-// The currency history (3b): a Tiên Ngọc grant to the admin's own character shows in the ledger, the per-person totals and the supply.
+// The currency screens (3b): a Tiên Ngọc grant to the admin's own character shows in the history, the per-person totals, the supply and the check.
 const charName = `Jd${run}`;
 const created = await fetch(httpBase + "/api/character", { method: "POST", headers: { "Content-Type": "application/json", Cookie: adminCookie }, body: JSON.stringify({ name: charName, gender: "male" }) });
 const charId = (await created.json()).character?.id;
 check("admin's character created", created.status === 201 && Boolean(charId), String(created.status));
 const grant = await fetch(httpBase + "/api/admin/grant", { method: "POST", headers: { "Content-Type": "application/json", Cookie: adminCookie }, body: JSON.stringify({ characterId: charId, currency: "tien_ngoc", amount: 300, reason: "jade-smoke", idempotencyKey: `jade-smoke-${run}` }) });
 check("admin grants 300 Tiên Ngọc", grant.status === 200, String(grant.status));
-const ledger = JSON.parse((await get(`/api/admin/ledger?q=${encodeURIComponent(charName)}`, adminCookie)).text);
-check("the ledger lists it with the actor and the reason", ledger.rows?.[0]?.delta === 300 && ledger.rows[0].actor === adminEmail && ledger.rows[0].reason === "admin_grant:jade-smoke" && ledger.rows[0].characterName === charName, JSON.stringify(ledger.rows?.[0]));
-check("the totals and the breakdown count it", ledger.summary?.totalIn === 300 && ledger.groups?.some((g) => g.reason === "admin_grant"), JSON.stringify(ledger.summary));
-const other = JSON.parse((await get(`/api/admin/ledger?q=${encodeURIComponent(charName)}&currency=linh_thach`, adminCookie)).text);
-check("another currency does not show it", other.total === 0, String(other.total));
-const byChar = JSON.parse((await get(`/api/admin/ledger?character=${charId}&reason=admin_grant`, adminCookie)).text);
-check("filtering by character and reason works", byChar.total === 1, String(byChar.total));
-const people = JSON.parse((await get(`/api/admin/ledger-people?q=${encodeURIComponent(charName)}`, adminCookie)).text);
-check("per-person totals show the balance now", people.rows?.[0]?.net === 300 && people.rows[0].balance === 300 && people.rows[0].characterName === charName, JSON.stringify(people.rows?.[0]));
+const hist = JSON.parse((await get(`/api/admin/currency-history?currency=tien_ngoc&q=${encodeURIComponent(charName)}`, adminCookie)).text);
+check("the history lists it with the actor and the reason", hist.rows?.[0]?.delta === 300 && hist.rows[0].actor === adminEmail && hist.rows[0].reason === "admin_grant:jade-smoke" && hist.rows[0].characterName === charName, JSON.stringify(hist.rows?.[0]));
+check("the totals and the breakdown count it", hist.summary?.totalIn === 300 && hist.groups?.some((g) => g.group === "admin_grant"), JSON.stringify(hist.summary));
+const lt = JSON.parse((await get(`/api/admin/currency-history?currency=linh_thach&q=${encodeURIComponent(charName)}`, adminCookie)).text);
+check("Linh Thạch history does not show it", lt.currency === "linh_thach" && lt.total === 0, String(lt.total));
+const noHistory = JSON.parse((await get("/api/admin/currency-history?currency=cong_hien", adminCookie)).text);
+check("Cống Hiến has no history: the request falls back to Tiên Ngọc", noHistory.currency === "tien_ngoc");
+const byChar = JSON.parse((await get(`/api/admin/currency-history?character=${charId}&reason=admin_grant`, adminCookie)).text);
+check("filtering by character and reason group works", byChar.total === 1, String(byChar.total));
+const totals = JSON.parse((await get(`/api/admin/currency-totals?currency=tien_ngoc&q=${encodeURIComponent(charName)}`, adminCookie)).text);
+check("totals per person show net, balance and no difference", totals.rows?.[0]?.net === 300 && totals.rows[0].balance === 300 && totals.rows[0].diff === 0 && totals.rows[0].characterName === charName, JSON.stringify(totals.rows?.[0]));
+const ch = JSON.parse((await get("/api/admin/currency-totals?currency=cong_hien", adminCookie)).text);
+check("Cống Hiến totals answer", ch.currency === "cong_hien" && Array.isArray(ch.rows));
 const supply = JSON.parse((await get("/api/admin/supply", adminCookie)).text);
 check("the supply has Tiên Ngọc", supply.supply?.some((r) => r.currency === "tien_ngoc" && r.total >= 300));
-for (const p of ["/api/admin/ledger", "/api/admin/ledger-people"]) {
+const eco = JSON.parse((await get("/api/admin/economy-check", adminCookie)).text);
+check("the quick check answers for the three currencies without this character", eco.checks?.length === 3 && !eco.checks.flatMap((c) => c.mismatches).some((m) => m.characterId === charId));
+for (const p of ["/api/admin/currency-history", "/api/admin/currency-totals", "/api/admin/economy-check"]) {
   check(`anonymous ${p} is 401`, (await get(p)).status === 401);
   check(`player ${p} is 403`, (await get(p, playerCookie)).status === 403);
 }
-check("a nonsense sort or date falls back instead of failing", (await get("/api/admin/ledger?sort=x%3Bdrop&from=nope&size=999999", adminCookie)).status === 200);
+check("a nonsense sort or date falls back instead of failing", (await get("/api/admin/currency-history?sort=x%3Bdrop&from=nope&size=999999", adminCookie)).status === 200);
 
 // Put the setting back so the local database is as it was.
 await fetch(httpBase + "/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json", Cookie: adminCookie }, body: JSON.stringify({ key: "bag_tab_price", value: listed.rows ? JSON.parse(detail.text).entry.before ?? 1000 : 1000 }) });

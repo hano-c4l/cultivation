@@ -203,11 +203,11 @@ await after(c, { t: "quest_accept", npc: "elder", quest: "newbie_6" });
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_6" }, 1000);
 check("the last quest pays the Ngộ Đạo Đan", r.some((m) => m.t === "quest_done" && m.quest === "newbie_6") && countOf(c, "ngo_dao_dan") === 1);
 const expectedLinh = 50 + 100 + 60 + 300 + 500 + 1000;
-// The kills in the forest may have dropped some Linh Thạch of their own, so the quests are checked through their ledger entries.
-const paid = sql(`SELECT COALESCE(SUM(delta), 0) AS n FROM currency_ledger WHERE character_id = '${id}' AND reason = 'quest'`)[0].n;
+// The kills in the forest may have dropped some Linh Thạch of their own, so the quests are checked through their own reason group in the totals.
+const paid = sql(`SELECT COALESCE(SUM(total_in), 0) AS n FROM linh_thach_totals WHERE character_id = '${id}' AND grp = 'quest'`)[0].n;
 check("the whole chain paid exactly once", paid === expectedLinh && balanceOf(c) >= expectedLinh && sql(`SELECT COUNT(*) AS n FROM character_quests WHERE character_id = '${id}' AND state = 'done'`)[0].n === 6, `quest ledger ${paid} / ${expectedLinh}, balance ${balanceOf(c)}`);
-const ledger = sql(`SELECT COUNT(*) AS n FROM currency_ledger WHERE character_id = '${id}' AND reason = 'quest'`)[0].n;
-check("six ledger entries, one per quest", ledger === 6, String(ledger));
+const ledger = sql(`SELECT COALESCE(SUM(entries), 0) AS n FROM linh_thach_totals WHERE character_id = '${id}' AND grp = 'quest'`)[0].n;
+check("six counted changes, one per quest", ledger === 6, String(ledger));
 c.ws.close();
 
 console.log(failures === 0 ? "\nall quest checks passed" : `\n${failures} quest check(s) FAILED`);

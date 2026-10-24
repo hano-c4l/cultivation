@@ -90,3 +90,5 @@ pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6p
 .chip { display: inline-flex; gap: 8px; align-items: center; padding: 3px 10px; border: 1px solid var(--accent); border-radius: 14px; margin-bottom: 8px; }
 .groups { margin: 6px 0 10px; font-size: 13px; color: var(--muted); }
 .groups span { margin-right: 14px; white-space: nowrap; }
+.stat b { overflow-wrap: anywhere; }
+h2 { font-size: 16px; margin: 16px 0 6px; }
