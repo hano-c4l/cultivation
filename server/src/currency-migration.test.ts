@@ -1,16 +1,12 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { reasonGroup } from "@game/shared";
 import { describe, expect, it } from "vitest";
-import { checkAll, checkCurrency } from "./economy-check";
-import { applyCurrencyDelta } from "./economy";
-import { makeDb } from "./test-db";
 
-/** Migration 0036 applied to a database that already holds a year of the old single ledger. */
-function oldDatabase(): DatabaseSync {
+/** Migration 0036 (and 0037 when asked) applied to a database that already holds a year of the old single ledger. */
+function oldDatabase(withGroups: boolean): DatabaseSync {
   const raw = new DatabaseSync(":memory:");
   const dir = new URL("../migrations/", import.meta.url);
-  for (const f of readdirSync(dir).filter((n) => n.endsWith(".sql") && !n.startsWith("0036")).sort()) raw.exec(readFileSync(new URL(f, dir), "utf8"));
+  for (const f of readdirSync(dir).filter((n) => n.endsWith(".sql") && !n.startsWith("0036") && !n.startsWith("0037")).sort()) raw.exec(readFileSync(new URL(f, dir), "utf8"));
   raw.exec("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, created_at) VALUES ('a1', 'a@x.test', 'h', 's', 1, 0), ('a2', 'b@x.test', 'h', 's', 1, 0)");
   raw.exec("INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at) VALUES ('c1', 'a1', 'One', 'kim', 0, 0, 0, 0), ('c2', 'a2', 'Two', 'kim', 0, 0, 0, 0)");
   // The old way of writing: a ledger row (key and all) plus the balance.
@@ -29,12 +25,14 @@ function oldDatabase(): DatabaseSync {
   put("c1", "tien_ngoc", 100, "admin_grant:jade", "adm", "admin:k3", 80);
   put("c1", "tien_ngoc", -50, "shop_buy", "system", "shop:2", 90);
   put("c2", "linh_thach", 7, "mail_claim", "system", "mail:m1", 100);
+  raw.prepare("INSERT INTO admin_audit (at, admin_id, admin_email, action, target_type, target_id, summary) VALUES (5, 'adm', 'boss@x.test', 'setting_change', 'setting', 'k', 'k = 5')").run();
   raw.exec(readFileSync(new URL("0036_currency_totals.sql", dir), "utf8"));
+  if (withGroups) raw.exec(readFileSync(new URL("0037_currency_groups_audit.sql", dir), "utf8"));
   return raw;
 }
 
 describe("migration 0036 on existing data", () => {
-  const raw = oldDatabase();
+  const raw = oldDatabase(false);
   const rows = (sql: string) => raw.prepare(sql).all();
 
   it("builds the totals per reason group so that they equal the balances", () => {
@@ -72,33 +70,57 @@ describe("migration 0036 on existing data", () => {
   });
 });
 
-describe("reasonGroup", () => {
-  it("is the part before the first colon, and the SQL of the migration agrees", () => {
-    expect(reasonGroup("shop_buy:ren_giu_cap:1")).toBe("shop_buy");
-    expect(reasonGroup("monster_drop")).toBe("monster_drop");
-    expect(reasonGroup("")).toBe("other");
-    expect(reasonGroup(":x")).toBe("other");
-    expect(reasonGroup("a".repeat(100))).toHaveLength(40);
+describe("migration 0037 on data in the 0036 shape", () => {
+  const raw = oldDatabase(true);
+  const rows = (sql: string) => raw.prepare(sql).all();
+
+  it("regroups the totals into the fixed groups and keeps money in and out", () => {
+    expect(rows("SELECT character_id, grp, total_in, total_out FROM linh_thach_totals ORDER BY character_id, grp")).toEqual([
+      { character_id: "c1", grp: "admin", total_in: 500_005, total_out: 0 },
+      { character_id: "c1", grp: "farm", total_in: 100, total_out: 0 },
+      { character_id: "c1", grp: "quest", total_in: 250_000, total_out: 0 },
+      { character_id: "c1", grp: "shop", total_in: 0, total_out: 30 },
+      { character_id: "c2", grp: "other", total_in: 7, total_out: 0 },
+    ]);
+    expect(rows("SELECT grp, total_in, total_out FROM tien_ngoc_totals ORDER BY grp")).toEqual([
+      { grp: "admin", total_in: 100, total_out: 0 },
+      { grp: "shop", total_in: 0, total_out: 50 },
+    ]);
+    expect(rows("SELECT grp, total_in FROM cong_hien_totals")).toEqual([{ grp: "quest", total_in: 9 }]);
   });
-});
 
-describe("economy check", () => {
-  it("finds nothing after normal changes, then flags a balance edited by hand", async () => {
-    const { db, raw: r } = makeDb();
-    r.exec("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, created_at) VALUES ('a1', 'a@x.test', 'h', 's', 1, 0)");
-    r.exec("INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at) VALUES ('c1', 'a1', 'One', 'kim', 0, 0, 0, 0)");
-    await applyCurrencyDelta(db, { characterId: "c1", currency: "linh_thach", delta: 100, reason: "monster_drop", actor: "system" });
-    await applyCurrencyDelta(db, { characterId: "c1", currency: "tien_ngoc", delta: 5, reason: "admin_grant", actor: "adm" });
-    const clean = await checkAll(db);
-    expect(clean.map((c) => c.mismatches.length)).toEqual([0, 0, 0]);
-    expect(clean.find((c) => c.currency === "linh_thach")).toMatchObject({ checked: 1, balanceSum: 100, computedSum: 100 });
+  it("merges old groups that land in the same new group and keeps the latest time", () => {
+    const db = new DatabaseSync(":memory:");
+    const dir = new URL("../migrations/", import.meta.url);
+    for (const f of readdirSync(dir).filter((n) => n.endsWith(".sql") && !n.startsWith("0037")).sort()) db.exec(readFileSync(new URL(f, dir), "utf8"));
+    db.exec(`INSERT INTO linh_thach_totals (character_id, grp, total_in, total_out, entries, updated_at) VALUES
+      ('x', 'smith_upgrade', 0, 10, 1, 5), ('x', 'smith_refine', 0, 20, 2, 9), ('x', 'path_swap', 0, 5, 1, 7), ('x', 'repair', 0, 1, 1, 2), ('x', 'weird_new_reason', 3, 0, 1, 1)`);
+    db.exec(readFileSync(new URL("0037_currency_groups_audit.sql", dir), "utf8"));
+    expect(db.prepare("SELECT grp, total_in, total_out, updated_at FROM linh_thach_totals WHERE character_id = 'x' ORDER BY grp").all()).toEqual([
+      { grp: "enhance", total_in: 0, total_out: 36, updated_at: 9 },
+      { grp: "other", total_in: 3, total_out: 0, updated_at: 1 },
+    ]);
+  });
 
-    r.exec("UPDATE currency_balances SET balance = balance + 40 WHERE character_id = 'c1' AND currency = 'linh_thach'");
-    r.exec("INSERT INTO currency_balances (character_id, currency, balance) VALUES ('ghost', 'cong_hien', 9)"); // a balance with no totals
-    const bad = await checkCurrency(db, "linh_thach");
-    expect(bad.mismatches).toEqual([{ characterId: "c1", characterName: "One", balance: 140, computed: 100 }]);
-    expect(bad.balanceSum - bad.computedSum).toBe(40);
-    expect((await checkCurrency(db, "cong_hien")).mismatches).toEqual([{ characterId: "ghost", characterName: null, balance: 9, computed: 0 }]);
-    expect((await checkCurrency(db, "tien_ngoc")).mismatches).toEqual([]);
+  it("leaves in minus out per character equal to the balance", () => {
+    const drift = raw
+      .prepare(
+        `SELECT t.character_id FROM linh_thach_totals t LEFT JOIN currency_balances b ON b.character_id = t.character_id AND b.currency = 'linh_thach'
+         GROUP BY t.character_id HAVING SUM(t.total_in) - SUM(t.total_out) <> COALESCE(b.balance, 0)`,
+      )
+      .all();
+    expect(drift).toEqual([]);
+  });
+
+  it("no longer has the entries column, and creates the audit table", () => {
+    expect((rows("PRAGMA table_info(linh_thach_totals)") as Array<{ name: string }>).map((c) => c.name)).toEqual(["character_id", "grp", "total_in", "total_out", "updated_at"]);
+    expect(rows("SELECT COUNT(*) AS n FROM currency_audit")).toEqual([{ n: 0 }]);
+    expect(() => raw.exec("INSERT INTO currency_audit (currency, character_id, history_amount, balance_amount, status, checked_at) VALUES ('gold', 'c', 0, 0, 'invalid', 0)")).toThrow(/CHECK/);
+    expect(() => raw.exec("INSERT INTO currency_audit (currency, character_id, history_amount, balance_amount, status, checked_at) VALUES ('tien_ngoc', 'c', 0, 0, 'weird', 0)")).toThrow(/CHECK/);
+  });
+
+  it("replaces the admin audit with the admin log and copies the old rows", () => {
+    expect(rows("SELECT at, admin_email, screen, content FROM admin_log")).toEqual([{ at: 5, admin_email: "boss@x.test", screen: "setting", content: "setting_change: k = 5" }]);
+    expect(() => raw.prepare("SELECT 1 FROM admin_audit").all()).toThrow(/no such table/);
   });
 });

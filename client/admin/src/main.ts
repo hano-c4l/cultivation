@@ -1,7 +1,8 @@
 import "./style.css";
 import { api, h } from "./kit";
+import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { MENU } from "./menu";
-import { auditDetailPage, auditListPage, homePage, loginPage, notFoundPage, plannedPage } from "./pages";
+import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
 const app = document.getElementById("app")!;
 
@@ -56,16 +57,21 @@ async function render(): Promise<void> {
   }
   let title = "Không tìm thấy";
   let content: HTMLElement | Promise<HTMLElement> = notFoundPage();
-  const audit = /^\/admin\/audit\/(\d+)$/.exec(path);
   if (path === "/admin") {
     title = "Trang chính";
     content = homePage();
-  } else if (path === "/admin/audit") {
-    title = "Nhật ký thay đổi";
-    content = auditListPage();
-  } else if (audit) {
-    title = "Chi tiết thay đổi";
-    content = auditDetailPage(Number(audit[1]));
+  } else if (path === "/admin/currency") {
+    title = "Quản lý tiền tệ";
+    content = searchPage();
+  } else if (path === "/admin/currency/audit") {
+    title = "Quản lý tiền tệ · Kiểm duyệt";
+    content = auditPage();
+  } else if (path === "/admin/currency/detail") {
+    title = "Quản lý tiền tệ · Chi tiết";
+    content = detailPage();
+  } else if (path === "/admin/log") {
+    title = "Nhật ký admin";
+    content = logPage();
   } else {
     const planned = MENU.find((m) => !m.ready && (path === m.path || path.startsWith(`${m.path}/`)));
     if (planned) {
@@ -84,7 +90,7 @@ document.addEventListener("click", (ev) => {
   const url = new URL(a.href, location.href);
   if (url.origin !== location.origin || !(url.pathname === "/admin" || url.pathname.startsWith("/admin/"))) return;
   ev.preventDefault();
-  history.pushState(null, "", url.pathname);
+  history.pushState(null, "", url.pathname + url.search);
   void render();
 });
 window.addEventListener("popstate", () => void render());

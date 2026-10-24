@@ -75,3 +75,33 @@ pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6p
   .toggle { display: inline-block; }
   .fields { grid-template-columns: 1fr; }
 }
+
+.filter { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
+.filter input, .filter select { width: auto; min-width: 130px; color: var(--text); font-size: 14px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 8px 0; }
+.stat { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 8px 10px; }
+.stat small { display: block; color: var(--muted); }
+.stat b { font-size: 17px; }
+.pos { color: var(--ok); }
+.neg { color: var(--err); }
+.tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.tabs a { padding: 5px 12px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); }
+.tabs a.active { background: #2a3248; border-color: var(--accent); }
+.chip { display: inline-flex; gap: 8px; align-items: center; padding: 3px 10px; border: 1px solid var(--accent); border-radius: 14px; margin-bottom: 8px; }
+.groups { margin: 6px 0 10px; font-size: 13px; color: var(--muted); }
+.groups span { margin-right: 14px; white-space: nowrap; }
+.stat b { overflow-wrap: anywhere; }
+h2 { font-size: 16px; margin: 16px 0 6px; }
+
+.form { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 10px 12px; margin-bottom: 12px; }
+.form .toolbar { margin: 8px 0 0; align-items: center; }
+.form .toolbar input, .form .toolbar select { max-width: 260px; }
+.radios { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.radio { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.radio input { width: auto; }
+.msg { min-height: 1.4em; margin-top: 8px; }
+section { margin: 14px 0; }
+section h3 { font-size: 15px; margin: 0 0 6px; }
+.modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: flex-start; justify-content: center; padding: 5vh 12px; z-index: 20; overflow-y: auto; }
+.modal-box { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; width: min(900px, 100%); }
+.modal-box h3 { margin: 0 0 8px; }

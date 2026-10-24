@@ -45,24 +45,24 @@ function expectTotalsMatchBalances(): void {
 }
 
 const totals = (table: string) =>
-  raw.prepare(`SELECT grp, total_in, total_out, entries FROM ${table} ORDER BY grp`).all() as Array<{ grp: string; total_in: number; total_out: number; entries: number }>;
+  raw.prepare(`SELECT grp, total_in, total_out FROM ${table} ORDER BY grp`).all() as Array<{ grp: string; total_in: number; total_out: number }>;
 
 describe("applyCurrencyDelta", () => {
   it("credits, adds to the totals of the reason group and returns the new balance", async () => {
     expect(await applyCurrencyDelta(db, change({ delta: 10 }))).toEqual({ status: "applied", balance: 10 });
     expect(await applyCurrencyDelta(db, change({ delta: 5 }))).toEqual({ status: "applied", balance: 15 });
     expect((await getWallet(db, CHAR)).linh_thach).toBe(15);
-    expect(totals("linh_thach_totals")).toEqual([{ grp: "test", total_in: 15, total_out: 0, entries: 2 }]); // one row, updated in place
+    expect(totals("linh_thach_totals")).toEqual([{ grp: "other", total_in: 15, total_out: 0 }]); // one row, updated in place; an unknown reason is "other"
     expectTotalsMatchBalances();
   });
 
-  it("keeps totals per reason group, in and out apart, with ':' details folded into the group", async () => {
+  it("keeps totals per group (monster_drop is farm, shop_buy is shop), in and out apart", async () => {
     await applyCurrencyDelta(db, change({ delta: 100, reason: "monster_drop" }));
     await applyCurrencyDelta(db, change({ delta: -30, reason: "shop_buy:ren_giu_cap:1" }));
     await applyCurrencyDelta(db, change({ delta: -20, reason: "shop_buy:hoi_huyet_dan:5" }));
     expect(totals("linh_thach_totals")).toEqual([
-      { grp: "monster_drop", total_in: 100, total_out: 0, entries: 1 },
-      { grp: "shop_buy", total_in: 0, total_out: 50, entries: 2 },
+      { grp: "farm", total_in: 100, total_out: 0 },
+      { grp: "shop", total_in: 0, total_out: 50 },
     ]);
     expectTotalsMatchBalances();
   });
@@ -72,7 +72,7 @@ describe("applyCurrencyDelta", () => {
     expect(await applyCurrencyDelta(db, c)).toEqual({ status: "applied", balance: 10 });
     expect(await applyCurrencyDelta(db, c)).toEqual({ status: "duplicate" });
     expect((await getWallet(db, CHAR)).linh_thach).toBe(10);
-    expect(totals("linh_thach_totals")).toEqual([{ grp: "test", total_in: 10, total_out: 0, entries: 1 }]);
+    expect(totals("linh_thach_totals")).toEqual([{ grp: "other", total_in: 10, total_out: 0 }]);
     expectTotalsMatchBalances();
   });
 
@@ -98,7 +98,7 @@ describe("applyCurrencyDelta", () => {
     await applyCurrencyDelta(db, change({ delta: 10 }));
     expect(await applyCurrencyDelta(db, change({ delta: -11 }))).toEqual({ status: "insufficient" });
     expect((await getWallet(db, CHAR)).linh_thach).toBe(10);
-    expect(totals("linh_thach_totals")).toEqual([{ grp: "test", total_in: 10, total_out: 0, entries: 1 }]);
+    expect(totals("linh_thach_totals")).toEqual([{ grp: "other", total_in: 10, total_out: 0 }]);
     expect(await applyCurrencyDelta(db, change({ delta: -10 }))).toEqual({ status: "applied", balance: 0 });
     expectTotalsMatchBalances();
   });
@@ -149,7 +149,7 @@ describe("which changes get a history row", () => {
       { delta: 3, reason: "admin_grant:gift", actor: "adm" },
       { delta: -1, reason: "shop_buy:ren_giu_cap:1", actor: "system" },
     ]);
-    expect(totals("tien_ngoc_totals").map((t) => t.grp)).toEqual(["admin_grant", "shop_buy"]);
+    expect(totals("tien_ngoc_totals").map((t) => t.grp)).toEqual(["admin", "shop"]);
     expectTotalsMatchBalances();
   });
 
@@ -160,7 +160,7 @@ describe("which changes get a history row", () => {
     await applyCurrencyDelta(db, change({ delta: -150_000, reason: "shop_buy:x:1" }));
     await applyCurrencyDelta(db, change({ delta: 5, actor: "adm", reason: "admin_grant" })); // small, but an admin did it
     expect((raw.prepare("SELECT delta FROM linh_thach_ledger ORDER BY id").all() as Array<{ delta: number }>).map((r) => r.delta)).toEqual([100_000, -150_000, 5]);
-    expect(totals("linh_thach_totals").reduce((n, t) => n + t.entries, 0)).toBe(4); // the totals saw every change
+    expect(totals("linh_thach_totals").reduce((n, t) => n + t.total_in - t.total_out, 0)).toBe(99_999 + 100_000 - 150_000 + 5); // the totals saw every change
     expectTotalsMatchBalances();
   });
 
@@ -197,7 +197,7 @@ describe("mailbox", () => {
     expect(await claimMail(db, CHAR, id)).toEqual({ status: "claimed", balance: 100 });
     expect(await claimMail(db, CHAR, id)).toEqual({ status: "already_claimed" });
     expect((await getWallet(db, CHAR)).linh_thach).toBe(100);
-    expect(totals("linh_thach_totals")).toEqual([{ grp: "mail_claim", total_in: 100, total_out: 0, entries: 1 }]);
+    expect(totals("linh_thach_totals")).toEqual([{ grp: "other", total_in: 100, total_out: 0 }]);
     expect(raw.prepare("SELECT expires_at FROM currency_dedupe WHERE key = ?").get(`mail:${id}`)).toEqual({ expires_at: null }); // kept for good
     expectTotalsMatchBalances();
   });
