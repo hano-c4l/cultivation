@@ -364,7 +364,7 @@ describe("Cống Hiến and daily quests", () => {
   const DAY = 86_400_000;
   const T0 = 20_000 * DAY + 3 * 3_600_000; // 10:00 Vietnam time on some day
 
-  it("a quest pays Linh Thạch and Cống Hiến together, each with its own ledger key", async () => {
+  it("a quest pays Linh Thạch and Cống Hiến together, each counted in its own totals", async () => {
     const d = def("daily_herb");
     await acceptQuest(db, A, d.id, T0, true);
     await give("linh_thao", 10);
@@ -375,7 +375,8 @@ describe("Cống Hiến and daily quests", () => {
     expect(r).toMatchObject({ status: "done", balance: 100, congHien: 8 });
     expect(wallet("linh_thach")).toBe(100);
     expect(wallet("cong_hien")).toBe(8);
-    expect((raw.prepare("SELECT COUNT(*) AS n FROM currency_ledger WHERE character_id = ? AND reason = 'quest'").get(A) as { n: number }).n).toBe(2);
+    expect(raw.prepare("SELECT total_in, entries FROM linh_thach_totals WHERE character_id = ? AND grp = 'quest'").get(A)).toEqual({ total_in: 100, entries: 1 });
+    expect(raw.prepare("SELECT total_in, entries FROM cong_hien_totals WHERE character_id = ? AND grp = 'quest'").get(A)).toEqual({ total_in: 8, entries: 1 });
   });
 
   it("a Cống Hiến-only reward works too", async () => {

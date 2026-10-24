@@ -18,7 +18,7 @@ import {
   type QuestDef,
   type QuestProgressView,
 } from "@game/shared";
-import { applyCurrencyDelta } from "./economy";
+import { applyCurrencyDelta, currencyStatements, linhThachTraceMin } from "./economy";
 import { opStatements } from "./inventory";
 
 /**
@@ -237,19 +237,16 @@ export async function commitTurnIn(
   try {
     const linh = def.rewards.linhThach ?? 0;
     const cong = def.rewards.congHien ?? 0;
-    // The first currency in the reward goes through applyCurrencyDelta (its ledger entry shares the key, so the two one-time guards
-    // agree) and the other one rides in the same batch as plain statements under its own key.
-    const second = (currency: "linh_thach" | "cong_hien", delta: number, ledgerKey: string) => [
-      db.prepare("INSERT INTO currency_ledger (character_id, currency, delta, reason, actor, idempotency_key, created_at) VALUES (?, ?, ?, 'quest', 'system', ?, ?)").bind(characterId, currency, delta, ledgerKey, now),
-      db.prepare("INSERT OR IGNORE INTO currency_balances (character_id, currency, balance) VALUES (?, ?, 0)").bind(characterId, currency),
-      db.prepare("UPDATE currency_balances SET balance = balance + ? WHERE character_id = ? AND currency = ?").bind(delta, characterId, currency),
-    ];
+    // The first currency in the reward goes through applyCurrencyDelta and the other one rides in the same batch as plain statements. The
+    // one-time guard is the grant key in item_grants (the first statement of the batch), so the currency changes carry no key of their own.
+    const traceMin = await linhThachTraceMin(db);
+    const second = (currency: "linh_thach" | "cong_hien", delta: number) => currencyStatements(db, { characterId, currency, delta, reason: "quest", actor: "system" }, traceMin, now);
     if (linh > 0 || cong > 0) {
       const mainCurrency = linh > 0 ? "linh_thach" : "cong_hien";
       const r = await applyCurrencyDelta(
         db,
-        { characterId, currency: mainCurrency, delta: linh > 0 ? linh : cong, reason: "quest", actor: "system", idempotencyKey: key },
-        linh > 0 && cong > 0 ? [...statements, ...second("cong_hien", cong, `${key}:cong_hien`)] : statements,
+        { characterId, currency: mainCurrency, delta: linh > 0 ? linh : cong, reason: "quest", actor: "system" },
+        linh > 0 && cong > 0 ? [...statements, ...second("cong_hien", cong)] : statements,
       );
       if (r.status === "duplicate") return { status: "duplicate" };
       const balance = r.status === "applied" ? r.balance : null;

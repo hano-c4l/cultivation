@@ -1,5 +1,6 @@
 import { CONSTITUTION_STATS, ELEMENT_TAGS, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
 import { getSession, type AuthedSession } from "./auth";
+import { checkAll } from "./economy-check";
 import { getAuditEntry, listAudit, parseAuditQuery, recordAudit } from "./admin-audit";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
@@ -83,6 +84,7 @@ export async function adminGrant(request: Request, env: Env): Promise<Response> 
     reason: reason ? `admin_grant:${reason}` : "admin_grant",
     actor: admin,
     idempotencyKey: `admin:${key}`,
+    keyTtlMs: 7 * 24 * 3600 * 1000,
   });
   if (result.status === "duplicate") return errorResponse("duplicate_request", 409);
   if (result.status === "insufficient") return errorResponse("insufficient_balance", 409);
@@ -128,7 +130,10 @@ export async function adminLookup(request: Request, env: Env, url: URL): Promise
   });
 }
 
-/** One character's balances and its latest ledger rows (newest first), with the acting admin's email resolved. */
+/**
+ * One character's balances, the totals per currency and reason group, and the detailed history that exists (every Tiên Ngọc change, the big
+ * Linh Thạch changes; newest first, 50 each) with the acting admin's email resolved.
+ */
 export async function adminCharacter(request: Request, env: Env, url: URL): Promise<Response> {
   const admin = await requireAdmin(request, env);
   if (admin instanceof Response) return admin;
@@ -136,13 +141,28 @@ export async function adminCharacter(request: Request, env: Env, url: URL): Prom
   const character = await env.DB.prepare("SELECT id, name, bag_tabs AS bagTabs FROM characters WHERE id = ?").bind(id).first<{ id: string; name: string; bagTabs: number }>();
   if (!character) return errorResponse("character_not_found", 404);
   const wallet = await getWallet(env.DB, id);
-  const { results: ledger } = await env.DB.prepare(
-    "SELECT l.id, l.currency, l.delta, l.reason, l.actor, a.email AS actor_email, l.created_at " +
-      "FROM currency_ledger l LEFT JOIN accounts a ON a.id = l.actor WHERE l.character_id = ? ORDER BY l.id DESC LIMIT 50",
-  )
-    .bind(id)
-    .all();
-  return json({ character, wallet, ledger });
+  const totals: Record<string, unknown[]> = {};
+  for (const [currency, table] of [["tien_ngoc", "tien_ngoc_totals"], ["linh_thach", "linh_thach_totals"], ["cong_hien", "cong_hien_totals"]] as const) {
+    const { results } = await env.DB.prepare(`SELECT grp AS "group", total_in AS totalIn, total_out AS totalOut, entries, updated_at AS updatedAt FROM ${table} WHERE character_id = ? ORDER BY grp`).bind(id).all();
+    totals[currency] = results;
+  }
+  const history: Record<string, unknown[]> = {};
+  for (const [currency, table] of [["tien_ngoc", "tien_ngoc_ledger"], ["linh_thach", "linh_thach_ledger"]] as const) {
+    const { results } = await env.DB.prepare(
+      `SELECT l.id, l.delta, l.reason, l.actor, a.email AS actor_email, l.created_at FROM ${table} l LEFT JOIN accounts a ON a.id = l.actor WHERE l.character_id = ? ORDER BY l.id DESC LIMIT 50`,
+    )
+      .bind(id)
+      .all();
+    history[currency] = results;
+  }
+  return json({ character, wallet, totals, history });
+}
+
+/** The quick check of the currency totals against the balances (see economy-check.ts): per currency the characters whose two numbers differ. */
+export async function adminEconomyCheck(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  return json({ checks: await checkAll(env.DB) });
 }
 
 /**
