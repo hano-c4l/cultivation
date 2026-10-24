@@ -2,6 +2,7 @@ import { CUSTOM_ITEM_CATEGORIES, CUSTOM_ITEM_ID, EDITABLE_ITEM_FIELDS, ITEMS, IT
 import { logStatement } from "./admin-log";
 import { getItemOverlays, resetItemsCache } from "./items-live";
 import { getQuestCatalog } from "./quests";
+import { lootReferences } from "./monsters-admin";
 import { getTuning, resetTuningCache } from "./tuning";
 
 /**
@@ -253,13 +254,14 @@ export async function saveItem(
   return { ok: true, updatedAt: stamp, changed };
 }
 
-/** Where an item is still named: quest rewards and requests, and merchants' stock. */
+/** Where an item is still named: quest rewards and requests, merchants' stock and the loot tables. */
 async function referencesTo(db: D1Database, id: string): Promise<string[]> {
   const out: string[] = [];
   for (const q of await getQuestCatalog(db).catch(() => [])) {
     const used = (q.rewards.items ?? []).some((i) => i.item === id) || (q.objective.kind === "collect" && (q.objective.item === id || (q.objective.also ?? []).some((a) => a.item === id)));
     if (used) out.push(`Nhiệm vụ ${q.id} — ${q.titleVi}`);
   }
+  out.push(...(await lootReferences(db, id)));
   const { results } = await db.prepare("SELECT npc_id, rule_id, def FROM shop_stock WHERE def LIKE ?").bind(`%${id}%`).all<{ npc_id: string; rule_id: string; def: string }>();
   for (const r of results) {
     try {

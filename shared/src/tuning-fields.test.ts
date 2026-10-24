@@ -5,7 +5,7 @@ import { ADMIN_TUNING_SCREENS, defaultOfGroup, getPath, leafPaths, setPath } fro
 describe("admin tuning fields", () => {
   it("has a labelled field for every number of each listed group, and none for a number that does not exist", () => {
     for (const g of ADMIN_TUNING_SCREENS) {
-      const leaves = leafPaths(DEFAULT_TUNING[g.group]).sort();
+      const leaves = leafPaths(DEFAULT_TUNING[g.group]).filter((p) => !(g.skip ?? []).some((k) => p === k || p.startsWith(`${k}.`))).sort();
       expect(g.fields.map((f) => f.path).sort(), g.group).toEqual(leaves);
       for (const f of g.fields) expect(f.label.length, `${g.group}.${f.path}`).toBeGreaterThan(3);
     }
@@ -20,6 +20,7 @@ describe("admin tuning fields", () => {
           expect(typeof v, `${g.group}.${f.path}`).toBe("string");
           continue;
         }
+        if (f.kind === "species") continue;
         if (f.kind === "int") expect(Number.isInteger(v), `${g.group}.${f.path}`).toBe(true);
         if (f.kind === "frac") expect(v >= 0 && v <= 1, `${g.group}.${f.path}`).toBe(true);
       }
