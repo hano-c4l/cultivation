@@ -1,5 +1,6 @@
 import { CONSTITUTION_STATS, ELEMENT_TAGS, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
-import { getSession } from "./auth";
+import { getSession, type AuthedSession } from "./auth";
+import { getAuditEntry, listAudit, parseAuditQuery, recordAudit } from "./admin-audit";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
 import type { Env } from "./env";
@@ -7,12 +8,48 @@ import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
 import { loadConstitutionCatalog, saveConstitutionCatalog } from "./constitution-catalog";
 
-/** Returns the admin's account id, or the error response to send (401 anonymous, 403 not an admin). */
-async function requireAdmin(request: Request, env: Env): Promise<string | Response> {
+/** Returns the admin's session, or the error response to send (401 anonymous, 403 not an admin). */
+async function requireAdminSession(request: Request, env: Env): Promise<AuthedSession | Response> {
   const session = await getSession(request, env);
   if (!session) return errorResponse("unauthenticated", 401);
   if (session.role !== "admin") return errorResponse("forbidden", 403);
-  return session.accountId;
+  return session;
+}
+
+/** Returns the admin's account id, or the error response to send (401 anonymous, 403 not an admin). */
+async function requireAdmin(request: Request, env: Env): Promise<string | Response> {
+  const session = await requireAdminSession(request, env);
+  return session instanceof Response ? session : session.accountId;
+}
+
+/** Writes one audit row for an action by the session's admin (see admin-audit.ts). */
+function audit(env: Env, session: AuthedSession, entry: { action: string; targetType: string; targetId?: string; summary?: string; before?: unknown; after?: unknown }): Promise<number | null> {
+  return recordAudit(env.DB, { adminId: session.accountId, adminEmail: session.email, ...entry });
+}
+
+/** Who the caller is, for the admin app's login page and menu: 200 for an admin, 401 without a session, 403 for a player. */
+export async function adminMe(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json({ account: { id: session.accountId, email: session.email, role: session.role } });
+}
+
+/** One page of the admin change log (GET, with q, sort, dir, page, size). */
+export async function adminAudit(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const query = parseAuditQuery(url.searchParams);
+  return json({ ...(await listAudit(env.DB, query)), page: query.page, size: query.size });
+}
+
+/** One row of the admin change log with its before and after values (GET ?id=). */
+export async function adminAuditEntry(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const id = Number(url.searchParams.get("id"));
+  if (!Number.isInteger(id) || id < 1) return errorResponse("invalid_id", 400);
+  const entry = await getAuditEntry(env.DB, id);
+  return entry ? json({ entry }) : errorResponse("not_found", 404);
 }
 
 /**
@@ -21,8 +58,9 @@ async function requireAdmin(request: Request, env: Env): Promise<string | Respon
  * cannot take a balance below zero.
  */
 export async function adminGrant(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(request, env);
-  if (admin instanceof Response) return admin;
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const admin = session.accountId;
   const body = await readJson(request);
   const characterId = typeof body?.characterId === "string" ? body.characterId : "";
   const amount = body?.amount;
@@ -48,6 +86,7 @@ export async function adminGrant(request: Request, env: Env): Promise<Response> 
   });
   if (result.status === "duplicate") return errorResponse("duplicate_request", 409);
   if (result.status === "insufficient") return errorResponse("insufficient_balance", 409);
+  await audit(env, session, { action: "currency_grant", targetType: "character", targetId: target.id, summary: `${body.currency} ${amount > 0 ? "+" : ""}${amount}${reason ? ` (${reason})` : ""}`, after: { currency: body.currency, delta: amount, balance: result.balance } });
   return json({ ok: true, balance: result.balance });
 }
 
@@ -111,8 +150,9 @@ export async function adminCharacter(request: Request, env: Env, url: URL): Prom
  * keeps its own copy of the bag, so the new tab shows up the next time the character enters a room.
  */
 export async function adminBagTabs(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(request, env);
-  if (admin instanceof Response) return admin;
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const admin = session.accountId;
   const body = await readJson(request);
   const characterId = typeof body?.characterId === "string" ? body.characterId : "";
   const by = body?.by === undefined ? 1 : body.by;
@@ -121,6 +161,7 @@ export async function adminBagTabs(request: Request, env: Env): Promise<Response
   const tabs = await expandBag(env.DB, characterId, MAX_BAG_TABS, by);
   if (tabs === null) return errorResponse("cannot_expand", 409);
   console.log("bag expanded", admin, characterId, tabs);
+  await audit(env, session, { action: "bag_tabs_add", targetType: "character", targetId: characterId, summary: `+${by} bag tab(s), now ${tabs}`, after: { bagTabs: tabs } });
   return json({ ok: true, bagTabs: tabs });
 }
 
@@ -136,14 +177,17 @@ export async function adminSupply(request: Request, env: Env): Promise<Response>
 
 /** The adjustable game settings with their effective values (GET), or a change of one of them (POST {key, value}). */
 export async function adminSettings(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(request, env);
-  if (admin instanceof Response) return admin;
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const admin = session.accountId;
   if (request.method === "GET") return json({ settings: await allSettings(env.DB) });
   const body = await readJson(request);
   const key = typeof body?.key === "string" ? body.key : "";
   if (!validSettingValue(key, body?.value)) return errorResponse("invalid_setting", 400);
+  const before = (await allSettings(env.DB)).find((s) => s.key === key)?.value ?? null;
   await setSetting(env.DB, key, body.value as number, admin);
   console.log("setting changed", admin, key, body.value);
+  await audit(env, session, { action: "setting_change", targetType: "setting", targetId: key, summary: `${key} = ${String(body.value)}`, before, after: body.value });
   return json({ ok: true, settings: await allSettings(env.DB) });
 }
 
@@ -152,13 +196,15 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
  * `{expectedVersion, constitutions}`: see saveConstitutionCatalog). Admin only; the server validates everything again.
  */
 export async function adminConstitutions(request: Request, env: Env): Promise<Response> {
-  const admin = await requireAdmin(request, env);
-  if (admin instanceof Response) return admin;
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const admin = session.accountId;
   if (request.method === "GET") return json({ ...(await loadConstitutionCatalog(env.DB)), vocabulary: { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS } });
   const body = await readJson(request, 512 * 1024); // a whole catalogue is much bigger than the usual request
   if (typeof body?.expectedVersion !== "number" || !Array.isArray(body?.constitutions)) return errorResponse("invalid_body", 400);
   const result = await saveConstitutionCatalog(env.DB, body.expectedVersion, { version: body.expectedVersion, constitutions: body.constitutions as never });
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : 400);
   console.log("constitution catalogue saved", admin, "version", result.version);
+  await audit(env, session, { action: "constitution_catalogue_save", targetType: "constitution_catalogue", summary: `saved version ${result.version}`, after: { version: result.version, constitutions: (body.constitutions as unknown[]).length } });
   return json({ ok: true, ...(await loadConstitutionCatalog(env.DB)), vocabulary: { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS } });
 }
