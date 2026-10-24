@@ -105,3 +105,9 @@ section h3 { font-size: 15px; margin: 0 0 6px; }
 .modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: flex-start; justify-content: center; padding: 5vh 12px; z-index: 20; overflow-y: auto; }
 .modal-box { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; width: min(900px, 100%); }
 .modal-box h3 { margin: 0 0 8px; }
+.detail.wide { max-width: 1000px; }
+.num-cell { width: 150px; }
+.num-cell input { min-width: 110px; }
+input.changed { border-color: var(--accent); }
+td button { font-size: 12px; padding: 4px 8px; }
+th.subhead { padding-top: 12px; color: var(--accent); font-size: 13px; }

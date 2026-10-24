@@ -2,6 +2,7 @@ import "./style.css";
 import { api, h } from "./kit";
 import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { MENU } from "./menu";
+import { miscPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
 const app = document.getElementById("app")!;
@@ -69,6 +70,9 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/misc") {
+    title = "Chỉ số khác";
+    content = miscPage();
   } else if (path === "/admin/log") {
     title = "Nhật ký admin";
     content = logPage();
