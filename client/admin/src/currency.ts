@@ -339,7 +339,7 @@ export async function detailPage(): Promise<HTMLElement> {
     if (!confirm(text)) return;
     msg.className = "msg muted";
     msg.textContent = "Đang xử lý...";
-    const r = await api<{ error?: string; difference?: number | null }>(`/api/admin/currency/audit/${kind}`, { method: "POST", body: { currency, character: characterId } });
+    const r = await api<{ error?: string; difference?: number | null }>(`/api/admin/currency/audit/${kind}`, { method: "POST", body: { currency, character: characterId, balance: d.balance, historyAmount: d.historyAmount } });
     if (r.status === 200) {
       navigate(detailHref(currency, characterId, "audit"));
       return;

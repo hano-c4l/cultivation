@@ -194,6 +194,17 @@ describe("confirm", () => {
     expect(raw.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name LIKE 'cong_hien%ledger'").get()).toEqual({ n: 0 });
   });
 
+  it("is refused, writing nothing, when the numbers are not the ones the admin saw", async () => {
+    skew("c1", "tien_ngoc", 40);
+    await runAudit(db, "tien_ngoc", ADMIN.email, 1000);
+    expect(await confirmEntry(db, "tien_ngoc", "c1", ADMIN, 1500, { balance: 460, historyAmount: 400 })).toEqual({ ok: false, error: "stale" });
+    expect(await handleEntry(db, "tien_ngoc", "c1", ADMIN, 1500, { balance: 461, historyAmount: 420 })).toEqual({ ok: false, error: "stale" });
+    expect(status("tien_ngoc", "c1")).toBe("invalid");
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM tien_ngoc_totals WHERE character_id = 'c1' AND grp = 'admin' AND total_in > 500").get()).toEqual({ n: 0 });
+    expect((await listAdminLog(db, parseLogQuery(new URLSearchParams()))).total).toBe(0);
+    expect(await confirmEntry(db, "tien_ngoc", "c1", ADMIN, 1600, { balance: 460, historyAmount: 420 })).toEqual({ ok: true, difference: 40 }); // the numbers it saw
+  });
+
   it("a later audit finds nothing for a confirmed character", async () => {
     skew("c1", "tien_ngoc", 40);
     await runAudit(db, "tien_ngoc", ADMIN.email, 1000);

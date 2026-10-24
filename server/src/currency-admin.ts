@@ -321,6 +321,12 @@ export async function runAudit(db: D1Database, currency: Currency, adminEmail: s
   return { ok: true, checked: checked?.n ?? 0, invalid: counted?.n ?? 0, at: now };
 }
 
+/** What the admin saw on the detail screen; a resolve is refused (`stale`) when the numbers are not those any more. */
+export interface Seen {
+  balance: number;
+  historyAmount: number;
+}
+
 export type ResolveResult =
   | { ok: true; difference: number }
   | { ok: false; error: "not_found" | "not_invalid" | "stale" | "still_mismatch"; difference?: number };
@@ -359,10 +365,11 @@ function resolveError(err: unknown): ResolveResult {
  * is not touched. Tiên Ngọc and Linh Thạch also get a detailed history row (an admin did it). The audit row becomes "valid" and the admin
  * log gets a line, all in one batch that fails if anything moved since it was read.
  */
-export async function confirmEntry(db: D1Database, currency: Currency, characterId: string, admin: Admin, now = Date.now()): Promise<ResolveResult> {
+export async function confirmEntry(db: D1Database, currency: Currency, characterId: string, admin: Admin, now = Date.now(), seen?: Seen): Promise<ResolveResult> {
   const d = await loadForResolve(db, currency, characterId);
   if (!d) return { ok: false, error: "not_found" };
   if (d.audit?.status !== "invalid") return { ok: false, error: "not_invalid" };
+  if (seen && (seen.balance !== d.balance || seen.historyAmount !== d.historyAmount)) return { ok: false, error: "stale" };
   const diff = d.balance - d.historyAmount;
   const statements = guards(db, currency, characterId, d.balance, d.historyAmount, false);
   if (diff !== 0) {
@@ -393,10 +400,11 @@ export async function confirmEntry(db: D1Database, currency: Currency, character
  * "Xử lý": the audit row is marked "handled" when the numbers agree now (the admin dealt with it some other way) or the account is banned for
  * good (then they do not have to agree). Otherwise it is refused and nothing changes.
  */
-export async function handleEntry(db: D1Database, currency: Currency, characterId: string, admin: Admin, now = Date.now()): Promise<ResolveResult> {
+export async function handleEntry(db: D1Database, currency: Currency, characterId: string, admin: Admin, now = Date.now(), seen?: Seen): Promise<ResolveResult> {
   const d = await loadForResolve(db, currency, characterId);
   if (!d) return { ok: false, error: "not_found" };
   if (d.audit?.status !== "invalid") return { ok: false, error: "not_invalid" };
+  if (seen && (seen.balance !== d.balance || seen.historyAmount !== d.historyAmount)) return { ok: false, error: "stale" };
   const diff = d.balance - d.historyAmount;
   if (diff !== 0 && !d.banned) return { ok: false, error: "still_mismatch", difference: diff };
   const statements = guards(db, currency, characterId, d.balance, d.historyAmount, diff !== 0 ? false : true);

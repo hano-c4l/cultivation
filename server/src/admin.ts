@@ -194,14 +194,21 @@ export async function adminCurrencyAuditRun(request: Request, env: Env): Promise
   return json({ ok: true, checked: result.checked, invalid: result.invalid, at: result.at });
 }
 
-/** "Xác nhận" (POST {currency, character}): accepts the difference, see confirmEntry. */
+/** The numbers the admin saw on the screen (`balance`, `historyAmount` in the body), when sent: the action is refused if they moved. */
+function seenOf(body: Record<string, unknown> | null): { balance: number; historyAmount: number } | undefined {
+  const balance = body?.balance;
+  const historyAmount = body?.historyAmount;
+  return typeof balance === "number" && Number.isInteger(balance) && typeof historyAmount === "number" && Number.isInteger(historyAmount) ? { balance, historyAmount } : undefined;
+}
+
+/** "Xác nhận" (POST {currency, character, balance, historyAmount}): accepts the difference, see confirmEntry. */
 export async function adminCurrencyConfirm(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
   const body = await readJson(request);
   const currency = parseCurrency(typeof body?.currency === "string" ? body.currency : null);
   const characterId = typeof body?.character === "string" ? body.character.slice(0, 64) : "";
-  const result = await confirmEntry(env.DB, currency, characterId, { id: session.accountId, email: session.email });
+  const result = await confirmEntry(env.DB, currency, characterId, { id: session.accountId, email: session.email }, Date.now(), seenOf(body));
   return result.ok ? json({ ok: true, difference: result.difference }) : json({ error: result.error, difference: result.difference ?? null }, result.error === "not_found" ? 404 : 409);
 }
 
@@ -212,7 +219,7 @@ export async function adminCurrencyHandle(request: Request, env: Env): Promise<R
   const body = await readJson(request);
   const currency = parseCurrency(typeof body?.currency === "string" ? body.currency : null);
   const characterId = typeof body?.character === "string" ? body.character.slice(0, 64) : "";
-  const result = await handleEntry(env.DB, currency, characterId, { id: session.accountId, email: session.email });
+  const result = await handleEntry(env.DB, currency, characterId, { id: session.accountId, email: session.email }, Date.now(), seenOf(body));
   return result.ok ? json({ ok: true, difference: result.difference }) : json({ error: result.error, difference: result.difference ?? null }, result.error === "not_found" ? 404 : 409);
 }
 

@@ -1,6 +1,6 @@
 # Trạng thái dự án
 
-Cập nhật: 2026-10-24 (2a-2m và 3a xong; preview và production cùng code, D1 ở `0036`). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md`, `docs/PHASE3.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
+Cập nhật: 2026-10-24 (2a-2m, 3a và tái cấu trúc tiền tệ xong và ở production, D1 ở `0036`; 3b làm lại trên nhánh, cần migration `0037`). File này **chỉ** nói giai đoạn nào đã xong, đang làm gì, làm tiếp gì. Chi tiết nằm ở: `docs/PLAN.md` (kế hoạch tổng và thay đổi tổng quan), `docs/TECHNICAL.md` (hạ tầng, môi trường, cách chạy, kiểm thử, quy trình, bẫy), `docs/PHASE1.md`, `docs/PHASE2.md`, `docs/PHASE3.md` (chi tiết, quyết định, giá trị tạm, tồn đọng từng giai đoạn). Quy trình nhánh/deploy: `CLAUDE.md`.
 
 ## Đã xong
 - **Giai đoạn 0** (xương sống kỹ thuật) và **giai đoạn 1** (MVP: tài khoản, thế giới, chat, chỉ số/cảnh giới, quái và chiến đấu, kinh tế khung xương). Riêng 1f (đo tải thật 50 client trên Cloudflare) **hoãn theo quyết định của người dùng**.
@@ -12,7 +12,7 @@ Cập nhật: 2026-10-24 (2a-2m và 3a xong; preview và production cùng code, 
 
 
 ## Đang chạy ở đâu
-- **Production** (`main`): đã gồm 2m, 3a (trang admin mới `/admin/*`) và tái cấu trúc tiền tệ. **Preview** (`preview`): như production, thêm 3b (các màn tiền tệ trong admin); D1 đã áp dụng migration `0001`-`0036` (kiểm bằng `wrangler d1 migrations list DB --remote`, preview thêm `--env preview`). Các dòng `game_tuning` được gieo khi có người vào game lần đầu sau deploy. Nhân vật cũ trên production phần lớn đã bị đưa về điểm sinh vì bản đồ đổi hình (xem `docs/PHASE2.md` mục 2k).
+- **Production** (`main`): đã gồm 2m, 3a (trang admin mới `/admin/*`) và tái cấu trúc tiền tệ. **Preview** (`preview`): như production, thêm bản 3b cũ (các màn Tiên Ngọc, Linh Thạch, Cống Hiến, Kiểm tra số dư, Nhật ký thay đổi) sẽ bị thay bằng "Quản lý tiền tệ" khi nhánh `features_admin-currency` lên; D1 đã áp dụng migration `0001`-`0036` (kiểm bằng `wrangler d1 migrations list DB --remote`, preview thêm `--env preview`). Các dòng `game_tuning` được gieo khi có người vào game lần đầu sau deploy. Nhân vật cũ trên production phần lớn đã bị đưa về điểm sinh vì bản đồ đổi hình (xem `docs/PHASE2.md` mục 2k).
 - Admin phải kết nối lại sau mỗi lần deploy có thay đổi cờ admin (socket cũ không có cờ) thì các nút "GM · Nhận vật phẩm hướng tu/đột phá" mới dùng được. PK mặc định Tắt khi mở trang (client gửi lại trạng thái đã chọn sau mỗi lần đổi bản đồ).
 
 ## Đang làm dở

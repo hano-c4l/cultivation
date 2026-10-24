@@ -142,7 +142,9 @@ const d2 = await json(`/api/admin/currency/detail?currency=tien_ngoc&character=$
 check("detail now says it does not match and shows the audit status", d2.data.detail.matches === false && d2.data.detail.audit?.status === "invalid" && d2.data.detail.balance === 340 && d2.data.detail.historyAmount === 300);
 const stillOff = await post("/api/admin/currency/audit/handle", { currency: "tien_ngoc", character: charId }, adminCookie);
 check("Xử lý is refused while the numbers differ (and the account is not banned)", stillOff.status === 409 && stillOff.data.error === "still_mismatch" && stillOff.data.difference === 40, JSON.stringify(stillOff.data));
-const ok = await post("/api/admin/currency/audit/confirm", { currency: "tien_ngoc", character: charId }, adminCookie);
+const staleTry = await post("/api/admin/currency/audit/confirm", { currency: "tien_ngoc", character: charId, balance: 1, historyAmount: 2 }, adminCookie);
+check("Xác nhận is refused as stale when the numbers are not the ones the admin saw", staleTry.status === 409 && staleTry.data.error === "stale", JSON.stringify(staleTry.data));
+const ok = await post("/api/admin/currency/audit/confirm", { currency: "tien_ngoc", character: charId, balance: 340, historyAmount: 300 }, adminCookie);
 check("Xác nhận accepts the difference of +40", ok.status === 200 && ok.data.difference === 40, JSON.stringify(ok.data));
 const d3 = await json(`/api/admin/currency/detail?currency=tien_ngoc&character=${charId}`, adminCookie);
 check("after it: the history adds up to the balance, the admin group holds 340, the row is Hợp lệ", d3.data.detail.matches === true && d3.data.detail.balance === 340 && d3.data.detail.groups.find((g) => g.group === "admin")?.totalIn === 340 && d3.data.detail.audit.status === "valid", JSON.stringify(d3.data.detail.groups));
