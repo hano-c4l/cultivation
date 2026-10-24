@@ -66,10 +66,8 @@ describe("migration 0036 on existing data", () => {
     expect(rows("SELECT COUNT(*) AS n FROM currency_dedupe WHERE expires_at IS NOT NULL")).toEqual([{ n: 0 }]);
   });
 
-  it("freezes the old ledger under another name and leaves the balances alone", () => {
-    expect(rows("SELECT COUNT(*) AS n FROM currency_ledger_frozen")).toEqual([{ n: 10 }]);
+  it("drops the old ledger and leaves the balances alone", () => {
     expect(() => raw.prepare("SELECT 1 FROM currency_ledger").all()).toThrow(/no such table/);
-    expect(() => raw.exec("DELETE FROM currency_ledger_frozen")).toThrow(/append-only/); // its triggers came along
     expect(rows("SELECT balance FROM currency_balances WHERE character_id = 'c1' AND currency = 'linh_thach'")).toEqual([{ balance: 750_075 }]);
   });
 });

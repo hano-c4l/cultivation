@@ -3,7 +3,7 @@
 --   * a full history for Tiên Ngọc only (rare, and the paid currency),
 --   * a history for Linh Thạch of the BIG changes only (|delta| >= the setting linh_thach_trace_min, default 100000, and anything an admin did),
 --   * a small key table that stops a change being applied twice where the same key can come back (admin form, mail claim, drop retry, teleport).
--- Cống Hiến has totals only. The old `currency_ledger` is renamed and kept frozen (nothing writes to it any more); a later migration can drop it.
+-- Cống Hiến has totals only. The old `currency_ledger` is dropped at the end (its triggers go with it); the data was test data only.
 -- Reason group = the reason up to its first ":" ("shop_buy:ren_giu_cap:1" -> "shop_buy"); the code (shared/src/economy.ts reasonGroup) does the same.
 -- Check: per character, SUM(total_in) - SUM(total_out) of a currency must equal currency_balances.balance (GET /api/admin/economy-check).
 
@@ -93,5 +93,5 @@ INSERT INTO cong_hien_totals (character_id, grp, total_in, total_out, entries, u
 INSERT OR IGNORE INTO currency_dedupe (key, expires_at)
   SELECT idempotency_key, NULL FROM currency_ledger WHERE idempotency_key LIKE 'mail:%' OR idempotency_key LIKE 'admin:%';
 
--- Frozen: kept for reference and for the first weeks of checking the totals against it. Nothing reads or writes it after this migration.
-ALTER TABLE currency_ledger RENAME TO currency_ledger_frozen;
+-- The old ledger is not needed any more (the totals and histories above carry what matters).
+DROP TABLE currency_ledger;
