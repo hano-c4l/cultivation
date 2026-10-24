@@ -1102,6 +1102,12 @@ export class GameScene extends Phaser.Scene {
 
   /** Chat lines and chat errors arrive on both sockets (map chat on the game socket, world and whispers on the chat socket). */
   private handleChatMessage(msg: ServerMessage): void {
+    if (msg.t === "mail_new") {
+      // A gift was sent to this player: read the mail list again from the game socket and say so.
+      this.net.send({ t: "mail_refresh" });
+      this.chat.system(vi.inventory.giftArrived);
+      return;
+    }
     if (msg.t === "chat") {
       this.chat.add(msg, this.selfId);
     } else if (msg.t === "chat_error") {

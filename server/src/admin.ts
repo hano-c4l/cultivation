@@ -1,4 +1,4 @@
-import { CONSTITUTION_STATS, CURRENCY_GROUPS, ELEMENT_TAGS, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
+import { CONSTITUTION_STATS, CURRENCY_GROUPS, ELEMENT_TAGS, GIFT_BODY_MAX, GIFT_MAX_ITEM_KINDS, GIFT_MAX_RECIPIENTS, GIFT_SUBJECT_MAX, giftableItems, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
 import { getSession, type AuthedSession } from "./auth";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
@@ -8,6 +8,7 @@ import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
 import { loadConstitutionCatalog, saveConstitutionCatalog } from "./constitution-catalog";
+import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
 
 /** Returns the admin's session, or the error response to send (401 anonymous, 403 not an admin). */
@@ -283,4 +284,61 @@ export async function adminConstitutions(request: Request, env: Env): Promise<Re
   console.log("constitution catalogue saved", admin, "version", result.version);
   await log(env, session, "Thiên phú", `Lưu danh mục thể chất (phiên bản ${result.version}, ${(body.constitutions as unknown[]).length} thể chất)`);
   return json({ ok: true, ...(await loadConstitutionCatalog(env.DB)), vocabulary: { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS } });
+}
+
+/** What the screen "Gửi quà" needs to start: the items that can be attached, the limits and how many characters "the whole server" is right now. */
+export async function adminGiftMeta(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json({
+    items: giftableItems(),
+    characters: await countCharacters(env.DB),
+    limits: { subject: GIFT_SUBJECT_MAX, body: GIFT_BODY_MAX, recipients: GIFT_MAX_RECIPIENTS, itemKinds: GIFT_MAX_ITEM_KINDS },
+  });
+}
+
+/** Names pasted on the screen to character ids (POST `{names}`): the ones found and the names that matched nobody. */
+export async function adminGiftResolve(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 64 * 1024);
+  if (!Array.isArray(body?.names) || body.names.some((n: unknown) => typeof n !== "string")) return errorResponse("invalid_body", 400);
+  return json(await resolveRecipients(env.DB, body.names as string[]));
+}
+
+/** The history of sends (GET: page, size). */
+export async function adminGiftHistory(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const page = Math.max(1, Math.min(100_000, Math.trunc(Number(url.searchParams.get("page") ?? "1")) || 1));
+  const size = Math.max(1, Math.min(100, Math.trunc(Number(url.searchParams.get("size") ?? "20")) || 20));
+  return json({ ...(await listGiftBatches(env.DB, page, size)), page, size });
+}
+
+/**
+ * Sends a gift (POST `{batchId, subject, body, audience: {kind: "list", characterIds} | {kind: "all"}, gift: {linh_thach, cong_hien, tien_ngoc, items}, expiresInDays}`).
+ * `batchId` is made once by the form, so a repeated request answers with the first send instead of sending again. The players online are told best-effort.
+ */
+export async function adminGiftSend(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 64 * 1024);
+  const aud = body?.audience as { kind?: unknown; characterIds?: unknown } | undefined;
+  const gift = body?.gift as GiftInput["gift"] | undefined;
+  if (typeof body?.batchId !== "string" || typeof body?.subject !== "string" || typeof body?.body !== "string" || !aud || !gift || typeof gift !== "object") return errorResponse("invalid_body", 400);
+  const audience: GiftInput["audience"] | null =
+    aud.kind === "all" ? { kind: "all" } : aud.kind === "list" && Array.isArray(aud.characterIds) ? { kind: "list", characterIds: aud.characterIds as string[] } : null;
+  if (!audience) return errorResponse("invalid_audience", 400);
+  const expires = body.expiresInDays === null || body.expiresInDays === undefined ? null : Number(body.expiresInDays);
+  const result = await sendGift(env.DB, session.email, session.accountId, { batchId: body.batchId, subject: body.subject, body: body.body, audience, gift, expiresInDays: expires }, Date.now());
+  if (!result.ok) return errorResponse(result.error, 400);
+  if (!result.duplicate) {
+    console.log("gift sent", session.accountId, body.batchId, audience.kind, result.recipients);
+    try {
+      await env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).notifyMail(audience.kind === "all" ? null : audience.characterIds);
+    } catch (err) {
+      console.error("gift notification failed", err); // the mail is sent; players see it when they next open the bag or join
+    }
+  }
+  return json({ ok: true, recipients: result.recipients, duplicate: result.duplicate });
 }

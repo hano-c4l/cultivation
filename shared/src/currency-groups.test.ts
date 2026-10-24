@@ -19,6 +19,7 @@ describe("currency groups", () => {
       waygate: "travel",
       "admin_grant:gift": "admin",
       admin_grant: "admin",
+      admin_gift: "admin",
       "admin_adjust:audit": "admin",
       bag_tab: "other",
       mail_claim: "other",

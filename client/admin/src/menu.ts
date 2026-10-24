@@ -19,7 +19,7 @@ export const MENU: MenuItem[] = [
   { path: "/admin/realms", label: "Cảnh giới", hint: "EXP, đột phá, tràn EXP", phase: "3f" },
   { path: "/admin/potential", label: "Chỉ số tiềm năng", hint: "Hệ số tiềm năng sang chỉ số", phase: "3f" },
   { path: "/admin/misc", label: "Chỉ số khác", hint: "Sát khí, sát nhân, anh hùng, truyền tống, vùng nhìn, cài đặt game", phase: "3c", ready: true },
-  { path: "/admin/gifts", label: "Gửi quà", hint: "Tiền, vật phẩm vào hòm thư", phase: "3d" },
+  { path: "/admin/gifts", label: "Gửi quà", hint: "Tiền, vật phẩm vào hòm thư: nhiều người hoặc toàn server", phase: "3d", ready: true },
   { path: "/admin/currency", label: "Quản lý tiền tệ", hint: "Tìm theo nhóm, chi tiết, kiểm duyệt số dư", phase: "3b", ready: true },
   { path: "/admin/log", label: "Nhật ký admin", hint: "Admin đã thay đổi gì, ở đâu, khi nào", phase: "3a", ready: true },
 ];
