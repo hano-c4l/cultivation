@@ -163,6 +163,12 @@ export class ChatHub extends DurableObject<Env> {
     this.broadcast({ t: "chat", channel: "system", id: "system", name: "", text, ts: Date.now() });
   }
 
+  /** Tells the players of a gift batch who are online to read their mail again: the given characters, or everyone when `characterIds` is null. Called by the Worker over RPC. */
+  async notifyMail(characterIds: string[] | null): Promise<void> {
+    if (characterIds === null) return this.broadcast({ t: "mail_new" });
+    for (const id of new Set(characterIds)) for (const ws of this.ctx.getWebSockets(id)) this.send(ws, { t: "mail_new" });
+  }
+
   private broadcast(msg: ServerMessage): void {
     const data = JSON.stringify(msg);
     for (const ws of this.ctx.getWebSockets()) {

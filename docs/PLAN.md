@@ -85,6 +85,7 @@ Chi tiết kỹ thuật và giá trị nằm ở `docs/PHASE2.md`; đây chỉ l
 - **Dữ liệu cho màn admin (2m, 2026-10-23), chi tiết `docs/PHASE2.md` mục 2m:** để màn admin sau này không cần migration mới, hầu hết số cân bằng đã vào D1; còn trong code là công thức (`deriveStats`, đường cong trang bị, bảng khắc ngũ hành), mẫu kỹ năng, bố cục bản đồ và tên (danh sách đúng ở `docs/PHASE2.md` mục 2m, đợt 2m-b): thương nhân (luật hàng, tỉ lệ và loại đồ thu mua, hàng hệ biến dị; giới hạn mua mỗi ngày tính riêng từng thương nhân), vị trí và tên NPC (bảng `npc_spots`, máy khách vẽ theo `welcome`), chiến đấu cơ bản (mất EXP khi chết, hồi, đường cong chỉ số quái), linh căn (tỉ lệ, thưởng), thưởng từng hướng tu, số của boss (cả loài boss từng bản đồ)/vệ binh/PvP (cả anh hùng và mốc màu tên)/vùng nhìn/rơi đồ/số quái mỗi tầng/giá trị vật phẩm/loài và hạng quái/EXP và đột phá/phí hướng tu/kỹ năng (ghi đè theo mã)/màu giao diện (`game_tuning`, nay gửi tới máy khách qua `welcome`), bộ đếm giết boss chung các kênh (`boss_kills`). Thương nhân ẩn thẻ trống; có icon linh thạch.
 - **Giai đoạn admin (2026-10-24):** giai đoạn 3 nay là làm lại hệ thống admin (`docs/PHASE3.md`); kinh tế và xã hội thành giai đoạn 4, hoàn thiện và vận hành thành giai đoạn 5. Nguyên tắc từ đây: thiết kế mở rộng và tùy chỉnh được bằng admin, đưa số liệu và danh mục vào D1.
 - **Tái cấu trúc tiền tệ (2026-10-24):** sổ cái chung thành bảng tổng theo nhóm lý do cho cả ba loại tiền cộng lịch sử chi tiết riêng cho Tiên Ngọc và Linh Thạch (chỉ giao dịch lớn), để truy vấn Tiên Ngọc không quét các dòng Linh Thạch, bảng không phình theo số lần quái rơi tiền và mỗi lần đổi tiền ghi ít dòng D1 hơn. Chi tiết: mục 4 ở trên và `docs/PHASE3.md` mục "Tái cấu trúc tiền tệ".
+- **Gửi quà (3d, 2026-10-24):** admin gửi thư có tiền (ba loại) và tối đa 5 vật phẩm (chưa có trang bị) cho nhiều nhân vật hoặc cho toàn server; tiền và vật phẩm được tạo khi người chơi nhận, tiền vào nhóm Admin; chi tiết `docs/PHASE3.md` mục 3d.
 - **Giao diện:** thanh buff dưới thanh HP/MP (kỹ năng buff và đan hồi dần, kèm thời gian còn lại); cửa sổ trang bị 2 tab (trang bị / pháp bảo).
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
@@ -114,16 +115,16 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 2l. Đợt hoàn thiện: truyền tống trận, bãi quái đều và boss ngẫu nhiên, ràng cấp đan đột phá, hiệu ứng
   - 2m. Đưa dữ liệu cứng vào D1 để chuẩn bị màn admin: thương nhân (nhiều thương nhân mỗi thành, kho riêng), vị trí và tên NPC, số của boss, vệ binh, PvP, vùng nhìn, rơi đồ, kỹ năng, màu giao diện, bộ đếm boss chung; icon trang web
 - **Giai đoạn 3**: Hệ thống Admin (`docs/PHASE3.md`)
-  - 3a. Nền: `/admin/*`, đăng nhập, menu, nhật ký thay đổi, khung list/detail
-  - 3b. Lịch sử Tiên Ngọc
-  - 3c. Chỉ số khác (sát khí, sát nhân, anh hùng, phí truyền tống, vùng nhìn...)
-  - 3d. Gửi quà (thư có tiền, vật phẩm, tiêu đề, mô tả)
-  - 3e. Quản lý nhiệm vụ
-  - 3f. Cảnh giới và chỉ số tiềm năng
-  - 3g. Vật phẩm
-  - 3h. Kỹ năng
-  - 3i. Thiên phú (linh căn, thể chất, hệ biến dị)
-  - 3j. Quái và BOSS
+  - 3a. Nền: `/admin/*`, đăng nhập, menu, nhật ký thay đổi, khung list/detail — xong
+  - 3b. Quản lý tiền tệ (đã thay "Lịch sử Tiên Ngọc") — xong
+  - 3c. Chỉ số khác (sát khí, sát nhân, anh hùng, phí truyền tống, vùng nhìn, chiến đấu cơ bản, màu giao diện...) — xong
+  - 3d. Gửi quà (thư có tiền, vật phẩm, tiêu đề, mô tả; nhiều người hoặc toàn server) — xong
+  - 3e. Quản lý nhiệm vụ — xong
+  - 3f. Cảnh giới và chỉ số tiềm năng — xong (trừ sửa tên và thêm cảnh giới)
+  - 3g. Vật phẩm — xong (3g-b: bảng master trang bị, tên bộ, bảng Thợ Rèn chưa làm)
+  - 3h. Kỹ năng — xong (trừ tạo kỹ năng mới)
+  - 3i. Thiên phú (linh căn, thể chất, hệ biến dị) — xong (trừ thêm hệ mới)
+  - 3j. Quái và BOSS — xong (trừ loài quái mới)
   - 3k. NPC (nhiệm vụ, thương nhân, Đan Sư, thợ rèn, hướng tu, vệ binh)
   - 3l. Bản đồ
   - 3m. Tài khoản và nhân vật

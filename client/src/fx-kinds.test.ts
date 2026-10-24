@@ -1,8 +1,17 @@
-import { getSkill, SKILLS } from "@game/shared";
-import { describe, expect, it } from "vitest";
+import { getSkill, resetTuning, setTuning, SKILLS } from "@game/shared";
+import { afterEach, describe, expect, it } from "vitest";
 import { BASIC_COLOR, BASIC_MELEE_MAX_PX, BUFF_COLOR, ELEMENT_COLOR, basicFxOf, skillFxOf } from "./fx-kinds";
 
+afterEach(() => resetTuning());
+
 describe("which effect a skill uses", () => {
+  it("honours the effect an admin picked, for one skill or for a whole template", () => {
+    setTuning({ skillOverrides: { chi: { fx: "melee" }, chuong_2: { fx: "ranged" } } });
+    expect(skillFxOf(getSkill("chi_1"))).toBe("melee");
+    expect(skillFxOf(getSkill("chuong_2"))).toBe("ranged");
+    expect(skillFxOf(getSkill("chuong_1"))).toBe("melee"); // untouched
+  });
+
   it("every skill kind has an effect, by the kind of the skill", () => {
     const of = (id: string) => skillFxOf(getSkill(id));
     expect(of("hoi_0")).toBe("heal");

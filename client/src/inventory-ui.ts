@@ -37,7 +37,18 @@ function itemName(type: string): string {
 
 function fmtTime(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
+  // Mail that lasts days (admin gifts) shows days and hours, not a long minute counter.
+  if (s >= 86_400) return vi.inventory.daysLeft(Math.floor(s / 86_400), Math.floor((s % 86_400) / 3600));
+  if (s >= 3600) return vi.inventory.hoursLeft(Math.floor(s / 3600), Math.floor((s % 3600) / 60));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** The attachments of an admin gift as one line ("1000 Linh Thạch, Hồi Huyết Đan × 5"). */
+function giftLine(g: NonNullable<MailView["gift"]>): string {
+  return [
+    ...(["linh_thach", "cong_hien", "tien_ngoc"] as const).flatMap((c) => (g[c] ? [`${g[c]} ${vi.economy.currency[c]}`] : [])),
+    ...g.items.map((i) => `${itemName(i.type)}${i.qty > 1 ? ` × ${i.qty}` : ""}`),
+  ].join(", ");
 }
 
 /**
@@ -366,9 +377,15 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
     }
     for (const m of mail) {
       const row = el("div", "mail-row");
-      const what = m.item ? `${itemName(m.item.type)}${m.item.qty > 1 ? ` × ${m.item.qty}` : ""}${m.deadline === null ? ` · ${vi.inventory.noExpiry}` : ""}` : "";
+      const what = m.gift ? giftLine(m.gift) : m.item ? `${itemName(m.item.type)}${m.item.qty > 1 ? ` × ${m.item.qty}` : ""}${m.deadline === null ? ` · ${vi.inventory.noExpiry}` : ""}` : "";
       const info = el("div");
-      info.append(el("div", undefined, vi.inventory.mailSubjects[m.subject] ?? m.subject), el("div", "muted", what));
+      info.append(el("div", undefined, vi.inventory.mailSubjects[m.subject] ?? m.subject));
+      if (m.body) {
+        const text = el("div", "muted", m.body); // textContent: the text is written by an admin
+        text.style.whiteSpace = "pre-wrap";
+        info.append(text);
+      }
+      info.append(el("div", "muted", what));
       const timer = el("span", "mail-timer");
       timer.dataset.deadline = m.deadline === null ? "" : String(m.deadline);
       timer.textContent = m.deadline === null ? "" : fmtTime(m.deadline - Date.now());
@@ -469,6 +486,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
 
   function setOpen(open: boolean): void {
     panel.hidden = !open;
+    if (open) send({ t: "mail_refresh" }); // a gift may have arrived while the bag was shut (the server answers at most every few seconds)
     if (clock) clearInterval(clock);
     clock = open ? setInterval(tickMail, 1000) : undefined;
     if (!open) {

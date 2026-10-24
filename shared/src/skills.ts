@@ -1,9 +1,9 @@
-import { tuning, tuningGeneration } from "./tuning";
+import { tuning, tuningGeneration, type SkillNumbers } from "./tuning";
 import type { SpiritualRoot } from "./character";
 import { ALL_ROOTS, SPIRITUAL_ROOTS } from "./character";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
-import { RATE_CAP, getRootGrade, levelIndex, type Element } from "./progression";
+import { rateCap, getRootGrade, levelIndex, type Element } from "./progression";
 
 /**
  * Skills (phase 2c, reworked with realms, grades and mastery levels). Placeholder game-design values (listed under "giá trị
@@ -67,12 +67,18 @@ export interface SkillDef {
   /** Path skills: the hướng tu that gives it (a PathId), and the level of the path it belongs to (0 is the first). */
   path?: string;
   pathLevel?: number;
+  /** Attacks: the effect other players see, when an admin picked one (otherwise the client decides from the template). */
+  fx?: SkillFxKind;
 }
+
+/** The effects an admin can give an attack (the other kinds of skill have theirs by kind). */
+export const SKILL_FX_KINDS = ["melee", "ranged"] as const;
+export type SkillFxKind = (typeof SKILL_FX_KINDS)[number];
 
 const ELEMENT_NAMES: Record<SpiritualRoot, string> = { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ", loi: "Lôi", bang: "Băng", phong: "Phong" };
 
 /** A root skill before it is given a realm: the same template exists in every realm, stronger in the higher ones. */
-interface SkillTemplate {
+export interface SkillTemplate {
   id: string;
   nameVi: string;
   descVi: string;
@@ -104,6 +110,8 @@ export const SUPPORT_TEMPLATES: readonly SkillTemplate[] = [
 ];
 
 const TEMPLATES: readonly SkillTemplate[] = [...ATTACK_TEMPLATES, ...SUPPORT_TEMPLATES];
+/** Every root skill template (the admin screen lists them: an override under a template id applies to the skill in every realm). */
+export const SKILL_TEMPLATES: readonly SkillTemplate[] = TEMPLATES;
 
 function rootSkillsOfRealm(realm: number): SkillDef[] {
   return TEMPLATES.map((t) => ({
@@ -226,22 +234,60 @@ export const SKILLS: readonly SkillDef[] = [
 ];
 
 const BY_ID = new Map(SKILLS.map((s) => [s.id, s]));
+const TEMPLATE_IDS: ReadonlySet<string> = new Set(TEMPLATES.map((t) => t.id));
 const skillCache = new Map<string, SkillDef>();
 let skillCacheGeneration = -1;
 
-/** A skill with the numbers of the tuning (`skillOverrides`: power, MP cost, cooldown, range) over the ones the templates give. */
+/** The id of the root template a root skill comes from: `tram_2` -> `tram`. */
+export function rootTemplateOf(id: string): string | undefined {
+  return ROOT_TEMPLATE.get(id);
+}
+/** Root skill id -> the id of its template, made once. */
+const ROOT_TEMPLATE: ReadonlyMap<string, string> = new Map(
+  SKILLS.flatMap((s): Array<[string, string]> => {
+    const t = s.id.replace(/_\d+$/, "");
+    return s.source === "root" && t !== s.id && TEMPLATE_IDS.has(t) ? [[s.id, t]] : [];
+  }),
+);
+
+/** Whether an id names a root skill template (an override under it applies to that skill in every realm). */
+export function isSkillTemplateId(id: string): boolean {
+  return TEMPLATE_IDS.has(id) && !BY_ID.has(id);
+}
+
+/** The skills written in the code, as the code has them (no admin changes): what the admin screen compares with. */
+export function baseSkill(id: string): SkillDef | undefined {
+  return BY_ID.get(id);
+}
+
+/** Puts one override entry (the fields an admin changed, see SkillNumbers) over a skill. */
+export function applySkillOverride(base: SkillDef, live: Partial<SkillNumbers>): SkillDef {
+  const { buffDurationMs, ...rest } = live;
+  const def: SkillDef = { ...base, ...rest };
+  if (buffDurationMs !== undefined && base.buff) def.buff = { ...base.buff, durationMs: buffDurationMs };
+  return def;
+}
+
+/**
+ * A skill with the changes of the tuning (`skillOverrides`) over the ones the templates give: the entry of its root template (every realm of a
+ * root skill) and then its own entry, which wins. The overrides can change the name, description, power, MP cost, cooldown, range, the length of
+ * a buff and the effect of an attack.
+ */
 export function getSkill(id: string): SkillDef | undefined {
   const base = BY_ID.get(id);
   if (!base) return undefined;
-  const live = tuning().skillOverrides[id];
-  if (!live) return base;
+  const all = tuning().skillOverrides;
+  const template = rootTemplateOf(id);
+  const own = all[id];
+  const shared = template ? all[template] : undefined;
+  if (!own && !shared) return base;
   if (skillCacheGeneration !== tuningGeneration()) {
     skillCache.clear();
     skillCacheGeneration = tuningGeneration();
   }
   let def = skillCache.get(id);
   if (!def) {
-    def = { ...base, ...live };
+    def = applySkillOverride(base, { ...shared, ...own });
     skillCache.set(id, def);
   }
   return def;
@@ -354,7 +400,7 @@ export interface PassiveTotals {
 export function passiveTotals(granted: Iterable<string>, state: Readonly<Record<string, { lv: number }>>, rootGrade: number): PassiveTotals {
   const t: PassiveTotals = { attackPct: 0, defensePct: 0, dodgePoints: 0, critPoints: 0 };
   for (const id of granted) {
-    const def = BY_ID.get(id);
+    const def = getSkill(id);
     if (def?.kind !== "passive" || !def.passive) continue;
     const pct = effectiveSkill(def, { realm: def.realm, grade: skillGrade(def, rootGrade), level: state[id]?.lv ?? 0 }).power;
     if (def.passive.stat === "attack") t.attackPct += pct;
@@ -371,8 +417,8 @@ export function withPassives<T extends { attack: number; defense: number; critRa
     ...d,
     attack: Math.floor(d.attack + d.attack * t.attackPct),
     defense: Math.floor(d.defense + d.defense * t.defensePct),
-    critRate: Math.min(RATE_CAP, d.critRate + t.critPoints),
-    dodgeRate: Math.min(RATE_CAP, d.dodgeRate + t.dodgePoints),
+    critRate: Math.min(rateCap(), d.critRate + t.critPoints),
+    dodgeRate: Math.min(rateCap(), d.dodgeRate + t.dodgePoints),
   };
 }
 

@@ -50,6 +50,8 @@ import {
   walkSpeed,
   type EquipStatKey,
   setTuning,
+  setItemOverlays,
+  setElementTuning,
   setMerchant,
   setMapNpcs,
   npcsOf,
@@ -659,6 +661,8 @@ export class GameScene extends Phaser.Scene {
         setTuning(msg.tuning as unknown as Record<string, unknown>); // the live balance numbers (drops, kills, skills, theme...)
         applyTuningTheme();
         setMapNpcs(msg.map, msg.npcs); // who stands on this map (data from D1)
+        if (msg.mutant) setElementTuning(msg.mutant); // the live numbers of the mutant elements (game settings)
+        setItemOverlays(msg.items ?? []); // what admins changed in the item catalogue (before the bag below is drawn)
         setMounted(false); // the snapshot of yourself (below) says whether you still ride: it is kept across maps
         this.flightWorn = msg.equipped.some((e) => e.slot === "flight");
         this.refreshMountBtn();
@@ -1102,6 +1106,12 @@ export class GameScene extends Phaser.Scene {
 
   /** Chat lines and chat errors arrive on both sockets (map chat on the game socket, world and whispers on the chat socket). */
   private handleChatMessage(msg: ServerMessage): void {
+    if (msg.t === "mail_new") {
+      // A gift was sent to this player: read the mail list again from the game socket and say so.
+      this.net.send({ t: "mail_refresh" });
+      this.chat.system(vi.inventory.giftArrived);
+      return;
+    }
     if (msg.t === "chat") {
       this.chat.add(msg, this.selfId);
     } else if (msg.t === "chat_error") {

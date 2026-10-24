@@ -138,7 +138,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { tuning, npcsOf, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { getNpcs } from "./npcs";
@@ -178,6 +178,7 @@ import {
   type BagState,
   type MailItem,
 } from "./inventory";
+import { claimGiftMail } from "./gifts";
 import { CombatSim, staticGuardSnapshots, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
 import { getSetting } from "./settings";
@@ -187,9 +188,14 @@ import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
 
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
+/** Least time between two answers to `mail_refresh` on one socket (it reads D1). */
+const MAIL_REFRESH_GAP_MS = 5000;
+
 interface PlayerState {
   /** Character id. */
   id: string;
+  /** When the player's last `mail_refresh` was answered. */
+  lastMailRefreshAt?: number;
   /** The account is an admin (set by the Worker when the socket opens; a role change counts from the next connection). */
   admin?: boolean;
   name: string;
@@ -567,6 +573,8 @@ export class MapRoom extends DurableObject<Env> {
         gearSets: currentGearSetNames().map((r) => [...r]),
         tuning: await getTuning(this.env.DB),
         npcs: [...npcsOf(map)],
+        items: itemOverlays().map((o) => ({ ...o })),
+        mutant: { mutantRootChancePermille: elementTuning().mutantRootChancePermille, mutantSkillBonusPct: elementTuning().mutantSkillBonusPct, mutantGearBonusPct: elementTuning().mutantGearBonusPct, mutantGearDropPermille: elementTuning().mutantGearDropPermille },
         hotbar,
         cd: profile && sim ? sim.cooldownsLeft(profile, Date.now()) : Object.fromEntries(Object.entries(away.cooldowns).map(([k, t]) => [k, t - Date.now()])),
         mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
@@ -645,6 +653,8 @@ export class MapRoom extends DurableObject<Env> {
       case "inv_expand":
       case "mail_claim":
         return this.handleInventory(ws, state, msg);
+      case "mail_refresh":
+        return this.handleMailRefresh(ws, state);
       case "mount":
         return this.handleMount(ws, state, msg.on, msg.fx !== undefined && msg.fy !== undefined ? [msg.fx, msg.fy] : undefined);
       case "eq_equip":
@@ -1810,6 +1820,15 @@ export class MapRoom extends DurableObject<Env> {
     return res.ok ? removed : [];
   }
 
+  /** The player asks for the mail list again (a gift arrived, or the bag was opened); at most one answer per MAIL_REFRESH_GAP_MS. */
+  private handleMailRefresh(ws: WebSocket, state: PlayerState): void {
+    const now = Date.now();
+    if (now - (state.lastMailRefreshAt ?? 0) < MAIL_REFRESH_GAP_MS) return;
+    state.lastMailRefreshAt = now;
+    ws.serializeAttachment(state);
+    void this.sendMailList(state.id, ws).catch((err) => console.error("mail refresh failed", state.id, err));
+  }
+
   private async sendMailList(id: string, direct?: WebSocket): Promise<void> {
     this.sendToCharacter(id, { t: "mail", mail: mailViews(await listMail(this.env.DB, id)) }, direct);
   }
@@ -2928,7 +2947,36 @@ export class MapRoom extends DurableObject<Env> {
     return Math.hypot(now.x - last[0], now.y - last[1]) > 0.05;
   }
 
+  /** An admin gift (docs/PHASE3.md 3d): all its currencies and items, or nothing. */
+  private async claimGift(ws: WebSocket, id: string, mailId: string): Promise<void> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const bag = await this.getBag(id);
+      const r = await claimGiftMail(this.env.DB, id, mailId, bag);
+      if (r.status === "claimed") {
+        const next = applyBag({ items: bag.items, equipped: bag.equipped }, r.ops);
+        const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+        this.bags.set(id, after);
+        this.sendBagDelta(id, bag, after);
+        for (const currency of ["linh_thach", "cong_hien", "tien_ngoc"] as const) {
+          const gained = r.given[currency];
+          if (gained) this.sendToCharacter(id, { t: "wallet", currency, balance: r.wallet[currency], gained });
+        }
+        if (r.given.items.length > 0) this.sendToCharacter(id, { t: "loot", items: r.given.items.map((i) => ({ type: i.type, qty: i.qty, mailed: false })) });
+        return this.sendMailList(id);
+      }
+      if (r.status === "stale") {
+        this.bags.delete(id);
+        continue;
+      }
+      if (r.status === "bag_full") return this.send(ws, { t: "inv_error", reason: "full" });
+      await this.sendMailList(id);
+      return this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+    }
+    this.send(ws, { t: "inv_error", reason: "busy" });
+  }
+
   private async claimMail(ws: WebSocket, id: string, mailId: string): Promise<void> {
+    if (mailId.includes(":")) return this.claimGift(ws, id, mailId); // gift mail ids are '<batch>:<character>'; the mails of drops are plain uuids
     for (let attempt = 0; attempt < 2; attempt++) {
       const bag = await this.getBag(id);
       const r = await claimMailItem(this.env.DB, id, mailId, bag);

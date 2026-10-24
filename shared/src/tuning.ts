@@ -14,6 +14,14 @@ export interface DropCfg {
   max: number;
 }
 
+/** One line of a loot table: each kill rolls `chance` (0..1) and, on success, a quantity in [min, max] of the item. */
+export interface LootLine {
+  item: string;
+  chance: number;
+  min: number;
+  max: number;
+}
+
 export interface Tuning {
   /** Tinh luyện: ore taken, Linh Thạch (as a share of `enhanceCost.linhBase` of the realm) and the chance each stat is rolled. */
   refine: { materials: number; linhShare: number; statChance: number };
@@ -70,6 +78,11 @@ export interface Tuning {
     pill: Record<string, Record<MonsterRank, number>>;
     equip: Record<MonsterRank, { chance: number; grades: number[]; overLevel: number }>;
   };
+  /**
+   * What a kill drops besides what `drops` rolls: the lines every map pays by monster class (`base`) and, for maps of a realm (key = the realm
+   * index), extra lines on top. Lines are rolled in order, two random numbers each (chance, quantity), so the order matters for seeded tests.
+   */
+  loot: { base: Record<MonsterRank, LootLine[]>; realm: Record<string, Record<MonsterRank, LootLine[]>> };
   /** Same-bậc normal monsters needed to finish a stage: `base` at Luyện Khí tầng 1, growing by `growth` per level (monster EXP follows from it). */
   kills: { base: number; growth: number };
   /** Value of things, in Linh Thạch: plain items by id, a piece of gear by kind (times `1 + levelStep x level`, times `grades[grade - 1]`). Merchants buy at a share of it. */
@@ -80,7 +93,7 @@ export interface Tuning {
   theme: { realmColors: string[]; gradeColors: string[]; ui: Record<string, string> };
   /** Monster species (numbers on the realm/bậc curve, see monsters.ts) and the classes: chance of rolling it and the multiples on stats and EXP. */
   monsters: { species: Record<string, MonsterNumbers>; ranks: Record<MonsterRank, RankNumbers> };
-  /** Changes to single skills by id (power, MP cost, cooldown, range); the skills themselves are generated from templates in skills.ts. Empty by default. */
+  /** Changes to skills by id, or by the id of a root template (every realm of it): see SkillNumbers; the skills themselves are generated from templates in skills.ts. Empty by default. */
   skillOverrides: Record<string, Partial<SkillNumbers>>;
   /** EXP and potential points by realm, how the need grows per stage, the EXP of farming a map below you, and how far the bar overflows at stage 9. */
   exp: { realms: Array<{ expBase: number; pointsPerStage: number }>; stageGrowth: number; lowMapMult: number; overflowMax: number };
@@ -106,6 +119,19 @@ export interface Tuning {
     deathDurabilityFraction: number;
     monsterCurve: { hpBase: number; hpPerLevel: number; attackBase: number; attackPerLevel: number; defenseBase: number; defensePerLevel: number };
   };
+  /** How the base stats and the level turn into combat stats (`deriveStats`): each stat is its `base` plus the listed amounts per point of a base stat or per level index (realm x 9 + stage - 1); worn gear is added on top. The percent caps and the walking speed stay in code. */
+  stats: {
+    maxHp: { base: number; perCanCot: number; perLevel: number };
+    maxMp: { base: number; perLinhLuc: number; perLevel: number };
+    attack: { base: number; perLinhLuc: number; perCanCot: number; perLevel: number };
+    defense: { base: number; perCanCot: number; perLevel: number };
+    critRate: { base: number; perThanThuc: number };
+    dodgeRate: { perThanPhap: number };
+    expBonus: { perNgoTinh: number };
+    dropBonus: { perPhucDuyen: number };
+    /** The highest percent crit and dodge reach. */
+    rateCap: number;
+  };
   /** The spiritual root rolls: quality grades (weight out of the total, EXP bonus, starting points, damage bonus) and the element counts (weight, EXP bonus). Names stay in code. */
   roots: { grades: Array<{ weight: number; expBonusPct: number; bonusPoints: number; elementDamagePct: number }>; counts: Array<{ weight: number; expBonusPct: number }> };
   /** What each path adds as the chủ tu (see paths.ts), by path id. */
@@ -115,6 +141,8 @@ export interface Tuning {
 }
 
 export interface MonsterNumbers {
+  /** The name shown for the species, when an admin changed it (otherwise the one written in the code). */
+  nameVi?: string;
   hpMult: number;
   attackMult: number;
   defenseMult: number;
@@ -137,6 +165,13 @@ export interface SkillNumbers {
   mpCost: number;
   cooldownMs: number;
   range: number;
+  /** Text shown in the skill windows (kept short: it travels with the tuning). */
+  nameVi: string;
+  descVi: string;
+  /** Buffs: how long they last. */
+  buffDurationMs: number;
+  /** Attacks: the effect others see. */
+  fx: "melee" | "ranged";
 }
 
 export type TuningGroup = keyof Tuning;
@@ -193,6 +228,39 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       rare2: { chance: 0.3, grades: [25, 35, 30, 10], overLevel: 0.25 },
     },
   },
+  loot: { base: {
+  normal: [
+    { item: "linh_thao", chance: 0.12, min: 1, max: 2 },
+    { item: "thu_cot", chance: 0.12, min: 1, max: 1 },
+    { item: "hoi_huyet_dan", chance: 0.04, min: 1, max: 1 },
+    { item: "duong_huyet_dan", chance: 0.03, min: 1, max: 1 },
+  ],
+  rare1: [
+    { item: "yeu_dan", chance: 0.5, min: 1, max: 1 },
+    { item: "linh_thao", chance: 0.5, min: 1, max: 3 },
+    { item: "hoi_huyet_dan", chance: 0.2, min: 1, max: 2 },
+    { item: "duong_huyet_dan", chance: 0.15, min: 1, max: 1 },
+    { item: "ngo_dao_dan", chance: 0.05, min: 1, max: 1 },
+  ],
+  rare2: [
+    { item: "yeu_dan", chance: 1, min: 1, max: 2 },
+    { item: "linh_thao", chance: 0.8, min: 2, max: 4 },
+    { item: "hoi_huyet_dan", chance: 0.5, min: 1, max: 3 },
+    { item: "duong_huyet_dan", chance: 0.4, min: 1, max: 2 },
+    { item: "ngo_dao_dan", chance: 0.25, min: 1, max: 1 },
+  ],
+}, realm: {
+  2: {
+    normal: [{ item: "linh_nguyen_dan", chance: 0.03, min: 1, max: 1 }],
+    rare1: [{ item: "linh_nguyen_dan", chance: 0.15, min: 1, max: 2 }, { item: "bao_nguyen_dan", chance: 0.03, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.04, min: 1, max: 1 }],
+    rare2: [{ item: "linh_nguyen_dan", chance: 0.4, min: 1, max: 3 }, { item: "bao_nguyen_dan", chance: 0.12, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.15, min: 1, max: 1 }],
+  },
+  3: {
+    normal: [{ item: "linh_nguyen_dan", chance: 0.04, min: 1, max: 1 }, { item: "bao_nguyen_dan", chance: 0.01, min: 1, max: 1 }],
+    rare1: [{ item: "linh_nguyen_dan", chance: 0.2, min: 1, max: 2 }, { item: "bao_nguyen_dan", chance: 0.08, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.06, min: 1, max: 1 }],
+    rare2: [{ item: "linh_nguyen_dan", chance: 0.5, min: 1, max: 3 }, { item: "bao_nguyen_dan", chance: 0.25, min: 1, max: 2 }, { item: "thien_ngo_dan", chance: 0.25, min: 1, max: 1 }],
+  },
+} },
   kills: { base: 30, growth: 1.13 },
   itemValue: {
     items: {
@@ -298,6 +366,17 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     deathDurabilityFraction: 0.05,
     monsterCurve: { hpBase: 60, hpPerLevel: 30, attackBase: 10, attackPerLevel: 3.2, defenseBase: 4, defensePerLevel: 2 },
   },
+  stats: {
+    maxHp: { base: 100, perCanCot: 15, perLevel: 25 },
+    maxMp: { base: 50, perLinhLuc: 10, perLevel: 12 },
+    attack: { base: 5, perLinhLuc: 2, perCanCot: 0.5, perLevel: 3 },
+    defense: { base: 2, perCanCot: 1.5, perLevel: 2 },
+    critRate: { base: 5, perThanThuc: 0.5 },
+    dodgeRate: { perThanPhap: 0.5 },
+    expBonus: { perNgoTinh: 1 },
+    dropBonus: { perPhucDuyen: 0.5 },
+    rateCap: 60,
+  },
   roots: {
     grades: [
       { weight: 50, expBonusPct: -10, bonusPoints: 0, elementDamagePct: 0 },
@@ -347,16 +426,18 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   guardSkills: "Kỹ năng vệ binh: hồi máu, hộ thể, đòn mạnh, đòn chém",
   pvp: "PvP: sát khí, sát nhân, xác suất rơi đồ và độ bền hao khi chết theo màu tên",
   drops: "Rơi đồ: Linh Thạch, bí tịch, đan đột phá, trang bị theo loại quái",
+  loot: "Bảng rơi vật phẩm: các dòng theo loại quái cho mọi bản đồ, và dòng thêm theo cảnh giới của bản đồ",
   kills: "Số quái cùng bậc cần giết để lên một tầng (và EXP quái suy ra từ đó)",
   itemValue: "Giá trị vật phẩm: vật phẩm thường, trang bị theo loại, phẩm và cấp",
   skills: "Kỹ năng: sức mạnh và hồi chiêu theo cấp thuần thục, điểm thuần thục, hệ số theo cảnh giới",
   theme: "Màu giao diện: màu cảnh giới, màu nền phẩm cấp và bảng màu chung của trang",
   monsters: "Loài quái (hệ số HP, công, thủ, tốc độ, tầm, hồi sinh) và các hạng quái (xác suất, hệ số, EXP)",
-  skillOverrides: "Chỉnh từng kỹ năng theo mã: sức mạnh, MP, hồi chiêu, tầm",
+  skillOverrides: "Chỉnh từng kỹ năng theo mã hoặc theo mẫu: tên, mô tả, sức mạnh, MP, hồi chiêu, tầm, thời gian buff, hiệu ứng",
   exp: "EXP mỗi cảnh giới, điểm tiềm năng mỗi tầng, tăng trưởng theo tầng, EXP săn bản đồ thấp, mức tràn",
   breakthrough: "Đột phá: đan tối đa, tỉ lệ, thời gian, chi phí, điểm; mất EXP khi thất bại, thưởng tràn",
   paths: "Hướng tu: phí đổi chủ tu và phí bỏ hướng",
   combat: "Chiến đấu: mất EXP khi chết, hồi HP/MP, cửa sổ tên xám, hao độ bền cơ bản, đường cong chỉ số quái",
+  stats: "Chỉ số chiến đấu từ chỉ số gốc và cấp: sinh lực, linh lực, công, thủ, chí mạng, né, EXP, rơi đồ",
   roots: "Linh căn: tỉ lệ và thưởng theo phẩm cấp và theo số hệ",
   pathBonuses: "Thưởng chỉ số của từng hướng tu (khi là chủ tu)",
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
@@ -471,6 +552,12 @@ export function validTuningGroup(group: string, value: unknown): boolean {
         ranks(value.equip, (v) => obj(v) && prob(v.chance) && prob(v.overLevel) && Array.isArray(v.grades) && v.grades.length === 4 && v.grades.every((g) => num(g, 0, 100_000)) && (v.grades as number[]).some((g) => g > 0))
       );
     }
+    case "loot": {
+      const lines = (v: unknown): boolean =>
+        Array.isArray(v) && v.length <= 40 && v.every((l) => obj(l) && typeof l.item === "string" && /^[a-z0-9_.]{1,60}$/.test(l.item) && num(l.chance, 0, 1) && int(l.min, 0, 999) && int(l.max, 0, 999) && (l.max as number) >= (l.min as number));
+      const ranks = (r: unknown): boolean => obj(r) && lines(r.normal) && lines(r.rare1) && lines(r.rare2);
+      return ranks(value.base) && obj(value.realm) && Object.entries(value.realm).every(([k, r]) => /^\d{1,2}$/.test(k) && ranks(r));
+    }
     case "kills":
       return num(value.base, 1, 1_000_000) && num(value.growth, 1, 3);
     case "itemValue": {
@@ -507,6 +594,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
         ([id, v]) =>
           /^[a-z0-9_]{1,40}$/.test(id) &&
           obj(v) &&
+          (v.nameVi === undefined || (typeof v.nameVi === "string" && v.nameVi.trim().length >= 1 && v.nameVi.length <= 60)) &&
           num(v.hpMult, 0.01, 1000) &&
           num(v.attackMult, 0.01, 1000) &&
           num(v.defenseMult, 0.01, 1000) &&
@@ -524,15 +612,20 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return speciesOk && rankOk && num((rk.rare1 as { chance: number }).chance + (rk.rare2 as { chance: number }).chance, 0, 1);
     }
     case "skillOverrides":
+      // Structural only (the whole group is valid or not): which skills exist and which fields fit a kind of skill are checked where an admin saves.
       return Object.entries(value).every(
         ([id, v]) =>
           /^[a-z0-9_]{1,40}$/.test(id) &&
           obj(v) &&
-          Object.keys(v).every((k) => ["power", "mpCost", "cooldownMs", "range"].includes(k)) &&
+          Object.keys(v).every((k) => ["power", "mpCost", "cooldownMs", "range", "nameVi", "descVi", "buffDurationMs", "fx"].includes(k)) &&
           (v.power === undefined || num(v.power, 0, 1000)) &&
           (v.mpCost === undefined || int(v.mpCost, 0, 100_000)) &&
           (v.cooldownMs === undefined || int(v.cooldownMs, 0, 3_600_000)) &&
-          (v.range === undefined || num(v.range, 0, 100)),
+          (v.range === undefined || num(v.range, 0, 100)) &&
+          (v.nameVi === undefined || (typeof v.nameVi === "string" && v.nameVi.trim().length >= 1 && v.nameVi.length <= 60)) &&
+          (v.descVi === undefined || (typeof v.descVi === "string" && v.descVi.trim().length >= 1 && v.descVi.length <= 300)) &&
+          (v.buffDurationMs === undefined || int(v.buffDurationMs, 0, 3_600_000)) &&
+          (v.fx === undefined || v.fx === "melee" || v.fx === "ranged"),
       );
     case "exp": {
       const realms = value.realms;
@@ -572,6 +665,20 @@ export function validTuningGroup(group: string, value: unknown): boolean {
         num(value.deathDurabilityFraction, 0, 1) &&
         obj(c) &&
         ["hpBase", "hpPerLevel", "attackBase", "attackPerLevel", "defenseBase", "defensePerLevel"].every((k) => num(c[k], 0, 1_000_000))
+      );
+    }
+    case "stats": {
+      const part = (v: unknown, keys: string[]) => obj(v) && keys.every((k) => num(v[k], 0, 100_000));
+      return (
+        part(value.maxHp, ["base", "perCanCot", "perLevel"]) &&
+        part(value.maxMp, ["base", "perLinhLuc", "perLevel"]) &&
+        part(value.attack, ["base", "perLinhLuc", "perCanCot", "perLevel"]) &&
+        part(value.defense, ["base", "perCanCot", "perLevel"]) &&
+        part(value.critRate, ["base", "perThanThuc"]) &&
+        part(value.dodgeRate, ["perThanPhap"]) &&
+        part(value.expBonus, ["perNgoTinh"]) &&
+        part(value.dropBonus, ["perPhucDuyen"]) &&
+        num(value.rateCap, 0, 100)
       );
     }
     case "roots": {

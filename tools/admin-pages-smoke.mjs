@@ -93,8 +93,38 @@ check("meta lists the three currencies and the fixed groups", meta.data.currenci
 const set = await post("/api/admin/settings", { key: "bag_tab_price", value: 1234 }, adminCookie);
 check("admin changes a setting", set.status === 200, String(set.status));
 await post("/api/admin/settings", { key: "bag_tab_price", value: 1000 }, adminCookie);
-const logRes = await json(`/api/admin/log?q=${encodeURIComponent("bag_tab_price")}&size=5`, adminCookie);
-check("the log lists both changes, newest first, with the admin, the screen and the content", logRes.data.rows?.[0]?.content?.endsWith("→ 1000") && logRes.data.rows[1].content.endsWith("→ 1234") && logRes.data.rows[0].adminEmail === adminEmail && logRes.data.rows[0].screen === "Cài đặt game", JSON.stringify(logRes.data.rows?.slice(0, 2)));
+const logRes = await json(`/api/admin/log?q=${encodeURIComponent("Giá mở khóa một tab")}&size=5`, adminCookie);
+check("the log lists both changes, newest first, with the admin, the screen and the content", logRes.data.rows?.[0]?.content?.endsWith("→ 1000") && logRes.data.rows[1].content.endsWith("→ 1234") && logRes.data.rows[0].adminEmail === adminEmail && logRes.data.rows[0].screen === "Chỉ số khác", JSON.stringify(logRes.data.rows?.slice(0, 2)));
+check("a setting saved with the same value is refused", (await post("/api/admin/settings", { key: "bag_tab_price", value: 1000 }, adminCookie)).status === 400);
+
+// "Chỉ số khác": the tuning groups.
+check("anonymous tuning is 401, a player's is 403", (await get("/api/admin/tuning")).status === 401 && (await get("/api/admin/tuning", playerCookie)).status === 403);
+check("a player cannot save a tuning group", (await post("/api/admin/tuning", { group: "waygate", updatedAt: 0, value: { base: 1, perUnit: 1 } }, playerCookie)).status === 403);
+const tn = await json("/api/admin/tuning", adminCookie);
+const wg = tn.data.groups?.find((g) => g.group === "waygate");
+check("tuning lists pvp, waygate, aoi, combat and theme with fields and defaults", tn.data.groups?.map((g) => g.group).join() === "pvp,waygate,aoi,combat,theme" && wg?.fields?.length === 2 && wg.stored === true, JSON.stringify(tn.data.groups?.map((g) => g.group)));
+const realmsPage = await json("/api/admin/tuning?page=realms", adminCookie);
+const potentialPage = await json("/api/admin/tuning?page=potential", adminCookie);
+check("the realms and potential pages list their own groups", realmsPage.data.groups?.map((g) => g.group).join() === "exp,breakthrough,kills" && potentialPage.data.groups?.map((g) => g.group).join() === "stats" && potentialPage.data.groups[0].stored === true);
+const talentsPage = await json("/api/admin/tuning?page=talents", adminCookie);
+const settingsAll = await json("/api/admin/settings", adminCookie);
+check("the talents page lists the roots group, and the mutant settings moved there", talentsPage.data.groups?.map((g) => g.group).join() === "roots" && settingsAll.data.settings?.filter((x) => x.page === "talents").map((x) => x.key).join() === "mutant_root_chance,mutant_skill_bonus,mutant_gear_bonus,mutant_gear_drop" && settingsAll.data.settings.filter((x) => x.page === "misc").length === 2, JSON.stringify(settingsAll.data.settings?.map((x) => [x.key, x.page])));
+const cons = await json("/api/admin/constitutions", adminCookie);
+check("the constitutions come with the holders", cons.status === 200 && Array.isArray(cons.data.holders) && cons.data.constitutions.length >= 2);
+const consSame = await post("/api/admin/constitutions", { expectedVersion: cons.data.version, constitutions: cons.data.constitutions }, adminCookie);
+check("saving the catalogue unchanged is refused", consSame.status === 400 && consSame.data.error === "unchanged", JSON.stringify(consSame.data));
+const verOf = () => sql("SELECT version FROM config_versions WHERE name='tuning'")[0].version;
+const v0 = verOf();
+const origWg = wg.value;
+const t1 = await post("/api/admin/tuning", { group: "waygate", updatedAt: wg.updatedAt, value: { base: 777, perUnit: wg.value.perUnit } }, adminCookie);
+check("saving a tuning group works and returns the new value", t1.status === 200 && t1.data.groups?.find((g) => g.group === "waygate")?.value.base === 777, String(t1.status));
+check("the version was bumped and the log has the change", verOf() === v0 + 1 && (await json(`/api/admin/log?q=${encodeURIComponent("Phí cơ bản")}&size=1`, adminCookie)).data.rows?.[0]?.content?.includes("→ 777"));
+check("a save with the old token is 409", (await post("/api/admin/tuning", { group: "waygate", updatedAt: wg.updatedAt, value: { base: 888, perUnit: wg.value.perUnit } }, adminCookie)).status === 409);
+const wg2 = (await json("/api/admin/tuning", adminCookie)).data.groups.find((g) => g.group === "waygate");
+check("an invalid or unchanged save is 400", (await post("/api/admin/tuning", { group: "waygate", updatedAt: wg2.updatedAt, value: { base: -5, perUnit: 1 } }, adminCookie)).status === 400 && (await post("/api/admin/tuning", { group: "waygate", updatedAt: wg2.updatedAt, value: wg2.value }, adminCookie)).status === 400);
+check("an unknown group is 404", (await post("/api/admin/tuning", { group: "paths", updatedAt: 0, value: {} }, adminCookie)).status === 404);
+const restore = await post("/api/admin/tuning", { group: "waygate", updatedAt: wg2.updatedAt, value: origWg }, adminCookie);
+check("the original numbers are restored", restore.status === 200 && restore.data.groups.find((g) => g.group === "waygate").value.base === origWg.base);
 
 // The currency screens: a character of the admin's own.
 const charName = `Jd${run}`;

@@ -2,6 +2,13 @@ import "./style.css";
 import { api, h } from "./kit";
 import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { MENU } from "./menu";
+import { giftsPage } from "./gifts";
+import { itemEditPage, itemListPage } from "./items";
+import { bossPage, lootPage, ranksPage, speciesEditPage, speciesListPage } from "./monsters";
+import { constitutionEditPage, constitutionListPage, rootsPage } from "./talents";
+import { skillEditPage, skillListPage } from "./skills";
+import { questEditPage, questListPage } from "./quests";
+import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
 const app = document.getElementById("app")!;
@@ -69,6 +76,60 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/monsters") {
+    title = "Quái / BOSS · Loài quái";
+    content = speciesListPage();
+  } else if (path === "/admin/monsters/edit") {
+    title = "Quái / BOSS · Sửa loài";
+    content = speciesEditPage();
+  } else if (path === "/admin/monsters/ranks") {
+    title = "Quái / BOSS · Hạng quái và rơi đồ";
+    content = ranksPage();
+  } else if (path === "/admin/monsters/loot") {
+    title = "Quái / BOSS · Bảng rơi";
+    content = lootPage();
+  } else if (path === "/admin/monsters/boss") {
+    title = "Quái / BOSS · BOSS và vệ binh";
+    content = bossPage();
+  } else if (path === "/admin/talents") {
+    title = "Thiên phú · Linh căn";
+    content = rootsPage();
+  } else if (path === "/admin/talents/constitutions") {
+    title = "Thiên phú · Thể chất";
+    content = constitutionListPage();
+  } else if (path === "/admin/talents/constitutions/edit") {
+    title = "Thiên phú · Sửa thể chất";
+    content = constitutionEditPage();
+  } else if (path === "/admin/skills") {
+    title = "Kỹ năng";
+    content = skillListPage();
+  } else if (path === "/admin/skills/edit") {
+    title = "Kỹ năng · Sửa";
+    content = skillEditPage();
+  } else if (path === "/admin/items") {
+    title = "Vật phẩm";
+    content = itemListPage();
+  } else if (path === "/admin/items/edit") {
+    title = "Vật phẩm · Sửa";
+    content = itemEditPage();
+  } else if (path === "/admin/quests") {
+    title = "Nhiệm vụ";
+    content = questListPage();
+  } else if (path === "/admin/quests/edit") {
+    title = "Nhiệm vụ · Sửa";
+    content = questEditPage();
+  } else if (path === "/admin/gifts") {
+    title = "Gửi quà";
+    content = giftsPage();
+  } else if (path === "/admin/realms") {
+    title = "Cảnh giới";
+    content = tuningPage("realms");
+  } else if (path === "/admin/potential") {
+    title = "Chỉ số tiềm năng";
+    content = tuningPage("potential");
+  } else if (path === "/admin/misc") {
+    title = "Chỉ số khác";
+    content = miscPage();
   } else if (path === "/admin/log") {
     title = "Nhật ký admin";
     content = logPage();

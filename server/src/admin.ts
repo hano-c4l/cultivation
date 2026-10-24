@@ -1,4 +1,4 @@
-import { CONSTITUTION_STATS, CURRENCY_GROUPS, ELEMENT_TAGS, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
+import { CONSTITUTION_STATS, CURRENCY_GROUPS, ELEMENT_TAGS, GIFT_BODY_MAX, type TuningPage, GIFT_MAX_ITEM_KINDS, GIFT_MAX_RECIPIENTS, GIFT_SUBJECT_MAX, giftableItems, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
 import { getSession, type AuthedSession } from "./auth";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
@@ -7,7 +7,14 @@ import { expandBag } from "./inventory";
 import type { Env } from "./env";
 import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
-import { loadConstitutionCatalog, saveConstitutionCatalog } from "./constitution-catalog";
+import { loadConstitutionCatalog } from "./constitution-catalog";
+import { constitutionHolders, saveConstitutionAdmin } from "./constitution-admin";
+import { listLoot, listSpecies, saveLoot, saveSpecies } from "./monsters-admin";
+import { listSkills, saveSkillOverride } from "./skills-admin";
+import { deleteItem, listItems, saveItem } from "./items-admin";
+import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
+import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
+import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
 
 /** Returns the admin's session, or the error response to send (401 anonymous, 403 not an admin). */
 async function requireAdminSession(request: Request, env: Env): Promise<AuthedSession | Response> {
@@ -242,11 +249,29 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
   const body = await readJson(request);
   const key = typeof body?.key === "string" ? body.key : "";
   if (!validSettingValue(key, body?.value)) return errorResponse("invalid_setting", 400);
-  const before = (await allSettings(env.DB)).find((s) => s.key === key)?.value ?? null;
+  const before = (await allSettings(env.DB)).find((s) => s.key === key);
+  if (before?.value === body.value) return errorResponse("unchanged", 400);
   await setSetting(env.DB, key, body.value as number, admin);
   console.log("setting changed", admin, key, body.value);
-  await log(env, session, "Cài đặt game", `Đổi cài đặt ${key}: ${String(before)} → ${String(body.value)}`);
+  await log(env, session, before?.page === "talents" ? "Thiên phú" : TUNING_LOG_SCREEN, `Đổi cài đặt game "${before?.labelVi ?? key}": ${String(before?.value ?? null)} → ${String(body.value)}`);
   return json({ ok: true, settings: await allSettings(env.DB) });
+}
+
+/**
+ * The `game_tuning` groups of the "Chỉ số khác" screen (GET: each group with its fields, value, default and version token) and the save of
+ * one group (POST `{group, updatedAt, value}`, see saveTuningGroup). 409 when someone saved the group since the admin loaded it.
+ */
+export async function adminTuning(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const pageOf = (raw: unknown): TuningPage => (raw === "realms" || raw === "potential" || raw === "talents" || raw === "monsters" || raw === "boss" ? raw : "misc");
+  if (request.method === "GET") return json({ groups: await listTuningGroups(env.DB, pageOf(new URL(request.url).searchParams.get("page"))) });
+  const body = await readJson(request);
+  if (typeof body?.group !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await saveTuningGroup(env.DB, body.group, body.value, body.updatedAt, session.email);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : result.error === "unknown_group" ? 404 : 400);
+  console.log("tuning group saved", session.accountId, body.group);
+  return json({ ok: true, changes: result.changes, groups: await listTuningGroups(env.DB, pageOf(body.page)) });
 }
 
 /**
@@ -256,13 +281,196 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
 export async function adminConstitutions(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
-  const admin = session.accountId;
-  if (request.method === "GET") return json({ ...(await loadConstitutionCatalog(env.DB)), vocabulary: { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS } });
+  const vocabulary = { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS };
+  if (request.method === "GET") return json({ ...(await loadConstitutionCatalog(env.DB)), vocabulary, holders: await constitutionHolders(env.DB) });
   const body = await readJson(request, 512 * 1024); // a whole catalogue is much bigger than the usual request
   if (typeof body?.expectedVersion !== "number" || !Array.isArray(body?.constitutions)) return errorResponse("invalid_body", 400);
-  const result = await saveConstitutionCatalog(env.DB, body.expectedVersion, { version: body.expectedVersion, constitutions: body.constitutions as never });
+  const result = await saveConstitutionAdmin(env.DB, session.email, body.expectedVersion, { version: body.expectedVersion, constitutions: body.constitutions as never });
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : 400);
-  console.log("constitution catalogue saved", admin, "version", result.version);
-  await log(env, session, "Thiên phú", `Lưu danh mục thể chất (phiên bản ${result.version}, ${(body.constitutions as unknown[]).length} thể chất)`);
-  return json({ ok: true, ...(await loadConstitutionCatalog(env.DB)), vocabulary: { stats: CONSTITUTION_STATS, elements: ELEMENT_TAGS, weapons: WEAPON_TAGS, maxTiers: MAX_CONSTITUTION_TIERS } });
+  console.log("constitution catalogue saved", session.accountId, "version", result.version);
+  return json({ ok: true, warnings: result.warnings ?? [], ...(await loadConstitutionCatalog(env.DB)), vocabulary, holders: await constitutionHolders(env.DB) });
+}
+
+/** What the screen "Gửi quà" needs to start: the items that can be attached, the limits and how many characters "the whole server" is right now. */
+export async function adminGiftMeta(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json({
+    items: giftableItems(),
+    characters: await countCharacters(env.DB),
+    limits: { subject: GIFT_SUBJECT_MAX, body: GIFT_BODY_MAX, recipients: GIFT_MAX_RECIPIENTS, itemKinds: GIFT_MAX_ITEM_KINDS },
+  });
+}
+
+/** Names pasted on the screen to character ids (POST `{names}`): the ones found and the names that matched nobody. */
+export async function adminGiftResolve(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 64 * 1024);
+  if (!Array.isArray(body?.names) || body.names.some((n: unknown) => typeof n !== "string")) return errorResponse("invalid_body", 400);
+  return json(await resolveRecipients(env.DB, body.names as string[]));
+}
+
+/** The history of sends (GET: page, size). */
+export async function adminGiftHistory(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const page = Math.max(1, Math.min(100_000, Math.trunc(Number(url.searchParams.get("page") ?? "1")) || 1));
+  const size = Math.max(1, Math.min(100, Math.trunc(Number(url.searchParams.get("size") ?? "20")) || 20));
+  return json({ ...(await listGiftBatches(env.DB, page, size)), page, size });
+}
+
+/**
+ * Sends a gift (POST `{batchId, subject, body, audience: {kind: "list", characterIds} | {kind: "all"}, gift: {linh_thach, cong_hien, tien_ngoc, items}, expiresInDays}`).
+ * `batchId` is made once by the form, so a repeated request answers with the first send instead of sending again. The players online are told best-effort.
+ */
+export async function adminGiftSend(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 64 * 1024);
+  const aud = body?.audience as { kind?: unknown; characterIds?: unknown } | undefined;
+  const gift = body?.gift as GiftInput["gift"] | undefined;
+  if (typeof body?.batchId !== "string" || typeof body?.subject !== "string" || typeof body?.body !== "string" || !aud || !gift || typeof gift !== "object") return errorResponse("invalid_body", 400);
+  const audience: GiftInput["audience"] | null =
+    aud.kind === "all" ? { kind: "all" } : aud.kind === "list" && Array.isArray(aud.characterIds) ? { kind: "list", characterIds: aud.characterIds as string[] } : null;
+  if (!audience) return errorResponse("invalid_audience", 400);
+  const expires = body.expiresInDays === null || body.expiresInDays === undefined ? null : Number(body.expiresInDays);
+  const result = await sendGift(env.DB, session.email, session.accountId, { batchId: body.batchId, subject: body.subject, body: body.body, audience, gift, expiresInDays: expires }, Date.now());
+  if (!result.ok) return errorResponse(result.error, 400);
+  if (!result.duplicate) {
+    console.log("gift sent", session.accountId, body.batchId, audience.kind, result.recipients);
+    try {
+      await env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).notifyMail(audience.kind === "all" ? null : audience.characterIds);
+    } catch (err) {
+      console.error("gift notification failed", err); // the mail is sent; players see it when they next open the bag or join
+    }
+  }
+  return json({ ok: true, recipients: result.recipients, duplicate: result.duplicate });
+}
+
+/** The quest catalogue for the admin screen: every quest with how many characters are on it, and what the pickers of the form need. */
+export async function adminQuests(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const quests = await listQuests(env.DB);
+  return json({ quests, meta: await questMeta(env.DB, quests.map((q) => q.def.chain)) });
+}
+
+const QUEST_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, locked_field: 409, in_use: 409, exists: 409, has_progress: 409, version_conflict: 409, busy: 409, deleted: 409, not_found: 404 };
+
+/** Saves a quest (POST `{quest, isNew, updatedAt}`); 400 with the list of problems when the catalogue would no longer be valid, 409 when someone else saved it first. */
+export async function adminQuestSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 32 * 1024);
+  if (!body || typeof body.quest !== "object" || typeof body.isNew !== "boolean") return errorResponse("invalid_body", 400);
+  const result = await saveQuest(env.DB, session.email, body.quest, body.isNew, typeof body.updatedAt === "number" ? body.updatedAt : 0);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, QUEST_ERROR_STATUS[result.error] ?? 400);
+  console.log("quest saved", session.accountId, (body.quest as { id?: string }).id);
+  return json({ ok: true, updatedAt: result.updatedAt });
+}
+
+/** Deletes a quest (POST `{id, updatedAt}`): soft when characters hold it, else hard; refused (409 `in_use` with the list) while another quest requires it. */
+export async function adminQuestDelete(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 32 * 1024);
+  if (typeof body?.id !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await deleteQuest(env.DB, session.email, body.id, body.updatedAt);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, QUEST_ERROR_STATUS[result.error] ?? 400);
+  console.log("quest deleted", session.accountId, body.id, result.mode);
+  return json({ ok: true, mode: result.mode });
+}
+
+/** The item catalogue for the admin screen: every plain item (the code's, with the admin's changes, and the ones admins made) with owners and sell value. */
+export async function adminItems(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await listItems(env.DB));
+}
+
+const ITEM_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, bound: 400, locked_field: 409, exists: 409, has_owner: 409, version_conflict: 409, busy: 409, deleted: 409, in_use: 409, not_found: 404 };
+
+/** Saves an item (POST `{item, isNew, updatedAt, value?, valueToken}`): its fields, and its sell value in the same batch. */
+export async function adminItemSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 16 * 1024);
+  if (!body || typeof body.item !== "object" || body.item === null || typeof body.isNew !== "boolean") return errorResponse("invalid_body", 400);
+  const value = body.value === undefined ? undefined : body.value === null ? null : (body.value as number);
+  const result = await saveItem(env.DB, session.email, body.item as Record<string, unknown>, body.isNew, typeof body.updatedAt === "number" ? body.updatedAt : 0, value, typeof body.valueToken === "number" ? body.valueToken : 0);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, ITEM_ERROR_STATUS[result.error] ?? 400);
+  console.log("item saved", session.accountId, (body.item as { id?: string }).id);
+  return json({ ok: true, updatedAt: result.updatedAt });
+}
+
+/** Deletes an item an admin made (POST `{id, updatedAt}`): refused while a quest or merchant names it, soft when characters own it, else hard. */
+export async function adminItemDelete(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 16 * 1024);
+  if (typeof body?.id !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await deleteItem(env.DB, session.email, body.id, body.updatedAt);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, ITEM_ERROR_STATUS[result.error] ?? 400);
+  console.log("item deleted", session.accountId, body.id, result.mode);
+  return json({ ok: true, mode: result.mode });
+}
+
+/** The skills for the admin screen: each skill and each root template with the code's numbers, the admin's changes and the numbers that come out. */
+export async function adminSkills(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await listSkills(env.DB));
+}
+
+/** Changes the entry of one skill or root template (POST `{key, fields | null, token}`): `null` puts it back to the code's numbers. */
+export async function adminSkillSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 16 * 1024);
+  if (typeof body?.key !== "string" || typeof body?.token !== "number" || (body.fields !== null && (typeof body.fields !== "object" || Array.isArray(body.fields)))) return errorResponse("invalid_body", 400);
+  const result = await saveSkillOverride(env.DB, session.email, body.key, body.fields as Record<string, unknown> | null, body.token);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : result.error === "unknown_skill" ? 404 : 400);
+  console.log("skill saved", session.accountId, body.key, result.reset ? "reset" : "changed");
+  return json({ ok: true, updatedAt: result.updatedAt, reset: result.reset });
+}
+
+/** The monster species for the admin screen: each with the code's numbers, what is in force, and where it appears. */
+export async function adminMonsters(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await listSpecies(env.DB));
+}
+
+const MONSTER_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, unknown: 404, version_conflict: 409 };
+
+/** Changes a species (POST `{id, fields | null, token}`): `null` puts it back to the code's numbers. */
+export async function adminMonsterSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 16 * 1024);
+  if (typeof body?.id !== "string" || typeof body?.token !== "number" || (body.fields !== null && (typeof body.fields !== "object" || Array.isArray(body.fields)))) return errorResponse("invalid_body", 400);
+  const result = await saveSpecies(env.DB, session.email, body.id, body.fields as Record<string, unknown> | null, body.token);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, MONSTER_ERROR_STATUS[result.error] ?? 400);
+  console.log("species saved", session.accountId, body.id);
+  return json({ ok: true, updatedAt: result.updatedAt, warnings: result.warnings ?? [] });
+}
+
+/** The loot tables for the admin screen, with the default, the realms and the items that can be put in them. */
+export async function adminLoot(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await listLoot(env.DB));
+}
+
+/** Saves the loot tables (POST `{loot, token}`). */
+export async function adminLootSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 64 * 1024);
+  if (typeof body?.token !== "number" || typeof body?.loot !== "object" || body.loot === null) return errorResponse("invalid_body", 400);
+  const result = await saveLoot(env.DB, session.email, body.loot, body.token);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, MONSTER_ERROR_STATUS[result.error] ?? 400);
+  console.log("loot saved", session.accountId);
+  return json({ ok: true, updatedAt: result.updatedAt });
 }
