@@ -5,7 +5,7 @@ import { api, h } from "./kit";
 interface Field {
   path: string;
   label: string;
-  kind: "int" | "num" | "frac" | "color";
+  kind: "int" | "num" | "frac" | "color" | "species";
   unit?: string;
 }
 
@@ -21,7 +21,7 @@ interface Group {
   stored: boolean;
 }
 
-type Page = "misc" | "realms" | "potential" | "talents";
+type Page = "misc" | "realms" | "potential" | "talents" | "monsters" | "boss";
 
 interface Setting {
   key: string;
@@ -32,6 +32,9 @@ interface Setting {
   min: number;
   max: number;
 }
+
+/** The species a boss can be given (set by the boss page before it draws): [id, name]. */
+let speciesChoices: Array<[string, string]> = [];
 
 function getPath(value: unknown, path: string): number {
   let cur: unknown = value;
@@ -110,18 +113,21 @@ function fieldHint(f: Field): string {
 
 /** `refresh(notice, isError)` re-reads the group from the server and redraws only this block, leaving the other blocks' edits alone. */
 function groupBlock(g: Group, page: Page, refresh: (notice?: string, isError?: boolean) => void, notice?: { text: string; error: boolean }): HTMLElement {
-  const inputs = new Map<string, HTMLInputElement>();
+  const inputs = new Map<string, HTMLInputElement | HTMLSelectElement>();
   const msg = h("div", { class: notice?.error ? "msg err" : "msg ok" }, notice?.text);
   let lastTop = "";
   const rows = g.fields.flatMap((f) => {
     const top = f.path.split(".")[0]!;
     const heading = top !== lastTop && g.fields.length > 6 ? h("tr", null, h("th", { colspan: "4", class: "subhead" }, SUBHEADS[top] ?? top)) : null;
     lastTop = top;
-    const input = h("input", f.kind === "color" ? { type: "text", maxlength: "60" } : { type: "number", step: f.kind === "int" ? "1" : "any" });
-    input.value = String(getPath(g.value, f.path));
+    const input: HTMLInputElement | HTMLSelectElement =
+      f.kind === "species"
+        ? h("select", { disabled: f.path === "species.town" || f.path === "species.town2" }, h("option", { value: "" }, f.path === "species.town" || f.path === "species.town2" ? "(thành không có boss)" : "(không có boss)"), ...speciesChoices.map(([v, l]) => h("option", { value: v }, l)))
+        : h("input", f.kind === "color" ? { type: "text", maxlength: "60" } : { type: "number", step: f.kind === "int" ? "1" : "any" });
+    input.value = f.kind === "species" ? String((getPath(g.value, f.path) as unknown as string | null) ?? "") : String(getPath(g.value, f.path));
     inputs.set(f.path, input);
     const def = getPath(g.default, f.path);
-    const mark = () => input.classList.toggle("changed", (f.kind === "color" ? input.value : Number(input.value)) !== getPath(g.value, f.path));
+    const mark = () => input.classList.toggle("changed", f.kind === "species" ? (input.value || null) !== (getPath(g.value, f.path) as unknown as string | null) : (f.kind === "color" ? input.value : Number(input.value)) !== getPath(g.value, f.path));
     input.addEventListener("input", mark);
     const weight = g.group === "roots" ? /^(grades|counts)\.\d+\.weight$/.exec(f.path) : null;
     const share = weight ? h("span", { class: "muted" }) : null;
@@ -139,12 +145,12 @@ function groupBlock(g: Group, page: Page, refresh: (notice?: string, isError?: b
       input.addEventListener("input", update);
       queueMicrotask(update);
     }
-    const reset = h("button", { type: "button", title: "Đặt ô này về giá trị mặc định" }, `mặc định ${def}`);
+    const reset = h("button", { type: "button", title: "Đặt ô này về giá trị mặc định" }, `mặc định ${(def as unknown as string | null) ?? "không"}`);
     reset.addEventListener("click", () => {
-      input.value = String(def);
+      input.value = String((def as unknown as string | null) ?? "");
       mark();
     });
-    return [heading, h("tr", null, h("td", null, f.label), h("td", { class: "num-cell" }, input, f.kind === "color" ? swatch(input) : null, share), h("td", { class: "muted" }, fieldHint(f)), h("td", null, reset))].filter((n): n is HTMLTableRowElement => n !== null);
+    return [heading, h("tr", null, h("td", null, f.label), h("td", { class: "num-cell" }, input, f.kind === "color" ? swatch(input as HTMLInputElement) : null, share), h("td", { class: "muted" }, fieldHint(f)), h("td", null, reset))].filter((n): n is HTMLTableRowElement => n !== null);
   });
   const save = h("button", { type: "button", class: "primary" }, "Lưu");
   const resetAll = h("button", { type: "button" }, "Điền mặc định cả nhóm");
@@ -152,7 +158,7 @@ function groupBlock(g: Group, page: Page, refresh: (notice?: string, isError?: b
   resetAll.addEventListener("click", () => {
     for (const f of g.fields) {
       const input = inputs.get(f.path)!;
-      input.value = String(getPath(g.default, f.path));
+      input.value = String((getPath(g.default, f.path) as unknown as string | null) ?? "");
       input.dispatchEvent(new Event("input"));
     }
     msg.textContent = "Đã điền giá trị mặc định vào ô; bấm Lưu để áp dụng.";
@@ -163,6 +169,10 @@ function groupBlock(g: Group, page: Page, refresh: (notice?: string, isError?: b
     const body: unknown = {};
     for (const f of g.fields) {
       const raw = inputs.get(f.path)!.value.trim();
+      if (f.kind === "species") {
+        setAt(body, f.path, raw === "" ? null : raw);
+        continue;
+      }
       if (f.kind === "color") {
         if (raw === "") return fail(`"${f.label}" chưa nhập màu.`);
         setAt(body, f.path, raw);
@@ -179,11 +189,11 @@ function groupBlock(g: Group, page: Page, refresh: (notice?: string, isError?: b
     save.disabled = true;
     msg.textContent = "Đang lưu...";
     msg.className = "msg muted";
-    const res = await api<{ error?: string; changes?: number }>("/api/admin/tuning", { method: "POST", body: { group: g.group, page, updatedAt: g.updatedAt, value: body } });
+    const res = await api<{ error?: string; changes?: number; problems?: string[] }>("/api/admin/tuning", { method: "POST", body: { group: g.group, page, updatedAt: g.updatedAt, value: body } });
     save.disabled = false;
     if (res.status === 200) return refresh(`Đã lưu ${res.data.changes ?? 0} thay đổi.`);
     if (res.status === 409) return refresh(ERRORS.version_conflict, true);
-    fail(ERRORS[res.data.error ?? ""] ?? `Lỗi ${res.status}.`);
+    fail(`${ERRORS[res.data.error ?? ""] ?? `Lỗi ${res.status}.`}${res.data.problems?.length ? ` ${res.data.problems.join("; ")}` : ""}`);
     function fail(text: string): void {
       msg.textContent = text;
       msg.className = "msg err";
@@ -235,6 +245,9 @@ const PAGE_NOTES: Record<Page, string> = {
     "Tên và ký hiệu cảnh giới chưa chỉnh được ở đây (chúng còn nằm trong code và tên các vật phẩm sinh từ chúng, chờ các màn Vật phẩm, Kỹ năng, Quái, Bản đồ); thêm cảnh giới mới cũng chờ các màn đó. Màu thẻ cảnh giới chỉnh ở \"Chỉ số khác\" → Màu giao diện. Hạ EXP cần hoặc hệ số tăng có thể làm nhân vật lên nhiều tầng ở lần giết kế tiếp. Số mới có hiệu lực với máy chủ sau tối đa 30 giây; nhân vật đang online thấy thanh EXP mới khi vào lại game.",
   talents:
     "Linh căn: lúc tạo nhân vật máy chủ tung phẩm cấp và số hệ theo trọng số; cho nhân vật tạo sau đó. Hệ biến dị (Lôi, Băng, Phong) chỉ có ở đơn linh căn; chỉnh tỉ lệ và độ mạnh ở cuối trang. Thêm hệ mới, điều kiện xuất hiện của thiên phú và hệ số khắc (còn trong code) chưa chỉnh được ở đây. Thể chất ở tab bên cạnh.",
+  monsters:
+    "Hạng quái và rơi đồ. Số của từng loài quái chỉnh ở tab Loài quái; bảng rơi vật phẩm ở tab Bảng rơi. Số mới áp cho quái sinh ra sau đó (quái đang sống giữ số cũ); rơi đồ áp cho lần giết kế tiếp sau tối đa 30 giây. Tăng xác suất rơi và hồi sinh nhanh hơn làm tăng số dòng ghi D1 (hạn mức Free 100.000 mỗi ngày).",
+  boss: "BOSS bản đồ và vệ binh. Loài boss chỉ chọn được trong các loài không có trong bãi quái; không đổi được khi boss đang có mặt trên bản đồ. Sức mạnh boss và vệ binh dùng cùng hệ số chỉ số tiềm năng (màn Chỉ số tiềm năng). Boss tính lại khi xuất hiện, số mới áp từ lần sau.",
   potential: "Máy chủ dùng hệ số mới sau tối đa 30 giây cho người vào game sau đó. Người đang online giữ chỉ số cũ tới khi vào lại game, lên tầng hoặc đổi trang bị.",
 };
 
@@ -255,6 +268,10 @@ export function tuningPage(page: Page): HTMLElement {
     return el;
   };
   const load = async () => {
+    if (page === "boss") {
+      const sp = await api<{ species: Array<{ id: string; effective: { nameVi: string }; maps: string[]; guard: boolean }> }>("/api/admin/monsters");
+      if (sp.status === 200) speciesChoices = sp.data.species.filter((x) => x.maps.length === 0 && !x.guard).map((x): [string, string] => [x.id, `${x.effective.nameVi} (${x.id})`]);
+    }
     const [tuning, settings] = await Promise.all([api<{ groups: Group[] }>(`/api/admin/tuning?page=${page}`), page === "misc" || page === "talents" ? api<{ settings: Setting[] }>("/api/admin/settings") : Promise.resolve(null)]);
     if (tuning.status !== 200 || (settings && settings.status !== 200)) {
       root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));

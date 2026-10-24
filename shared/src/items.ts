@@ -6,6 +6,7 @@ import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
 import { KEEP_LEVEL_ITEM, REFINE_ORES, SMITH_ORES } from "./smith";
 import { BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId } from "./skills";
+import { tuning } from "./tuning";
 
 /**
  * Item catalogue. Placeholder game-design values (listed under "giá trị tạm" in docs/PHASE2.md). Display strings are
@@ -346,6 +347,7 @@ export interface LootEntry {
   max: number;
 }
 
+/** The loot lines the code started with (the default of the tuning group `loot`; a test keeps the two equal). */
 export const LOOT_TABLES: Readonly<Record<MonsterRank, readonly LootEntry[]>> = {
   normal: [
     { item: "linh_thao", chance: 0.12, min: 1, max: 2 },
@@ -396,9 +398,12 @@ export interface LootDrop {
 /** Items dropped by one kill. `rand` returns uniform [0, 1); two numbers are drawn per entry (chance, quantity). */
 export function rollLoot(rank: MonsterRank, rand: () => number, chanceMult = 1, mapRealm = 0): LootDrop[] {
   const out: LootDrop[] = [];
-  for (const e of [...LOOT_TABLES[rank], ...(REALM_LOOT[mapRealm]?.[rank] ?? [])]) {
+  const loot = tuning().loot;
+  for (const e of [...loot.base[rank], ...(loot.realm[String(mapRealm)]?.[rank] ?? [])]) {
     const chanceRoll = rand();
     const qtyRoll = rand();
+    const def = getItemDef(e.item);
+    if (!def || def.disabled) continue; // gone from the catalogue, or taken out of play by an admin (the two numbers above are drawn anyway, so seeded runs stay in step)
     if (chanceRoll >= e.chance * chanceMult) continue;
     out.push({ item: e.item, qty: e.min + Math.floor(qtyRoll * (e.max - e.min + 1)) });
   }

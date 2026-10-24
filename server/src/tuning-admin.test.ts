@@ -67,7 +67,7 @@ describe("saving a tuning group", () => {
 
   it("rejects an unknown group, a missing or fractional field, an invalid combination and a save that changes nothing", async () => {
     const { token, value } = await group("pvp");
-    expect(await saveTuningGroup(db, "monsters", value, token, "a@x.test")).toEqual({ ok: false, error: "unknown_group" });
+    expect(await saveTuningGroup(db, "paths", value, token, "a@x.test")).toEqual({ ok: false, error: "unknown_group" });
     expect(await saveTuningGroup(db, "pvp", value, token, "a@x.test")).toEqual({ ok: false, error: "unchanged" });
     const missing = JSON.parse(JSON.stringify(value));
     delete missing.satKhi.perKill;

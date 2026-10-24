@@ -9,6 +9,7 @@ import { errorResponse, json, readJson } from "./http";
 import { allSettings, setSetting } from "./settings";
 import { loadConstitutionCatalog } from "./constitution-catalog";
 import { constitutionHolders, saveConstitutionAdmin } from "./constitution-admin";
+import { listLoot, listSpecies, saveLoot, saveSpecies } from "./monsters-admin";
 import { listSkills, saveSkillOverride } from "./skills-admin";
 import { deleteItem, listItems, saveItem } from "./items-admin";
 import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
@@ -263,12 +264,12 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
 export async function adminTuning(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
-  const pageOf = (raw: unknown): TuningPage => (raw === "realms" || raw === "potential" || raw === "talents" ? raw : "misc");
+  const pageOf = (raw: unknown): TuningPage => (raw === "realms" || raw === "potential" || raw === "talents" || raw === "monsters" || raw === "boss" ? raw : "misc");
   if (request.method === "GET") return json({ groups: await listTuningGroups(env.DB, pageOf(new URL(request.url).searchParams.get("page"))) });
   const body = await readJson(request);
   if (typeof body?.group !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
   const result = await saveTuningGroup(env.DB, body.group, body.value, body.updatedAt, session.email);
-  if (!result.ok) return errorResponse(result.error, result.error === "version_conflict" ? 409 : result.error === "unknown_group" ? 404 : 400);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : result.error === "unknown_group" ? 404 : 400);
   console.log("tuning group saved", session.accountId, body.group);
   return json({ ok: true, changes: result.changes, groups: await listTuningGroups(env.DB, pageOf(body.page)) });
 }
@@ -432,4 +433,44 @@ export async function adminSkillSave(request: Request, env: Env): Promise<Respon
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : result.error === "unknown_skill" ? 404 : 400);
   console.log("skill saved", session.accountId, body.key, result.reset ? "reset" : "changed");
   return json({ ok: true, updatedAt: result.updatedAt, reset: result.reset });
+}
+
+/** The monster species for the admin screen: each with the code's numbers, what is in force, and where it appears. */
+export async function adminMonsters(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await listSpecies(env.DB));
+}
+
+const MONSTER_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, unknown: 404, version_conflict: 409 };
+
+/** Changes a species (POST `{id, fields | null, token}`): `null` puts it back to the code's numbers. */
+export async function adminMonsterSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 16 * 1024);
+  if (typeof body?.id !== "string" || typeof body?.token !== "number" || (body.fields !== null && (typeof body.fields !== "object" || Array.isArray(body.fields)))) return errorResponse("invalid_body", 400);
+  const result = await saveSpecies(env.DB, session.email, body.id, body.fields as Record<string, unknown> | null, body.token);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, MONSTER_ERROR_STATUS[result.error] ?? 400);
+  console.log("species saved", session.accountId, body.id);
+  return json({ ok: true, updatedAt: result.updatedAt, warnings: result.warnings ?? [] });
+}
+
+/** The loot tables for the admin screen, with the default, the realms and the items that can be put in them. */
+export async function adminLoot(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await listLoot(env.DB));
+}
+
+/** Saves the loot tables (POST `{loot, token}`). */
+export async function adminLootSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 64 * 1024);
+  if (typeof body?.token !== "number" || typeof body?.loot !== "object" || body.loot === null) return errorResponse("invalid_body", 400);
+  const result = await saveLoot(env.DB, session.email, body.loot, body.token);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, MONSTER_ERROR_STATUS[result.error] ?? 400);
+  console.log("loot saved", session.accountId);
+  return json({ ok: true, updatedAt: result.updatedAt });
 }

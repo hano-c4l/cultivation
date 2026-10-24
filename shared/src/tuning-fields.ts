@@ -6,22 +6,24 @@ import { DEFAULT_TUNING, type Tuning, type TuningGroup } from "./tuning";
  * screen "Chỉ số khác" (PHASE3 3c) is driven by ADMIN_TUNING_SCREENS; the server only accepts these leaves when it saves a group, and a test
  * fails when a leaf of a listed group has no field here, so adding a number to a group means adding its label in the same change.
  *
- * kind: `int` a whole number, `num` any number, `frac` a share between 0 and 1 (the screen says so: 0,25 means 25%), `color` a CSS colour (#rgb, #rrggbb, rgb()/rgba()/hsl()).
+ * kind: `int` a whole number, `num` any number, `frac` a share between 0 and 1 (the screen says so: 0,25 means 25%), `color` a CSS colour (#rgb, #rrggbb, rgb()/rgba()/hsl()), `species` a monster species id or null (none).
  */
 export interface TuningField {
   /** Dot path inside the group's value; array indexes are numbers ("dropChance.2"). */
   path: string;
   label: string;
-  kind: "int" | "num" | "frac" | "color";
+  kind: "int" | "num" | "frac" | "color" | "species";
   unit?: string;
 }
 
 /** The admin screen a group is shown on: "misc" (Chỉ số khác), "realms" (Cảnh giới), "potential" (Chỉ số tiềm năng) or "talents" (Thiên phú: linh căn). */
-export type TuningPage = "misc" | "realms" | "potential" | "talents";
+export type TuningPage = "misc" | "realms" | "potential" | "talents" | "monsters" | "boss";
 
 export interface TuningScreenGroup {
   group: TuningGroup;
   page: TuningPage;
+  /** Prefixes of the group's value that this screen does not edit (another screen does): the save keeps them and the coverage test skips them. */
+  skip?: readonly string[];
   title: string;
   /** A sentence under the title (what the numbers do, anything to know before changing them). */
   note?: string;
@@ -30,7 +32,7 @@ export interface TuningScreenGroup {
 
 const TIERS = ["Tên trắng", "Tên vàng", "Tên cam", "Tên đỏ"];
 
-export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
+const BASE_SCREENS: readonly TuningScreenGroup[] = [
   {
     group: "pvp",
     page: "misc",
@@ -223,6 +225,197 @@ export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [
   },
 ];
 
+const RANKS: ReadonlyArray<readonly [string, string]> = [
+  ["normal", "Quái thường"],
+  ["rare1", "Tinh Anh"],
+  ["rare2", "Đại Yêu"],
+];
+const perRank = (path: (rank: string) => string, label: (name: string) => string, kind: TuningField["kind"], unit?: string): TuningField[] =>
+  RANKS.map(([rank, name]): TuningField => ({ path: path(rank), label: label(name), kind, ...(unit ? { unit } : {}) }));
+const MAP_NAMES: ReadonlyArray<readonly [string, string]> = [
+  ["town", "Thanh Vân Thành"],
+  ["forest", "Hắc Mộc Lâm"],
+  ["cave", "U Minh Động"],
+  ["town2", "Thiên Hà Thành"],
+  ["kimdan", "Xích Diễm Sơn"],
+  ["nguyenanh", "Vạn Cổ Hàn Uyên"],
+];
+
+export const MONSTER_SCREENS: readonly TuningScreenGroup[] = [
+  {
+    group: "monsters",
+    page: "monsters",
+    skip: ["species"],
+    title: "Hạng quái: thường, Tinh Anh, Đại Yêu",
+    note: "Xác suất mỗi lần quái sinh ra hoặc hồi sinh là hạng này (quái thường là phần còn lại), và các hệ số nhân lên chỉ số cùng EXP. Số của từng loài quái chỉnh ở danh sách loài. Số mới áp cho quái sinh ra sau đó; quái đang sống giữ số cũ.",
+    fields: RANKS.flatMap(([rank, name]): TuningField[] => [
+      ...(rank === "normal" ? [] : [{ path: `ranks.${rank}.chance`, label: `${name}: xác suất xuất hiện`, kind: "frac" as const }]),
+      { path: `ranks.${rank}.hpMult`, label: `${name}: hệ số sinh lực`, kind: "num" },
+      { path: `ranks.${rank}.attackMult`, label: `${name}: hệ số công`, kind: "num" },
+      { path: `ranks.${rank}.defenseMult`, label: `${name}: hệ số thủ`, kind: "num" },
+      { path: `ranks.${rank}.expMult`, label: `${name}: hệ số EXP`, kind: "num" },
+    ]).concat([{ path: "ranks.normal.chance", label: "Quái thường: xác suất (không dùng, là phần còn lại)", kind: "frac" }]),
+  },
+  {
+    group: "drops",
+    page: "monsters",
+    title: "Rơi đồ: Linh Thạch, bí tịch, đan đột phá, trang bị",
+    note: "Mỗi lần giết: Linh Thạch rơi với xác suất theo hạng, số lượng = gốc x hệ số tăng ^ cấp x hệ số theo hạng; bí tịch và đan đột phá có xác suất theo hạng; trang bị có xác suất theo hạng, tỉ lệ các phẩm 1 đến 4 và phần trăm món vượt cấp. Tăng xác suất làm tăng số dòng ghi D1 (hạn mức Free 100.000 mỗi ngày).",
+    fields: [
+      ...perRank((r) => `linh.chance.${r}`, (n) => `Linh Thạch: xác suất rơi, ${n}`, "frac"),
+      ...perRank((r) => `linh.amountMult.${r}`, (n) => `Linh Thạch: hệ số số lượng, ${n}`, "num"),
+      { path: "linh.base", label: "Linh Thạch: số lượng gốc", kind: "num" },
+      { path: "linh.growth", label: "Linh Thạch: hệ số tăng mỗi cấp", kind: "num" },
+      ...perRank((r) => `book.${r}`, (n) => `Bí tịch: xác suất rơi, ${n}`, "frac"),
+      ...REALMS.slice(0, 3).flatMap((realm, i) => perRank((r) => `pill.${i}.${r}`, (n) => `Đan đột phá của bản đồ ${realm.nameVi}: xác suất rơi, ${n}`, "frac")),
+      ...RANKS.flatMap(([rank, name]): TuningField[] => [
+        { path: `equip.${rank}.chance`, label: `Trang bị: xác suất rơi, ${name}`, kind: "frac" },
+        { path: `equip.${rank}.overLevel`, label: `Trang bị: phần món vượt cấp, ${name}`, kind: "frac" },
+        ...[1, 2, 3, 4].map((g): TuningField => ({ path: `equip.${rank}.grades.${g - 1}`, label: `Trang bị: trọng số phẩm ${g}, ${name}`, kind: "num" })),
+      ]),
+    ],
+  },
+  {
+    group: "oreDrop",
+    page: "monsters",
+    title: "Rơi Tinh Thiết (nguyên liệu nâng cấp)",
+    note: "Xác suất và số lượng nguyên liệu Thợ Rèn rơi theo hạng quái (chỉ từ quái cảnh giới đó).",
+    fields: RANKS.flatMap(([rank, name]): TuningField[] => [
+      { path: `${rank}.chance`, label: `${name}: xác suất`, kind: "frac" },
+      { path: `${rank}.min`, label: `${name}: số lượng tối thiểu`, kind: "int" },
+      { path: `${rank}.max`, label: `${name}: số lượng tối đa`, kind: "int" },
+    ]),
+  },
+  {
+    group: "refineDrop",
+    page: "monsters",
+    title: "Rơi Tinh Hoa (nguyên liệu tinh luyện)",
+    note: "Như trên, nhưng hiếm hơn.",
+    fields: RANKS.flatMap(([rank, name]): TuningField[] => [
+      { path: `${rank}.chance`, label: `${name}: xác suất`, kind: "frac" },
+      { path: `${rank}.min`, label: `${name}: số lượng tối thiểu`, kind: "int" },
+      { path: `${rank}.max`, label: `${name}: số lượng tối đa`, kind: "int" },
+    ]),
+  },
+  {
+    group: "boss",
+    page: "boss",
+    title: "BOSS bản đồ: loài và thời hạn",
+    note: "Mỗi bản đồ có tối đa một loài boss (một con cho mọi kênh). Chỉ chọn được loài không có trong bãi quái, không phải vệ binh, và bản đồ phải có cảnh giới; không đổi được loài của một bản đồ khi boss đang có mặt. Loài mới có hiệu lực từ lần boss xuất hiện sau.",
+    fields: [
+      { path: "claimTtlMs", label: "Giữ chỗ boss tối đa (nếu phòng không quay lại thì coi như mất)", kind: "int", unit: "ms (86400000 = 1 ngày)" },
+      { path: "tier", label: "Bậc trả thưởng của boss (EXP và đồ rơi theo bậc này)", kind: "int" },
+      ...MAP_NAMES.map(([id, name]): TuningField => ({ path: `species.${id}`, label: `Loài boss: ${name}`, kind: "species" })),
+    ],
+  },
+  {
+    group: "bossSpawn",
+    page: "boss",
+    title: "BOSS xuất hiện",
+    note: "Mỗi lần quái hồi sinh có xác suất gọi boss; hoặc chắc chắn sau một số lần giết trong phòng, theo cảnh giới của bản đồ.",
+    fields: [
+      { path: "chance", label: "Xác suất gọi boss mỗi lần quái hồi sinh", kind: "frac" },
+      ...REALMS.map((r, i): TuningField => ({ path: `pityKills.${i}`, label: `Số lần giết chắc chắn có boss: bản đồ ${r.nameVi}`, kind: "int" })),
+      { path: "pityDefault", label: "Số lần giết chắc chắn có boss: cảnh giới khác", kind: "int" },
+      { path: "flushEvery", label: "Ghi bộ đếm giết chung sau mỗi", kind: "int", unit: "lần giết (mỗi lần ghi là một dòng D1)" },
+    ],
+  },
+  {
+    group: "bossStats",
+    page: "boss",
+    title: "Sức mạnh boss",
+    note: "Boss mạnh như một nhân vật cao hơn cảnh giới bản đồ vài bậc, đủ đồ phẩm cao, dùng hết điểm, sinh lực nhân thêm. Công thức dùng cùng hệ số chỉ số tiềm năng nên đổi hệ số ở màn Chỉ số tiềm năng cũng đổi boss.",
+    fields: [
+      { path: "statTier", label: "Bậc (1-9) của nhân vật mẫu", kind: "int" },
+      { path: "gearGrade", label: "Phẩm trang bị (1-4)", kind: "int" },
+      { path: "hpMult", label: "Hệ số sinh lực", kind: "num" },
+      { path: "pointsPerLevel", label: "Điểm tiềm năng mỗi cấp", kind: "num" },
+      { path: "realmBonus", label: "Cao hơn cảnh giới bản đồ", kind: "int", unit: "cảnh giới (0-3)" },
+    ],
+  },
+  {
+    group: "bossReward",
+    page: "boss",
+    title: "Thưởng boss",
+    note: "Thưởng chia theo đóng góp: trọng số sát thương và đòn kết liễu cộng đủ 1; dưới ngưỡng không được chia. EXP và Linh Thạch tính theo bội số của một Đại Yêu; đồ rơi theo số vòng.",
+    fields: [
+      { path: "minShare", label: "Ngưỡng tối thiểu để được chia", kind: "frac" },
+      { path: "damageWeight", label: "Trọng số sát thương", kind: "frac" },
+      { path: "lastHitWeight", label: "Trọng số đòn kết liễu", kind: "frac" },
+      { path: "expMult", label: "EXP: bội số của Đại Yêu", kind: "num" },
+      { path: "linhMult", label: "Linh Thạch: bội số của Đại Yêu", kind: "num" },
+      { path: "itemRounds", label: "Số vòng đồ rơi", kind: "int" },
+      { path: "itemChanceMult", label: "Hệ số xác suất đồ rơi", kind: "num" },
+    ],
+  },
+  {
+    group: "bossSkills",
+    page: "boss",
+    title: "Kỹ năng của boss",
+    note: "Boss dùng lần lượt theo thứ tự: hồi máu (khi dưới mức), đòn mạnh, đòn chém, mỗi kỹ năng một hồi chiêu.",
+    fields: [
+      { path: "mend.fraction", label: "Hồi máu: phần sinh lực tối đa hồi", kind: "frac" },
+      { path: "mend.below", label: "Hồi máu: dùng khi sinh lực dưới", kind: "frac" },
+      { path: "mend.cdMs", label: "Hồi máu: hồi chiêu", kind: "int", unit: "ms" },
+      { path: "burst.power", label: "Đòn mạnh: sát thương (nhân với công)", kind: "num" },
+      { path: "burst.cdMs", label: "Đòn mạnh: hồi chiêu", kind: "int", unit: "ms" },
+      { path: "slash.power", label: "Đòn chém: sát thương (nhân với công)", kind: "num" },
+      { path: "slash.cdMs", label: "Đòn chém: hồi chiêu", kind: "int", unit: "ms" },
+    ],
+  },
+  {
+    group: "bossCone",
+    page: "boss",
+    title: "Kỹ năng nón của boss",
+    note: "Đòn quét hình nón về phía người đang đánh, dùng khi sinh lực dưới mức, hồi chiêu dài.",
+    fields: [
+      { path: "power", label: "Sát thương (nhân với công)", kind: "num" },
+      { path: "cdMs", label: "Hồi chiêu", kind: "int", unit: "ms" },
+      { path: "below", label: "Dùng khi sinh lực dưới", kind: "frac" },
+      { path: "range", label: "Tầm đánh", kind: "num", unit: "ô" },
+      { path: "halfAngleDeg", label: "Nửa độ mở của nón", kind: "num", unit: "độ" },
+    ],
+  },
+  {
+    group: "bossRegen",
+    page: "boss",
+    title: "Boss hồi máu khi về chỗ cũ",
+    fields: [{ path: "perSecond", label: "Phần sinh lực tối đa hồi mỗi giây", kind: "frac" }],
+  },
+  {
+    group: "guard",
+    page: "boss",
+    title: "Sức mạnh vệ binh",
+    note: "Vệ binh đứng ở các cổng, chỉ đánh người tên cam hoặc đỏ và ai đánh nó. Dùng cùng công thức chỉ số như boss. (Danh sách vệ binh theo bản đồ vẫn nằm trong code; hạng mục 3k không cần làm lại phần số này.)",
+    fields: [
+      { path: "gearGrade", label: "Phẩm trang bị (1-4)", kind: "int" },
+      { path: "hpMult", label: "Hệ số sinh lực", kind: "num" },
+      { path: "pointsPerLevel", label: "Điểm tiềm năng mỗi cấp", kind: "num" },
+      { path: "realmBonus", label: "Cao hơn cảnh giới bản đồ", kind: "int", unit: "cảnh giới (0-3)" },
+      { path: "tier", label: "Bậc (1-9) của nhân vật mẫu", kind: "int" },
+    ],
+  },
+  {
+    group: "guardSkills",
+    page: "boss",
+    title: "Kỹ năng của vệ binh",
+    fields: [
+      { path: "mend.fraction", label: "Hồi máu: phần sinh lực tối đa hồi", kind: "frac" },
+      { path: "mend.below", label: "Hồi máu: dùng khi sinh lực dưới", kind: "frac" },
+      { path: "mend.cdMs", label: "Hồi máu: hồi chiêu", kind: "int", unit: "ms" },
+      { path: "ward.attackPct", label: "Hộ thể: tăng công", kind: "num", unit: "%" },
+      { path: "ward.durationMs", label: "Hộ thể: thời gian", kind: "int", unit: "ms" },
+      { path: "ward.cdMs", label: "Hộ thể: hồi chiêu", kind: "int", unit: "ms" },
+      { path: "burst.power", label: "Đòn mạnh: sát thương (nhân với công)", kind: "num" },
+      { path: "burst.cdMs", label: "Đòn mạnh: hồi chiêu", kind: "int", unit: "ms" },
+      { path: "slash.power", label: "Đòn chém: sát thương (nhân với công)", kind: "num" },
+      { path: "slash.cdMs", label: "Đòn chém: hồi chiêu", kind: "int", unit: "ms" },
+    ],
+  },
+];
+
+export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [...BASE_SCREENS, ...MONSTER_SCREENS];
+
 export function adminTuningScreen(group: string): TuningScreenGroup | undefined {
   return ADMIN_TUNING_SCREENS.find((g) => g.group === group);
 }
@@ -252,7 +445,7 @@ export function setPath(value: unknown, path: string, to: unknown): boolean {
 
 /** Every number or string leaf path of a value ("a.b", "list.2"). */
 export function leafPaths(value: unknown, prefix = ""): string[] {
-  if (typeof value === "number" || typeof value === "string") return [prefix];
+  if (typeof value === "number" || typeof value === "string" || value === null) return [prefix];
   if (typeof value !== "object" || value === null) return [];
   return Object.entries(value).flatMap(([k, v]) => leafPaths(v, prefix ? `${prefix}.${k}` : k));
 }

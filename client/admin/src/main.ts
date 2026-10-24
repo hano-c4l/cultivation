@@ -4,6 +4,7 @@ import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { MENU } from "./menu";
 import { giftsPage } from "./gifts";
 import { itemEditPage, itemListPage } from "./items";
+import { bossPage, lootPage, ranksPage, speciesEditPage, speciesListPage } from "./monsters";
 import { constitutionEditPage, constitutionListPage, rootsPage } from "./talents";
 import { skillEditPage, skillListPage } from "./skills";
 import { questEditPage, questListPage } from "./quests";
@@ -75,6 +76,21 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/monsters") {
+    title = "Quái / BOSS · Loài quái";
+    content = speciesListPage();
+  } else if (path === "/admin/monsters/edit") {
+    title = "Quái / BOSS · Sửa loài";
+    content = speciesEditPage();
+  } else if (path === "/admin/monsters/ranks") {
+    title = "Quái / BOSS · Hạng quái và rơi đồ";
+    content = ranksPage();
+  } else if (path === "/admin/monsters/loot") {
+    title = "Quái / BOSS · Bảng rơi";
+    content = lootPage();
+  } else if (path === "/admin/monsters/boss") {
+    title = "Quái / BOSS · BOSS và vệ binh";
+    content = bossPage();
   } else if (path === "/admin/talents") {
     title = "Thiên phú · Linh căn";
     content = rootsPage();

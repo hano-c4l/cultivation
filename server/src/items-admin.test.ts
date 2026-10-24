@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DatabaseSync } from "node:sqlite";
-import { ITEMS, getItemDef, setItemOverlays } from "@game/shared";
+import { DEFAULT_TUNING, ITEMS, getItemDef, setItemOverlays } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
 import { deleteItem, listItems, saveItem } from "./items-admin";
+import { listLoot, saveLoot } from "./monsters-admin";
 import { getItemOverlays, resetItemsCache } from "./items-live";
 import { saveQuest } from "./quests-admin";
 import { resetQuestCache } from "./quests";
@@ -167,6 +168,18 @@ describe("deleting an item", () => {
     raw.exec(`INSERT INTO shop_stock (npc_id, rule_id, sort, def, enabled) VALUES ('merchant', 'r1', 99, '{"id":"r1","kind":"item","item":"su_kien_dan"}', 1)`);
     expect((await deleteItem(db, ADMIN, "su_kien_dan", token)) as { problems: string[] }).toMatchObject({ problems: expect.arrayContaining([expect.stringContaining("merchant")]) });
     expect(await find("su_kien_dan")).toBeDefined();
+  });
+
+  it("is refused while a loot table drops it, with where", async () => {
+    const token = await make();
+    await getItemOverlays(db);
+    const loot = JSON.parse(JSON.stringify(DEFAULT_TUNING.loot)) as typeof DEFAULT_TUNING.loot;
+    loot.base.rare1.push({ item: "su_kien_dan", chance: 0.1, min: 1, max: 1 });
+    const t = (await listLoot(db)).token;
+    expect(await saveLoot(db, ADMIN, loot, t, Date.now() + 5)).toMatchObject({ ok: true });
+    const refused = await deleteItem(db, ADMIN, "su_kien_dan", token);
+    expect(refused).toMatchObject({ ok: false, error: "in_use" });
+    expect(refused.ok === false && refused.problems?.[0]).toContain("Bảng rơi");
   });
 
   it("a quest cannot be given a deleted item as a reward", async () => {
