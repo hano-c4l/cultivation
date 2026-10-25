@@ -1,3 +1,5 @@
+import { MAP_NAMES } from "@game/shared";
+
 /** All player-facing strings live here. Code identifiers stay in English. */
 export const vi = {
   connecting: "Đang kết nối…",
@@ -618,3 +620,8 @@ export const vi = {
     unknown: "Có lỗi xảy ra, vui lòng thử lại.",
   } as Record<string, string>,
 } as const;
+
+/** What players read for a map: the name an admin gave it (sent in `welcome`), else the name written above, else the id. */
+export function mapLabel(id: string): string {
+  return MAP_NAMES[id] ?? vi.maps[id] ?? id;
+}

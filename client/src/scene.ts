@@ -55,6 +55,7 @@ import {
   setMerchant,
   setMapNpcs,
   setMapRecipe,
+  installMapNames,
   overrideRecipe,
   npcsOf,
 } from "@game/shared";
@@ -81,7 +82,7 @@ import { initSkills, type SkillsUi } from "./skills-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
-import { vi } from "./locales/vi";
+import { mapLabel, vi } from "./locales/vi";
 import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
 
@@ -449,7 +450,7 @@ export class GameScene extends Phaser.Scene {
       glow.fillPoints(pts, true);
       glow.strokePoints(pts, true);
       const label = this.add
-        .text(p.x, p.y - 6, vi.maps[portal.toMap] ?? portal.toMap, {
+        .text(p.x, p.y - 6, mapLabel(portal.toMap), {
           fontFamily: FONT,
           fontSize: "12px",
           color: "#e8e0ff",
@@ -670,6 +671,7 @@ export class GameScene extends Phaser.Scene {
     switch (msg.t) {
       case "welcome":
         this.selfId = msg.self;
+        installMapNames(msg.mapNames); // the names admins gave to maps (before any label below)
         setGearSetNames(msg.gearSets); // the live names of the gear sets
         setTuning(msg.tuning as unknown as Record<string, unknown>); // the live balance numbers (drops, kills, skills, theme...)
         applyTuningTheme();
@@ -829,7 +831,7 @@ export class GameScene extends Phaser.Scene {
         this.transferring = true;
         this.hotbar.setAimNote(null); // a talisman channel that completed ends here
         this.hud.textContent = vi.transferring;
-        this.chat.system(vi.chat.transferTo(vi.maps[msg.map] ?? msg.map));
+        this.chat.system(vi.chat.transferTo(mapLabel(msg.map)));
         break;
       case "inv":
         if (msg.full) this.inventory.setBag({ tabs: msg.tabs, items: msg.items, tabPrice: msg.tabPrice });
@@ -1147,7 +1149,7 @@ export class GameScene extends Phaser.Scene {
 
   private refreshHud(): void {
     const realm = this.map.realm === null ? "" : ` (${REALMS[this.map.realm]?.nameVi ?? ""})`;
-    const where = `${vi.maps[this.map.id] ?? this.map.id}${realm}`;
+    const where = `${mapLabel(this.map.id)}${realm}`;
     this.hud.textContent = `${where} · ${vi.connected(this.online ?? this.actors.size, this.ping, this.colo)} · ${vi.hint}`;
   }
 

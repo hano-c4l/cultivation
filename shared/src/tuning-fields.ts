@@ -1,4 +1,5 @@
 import { REALMS, ROOT_COUNTS, ROOT_GRADES } from "./progression-data";
+import { MAP_IDS, MAP_NAMES as LIVE_MAP_NAMES, MAP_REALM } from "./map";
 import { DEFAULT_TUNING, type Tuning, type TuningGroup } from "./tuning";
 
 /**
@@ -471,6 +472,16 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
 ];
 
 export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [...BASE_SCREENS, ...MONSTER_SCREENS, ...NPC_SCREENS];
+
+/**
+ * The fields of a screen as they stand now: the boss page also lists a species field for every map an admin added (3l), which the static list cannot know.
+ */
+export function adminScreenFields(screen: TuningScreenGroup): TuningField[] {
+  if (screen.group !== "boss") return screen.fields;
+  const known = new Set(screen.fields.map((f) => f.path));
+  const extra = MAP_IDS.filter((id) => !known.has(`species.${id}`) && MAP_REALM[id] !== null) /* a town has no boss */.map((id): TuningField => ({ path: `species.${id}`, label: `Loài boss: ${LIVE_MAP_NAMES[id] ?? id}`, kind: "species" }));
+  return [...screen.fields, ...extra];
+}
 
 export function adminTuningScreen(group: string): TuningScreenGroup | undefined {
   return ADMIN_TUNING_SCREENS.find((g) => g.group === group);

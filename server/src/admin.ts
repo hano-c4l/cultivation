@@ -19,7 +19,8 @@ import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
 import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
 import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
 import { getEnhanceView, getMasterView, getSetsView, saveEnhance, saveMaster, saveSets } from "./gear-admin";
-import { addItem, addSkill, adjustMoney, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview, type StatsInput } from "./characters-admin";
+import { addItem, addSkill, adjustMoney, addEquipment, deleteCharacter, editConstitution, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview, type ProfileInput, type StatsInput } from "./characters-admin";
+import { getConstitutionCatalog } from "./constitution-catalog";
 import { banAccount, getAccountDetail, listAccounts, parseAccountQuery, setTempPassword, unbanAccount } from "./accounts-admin";
 import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
@@ -574,7 +575,7 @@ export async function adminMapSave(request: Request, env: Env): Promise<Response
   if (session instanceof Response) return session;
   const body = await readJson(request, 128 * 1024);
   if (!body || typeof body.updatedAt !== "number") return errorResponse("invalid_body", 400);
-  const result = body.reset === true && typeof body.id === "string" ? await resetMap(env.DB, session.email, body.id, body.updatedAt) : await saveMap(env.DB, session.email, body.recipe, body.updatedAt);
+  const result = body.reset === true && typeof body.id === "string" ? await resetMap(env.DB, session.email, body.id, body.updatedAt) : await saveMap(env.DB, session.email, body.recipe, body.updatedAt, Date.now(), typeof body.name === "string" || body.name === null ? body.name : undefined);
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
   console.log("map saved", session.accountId);
   return json({ ok: true, updatedAt: result.updatedAt });
@@ -616,7 +617,7 @@ export async function adminAccountAction(request: Request, env: Env): Promise<Re
   return json({ ok: true, ...(result.password ? { password: result.password } : {}), kicked: result.kicked === true });
 }
 
-const CHARACTER_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, funds: 400, full: 409, busy: 409, not_reviewing: 409, reviewed_by_other: 409, unknown_item: 400, not_found: 404 };
+const CHARACTER_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, funds: 400, full: 409, busy: 409, not_reviewing: 409, reviewed_by_other: 409, unknown_item: 400, not_found: 404, name_taken: 409, equipped: 409, gender: 409 };
 
 /** A character for the admin screen, with whether it is online (a connection holds its lock). */
 export async function adminCharacter(request: Request, env: Env, url: URL): Promise<Response> {
@@ -631,7 +632,8 @@ export async function adminCharacter(request: Request, env: Env, url: URL): Prom
   } catch (err) {
     console.error("lock state unavailable", err);
   }
-  return json({ character: view, online });
+  const catalog = await getConstitutionCatalog(env.DB);
+  return json({ character: view, online, constitutions: catalog.constitutions.map((c) => ({ id: c.id, nameVi: c.nameVi, tiers: Math.max(c.tiers.length, 1) })) });
 }
 
 /** POST `{id, action: "start" | "end" | "stats" | "money" | "addItem" | "removeItem" | "addSkill" | "removeSkill", ...}`. Every change needs the admin's own review to be running. */
@@ -653,11 +655,23 @@ export async function adminCharacterAction(request: Request, env: Env): Promise<
     case "stats":
       result = await editStats(env.DB, admin, id, body.input as StatsInput, REALMS.length);
       break;
+    case "profile":
+      result = await editProfile(env.DB, admin, id, body.input as ProfileInput);
+      break;
+    case "constitution":
+      result = await editConstitution(env.DB, admin, id, body.constitution, body.tier);
+      break;
+    case "delete":
+      result = await deleteCharacter(env.DB, admin, id, body.confirm);
+      break;
     case "money":
       result = await adjustMoney(env.DB, admin, id, body.currency, body.delta);
       break;
     case "addItem":
       result = await addItem(env.DB, admin, id, body.item, body.qty);
+      break;
+    case "addEquipment":
+      result = await addEquipment(env.DB, admin, id, body.type);
       break;
     case "removeItem":
       result = await removeItem(env.DB, admin, id, body.instance);

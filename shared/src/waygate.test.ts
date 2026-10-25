@@ -19,7 +19,7 @@ describe("the teleport array", () => {
     setTuning({ waygate: { base: 100, perUnit: 10 } });
     expect(waygatePrice("town", "town2")).toBe(1100);
     // Distances come from positions: the farther the position the dearer the trip (a third town later is just one more entry).
-    expect(Math.hypot(...TOWN_WORLD_POS.town2)).toBeGreaterThan(Math.hypot(...TOWN_WORLD_POS.town));
+    expect(Math.hypot(...TOWN_WORLD_POS.town2!)).toBeGreaterThan(Math.hypot(...TOWN_WORLD_POS.town!));
   });
 
   it("every main town has exactly one array in its middle, and no other map has one", () => {
@@ -32,9 +32,10 @@ describe("the teleport array", () => {
     expect(isWaygateTown("forest")).toBe(false);
   });
 
-  it("the client message is only accepted for a main town", () => {
+  it("the client message needs a map id; whether it is a main town is for the room to say once it has the maps an admin added", () => {
     expect(parseClientMessage(JSON.stringify({ t: "waygate_go", npc: "waygate", to: "town2" }))).toEqual({ t: "waygate_go", npc: "waygate", to: "town2" });
-    expect(parseClientMessage(JSON.stringify({ t: "waygate_go", npc: "waygate", to: "forest" }))).toBeNull();
+    expect(isWaygateTown("forest")).toBe(false); // the room refuses it
+    expect(parseClientMessage(JSON.stringify({ t: "waygate_go", npc: "waygate", to: "Not A Map!" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: "waygate_go", npc: "waygate" }))).toBeNull();
   });
 

@@ -1,9 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { CLUSTERS, MAP_IDS, MAP_SIZE, getMap, isMapId, overrideRecipe, setMapRecipe } from "@game/shared";
+import { CLUSTERS, MAP_IDS, MAP_NAMES, MAP_SIZE, getMap, isMapId, isWaygateTown, overrideRecipe, waygateDestinations, waygatePrice, setMapRecipe } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
 import { getMapRecipes, resetMapsCache } from "./maps";
 import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
+import { listTuningGroups, saveTuningGroup } from "./tuning-admin";
 import { makeDb } from "./test-db";
 
 let db: D1Database;
@@ -83,7 +84,7 @@ describe("the maps screen", () => {
     expect(code).toBe(true);
   });
 
-  const input = (over: Record<string, unknown> = {}) => ({ id: "rung_moi", template: "forest", realm: 0, gate: { x: 100, y: 100, toX: 100, toY: 100 }, back: { map: "town", x: 60, y: 60, toX: 90, toY: 90 }, ...over });
+  const input = (over: Record<string, unknown> = {}) => ({ id: "rung_moi", name: "Rừng Mới", template: "forest", realm: 0, gate: { x: 100, y: 100, toX: 100, toY: 100 }, back: { map: "town", x: 60, y: 60, toX: 90, toY: 90 }, ...over });
   const gateTile = async (map: string) => {
     const v = (await getMapAdmin(db, map))!;
     const size = v.recipe.size;
@@ -111,6 +112,66 @@ describe("the maps screen", () => {
     expect(CLUSTERS.rung_moi!.length).toBeGreaterThan(8);
     expect((await listMaps(db)).find((m) => m.id === "rung_moi")).toMatchObject({ edited: true });
     expect(await createMap(db, ADMIN, good)).toMatchObject({ ok: false, error: "invalid" }); // already there
+    expect(MAP_NAMES.rung_moi).toBe("Rừng Mới"); // the name reaches the game
+    expect(await createMap(db, ADMIN, input({ id: "khong_ten", name: "" }))).toMatchObject({ ok: false, error: "invalid" }); // a new map needs a name
+  });
+
+  it("names a map without pinning the layout of a map of the code, and clears the name", async () => {
+    const before = (await getMapAdmin(db, "cave"))!;
+    expect(before.edited).toBe(false);
+    const named = await saveMap(db, ADMIN, before.recipe, before.updatedAt, Date.now() + 100, "Hang Tối");
+    expect(named.ok).toBe(true);
+    resetMapsCache();
+    await getMapRecipes(db);
+    expect(MAP_NAMES.cave).toBe("Hang Tối");
+    const after = (await getMapAdmin(db, "cave"))!;
+    expect(after.name).toBe("Hang Tối");
+    expect(after.edited).toBe(false); // still the code's grid
+    expect(overrideRecipe("cave")).toBeUndefined();
+    expect(await saveMap(db, ADMIN, after.recipe, after.updatedAt, Date.now() + 200, "Hang Tối")).toMatchObject({ ok: false, error: "unchanged" });
+    expect(await saveMap(db, ADMIN, after.recipe, after.updatedAt, Date.now() + 200, "  bad ")).toMatchObject({ ok: false, error: "invalid" });
+    expect(await saveMap(db, ADMIN, after.recipe, after.updatedAt, Date.now() + 200, null)).toMatchObject({ ok: true });
+    resetMapsCache();
+    await getMapRecipes(db);
+    expect(MAP_NAMES.cave).toBeUndefined();
+  });
+
+  it("a safe town with a world position becomes a destination of the Truyền Tống Trận, and stops being one when deleted", async () => {
+    const t = await gateTile("town2");
+    const made = await createMap(db, ADMIN, input({ id: "thanh_tt", realm: null, world: [250, 0], gate: { x: t.x, y: t.y, toX: t.x, toY: t.y }, back: { map: "town2", x: t.x + 3, y: t.y, toX: t.x, toY: t.y } }), Date.now() + 10);
+    expect(made.ok).toBe(true);
+    resetMapsCache();
+    await getMapRecipes(db);
+    expect(isWaygateTown("thanh_tt")).toBe(true);
+    expect(waygateDestinations("town").map((d) => d.map)).toEqual(["town2", "thanh_tt"]); // nearest first
+    expect(waygatePrice("town2", "thanh_tt")).toBeGreaterThan(waygatePrice("town", "town2"));
+    // a position on a map that is not a safe town is refused; so is changing a code town's
+    expect(await createMap(db, ADMIN, input({ id: "rung_x", world: [1, 1] }))).toMatchObject({ ok: false, error: "invalid" });
+    const town = (await getMapAdmin(db, "town"))!;
+    expect(await saveMap(db, ADMIN, { ...town.recipe, world: [5, 5] }, town.updatedAt, Date.now() + 100)).toMatchObject({ ok: false, error: "locked" });
+    // the position can be changed or removed on the town an admin added
+    const v = (await getMapAdmin(db, "thanh_tt"))!;
+    expect(await saveMap(db, ADMIN, { ...v.recipe, world: undefined }, v.updatedAt, Date.now() + 200)).toMatchObject({ ok: true });
+    resetMapsCache();
+    await getMapRecipes(db);
+    expect(isWaygateTown("thanh_tt")).toBe(false);
+  });
+
+  it("the boss page offers a map an admin added, and saves a boss species for it", async () => {
+    const fm = await gateTile("forest");
+    const tm = await gateTile("town");
+    expect((await createMap(db, ADMIN, input({ gate: { x: fm.x, y: fm.y, toX: tm.x, toY: tm.y }, back: { map: "town", x: tm.x + 3, y: tm.y, toX: fm.x, toY: fm.y } }), Date.now() + 10)).ok).toBe(true);
+    resetMapsCache();
+    await getMapRecipes(db);
+    const groups = await listTuningGroups(db, "boss");
+    const boss = groups.find((g) => g.group === "boss")!;
+    expect(boss.fields.some((f) => f.path === "species.rung_moi" && f.label.includes("Rừng Mới"))).toBe(true);
+    const posted = JSON.parse(JSON.stringify(boss.value)) as { species: Record<string, string | null> };
+    posted.species.rung_moi = "huyet_lang_vuong";
+    expect(await saveTuningGroup(db, "boss", posted, boss.updatedAt, ADMIN)).toMatchObject({ ok: true });
+    posted.species.rung_moi = "no_such_species";
+    const again = (await listTuningGroups(db, "boss")).find((g) => g.group === "boss")!;
+    expect(await saveTuningGroup(db, "boss", posted, again.updatedAt, ADMIN)).toMatchObject({ ok: false, error: "invalid" });
   });
 
   it("makes a safe town when the realm is none, with no monsters", async () => {

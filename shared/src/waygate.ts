@@ -1,4 +1,4 @@
-import type { MapId } from "./map";
+import { onMapRecipe, type MapId } from "./map";
 import { tuning } from "./tuning";
 
 /**
@@ -6,11 +6,25 @@ import { tuning } from "./tuning";
  * grows with the distance between the two towns on the world map, so more towns later need only a position here. The numbers (a base and a
  * price per unit of distance) are tuning (`waygate`). Placeholder values.
  */
-export const WAYGATE_TOWNS = ["town", "town2"] as const satisfies readonly MapId[];
-export type WaygateTown = (typeof WAYGATE_TOWNS)[number];
+const CODE_TOWNS: readonly MapId[] = ["town", "town2"];
+export type WaygateTown = MapId;
+/** The main towns in force: the code's two, plus every safe map whose recipe gives a `world` position (3l, a town an admin added). Changed in place by `onMapRecipe`. */
+export const WAYGATE_TOWNS: MapId[] = [...CODE_TOWNS];
 
 /** Where each main town lies on the world map (arbitrary units; the cave and the forest lie between them, about 100 apart). */
-export const TOWN_WORLD_POS: Readonly<Record<WaygateTown, readonly [number, number]>> = { town: [0, 0], town2: [100, 0] };
+export const TOWN_WORLD_POS: Record<string, readonly [number, number]> = { town: [0, 0], town2: [100, 0] };
+
+onMapRecipe((id, recipe) => {
+  if ((CODE_TOWNS as readonly string[]).includes(id)) return;
+  const i = WAYGATE_TOWNS.indexOf(id);
+  if (recipe && recipe.safe && recipe.world) {
+    TOWN_WORLD_POS[id] = recipe.world;
+    if (i < 0) WAYGATE_TOWNS.push(id);
+  } else if (i >= 0) {
+    WAYGATE_TOWNS.splice(i, 1);
+    delete TOWN_WORLD_POS[id];
+  }
+});
 
 export function isWaygateTown(v: unknown): v is WaygateTown {
   return typeof v === "string" && (WAYGATE_TOWNS as readonly string[]).includes(v);
@@ -18,8 +32,8 @@ export function isWaygateTown(v: unknown): v is WaygateTown {
 
 /** The distance between two main towns on the world map. */
 export function townDistance(a: WaygateTown, b: WaygateTown): number {
-  const [ax, ay] = TOWN_WORLD_POS[a];
-  const [bx, by] = TOWN_WORLD_POS[b];
+  const [ax, ay] = TOWN_WORLD_POS[a] ?? [0, 0];
+  const [bx, by] = TOWN_WORLD_POS[b] ?? [0, 0];
   return Math.hypot(ax - bx, ay - by);
 }
 
