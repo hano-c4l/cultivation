@@ -87,7 +87,7 @@ await sleep(600);
 check("a second claim pays nothing", sql(`SELECT balance FROM currency_balances WHERE character_id='${playerChar.id}' AND currency='linh_thach'`)[0].balance === 1500);
 
 // The whole server.
-const total = sql("SELECT COUNT(*) AS n FROM characters")[0].n;
+const total = sql("SELECT COUNT(*) AS n FROM characters WHERE deleted_at IS NULL")[0].n;
 const batch2 = `smoke${run}b`.slice(0, 24);
 const all = await post("/api/admin/gifts/send", { batchId: batch2, subject: "Sự kiện", body: "", audience: { kind: "all" }, gift: { cong_hien: 10, items: [] }, expiresInDays: null }, admin.cookie);
 check("a gift to the whole server reaches every character", all.status === 200 && all.data.recipients === total && sql(`SELECT COUNT(*) AS n FROM mailbox WHERE id LIKE '${batch2}:%'`)[0].n === total, JSON.stringify(all.data));

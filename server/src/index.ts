@@ -6,7 +6,7 @@ import { handleAdminPage } from "./admin-pages";
 import { getSession, handleApi } from "./auth";
 import { ChatHub } from "./chat-hub";
 import { CharacterLock } from "./character-lock";
-import { getCharacterByAccount } from "./characters";
+import { resolveActiveCharacter } from "./characters";
 import type { Env } from "./env";
 import { errorResponse, hasForeignOrigin, json } from "./http";
 import { MapRoom } from "./map-room";
@@ -24,8 +24,9 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
 
   const session = await getSession(request, env);
   if (!session) return errorResponse("unauthenticated", 401);
-  const character = await getCharacterByAccount(env.DB, session.accountId);
-  if (!character) return errorResponse("no_character", 403);
+  const active = await resolveActiveCharacter(env.DB, session.accountId, session.characterId);
+  if (!active.ok) return errorResponse(active.reason === "reviewing" ? "reviewing" : "no_character", 403);
+  const character = active.character;
 
   // The map is server-authoritative (the character's saved map); clients only choose the channel.
   await getMapRecipes(env.DB); // a map an admin added is known only once its recipe is read (installing it builds nothing)
@@ -52,8 +53,9 @@ async function handleChatSocket(request: Request, env: Env): Promise<Response> {
   if (hasForeignOrigin(request)) return errorResponse("forbidden_origin", 403);
   const session = await getSession(request, env);
   if (!session) return errorResponse("unauthenticated", 401);
-  const character = await getCharacterByAccount(env.DB, session.accountId);
-  if (!character) return errorResponse("no_character", 403);
+  const active = await resolveActiveCharacter(env.DB, session.accountId, session.characterId);
+  if (!active.ok) return errorResponse(active.reason === "reviewing" ? "reviewing" : "no_character", 403);
+  const character = active.character;
   // Identity headers are set here only; any client-supplied values are overwritten.
   const headers = new Headers(request.headers);
   headers.set("x-char-id", character.id);

@@ -63,10 +63,11 @@ interface Raw {
 
 export async function listAccounts(db: D1Database, query: AccountQuery, now = Date.now()): Promise<{ rows: AccountRow[]; total: number }> {
   // The tombstone accounts that deleted characters were moved to (see characters-admin deleteCharacter) are not accounts.
-  const where = query.q ? "WHERE a.id NOT LIKE 'deleted:%' AND (a.email LIKE ?1 ESCAPE '!' OR c.name LIKE ?1 ESCAPE '!')" : "WHERE a.id NOT LIKE 'deleted:%'";
+  // One row per account, showing its oldest live character; a search by name finds an account by any of its characters.
+  const where = query.q ? "WHERE a.id NOT LIKE 'deleted:%' AND (a.email LIKE ?1 ESCAPE '!' OR EXISTS (SELECT 1 FROM characters x WHERE x.account_id = a.id AND x.deleted_at IS NULL AND x.name LIKE ?1 ESCAPE '!'))" : "WHERE a.id NOT LIKE 'deleted:%'";
   const args = query.q ? [like(query.q)] : [];
   const order = `${SORTS[query.sort] ?? SORTS.created} ${query.dir === "asc" ? "ASC" : "DESC"}, a.id`;
-  const from = "FROM accounts a LEFT JOIN characters c ON c.account_id = a.id";
+  const from = "FROM accounts a LEFT JOIN characters c ON c.id = (SELECT y.id FROM characters y WHERE y.account_id = a.id AND y.deleted_at IS NULL ORDER BY y.created_at, y.id LIMIT 1)";
   const [page, count] = await Promise.all([
     db
       .prepare(`SELECT a.id, a.email, a.role, a.created_at, a.ban_until, a.ban_forever, c.name, c.realm, c.stage, COALESCE(a.last_login_at, (SELECT MAX(s.created_at) FROM sessions s WHERE s.account_id = a.id)) AS lastSession ${from} ${where} ORDER BY ${order} LIMIT ${query.size} OFFSET ${(query.page - 1) * query.size}`)
@@ -83,6 +84,8 @@ export async function listAccounts(db: D1Database, query: AccountQuery, now = Da
 export interface AccountDetail {
   account: { id: string; email: string; role: string; createdAt: number; banned: boolean; banForever: boolean; banUntil: number | null; banReason: string | null; bannedBy: string | null; sessions: number; lastSession: number | null };
   character: { id: string; name: string; gender: string; realm: number; stage: number; map: string; wallet: Record<string, number> } | null;
+  /** Every live character of the account, oldest first (the first is `character`). */
+  characters: Array<{ id: string; name: string; gender: string; realm: number; stage: number; map: string }>;
 }
 
 export async function getAccountDetail(db: D1Database, id: string, now = Date.now()): Promise<AccountDetail | null> {
@@ -91,19 +94,30 @@ export async function getAccountDetail(db: D1Database, id: string, now = Date.no
     .bind(now, id)
     .first<{ id: string; email: string; role: string; created_at: number; ban_until: number | null; ban_forever: number; ban_reason: string | null; banned_by: string | null; sessions: number; lastSession: number | null }>();
   if (!a) return null;
-  const c = await db.prepare("SELECT id, name, gender, realm, stage, map_id FROM characters WHERE account_id = ?").bind(id).first<{ id: string; name: string; gender: string; realm: number; stage: number; map_id: string }>();
+  const { results: chars } = await db.prepare("SELECT id, name, gender, realm, stage, map_id FROM characters WHERE account_id = ? AND deleted_at IS NULL ORDER BY created_at, id").bind(id).all<{ id: string; name: string; gender: string; realm: number; stage: number; map_id: string }>();
+  const c = chars[0];
   const wallet: Record<string, number> = {};
   if (c) for (const r of (await db.prepare("SELECT currency, balance FROM currency_balances WHERE character_id = ?").bind(c.id).all<{ currency: string; balance: number }>()).results) wallet[r.currency] = r.balance;
   return {
     account: { id: a.id, email: a.email, role: a.role, createdAt: a.created_at, banned: isBanned(a.ban_forever, a.ban_until, now), banForever: a.ban_forever === 1, banUntil: a.ban_until, banReason: a.ban_reason, bannedBy: a.banned_by, sessions: a.sessions, lastSession: a.lastSession },
     character: c ? { id: c.id, name: c.name, gender: c.gender, realm: c.realm, stage: c.stage, map: c.map_id, wallet } : null,
+    characters: chars.map((x) => ({ id: x.id, name: x.name, gender: x.gender, realm: x.realm, stage: x.stage, map: x.map_id })),
   };
 }
 
 export type AccountResult = { ok: true; password?: string; kicked?: boolean } | { ok: false; error: "invalid" | "not_found" | "forbidden" | "unchanged" };
 
-async function target(db: D1Database, id: string): Promise<{ id: string; email: string; role: string; character: string | null } | null> {
-  return db.prepare("SELECT a.id, a.email, a.role, c.id AS character FROM accounts a LEFT JOIN characters c ON c.account_id = a.id WHERE a.id = ?").bind(id).first();
+async function target(db: D1Database, id: string): Promise<{ id: string; email: string; role: string; characters: string[] } | null> {
+  const a = await db.prepare("SELECT id, email, role FROM accounts WHERE id = ?").bind(id).first<{ id: string; email: string; role: string }>();
+  if (!a) return null;
+  const { results } = await db.prepare("SELECT id FROM characters WHERE account_id = ? AND deleted_at IS NULL").bind(id).all<{ id: string }>();
+  return { ...a, characters: results.map((r) => r.id) };
+}
+
+/** Kicks every character of the account; true when there were some and all of them were reached. */
+async function kickAll(env: Env, ids: string[]): Promise<boolean> {
+  const done = await Promise.all(ids.map((c) => kick(env, c)));
+  return done.length > 0 && done.every(Boolean);
 }
 
 /** Kicks a character out of the game and the chat (used by the character review too: the accounts' sessions were already ended). */
@@ -144,7 +158,7 @@ export async function banAccount(env: Env, adminEmail: string, id: string, input
     env.DB.prepare("DELETE FROM sessions WHERE account_id = ?").bind(id),
     logStatement(env.DB, { adminEmail, screen: ACCOUNT_LOG_SCREEN, content: `Ban tài khoản ${t.email}: ${input.forever ? "vĩnh viễn" : `${input.days} ngày`}, lý do: ${reason}` }, now),
   ]);
-  return { ok: true, kicked: await kick(env, t.character) };
+  return { ok: true, kicked: await kickAll(env, t.characters) };
 }
 
 export async function unbanAccount(env: Env, adminEmail: string, id: string, now = Date.now()): Promise<AccountResult> {
@@ -186,5 +200,5 @@ export async function setTempPassword(env: Env, adminEmail: string, id: string, 
     env.DB.prepare("DELETE FROM sessions WHERE account_id = ?").bind(id),
     logStatement(env.DB, { adminEmail, screen: ACCOUNT_LOG_SCREEN, content: `Đặt mật khẩu tạm cho tài khoản ${t.email}` }, now),
   ]);
-  return { ok: true, password, kicked: await kick(env, t.character) };
+  return { ok: true, password, kicked: await kickAll(env, t.characters) };
 }

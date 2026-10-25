@@ -65,6 +65,8 @@ export class Net {
     // A refused upgrade (401) looks like any close; check the session so we show login instead of looping.
     const me = await fetch("/api/me", { credentials: "same-origin" }).catch(() => null);
     if (me && me.status === 401) return this.handlers.onAuthLost();
+    // Another tab went back to the character list (or the character was deleted): this login plays nobody now, so reconnecting would only be refused.
+    if (me && me.ok && !((await me.json().catch(() => null)) as { character?: unknown } | null)?.character) return this.handlers.onAuthLost();
     setTimeout(() => this.connect(), this.retryMs);
     this.retryMs = Math.min(this.retryMs * 2, 5000);
   }

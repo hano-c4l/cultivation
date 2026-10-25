@@ -3,9 +3,22 @@ import type { CharacterSheet, Gender } from "@game/shared";
 /** The server sends the shared character sheet shape, so client and server cannot drift. */
 export type PublicCharacter = CharacterSheet;
 
+export interface CharacterEntry {
+  id: string;
+  name: string;
+  gender: string;
+  realm: number;
+  stage: number;
+  /** An admin is editing it: it cannot be entered or deleted for now. */
+  reviewing: boolean;
+}
+
 export interface Me {
   account: { email: string; role: string };
+  /** The character this login plays; null until it picks one from `characters`. */
   character: PublicCharacter | null;
+  characters: CharacterEntry[];
+  maxCharacters: number;
 }
 
 export interface ApiResult<T> {
@@ -41,5 +54,8 @@ export const api = {
   login: (email: string, password: string) => call<{ ok: true }>("POST", "/api/login", { email, password }),
   leaderboard: (board: string) => call<{ rows: Array<{ name: string; realm: number; stage: number; value: number }> }>("GET", `/api/leaderboard?board=${board}`),
   logout: () => call<{ ok: true }>("POST", "/api/logout"),
+  selectCharacter: (id: string) => call<{ character: PublicCharacter }>("POST", "/api/character/select", { id }),
+  deselectCharacter: () => call<{ ok: true }>("POST", "/api/character/deselect"),
+  deleteCharacter: (id: string, name: string) => call<{ ok: true }>("POST", "/api/character/delete", { id, name }),
   createCharacter: (name: string, gender: Gender) => call<{ character: PublicCharacter }>("POST", "/api/character", { name, gender }),
 };

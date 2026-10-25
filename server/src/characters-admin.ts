@@ -336,7 +336,7 @@ export async function editProfile(db: D1Database, admin: string, id: string, inp
 
 /**
  * Deletes a character as far as the game and the player can tell, but keeps its row: the ledger tables forbid deleting rows, and the money history has to stay
- * for any later investigation. The row moves to a tombstone account (so the real account is free to make a new character), its name is freed, and
+ * for any later investigation. Its name is freed (the row stays on its account, which may now make another character), and
  * `deleted_at` hides it from the rankings, gifts and the maps' counts. Needs the admin's own review to be running (so the character is not in the game).
  * Everything it owns (bag, mail, skills, quests) stays with the row and cannot be reached.
  */
@@ -345,12 +345,11 @@ export async function deleteCharacter(db: D1Database, admin: string, id: string,
   if (!before) return { ok: false, error: "not_found" };
   if (confirmName !== before.name) return { ok: false, error: "invalid" }; // the admin types the name again
   if (!(await reviewing(db, id, admin, now))) return { ok: false, error: "not_reviewing" };
-  const tomb = `deleted:${id}`;
   try {
     await db.batch([
       reviewGuard(db, id, admin, now),
-      db.prepare("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, role, created_at) VALUES (?, ?, 'x', 'x', 1, 'player', ?)").bind(tomb, `deleted+${id}@invalid`, now),
-      db.prepare("UPDATE characters SET account_id = ?, name = ?, deleted_at = ?, review_until = NULL, review_by = NULL, updated_at = ? WHERE id = ?").bind(tomb, `~${id}`, now, now, id),
+      db.prepare("UPDATE characters SET name = ?, deleted_at = ?, review_until = NULL, review_by = NULL, updated_at = ? WHERE id = ?").bind(`~${id}`, now, now, id),
+      db.prepare("UPDATE sessions SET character_id = NULL WHERE character_id = ?").bind(id),
       logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Xóa nhân vật «${before.name}» (${id}) của ${before.email}` }, now),
     ]);
   } catch (err) {

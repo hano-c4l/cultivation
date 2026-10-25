@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { api } from "./api";
-import { hideAuth, showAuth, showCharacterCreate } from "./auth-ui";
+import { hideAuth, showAuth, showCharacterCreate, showCharacterList } from "./auth-ui";
 import { vi } from "./locales/vi";
 import { GameScene } from "./scene";
 import { applyTheme } from "./theme";
@@ -35,9 +35,27 @@ async function boot(): Promise<void> {
     await showAuth();
     me = await api.me();
   }
-  if (me.ok && !me.data!.character) {
+  // This login plays one character. Without a choice: a new account goes to the creation card, an account with characters to the list (pick, make another
+  // while there is room, or delete one).
+  while (me.ok && !me.data!.character) {
     hud.hidden = true;
-    await showCharacterCreate();
+    const { characters, maxCharacters } = me.data!;
+    if (characters.length === 0) {
+      await showCharacterCreate(false); // creating selects the new character for this login
+    } else {
+      const choice = await showCharacterList(characters, maxCharacters);
+      if (choice.kind === "logout") {
+        await api.logout();
+        return location.reload();
+      }
+      if (choice.kind === "create") {
+        if ((await showCharacterCreate(true)) === "back") continue;
+      } else {
+        const picked = await api.selectCharacter(choice.id);
+        if (!picked.ok) continue; // refused (under review...): the list is read again
+      }
+    }
+    me = await api.me();
   }
   hideAuth();
   hud.hidden = false;
@@ -46,6 +64,13 @@ async function boot(): Promise<void> {
   const logout = document.getElementById("logout") as HTMLButtonElement;
   logout.textContent = vi.logout;
   logout.hidden = false;
+  const switchChar = document.getElementById("switch-char") as HTMLButtonElement;
+  switchChar.textContent = vi.switchCharacter;
+  switchChar.hidden = false;
+  switchChar.onclick = async () => {
+    await api.deselectCharacter();
+    location.reload(); // tears the game and both sockets down; the next boot shows the list
+  };
   logout.onclick = async () => {
     await api.logout();
     location.reload();
