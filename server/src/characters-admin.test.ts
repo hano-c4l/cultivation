@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { REALMS, SKILLS, setItemOverlays } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
-import { REVIEW_MS, addItem, addEquipment, addSkill, adjustMoney, deleteCharacter, editConstitution, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
+import { REVIEW_MS, addItem, addEquipment, addSkill, adjustMoney, deleteCharacter, editConstitution, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
 import { getConstitutionCatalog } from "./constitution-catalog";
 import { realmBoard } from "./leaderboard";
 import { resetItemsCache } from "./items-live";
@@ -192,5 +192,26 @@ describe("gear", () => {
     expect((await logs()).some((l) => l.includes("Thêm trang bị"))).toBe(true);
     expect(await removeItem(db, A, "c1", row.id, NOW + 2)).toEqual({ ok: true });
     expect(raw.prepare("SELECT COUNT(*) AS n FROM item_instances WHERE owner_character_id = 'c1' AND item_type LIKE 'eq.%'").get()).toEqual({ n: 0 });
+  });
+});
+
+describe("the spiritual root", () => {
+  it("changes the elements and the grade under review: plain elements together, a mutant one alone, the stand-in kept in the CHECK column, HP/MP cleared", async () => {
+    expect(await editRoots(db, A, "c1", ["moc", "hoa"], 3, NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    await startReview(db, A, "c1", kicker, NOW);
+    raw.exec("UPDATE characters SET vitals = '{\"hp\":5}' WHERE id = 'c1'");
+    expect(await editRoots(db, A, "c1", [], 1, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editRoots(db, A, "c1", ["moc", "moc"], 1, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editRoots(db, A, "c1", ["nope"], 1, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editRoots(db, A, "c1", ["moc"], 9, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editRoots(db, A, "c1", ["loi", "moc"], 1, NOW + 1)).toEqual({ ok: false, error: "mutant_alone" });
+    expect(await editRoots(db, A, "c1", ["moc", "hoa", "tho"], 3, NOW + 1)).toEqual({ ok: true });
+    expect(raw.prepare("SELECT roots, spiritual_root, root_grade, vitals FROM characters WHERE id = 'c1'").get()).toEqual({ roots: "moc,hoa,tho", spiritual_root: "moc", root_grade: 3, vitals: null });
+    expect(await editRoots(db, A, "c1", ["moc", "hoa", "tho"], 3, NOW + 2)).toEqual({ ok: false, error: "unchanged" });
+    expect(await editRoots(db, A, "c1", ["phong"], 0, NOW + 3)).toEqual({ ok: true });
+    expect(raw.prepare("SELECT roots, spiritual_root FROM characters WHERE id = 'c1'").get()).toEqual({ roots: "phong", spiritual_root: "kim" }); // the stand-in satisfies the CHECK
+    const v = (await getCharacterView(db, "c1", NOW + 4))!;
+    expect(v.roots).toEqual(["phong"]); // read back through the real element
+    expect((await logs()).some((l) => l.includes("Sửa linh căn") && l.includes("phong"))).toBe(true);
   });
 });

@@ -1,8 +1,9 @@
-import { CURRENCIES, equipmentInfo, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, type BagItem, type EquippedItem } from "@game/shared";
+import { ALL_ROOTS, CURRENCIES, parseRoots, type SpiritualRoot, MUTANT_ROOTS, ROOT_GRADES, SPIRITUAL_ROOTS, equipmentInfo, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, type BagItem, type EquippedItem } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { applyCurrencyDelta } from "./economy";
 import { commitBagOps, loadBag } from "./inventory";
 import { getConstitutionCatalog } from "./constitution-catalog";
+import { STAND_IN_ROOT } from "./characters";
 import { rollGear } from "./gear-master";
 import { getItemOverlays } from "./items-live";
 
@@ -39,6 +40,9 @@ interface Row {
   review_by: string | null;
   constitution: string;
   constitution_tier: number;
+  roots: string;
+  spiritual_root: string;
+  root_grade: number;
 }
 
 export const STAT_FIELDS = { canCot: "stat_can_cot", thanPhap: "stat_than_phap", ngoTinh: "stat_ngo_tinh", linhLuc: "stat_linh_luc", thanThuc: "stat_than_thuc", phucDuyen: "stat_phuc_duyen" } as const;
@@ -60,6 +64,9 @@ export interface CharacterView {
   anhHung: number;
   constitution: string;
   constitutionTier: number;
+  /** The elements of the spiritual root, main one first (a mutant root is a single one: loi, bang or phong). */
+  roots: string[];
+  rootGrade: number;
   review: { by: string; until: number } | null;
   wallet: Record<string, number>;
   items: Array<Pick<BagItem, "id" | "type" | "qty" | "tab" | "cell">>;
@@ -70,7 +77,7 @@ export interface CharacterView {
 export async function getCharacterView(db: D1Database, id: string, now = Date.now()): Promise<CharacterView | null> {
   const r = await db
     .prepare(
-      "SELECT c.id, c.account_id, a.email, c.name, c.gender, c.realm, c.stage, c.exp, c.potential_points, c.stat_can_cot, c.stat_than_phap, c.stat_ngo_tinh, c.stat_linh_luc, c.stat_than_thuc, c.stat_phuc_duyen, c.map_id, c.sat_khi, c.sat_nhan, c.anh_hung, c.review_until, c.review_by, c.constitution, c.constitution_tier FROM characters c JOIN accounts a ON a.id = c.account_id WHERE c.id = ?",
+      "SELECT c.id, c.account_id, a.email, c.name, c.gender, c.realm, c.stage, c.exp, c.potential_points, c.stat_can_cot, c.stat_than_phap, c.stat_ngo_tinh, c.stat_linh_luc, c.stat_than_thuc, c.stat_phuc_duyen, c.map_id, c.sat_khi, c.sat_nhan, c.anh_hung, c.review_until, c.review_by, c.constitution, c.constitution_tier, c.roots, c.spiritual_root, c.root_grade FROM characters c JOIN accounts a ON a.id = c.account_id WHERE c.id = ?",
     )
     .bind(id)
     .first<Row>();
@@ -97,6 +104,8 @@ export async function getCharacterView(db: D1Database, id: string, now = Date.no
     anhHung: r.anh_hung,
     constitution: r.constitution,
     constitutionTier: r.constitution_tier,
+    roots: parseRoots(r.roots, r.spiritual_root as SpiritualRoot),
+    rootGrade: r.root_grade,
     review: r.review_until !== null && r.review_until > now && r.review_by ? { by: r.review_by, until: r.review_until } : null,
     wallet: Object.fromEntries(wallet.results.map((w) => [w.currency, w.balance])),
     items: bag.items.map((i) => ({ id: i.id, type: i.type, qty: i.qty, tab: i.tab, cell: i.cell })),
@@ -105,7 +114,7 @@ export async function getCharacterView(db: D1Database, id: string, now = Date.no
   };
 }
 
-export type CharacterResult = { ok: true; kicked?: boolean } | { ok: false; error: "invalid" | "not_found" | "not_reviewing" | "reviewed_by_other" | "unchanged" | "full" | "funds" | "busy" | "unknown_item" | "name_taken" | "equipped" | "gender" };
+export type CharacterResult = { ok: true; kicked?: boolean } | { ok: false; error: "invalid" | "not_found" | "not_reviewing" | "reviewed_by_other" | "unchanged" | "full" | "funds" | "busy" | "unknown_item" | "name_taken" | "equipped" | "gender" | "mutant_alone" };
 
 /** Fails the batch unless this admin's review of the character is still running. */
 const reviewGuard = (db: D1Database, id: string, admin: string, now: number) =>
@@ -373,6 +382,34 @@ export async function editConstitution(db: D1Database, admin: string, id: string
       reviewGuard(db, id, admin, now),
       db.prepare("UPDATE characters SET constitution = ?, constitution_tier = ?, vitals = NULL, updated_at = ? WHERE id = ?").bind(constitution, tier, now, id),
       logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Sửa thể chất của «${before.name}»: ${before.constitution}/${before.constitutionTier} → ${constitution}/${tier}` }, now),
+    ]);
+  } catch (err) {
+    return mapGuard(err);
+  }
+  return { ok: true };
+}
+
+/**
+ * The elements of the spiritual root and its grade (phẩm cấp). One to five distinct plain elements, or a single mutant one (Lôi, Băng, Phong: they never
+ * come with others); the first is the main element. The column `spiritual_root` only holds a plain element (a CHECK), so a mutant main element keeps its
+ * stand-in there. Stored HP/MP are cleared (the maximums change). The potential points and the root skills the character already got stay as they are.
+ */
+export async function editRoots(db: D1Database, admin: string, id: string, roots: unknown, grade: unknown, now = Date.now()): Promise<CharacterResult> {
+  if (!Array.isArray(roots) || roots.length < 1 || roots.length > SPIRITUAL_ROOTS.length || !roots.every((r): r is SpiritualRoot => typeof r === "string" && (ALL_ROOTS as readonly string[]).includes(r)) || new Set(roots).size !== roots.length) return { ok: false, error: "invalid" };
+  if (!intIn(grade, 0, ROOT_GRADES.length - 1)) return { ok: false, error: "invalid" };
+  const mutant = roots.some((r) => (MUTANT_ROOTS as readonly string[]).includes(r));
+  if (mutant && roots.length !== 1) return { ok: false, error: "mutant_alone" };
+  const before = await getCharacterView(db, id, now);
+  if (!before) return { ok: false, error: "not_found" };
+  if (!(await reviewing(db, id, admin, now))) return { ok: false, error: "not_reviewing" };
+  if (before.rootGrade === grade && before.roots.join() === roots.join()) return { ok: false, error: "unchanged" };
+  const main = roots[0]!;
+  const plain = (SPIRITUAL_ROOTS as readonly string[]).includes(main) ? main : (STAND_IN_ROOT[main] ?? "thuy");
+  try {
+    await db.batch([
+      reviewGuard(db, id, admin, now),
+      db.prepare("UPDATE characters SET roots = ?, spiritual_root = ?, root_grade = ?, vitals = NULL, updated_at = ? WHERE id = ?").bind(roots.join(","), plain, grade, now, id),
+      logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Sửa linh căn của «${before.name}»: ${before.roots.join("+")} phẩm ${before.rootGrade} → ${roots.join("+")} phẩm ${grade}` }, now),
     ]);
   } catch (err) {
     return mapGuard(err);
