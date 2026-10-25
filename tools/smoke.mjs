@@ -93,8 +93,11 @@ const bad = await api("POST", "/api/login", { body: { email: A.email, password: 
 assert(bad.status === 401 && !bad.cookie, "wrong password rejected");
 const good = await api("POST", "/api/login", { body: { email: A.email, password } });
 assert(good.status === 200 && good.cookie, "login with the right password");
+const listed = await api("GET", "/api/me", { cookie: good.cookie });
+assert(listed.data.character === null && listed.data.characters.length === 1 && listed.data.characters[0].name === A.name, "a new login lists the character and has chosen none");
+await api("POST", "/api/character/select", { cookie: good.cookie, body: { id: listed.data.characters[0].id } });
 const me = await api("GET", "/api/me", { cookie: good.cookie });
-assert(me.data.character.name === A.name, "me returns the character");
+assert(me.data.character.name === A.name, "me returns the character once chosen");
 
 // --- gameplay over WebSocket ---
 const a = connect(A.cookie, 1);

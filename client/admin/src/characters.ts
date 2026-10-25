@@ -23,6 +23,8 @@ interface View {
   anhHung: number;
   constitution: string;
   constitutionTier: number;
+  roots: string[];
+  rootGrade: number;
   review: { by: string; until: number } | null;
   wallet: Record<string, number>;
   items: Array<{ id: string; type: string; qty: number; tab: number; cell: number }>;
@@ -43,6 +45,7 @@ const ERRORS: Record<string, string> = {
   funds: "Không đủ tiền để trừ.",
   busy: "Dữ liệu vừa đổi, hãy thử lại.",
   name_taken: "Đạo hiệu đã có người dùng.",
+  mutant_alone: "Linh căn biến dị (Lôi, Băng, Phong) chỉ đứng một mình, không đi cùng hệ khác.",
   gender: "Trang bị này dành cho giới tính khác của nhân vật.",
   equipped: "Nhân vật đang mặc trang bị nên chưa đổi giới tính được (tháo hết đồ trước).",
   unknown_item: "Vật phẩm không có hoặc không thêm được (trang bị chưa thêm được).",
@@ -52,11 +55,11 @@ export function characterPage(): HTMLElement {
   const root = h("div", { class: "detail wide" });
   const id = new URLSearchParams(location.search).get("id") ?? "";
   const load = async () => {
-    const res = await api<{ character: View; online: boolean; constitutions: Array<{ id: string; nameVi: string; tiers: number }> }>(`/api/admin/character?id=${encodeURIComponent(id)}`);
+    const res = await api<{ character: View; online: boolean; constitutions: Array<{ id: string; nameVi: string; tiers: number }>; siblings: Array<{ id: string; name: string }> }>(`/api/admin/character?id=${encodeURIComponent(id)}`);
     if (res.status !== 200) return void root.replaceChildren(h("p", { class: "err" }, "Không tìm thấy nhân vật."), h("a", { href: "/admin/accounts" }, "‹ Tài khoản"));
     const meta = await api<{ items: Array<{ id: string; nameVi: string }> }>("/api/admin/gifts/meta");
     const skills = await api<{ skills: Array<{ id: string; nameVi: string; template?: boolean }> }>("/api/admin/skills");
-    root.replaceChildren(view(res.data.character, res.data.online, meta.data.items ?? [], (skills.data.skills ?? []).filter((s) => !s.template), res.data.constitutions ?? [], load));
+    root.replaceChildren(view(res.data.character, res.data.online, meta.data.items ?? [], (skills.data.skills ?? []).filter((s) => !s.template), res.data.constitutions ?? [], res.data.siblings ?? [], load));
   };
   void load();
   return root;
@@ -69,7 +72,7 @@ function num(value: number, extra: Record<string, string> = {}): HTMLInputElemen
   return i;
 }
 
-function view(c: View, online: boolean, items: Array<{ id: string; nameVi: string }>, skills: Array<{ id: string; nameVi: string }>, constitutions: Array<{ id: string; nameVi: string; tiers: number }>, reload: () => Promise<void>): HTMLElement {
+function view(c: View, online: boolean, items: Array<{ id: string; nameVi: string }>, skills: Array<{ id: string; nameVi: string }>, constitutions: Array<{ id: string; nameVi: string; tiers: number }>, siblings: Array<{ id: string; name: string }>, reload: () => Promise<void>): HTMLElement {
   const me = document.querySelector(".who .muted")?.textContent ?? "";
   const mine = c.review !== null && c.review.by === me;
   const msg = h("div", { class: "msg muted" });
@@ -122,6 +125,24 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
   const tier = num(c.constitutionTier, { min: "1", max: "99" });
   const saveConsti = h("button", { type: "button" }, "Lưu thể chất");
   saveConsti.addEventListener("click", () => void act({ action: "constitution", constitution: consti.value, tier: Number(tier.value) }));
+  const ROOT_LABEL: Record<string, string> = { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ", loi: "Lôi (biến dị)", bang: "Băng (biến dị)", phong: "Phong (biến dị)" };
+  const GRADE_LABEL = ["Hạ phẩm", "Trung phẩm", "Thượng phẩm", "Địa phẩm", "Thiên phẩm"];
+  const rootBoxes = Object.keys(ROOT_LABEL).map((k) => {
+    const box = h("input", { type: "checkbox" });
+    box.checked = c.roots.includes(k);
+    return { k, box };
+  });
+  const mainRoot = h("select", null, ...Object.keys(ROOT_LABEL).map((k) => h("option", { value: k }, ROOT_LABEL[k]!)));
+  mainRoot.value = c.roots[0] ?? "kim";
+  const gradeSel = h("select", null, ...GRADE_LABEL.map((g, i) => h("option", { value: String(i) }, g)));
+  gradeSel.value = String(c.rootGrade);
+  const saveRoots = h("button", { type: "button" }, "Lưu linh căn");
+  saveRoots.addEventListener("click", () => {
+    const picked = rootBoxes.filter((x) => x.box.checked).map((x) => x.k);
+    // the main element goes first
+    const roots = picked.includes(mainRoot.value) ? [mainRoot.value, ...picked.filter((k) => k !== mainRoot.value)] : picked;
+    void act({ action: "roots", roots, grade: Number(gradeSel.value) });
+  });
   const del = h("button", { type: "button" }, "Xóa nhân vật");
   del.addEventListener("click", async () => {
     const typed = window.prompt(`Xóa nhân vật «${c.name}» của ${c.email}? Nhân vật biến khỏi game và bảng xếp hạng, tài khoản tạo được nhân vật mới; sổ cái tiền vẫn giữ. Không hoàn tác. Gõ lại đúng đạo hiệu để xác nhận:`);
@@ -159,14 +180,15 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
   const addSkill = h("button", { type: "button" }, "Thêm kỹ năng");
   addSkill.addEventListener("click", () => void act({ action: "addSkill", skill: skillId.value.trim() }));
 
-  const editable = [gKind, gRealm, gTier, gGrade, gElement, gWeapon, addGear, consti, tier, saveConsti, nameInput, gender, satKhi, satNhan, anhHung, saveProfile, del, stage, exp, points, realm, saveStats, currency, delta, money, itemId, qty, addItem, skillId, addSkill, ...Object.values(stats)];
+  const editable = [...rootBoxes.map((x) => x.box), mainRoot, gradeSel, saveRoots, gKind, gRealm, gTier, gGrade, gElement, gWeapon, addGear, consti, tier, saveConsti, nameInput, gender, satKhi, satNhan, anhHung, saveProfile, del, stage, exp, points, realm, saveStats, currency, delta, money, itemId, qty, addItem, skillId, addSkill, ...Object.values(stats)];
   for (const el of editable) el.disabled = !mine;
 
   return h(
     "div",
     null,
-    h("a", { href: "/admin/accounts" }, "‹ Tài khoản"),
+    h("a", { href: `/admin/accounts/detail?id=${encodeURIComponent(c.accountId)}` }, "‹ Tài khoản"),
     h("h2", null, `${c.name} (${c.email})`),
+    siblings.length > 1 ? h("p", { class: "muted" }, "Nhân vật của tài khoản này: ", ...siblings.flatMap((x) => [x.id === c.id ? h("b", null, x.name) : h("a", { href: `/admin/characters/detail?id=${encodeURIComponent(x.id)}` }, x.name), " · "])) : null,
     h("p", { class: online ? "err" : "muted" }, online ? "Đang online." : "Không online."),
     c.review ? h("p", { class: "err" }, `Đang được ${c.review.by} xem xét đến ${formatTime(c.review.until)}; người chơi không đăng nhập được.${mine ? "" : " Bạn không phải người đang sửa nên chỉ xem."}`) : h("p", { class: "muted" }, "Muốn sửa: bấm “Sửa” (chặn đăng nhập tối đa 30 phút, tự hết hạn)."),
     h("div", { class: "toolbar" }, start, end),
@@ -179,6 +201,8 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
     h("h3", null, "Hồ sơ"),
     h("div", { class: "toolbar" }, h("span", null, "Đạo hiệu"), nameInput, h("span", null, "Giới tính"), gender, h("span", null, "Sát khí"), satKhi, h("span", null, "Sát nhân"), satNhan, h("span", null, "Anh hùng"), anhHung),
     h("div", { class: "toolbar" }, saveProfile, del),
+    h("div", { class: "toolbar" }, h("span", null, "Linh căn"), ...rootBoxes.flatMap((x) => [h("label", { class: "radio" }, x.box, ROOT_LABEL[x.k]!)]), h("span", null, "hệ chính"), mainRoot, h("span", null, "phẩm cấp"), gradeSel, saveRoots),
+    h("p", { class: "muted" }, "Chọn 1-5 hệ thường, hoặc đúng một hệ biến dị. Điểm tiềm năng và kỹ năng linh căn đã nhận không đổi; HP/MP đang lưu bị xóa."),
     h("div", { class: "toolbar" }, h("span", null, "Thể chất"), consti, h("span", null, "cấp"), tier, saveConsti, h("span", { class: "muted" }, "Cấp từ 1 tới số cấp của thể chất; xóa HP/MP đang lưu.")),
     h("h3", null, "Tiền"),
     h("p", { class: "muted" }, Object.entries(CURRENCY_LABEL).map(([k, l]) => `${l}: ${(c.wallet[k] ?? 0).toLocaleString("vi-VN")}`).join(" · ") + ". Cộng/trừ ghi vào nhóm Admin của Quản lý tiền tệ."),

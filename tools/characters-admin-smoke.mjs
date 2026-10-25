@@ -59,8 +59,11 @@ const start = await post("/api/admin/character/action", { id, action: "start" },
 check("the review starts and kicks the online character", start.status === 200 && start.data.kicked === true, JSON.stringify(start.data));
 await sleep(1500);
 check("the game connection was told it was kicked", kicked);
+// The account can log in (its other characters are not under review), but this character can be neither chosen nor joined.
 const blocked = await post("/api/login", { email, password: PASSWORD });
-check("the player cannot log in during the review", blocked.status === 403 && blocked.data.error === "reviewing" && blocked.data.until > Date.now(), JSON.stringify(blocked.data));
+const listed = await get("/api/me", blocked.cookie);
+check("the player logs in and sees the character marked as under review", blocked.status === 200 && listed.data.characters?.find((c) => c.id === id)?.reviewing === true, JSON.stringify(listed.data.characters));
+check("choosing it is refused while it is under review", (await post("/api/character/select", { id }, blocked.cookie)).status === 403);
 check("the old session is gone", (await get("/api/me", player.cookie)).status === 401);
 
 const money = await post("/api/admin/character/action", { id, action: "money", currency: "linh_thach", delta: 777 }, admin.cookie);

@@ -21,7 +21,9 @@ import {
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
 import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminMapCreate, adminMapDelete, adminAccounts, adminAccountDetail, adminAccountAction, adminCharacter, adminCharacterAction, adminGear, adminGearSave } from "./admin";
-import { getCharacterByAccount, grantExp, STAND_IN_ROOT, toCharacterSheet } from "./characters";
+import { kick } from "./accounts-admin";
+import { getOwnCharacter, grantExp, listCharacters, resolveActiveCharacter, STAND_IN_ROOT, toCharacterSheet } from "./characters";
+import { getSetting } from "./settings";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
 import {
@@ -40,6 +42,10 @@ export interface AuthedSession {
   accountId: string;
   email: string;
   role: "player" | "admin";
+  /** The character this login chose (`POST /api/character/select`), or null: it has not chosen one. */
+  characterId: string | null;
+  /** Hash of the session cookie: how a request finds its own `sessions` row. */
+  tokenHash: string;
 }
 
 async function sha256Hex(text: string): Promise<string> {
@@ -58,9 +64,9 @@ export async function getSession(request: Request, env: Env): Promise<AuthedSess
   const token = readCookie(request, SESSION_COOKIE);
   if (!token) return null;
   const row = await env.DB.prepare(
-    "SELECT a.id AS accountId, a.email AS email, a.role AS role FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ? AND a.ban_forever = 0 AND (a.ban_until IS NULL OR a.ban_until <= ?) AND (a.role = 'admin' OR NOT EXISTS (SELECT 1 FROM characters c WHERE c.account_id = a.id AND c.review_until > ?))",
+    "SELECT a.id AS accountId, a.email AS email, a.role AS role, s.character_id AS characterId, s.token_hash AS tokenHash FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ? AND a.ban_forever = 0 AND (a.ban_until IS NULL OR a.ban_until <= ?)",
   )
-    .bind(await sha256Hex(token), Date.now(), Date.now(), Date.now())
+    .bind(await sha256Hex(token), Date.now(), Date.now())
     .first<AuthedSession>();
   return row ?? null;
 }
@@ -152,10 +158,8 @@ async function login(request: Request, env: Env): Promise<Response> {
     return json({ error: "banned", forever: account.ban_forever === 1, until: account.ban_until, reason: account.ban_reason ?? "" }, 403);
   }
 
-  // A character an admin is editing cannot be played (the admin's edits are the only writer); this ends by itself.
-  const review = await env.DB.prepare("SELECT review_until FROM characters WHERE account_id = ? AND review_until > ?").bind(account.id, Date.now()).first<{ review_until: number }>();
-  if (review && !(await env.DB.prepare("SELECT 1 AS x FROM accounts WHERE id = ? AND role = 'admin'").bind(account.id).first())) return json({ error: "reviewing", until: review.review_until }, 403);
-
+  // A character an admin is editing cannot be played (the admin's edits are the only writer; this ends by itself): choosing it and joining it are refused
+  // (see resolveActiveCharacter), the other characters of the account are not affected.
   const token = await createSession(env, account.id);
   await env.DB.prepare("UPDATE accounts SET last_login_at = ? WHERE id = ?").bind(Date.now(), account.id).run().catch((err) => console.error("last login not recorded", err)); // one extra row written per login
   return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token, SESSION_TTL_SECONDS, request) });
@@ -170,20 +174,71 @@ async function logout(request: Request, env: Env): Promise<Response> {
 async function me(request: Request, env: Env): Promise<Response> {
   const session = await getSession(request, env);
   if (!session) return errorResponse("unauthenticated", 401);
-  const character = await getCharacterByAccount(env.DB, session.accountId);
+  const [rows, max] = await Promise.all([listCharacters(env.DB, session.accountId), getSetting(env.DB, "max_characters")]);
+  // `character` is the one this login chose; with none chosen the client shows the list (even for a single character).
+  const chosen = session.characterId ? rows.find((c) => c.id === session.characterId) : undefined;
+  const reviewing = new Set((await env.DB.prepare("SELECT id FROM characters WHERE account_id = ? AND review_until > ?").bind(session.accountId, Date.now()).all<{ id: string }>()).results.map((r) => r.id));
   return json({
     account: { email: session.email, role: session.role },
-    character: character ? toCharacterSheet(character) : null,
+    character: chosen && !reviewing.has(chosen.id) ? toCharacterSheet(chosen) : null,
+    characters: rows.map((c) => ({ id: c.id, name: c.name, gender: c.gender, realm: c.realm, stage: c.stage, reviewing: reviewing.has(c.id) })),
+    maxCharacters: max,
   });
+}
+
+/** Makes one of the account's characters the one this login plays. */
+async function selectCharacter(request: Request, env: Env): Promise<Response> {
+  const session = await getSession(request, env);
+  if (!session) return errorResponse("unauthenticated", 401);
+  const body = await readJson(request);
+  const id = typeof body?.id === "string" ? body.id : "";
+  const character = id ? await getOwnCharacter(env.DB, session.accountId, id) : null;
+  if (!character) return errorResponse("not_found", 404);
+  if (await env.DB.prepare("SELECT 1 AS x FROM characters WHERE id = ? AND review_until > ?").bind(character.id, Date.now()).first()) return errorResponse("reviewing", 403);
+  await env.DB.prepare("UPDATE sessions SET character_id = ? WHERE token_hash = ?").bind(character.id, session.tokenHash).run();
+  return json({ character: toCharacterSheet(character) });
+}
+
+/** Back to the list: this login plays no character until it chooses one. */
+async function deselectCharacter(request: Request, env: Env): Promise<Response> {
+  const session = await getSession(request, env);
+  if (!session) return errorResponse("unauthenticated", 401);
+  await env.DB.prepare("UPDATE sessions SET character_id = NULL WHERE token_hash = ?").bind(session.tokenHash).run();
+  return json({ ok: true });
+}
+
+/**
+ * Deletes one of the player's characters the soft way (the money history cannot go): it leaves the game, the rankings and the list, and its name is free again.
+ * The player types the name again to confirm. A character under an admin's review cannot be deleted.
+ */
+async function deleteOwnCharacter(request: Request, env: Env): Promise<Response> {
+  const session = await getSession(request, env);
+  if (!session) return errorResponse("unauthenticated", 401);
+  const body = await readJson(request);
+  const character = typeof body?.id === "string" ? await getOwnCharacter(env.DB, session.accountId, body.id) : null;
+  if (!character) return errorResponse("not_found", 404);
+  if (body?.name !== character.name) return errorResponse("name_mismatch", 400);
+  const now = Date.now();
+  if (await env.DB.prepare("SELECT 1 AS x FROM characters WHERE id = ? AND review_until > ?").bind(character.id, now).first()) return errorResponse("reviewing", 403);
+  const done = await env.DB.batch([
+    env.DB.prepare("UPDATE characters SET deleted_at = ?, name = ?, updated_at = ? WHERE id = ? AND account_id = ? AND deleted_at IS NULL").bind(now, `~${character.id}`, now, character.id, session.accountId),
+    env.DB.prepare("UPDATE sessions SET character_id = NULL WHERE character_id = ?").bind(character.id),
+  ]);
+  if ((done[0]?.meta?.changes ?? 0) === 0) return errorResponse("not_found", 404);
+  // After the batch, so a reconnect of another session is already refused (the character is gone from the account); the room saves it as it leaves.
+  await kick(env, character.id);
+  return json({ ok: true });
 }
 
 async function createCharacter(request: Request, env: Env): Promise<Response> {
   const session = await getSession(request, env);
   if (!session) return errorResponse("unauthenticated", 401);
-  if (await getCharacterByAccount(env.DB, session.accountId)) return errorResponse("character_exists", 409);
   const body = await readJson(request);
   const name = validateCharacterName(body?.name);
   if (!name) return errorResponse("invalid_name", 400);
+  const max = await getSetting(env.DB, "max_characters");
+  // A quick answer before the work of rolling; the INSERT below counts again in its own statement, so two requests at once cannot pass the limit.
+  if ((await listCharacters(env.DB, session.accountId)).length >= max) return errorResponse("character_limit", 409);
   // The player picks the gender (it decides which gear they can wear). Callers that send none get a plain Nam or Nữ at random.
   if (body?.gender !== undefined && !isGender(body.gender)) return errorResponse("invalid_gender", 400);
   const gender: Gender = isGender(body?.gender) ? body.gender : crypto.getRandomValues(new Uint8Array(1))[0]! % 2 === 0 ? "male" : "female";
@@ -214,19 +269,23 @@ async function createCharacter(request: Request, env: Env): Promise<Response> {
   const constitution = rollConstitution(catalog, rolls[0]! % CONSTITUTION_ROLL_RANGE, rolls[1]! % CONSTITUTION_TIER_ROLL_RANGE);
   const now = Date.now();
   const id = crypto.randomUUID();
+  let created = 0;
   try {
-    await env.DB.prepare(
+    const r = await env.DB.prepare(
       `INSERT INTO characters (id, account_id, name, spiritual_root, roots, map_id, x, y, potential_points, root_grade, constitution, constitution_tier, gender, ${STAT_DEFS.map((d) => d.column).join(", ")}, created_at, updated_at) ` +
-        `VALUES (?, ?, ?, ?, ?, 'town', ?, ?, ?, ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ?)`,
+        `SELECT ?, ?, ?, ?, ?, 'town', ?, ?, ?, ?, ?, ?, ?, ${STAT_DEFS.map(() => "?").join(", ")}, ?, ? WHERE (SELECT COUNT(*) FROM characters WHERE account_id = ? AND deleted_at IS NULL) < ?`,
     )
-      .bind(id, session.accountId, name, STAND_IN_ROOT[root] ?? root, roots.join(","), sx, sy, start.potentialPoints, rootGrade, constitution.id, constitution.tier, gender, ...STAT_DEFS.map((d) => start.base[d.key]), now, now)
+      .bind(id, session.accountId, name, STAND_IN_ROOT[root] ?? root, roots.join(","), sx, sy, start.potentialPoints, rootGrade, constitution.id, constitution.tier, gender, ...STAT_DEFS.map((d) => start.base[d.key]), now, now, session.accountId, max)
       .run();
+    created = r.meta?.changes ?? 0;
   } catch (err) {
     if (String(err).includes("characters.name")) return errorResponse("name_taken", 409);
-    if (String(err).includes("UNIQUE")) return errorResponse("character_exists", 409);
     throw err;
   }
-  const character = await getCharacterByAccount(env.DB, session.accountId);
+  if (created === 0) return errorResponse("character_limit", 409);
+  // The new character is the one this login plays.
+  await env.DB.prepare("UPDATE sessions SET character_id = ? WHERE token_hash = ?").bind(id, session.tokenHash).run();
+  const character = await getOwnCharacter(env.DB, session.accountId, id);
   return json({ character: character ? toCharacterSheet(character) : null }, 201);
 }
 
@@ -241,9 +300,9 @@ async function devGrantExp(request: Request, env: Env): Promise<Response> {
   const body = await readJson(request);
   const exp = body?.exp;
   if (typeof exp !== "number" || !Number.isInteger(exp) || exp < 0 || exp > 1e12) return errorResponse("invalid_exp", 400);
-  const character = await getCharacterByAccount(env.DB, session.accountId);
-  if (!character) return errorResponse("no_character", 404);
-  const updated = await grantExp(env.DB, character.id, exp);
+  const active = await resolveActiveCharacter(env.DB, session.accountId, session.characterId);
+  if (!active.ok) return errorResponse("no_character", 404);
+  const updated = await grantExp(env.DB, active.character.id, exp);
   return json({ character: updated ? toCharacterSheet(updated) : null });
 }
 
@@ -286,6 +345,12 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return leaderboardApi(request, env);
     case "POST /api/character":
       return createCharacter(request, env);
+    case "POST /api/character/select":
+      return selectCharacter(request, env);
+    case "POST /api/character/deselect":
+      return deselectCharacter(request, env);
+    case "POST /api/character/delete":
+      return deleteOwnCharacter(request, env);
     case "GET /api/admin/me":
       return adminMe(request, env);
     case "GET /api/admin/log":

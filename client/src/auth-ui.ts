@@ -1,5 +1,5 @@
-import { DEFAULT_CONSTITUTION, GENDERS, constitutionTierName, getRootCount, getRootGrade, type Gender } from "@game/shared";
-import { api, type ApiResult } from "./api";
+import { DEFAULT_CONSTITUTION, GENDERS, REALMS, constitutionTierName, getRootCount, getRootGrade, type Gender } from "@game/shared";
+import { api, type ApiResult, type CharacterEntry } from "./api";
 import { fetchCatalog, getCatalog } from "./constitution-store";
 import { vi } from "./locales/vi";
 
@@ -78,12 +78,14 @@ export function showAuth(): Promise<void> {
   });
 }
 
-/** Character creation card. Resolves once the character exists. */
-export function showCharacterCreate(): Promise<void> {
+/** Character creation card. Resolves "created" once the character exists (the login plays it), or "back" when `canGoBack` and the player went back to the list. */
+export function showCharacterCreate(canGoBack = false): Promise<"created" | "back"> {
   return new Promise((resolve) => {
     const name = el("input", { type: "text", placeholder: vi.characterName, maxLength: 16, required: true });
     const error = el("p", { className: "error" });
     const submit = el("button", { type: "submit", textContent: vi.createCharacter });
+    const back = el("button", { type: "button", className: "link", textContent: vi.characterList.back });
+    back.onclick = () => resolve("back");
     // Gender decides which gear the character can wear; it is chosen once, here.
     const genderSelect = el("select", {});
     for (const g of GENDERS) genderSelect.append(el("option", { value: g, textContent: vi.gender[g] ?? g }));
@@ -98,6 +100,7 @@ export function showCharacterCreate(): Promise<void> {
       el("p", { className: "note", textContent: vi.linhCanNote }),
       error,
       submit,
+      ...(canGoBack ? [back] : []),
     );
     form.onsubmit = async (ev) => {
       ev.preventDefault();
@@ -110,7 +113,7 @@ export function showCharacterCreate(): Promise<void> {
         await fetchCatalog(); // the constitution's name comes from the catalogue
         const enter = el("button", { type: "button", textContent: vi.enterWorld });
         enter.style.cssText = "margin-top:12px;width:100%";
-        enter.onclick = () => resolve();
+        enter.onclick = () => resolve("created");
         mount(
           el(
             "div",
@@ -125,10 +128,62 @@ export function showCharacterCreate(): Promise<void> {
         );
         return;
       }
-      if (res.error === "character_exists") return resolve();
+      if (res.error === "character_limit" && canGoBack) return resolve("back");
       error.textContent = errorText(res.error);
       submit.disabled = false;
     };
     mount(el("div", { className: "card" }, form));
+  });
+}
+
+export type ListChoice = { kind: "enter"; id: string } | { kind: "create" } | { kind: "logout" };
+
+const realmLine = (c: CharacterEntry) => `${REALMS[c.realm]?.nameVi ?? ""} ${c.stage}`.trim();
+
+/**
+ * The characters of the account: pick one to play, delete one (the player types its name again; the server deletes it softly), or make a new one while
+ * there is room. Resolves with what the player chose; a deletion refreshes the list in place.
+ */
+export function showCharacterList(initial: CharacterEntry[], max: number): Promise<ListChoice> {
+  return new Promise((resolve) => {
+    let list = initial;
+    const render = (note = "") => {
+      const rows = list.map((c) => {
+        const enter = el("button", { type: "button", className: "char-enter", textContent: vi.characterList.enter, disabled: c.reviewing });
+        enter.onclick = () => resolve({ kind: "enter", id: c.id });
+        const remove = el("button", { type: "button", className: "link", textContent: vi.characterList.remove, disabled: c.reviewing });
+        remove.onclick = async () => {
+          const typed = window.prompt(vi.characterList.removeAsk(c.name));
+          if (typed === null) return;
+          if (typed !== c.name) return render(vi.characterList.removeWrong);
+          const res = await api.deleteCharacter(c.id, typed);
+          if (!res.ok) return render(errorText(res.error));
+          list = list.filter((x) => x.id !== c.id);
+          // With none left the player starts from the creation card, as a new account does.
+          if (list.length === 0) return resolve({ kind: "create" });
+          render();
+        };
+        const info = el("div", { className: "char-info" }, el("b", { textContent: c.name }), el("span", { className: "note", textContent: `${vi.gender[c.gender] ?? c.gender} · ${realmLine(c)}${c.reviewing ? ` · ${vi.characterList.reviewing}` : ""}` }));
+        return el("div", { className: "char-row" }, info, enter, remove);
+      });
+      const create = el("button", { type: "button", textContent: vi.characterList.create });
+      create.onclick = () => resolve({ kind: "create" });
+      create.hidden = list.length >= max;
+      const logout = el("button", { type: "button", className: "link", textContent: vi.logout });
+      logout.onclick = () => resolve({ kind: "logout" });
+      mount(
+        el(
+          "div",
+          { className: "card" },
+          el("h1", { textContent: vi.characterList.title }),
+          el("p", { className: "note", textContent: vi.characterList.count(list.length, max) }),
+          ...rows,
+          el("p", { className: "error", textContent: note }),
+          ...(list.length >= max ? [el("p", { className: "note", textContent: vi.characterList.full })] : [create]),
+          logout,
+        ),
+      );
+    };
+    render();
   });
 }

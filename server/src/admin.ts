@@ -19,7 +19,7 @@ import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
 import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
 import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
 import { getEnhanceView, getMasterView, getSetsView, saveEnhance, saveMaster, saveSets } from "./gear-admin";
-import { addItem, addSkill, adjustMoney, addEquipment, deleteCharacter, editConstitution, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview, type ProfileInput, type StatsInput } from "./characters-admin";
+import { addItem, addSkill, adjustMoney, addEquipment, deleteCharacter, editConstitution, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview, type ProfileInput, type StatsInput } from "./characters-admin";
 import { getConstitutionCatalog } from "./constitution-catalog";
 import { banAccount, getAccountDetail, listAccounts, parseAccountQuery, setTempPassword, unbanAccount } from "./accounts-admin";
 import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
@@ -617,7 +617,7 @@ export async function adminAccountAction(request: Request, env: Env): Promise<Re
   return json({ ok: true, ...(result.password ? { password: result.password } : {}), kicked: result.kicked === true });
 }
 
-const CHARACTER_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, funds: 400, full: 409, busy: 409, not_reviewing: 409, reviewed_by_other: 409, unknown_item: 400, not_found: 404, name_taken: 409, equipped: 409, gender: 409 };
+const CHARACTER_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, funds: 400, full: 409, busy: 409, not_reviewing: 409, reviewed_by_other: 409, unknown_item: 400, not_found: 404, name_taken: 409, equipped: 409, gender: 409, mutant_alone: 400 };
 
 /** A character for the admin screen, with whether it is online (a connection holds its lock). */
 export async function adminCharacter(request: Request, env: Env, url: URL): Promise<Response> {
@@ -633,7 +633,8 @@ export async function adminCharacter(request: Request, env: Env, url: URL): Prom
     console.error("lock state unavailable", err);
   }
   const catalog = await getConstitutionCatalog(env.DB);
-  return json({ character: view, online, constitutions: catalog.constitutions.map((c) => ({ id: c.id, nameVi: c.nameVi, tiers: Math.max(c.tiers.length, 1) })) });
+  const { results: siblings } = await env.DB.prepare("SELECT id, name FROM characters WHERE account_id = ? AND deleted_at IS NULL ORDER BY created_at, id").bind(view.accountId).all<{ id: string; name: string }>();
+  return json({ character: view, online, siblings, constitutions: catalog.constitutions.map((c) => ({ id: c.id, nameVi: c.nameVi, tiers: Math.max(c.tiers.length, 1) })) });
 }
 
 /** POST `{id, action: "start" | "end" | "stats" | "money" | "addItem" | "removeItem" | "addSkill" | "removeSkill", ...}`. Every change needs the admin's own review to be running. */
@@ -657,6 +658,9 @@ export async function adminCharacterAction(request: Request, env: Env): Promise<
       break;
     case "profile":
       result = await editProfile(env.DB, admin, id, body.input as ProfileInput);
+      break;
+    case "roots":
+      result = await editRoots(env.DB, admin, id, body.roots, body.grade);
       break;
     case "constitution":
       result = await editConstitution(env.DB, admin, id, body.constitution, body.tier);

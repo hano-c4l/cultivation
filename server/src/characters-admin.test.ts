@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { REALMS, SKILLS, setItemOverlays } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
-import { REVIEW_MS, addItem, addEquipment, addSkill, adjustMoney, deleteCharacter, editConstitution, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
+import { REVIEW_MS, addItem, addEquipment, addSkill, adjustMoney, deleteCharacter, editConstitution, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
 import { getConstitutionCatalog } from "./constitution-catalog";
 import { realmBoard } from "./leaderboard";
 import { resetItemsCache } from "./items-live";
@@ -145,14 +145,14 @@ describe("the profile and deleting a character", () => {
     expect(await editProfile(db, A, "c1", { ...profile, gender: "male" }, NOW + 1)).toEqual({ ok: true }); // the other fields still change
   });
 
-  it("deletes by moving the row to a tombstone account: the name and the account are free, the ledger stays, the rankings and gifts skip it", async () => {
+  it("deletes by hiding the row: the name and the place on the account are free, the ledger stays, the rankings and gifts skip it", async () => {
     raw.exec("INSERT INTO tien_ngoc_ledger (character_id, delta, reason, actor, created_at) VALUES ('c1', 5, 'admin_grant', 'admin', 1)");
     expect(await deleteCharacter(db, A, "c1", "Lan Tu", NOW)).toEqual({ ok: false, error: "not_reviewing" });
     await startReview(db, A, "c1", kicker, NOW);
     expect(await deleteCharacter(db, A, "c1", "wrong", NOW + 1)).toEqual({ ok: false, error: "invalid" });
     expect(await deleteCharacter(db, A, "c1", "Lan Tu", NOW + 1)).toEqual({ ok: true });
-    expect(raw.prepare("SELECT account_id, deleted_at, review_until FROM characters WHERE id = 'c1'").get()).toEqual({ account_id: "deleted:c1", deleted_at: NOW + 1, review_until: null });
-    expect(raw.prepare("SELECT COUNT(*) AS n FROM characters WHERE account_id = 'a1'").get()).toEqual({ n: 0 }); // the account can make a new character
+    expect(raw.prepare("SELECT account_id, deleted_at, review_until FROM characters WHERE id = 'c1'").get()).toEqual({ account_id: "a1", deleted_at: NOW + 1, review_until: null });
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM characters WHERE account_id = 'a1' AND deleted_at IS NULL").get()).toEqual({ n: 0 }); // the account has room for a new character
     raw.exec("INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at) VALUES ('c9', 'a1', 'Lan Tu', 'kim', 0, 0, 0, 0)"); // and the name is free again
     expect(raw.prepare("SELECT COUNT(*) AS n FROM tien_ngoc_ledger WHERE character_id = 'c1'").get()).toEqual({ n: 1 });
     expect((await logs()).some((l) => l.includes("Xóa nhân vật «Lan Tu»"))).toBe(true);
@@ -192,5 +192,26 @@ describe("gear", () => {
     expect((await logs()).some((l) => l.includes("Thêm trang bị"))).toBe(true);
     expect(await removeItem(db, A, "c1", row.id, NOW + 2)).toEqual({ ok: true });
     expect(raw.prepare("SELECT COUNT(*) AS n FROM item_instances WHERE owner_character_id = 'c1' AND item_type LIKE 'eq.%'").get()).toEqual({ n: 0 });
+  });
+});
+
+describe("the spiritual root", () => {
+  it("changes the elements and the grade under review: plain elements together, a mutant one alone, the stand-in kept in the CHECK column, HP/MP cleared", async () => {
+    expect(await editRoots(db, A, "c1", ["moc", "hoa"], 3, NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    await startReview(db, A, "c1", kicker, NOW);
+    raw.exec("UPDATE characters SET vitals = '{\"hp\":5}' WHERE id = 'c1'");
+    expect(await editRoots(db, A, "c1", [], 1, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editRoots(db, A, "c1", ["moc", "moc"], 1, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editRoots(db, A, "c1", ["nope"], 1, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editRoots(db, A, "c1", ["moc"], 9, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editRoots(db, A, "c1", ["loi", "moc"], 1, NOW + 1)).toEqual({ ok: false, error: "mutant_alone" });
+    expect(await editRoots(db, A, "c1", ["moc", "hoa", "tho"], 3, NOW + 1)).toEqual({ ok: true });
+    expect(raw.prepare("SELECT roots, spiritual_root, root_grade, vitals FROM characters WHERE id = 'c1'").get()).toEqual({ roots: "moc,hoa,tho", spiritual_root: "moc", root_grade: 3, vitals: null });
+    expect(await editRoots(db, A, "c1", ["moc", "hoa", "tho"], 3, NOW + 2)).toEqual({ ok: false, error: "unchanged" });
+    expect(await editRoots(db, A, "c1", ["phong"], 0, NOW + 3)).toEqual({ ok: true });
+    expect(raw.prepare("SELECT roots, spiritual_root FROM characters WHERE id = 'c1'").get()).toEqual({ roots: "phong", spiritual_root: "kim" }); // the stand-in satisfies the CHECK
+    const v = (await getCharacterView(db, "c1", NOW + 4))!;
+    expect(v.roots).toEqual(["phong"]); // read back through the real element
+    expect((await logs()).some((l) => l.includes("Sửa linh căn") && l.includes("phong"))).toBe(true);
   });
 });

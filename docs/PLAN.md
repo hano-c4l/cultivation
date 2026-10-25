@@ -9,7 +9,7 @@ Trạng thái: **ĐANG THỰC HIỆN** — xem `docs/STATUS.md` (giai đoạn n�
 | Đồ họa | 2.5D isometric kiểu Võ Lâm Truyền Kỳ; asset CC0 + placeholder, **giữ đúng tỉ lệ để thay bằng art tự tạo/AI sau** |
 | Chiến đấu | Realtime, click-to-move, auto-attack + cooldown, thanh phím tắt kỹ năng |
 | PvP | Thành thị an toàn; bản đồ thường PvP được; chết mất ít EXP + độ bền; sát khí cao thì rơi đồ và bị NPC vệ binh đánh |
-| Tài khoản | Email + mật khẩu; hỗ trợ mobile (cảm ứng) |
+| Tài khoản | Email + mật khẩu; hỗ trợ mobile (cảm ứng); tối đa 3 nhân vật mỗi tài khoản (chỉnh được, xem mục 9b) |
 | Cảnh giới | Luyện Khí → Trúc Cơ → Kim Đan → Nguyên Anh (mỗi cảnh giới 9 tầng), mở rộng bằng dữ liệu |
 | Hướng tu | 1 chủ tu + tối đa 2 phụ tu (mỗi phụ tu làm chậm tu vi nhận được, xem mục 9b). Ban đầu: Kiếm tu, Thuật tu, Đan tu; Thể tu và Trận/Phù tu để sau |
 | Tiền tệ | Linh Thạch (giao dịch tự do), Cống Hiến (khóa, từ nhiệm vụ, dùng cho tông môn), Tiên Ngọc (tiền nạp) |
@@ -87,6 +87,7 @@ Chi tiết kỹ thuật và giá trị nằm ở `docs/PHASE2.md`; đây chỉ l
 - **Tái cấu trúc tiền tệ (2026-10-24):** sổ cái chung thành bảng tổng theo nhóm lý do cho cả ba loại tiền cộng lịch sử chi tiết riêng cho Tiên Ngọc và Linh Thạch (chỉ giao dịch lớn), để truy vấn Tiên Ngọc không quét các dòng Linh Thạch, bảng không phình theo số lần quái rơi tiền và mỗi lần đổi tiền ghi ít dòng D1 hơn. Chi tiết: mục 4 ở trên và `docs/PHASE3.md` mục "Tái cấu trúc tiền tệ".
 - **Gửi quà (3d, 2026-10-24):** admin gửi thư có tiền (ba loại) và tối đa 5 vật phẩm (chưa có trang bị) cho nhiều nhân vật hoặc cho toàn server; tiền và vật phẩm được tạo khi người chơi nhận, tiền vào nhóm Admin; chi tiết `docs/PHASE3.md` mục 3d.
 - **Đan Sư và NPC admin (3k, 2026-10-25):** thêm loại NPC **Đan Sư** (mỗi thành chính một người): cửa sổ có tab Mua/bán đan và tab **Luyện đan** (đưa nguyên liệu và Linh Thạch, nhận đan sau một khoảng thời gian; công thức là dữ liệu D1, nhóm `alchemy`); Linh Nguyên, Bảo Nguyên, Thiên Ngộ đan chỉ còn luyện được. **Thợ Rèn có thêm tab Mua/bán trang bị**; Thương nhân giữ ít đồ mỗi loại (đan cơ bản, trang bị bậc 1, bí tịch, phù). Admin sửa tên, vị trí, bật/tắt, thêm NPC, cửa hàng (hàng bán, loại đồ thu mua, tỉ lệ thu mua), công thức luyện đan và con số của Thợ Rèn, Đạo Sư. Chi tiết `docs/PHASE3.md` mục 3k.
+- **Nhiều nhân vật mỗi tài khoản (3m-d, 2026-10-25):** đổi quyết định "một nhân vật mỗi tài khoản" của giai đoạn 1: tối đa **3 nhân vật** (cài đặt `max_characters`, chỉnh ở "Chỉ số khác", 1-10). Tài khoản mới điền tên và giới tính như cũ; tài khoản đã có nhân vật vào danh sách để chọn, tạo thêm khi chưa đủ hoặc xóa (xóa mềm, gõ lại đạo hiệu); trong game có "Đổi nhân vật" bên trái "Đăng xuất". Mỗi nhân vật có túi đồ, tiền, thư riêng (chưa có kho chung); hai phiên của cùng tài khoản chơi được hai nhân vật cùng lúc. Chi tiết: `docs/PHASE3.md` mục 3m-d.
 - **Giao diện:** thanh buff dưới thanh HP/MP (kỹ năng buff và đan hồi dần, kèm thời gian còn lại); cửa sổ trang bị 2 tab (trang bị / pháp bảo).
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
@@ -128,7 +129,7 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 3j. Quái và BOSS — xong (trừ loài quái mới)
   - 3k. NPC (nhiệm vụ, thương nhân, Đan Sư, thợ rèn, hướng tu) — xong (trừ bảng cấp nâng cấp của Thợ Rèn ở 3g-b, vị trí vệ binh ở 3l)
   - 3l. Bản đồ — 3l-a xong (sáu bản đồ thành công thức D1, màn sửa màu/điểm sinh/cổng/vật cản và xem trước); 3l-b1 xong (mã bản đồ và dữ liệu quái/vệ binh/boss theo bản đồ đi qua công thức); 3l-b2 xong (tạo/xóa bản đồ, sửa bãi quái/vệ binh/chỗ boss, phòng ghim lưới); 3l-b3 xong (tên hiển thị, Truyền Tống Trận và boss cho bản đồ mới, kiểm đường đi ở trình duyệt admin, ghim nội dung quái)
-  - 3m. Tài khoản và nhân vật — 3m-a xong (danh sách, khóa, mật khẩu tạm); 3m-b xong (sửa nhân vật với trạng thái đang xem xét); 3m-c xong (đăng nhập cuối, sửa hồ sơ, xóa nhân vật mềm), sửa hồ sơ, thể chất và thêm trang bị cũng xong, còn sửa hệ linh căn
+  - 3m. Tài khoản và nhân vật — 3m-a xong (danh sách, khóa, mật khẩu tạm); 3m-b xong (sửa nhân vật với trạng thái đang xem xét); 3m-c xong (đăng nhập cuối, sửa hồ sơ, xóa nhân vật mềm); 3m-d xong (nhiều nhân vật mỗi tài khoản); 3m-e xong (sửa linh căn, chuyển giữa các nhân vật của tài khoản ở admin); sửa thể chất và thêm trang bị cũng xong (3m không còn mục nào)
 - **Giai đoạn 4**: Kinh tế và xã hội (chưa chia hạng mục)
 - **Giai đoạn 5**: Hoàn thiện và vận hành (chưa chia hạng mục)
 
