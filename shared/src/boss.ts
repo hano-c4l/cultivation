@@ -1,5 +1,5 @@
 import { fullGearStats, type GuardStats } from "./guards";
-import { MAP_SIZE, screenToTile, type MapId } from "./map";
+import { MAP_SIZE, onMapRecipe, screenToTile, type MapId } from "./map";
 import { deriveStats, levelIndex, startingStats } from "./progression";
 import { REALMS } from "./progression-data";
 import { tuning, type Tuning } from "./tuning";
@@ -31,7 +31,15 @@ export function bossTier(): number {
   return tuning().boss.tier;
 }
 /** Where the boss stands when no random spot could be found (tile units): the middle of the map, off the monster groups and the guards (see CombatSim.spawnBoss, which picks a random spot). */
-export const BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { town: null, forest: screenToTile(MAP_SIZE.forest, 0, 0), cave: screenToTile(MAP_SIZE.cave, 0, 0), town2: null, kimdan: screenToTile(MAP_SIZE.kimdan, 0, 0), nguyenanh: screenToTile(MAP_SIZE.nguyenanh, 0, 0) };
+export const BOSS_SPOTS: Record<MapId, readonly [number, number] | null> = { town: null, forest: screenToTile(MAP_SIZE.forest!, 0, 0), cave: screenToTile(MAP_SIZE.cave!, 0, 0), town2: null, kimdan: screenToTile(MAP_SIZE.kimdan!, 0, 0), nguyenanh: screenToTile(MAP_SIZE.nguyenanh!, 0, 0) };
+const CODE_BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { ...BOSS_SPOTS };
+// A map recipe with its own content (or without, which is the code's) sets the fallback boss spot of its map.
+onMapRecipe((id, r) => {
+  if (r?.content) BOSS_SPOTS[id] = r.content.bossSpot;
+  else if (id in CODE_BOSS_SPOTS) BOSS_SPOTS[id] = CODE_BOSS_SPOTS[id]!;
+  else delete BOSS_SPOTS[id];
+});
+export { CODE_BOSS_SPOTS };
 /**
  * Its fighting strength is a few levels above the map's, like a vệ binh: a character `bossRealmBonus()` realms above the map's, at bậc
  * the tuning `bossStats.statTier`, in a full set of top-grade gear, with its points spent and `bossStats.hpMult` times the maximum HP. Placeholder values.

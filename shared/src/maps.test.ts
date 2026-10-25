@@ -68,8 +68,8 @@ describe("every map is consistent", () => {
         expect(portalNear(dest, arrive[0], arrive[1]), `${id} -> ${p.toMap}: arrival would trigger a portal at once`).toBeUndefined();
       }
       for (const n of map.npcs) reachable([n.x, n.y], `npc ${n.id}`);
-      for (const c of CLUSTERS[id]) for (const slot of clusterSlots(c)) reachable(slot, `a monster of the tier ${c.tier} group`);
-      for (const g of GUARDS[id]) reachable([g[0], g[1]], "a guard");
+      for (const c of CLUSTERS[id]!) for (const slot of clusterSlots(c)) reachable(slot, `a monster of the tier ${c.tier} group`);
+      for (const g of GUARDS[id]!) reachable([g[0], g[1]], "a guard");
       const boss = BOSS_SPOTS[id];
       if (boss) reachable([boss[0], boss[1]], "the boss spot");
     });

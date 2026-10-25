@@ -1088,7 +1088,7 @@ export class MapRoom extends DurableObject<Env> {
 
   private ensureSim(mapId: MapId, ranks?: Record<string, string>): CombatSim | null {
     const map = getMap(mapId);
-    if (map.safe && GUARDS[mapId].length === 0) return null;
+    if (map.safe && (GUARDS[mapId] ?? []).length === 0) return null;
     if (!this.sim) this.sim = new CombatSim(map, mapId, Math.random, Date.now(), ranks);
     return this.sim;
   }
@@ -1111,7 +1111,7 @@ export class MapRoom extends DurableObject<Env> {
    */
   private wake(mapId: MapId, joinerSatNhan = 0): Promise<void> {
     // A safe map is woken only for its guards, and only when a coloured name is in it (see murdererPresent).
-    if (getMap(mapId).safe && !this.sim && (GUARDS[mapId].length === 0 || !this.murdererPresent(joinerSatNhan))) return Promise.resolve();
+    if (getMap(mapId).safe && !this.sim && ((GUARDS[mapId] ?? []).length === 0 || !this.murdererPresent(joinerSatNhan))) return Promise.resolve();
     if (this.sim) {
       this.startTick();
       return Promise.resolve();

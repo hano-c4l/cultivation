@@ -1,4 +1,4 @@
-import { MAP_IDS, MAP_SIZE, codeMapRecipe, validMapRecipe, type MapId, type MapRecipe } from "@game/shared";
+import { CODE_MAP_IDS, MAP_IDS, MAP_SIZE, fullCodeMapRecipe, validMapRecipe, type CodeMapId, type MapRecipe } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { getMapRecipes, parseRecipe, resetMapsCache, type MapRow } from "./maps";
 
@@ -69,7 +69,8 @@ export function recipeProblems(before: MapRecipe, after: MapRecipe): string[] {
     if (!insideRect(after.size, after.rect, p.x, p.y)) out.push(`gate (${p.x}, ${p.y}) outside the playing area`);
     if (p.toMap === after.id) out.push(`gate (${p.x}, ${p.y}) leads to the same map`);
     const target = MAP_SIZE[p.toMap];
-    if (p.toX >= target || p.toY >= target) out.push(`gate (${p.x}, ${p.y}) arrives outside ${p.toMap}`);
+    if (target === undefined) out.push(`gate (${p.x}, ${p.y}) leads to ${p.toMap}, which is not a map`);
+    else if (p.toX >= target || p.toY >= target) out.push(`gate (${p.x}, ${p.y}) arrives outside ${p.toMap}`);
   }
   return out;
 }
@@ -120,11 +121,11 @@ export async function saveMap(db: D1Database, adminEmail: string, posted: unknow
 
 /** Puts a map back to the code's (the row becomes the seed again). */
 export async function resetMap(db: D1Database, adminEmail: string, id: string, updatedAt: number, now = Date.now()): Promise<MapResult> {
-  if (!(MAP_IDS as readonly string[]).includes(id)) return { ok: false, error: "not_found" };
+  if (!(CODE_MAP_IDS as readonly string[]).includes(id)) return { ok: false, error: "not_found" }; // a map the code does not know has no code version to go back to
   const current = await getMapAdmin(db, id);
   if (!current) return { ok: false, error: "not_found" };
   if (current.updatedAt !== updatedAt) return { ok: false, error: "version_conflict" };
   if (!current.edited) return { ok: false, error: "unchanged" };
   const stamp = Math.max(now, updatedAt + 1);
-  return write(db, id, updatedAt, JSON.stringify(codeMapRecipe(id as MapId)), null, adminEmail, stamp, `Đưa bản đồ ${id} về bản của code`, now);
+  return write(db, id, updatedAt, JSON.stringify(fullCodeMapRecipe(id as CodeMapId)), null, adminEmail, stamp, `Đưa bản đồ ${id} về bản của code`, now);
 }

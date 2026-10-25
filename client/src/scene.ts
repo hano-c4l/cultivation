@@ -674,7 +674,7 @@ export class GameScene extends Phaser.Scene {
         setTuning(msg.tuning as unknown as Record<string, unknown>); // the live balance numbers (drops, kills, skills, theme...)
         applyTuningTheme();
         setMapNpcs(msg.map, msg.npcs); // who stands on this map (data from D1)
-        if (isMapId(msg.map)) setMapRecipe(msg.mapRecipe ?? null, msg.map); // the layout of this map when an admin changed it (before the map is built below)
+        if (msg.mapRecipe || isMapId(msg.map)) setMapRecipe(msg.mapRecipe ?? null, msg.map); // the layout of this map when an admin changed it (before the map is built below)
         if (msg.mutant) setElementTuning(msg.mutant); // the live numbers of the mutant elements (game settings)
         setItemOverlays(msg.items ?? []); // what admins changed in the item catalogue (before the bag below is drawn)
         setMounted(false); // the snapshot of yourself (below) says whether you still ride: it is kept across maps

@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { MAP_IDS, buildFromRecipe, codeMapRecipe, getMap, setMapRecipe, type MapRecipe } from "./map";
+import { CLUSTERS, GUARDS } from "./monsters";
+import { BOSS_SPOTS } from "./boss";
+import { CODE_MAP_IDS, MAP_IDS, MAP_REALM, MAP_SIZE, buildFromRecipe, codeMapRecipe, getMap, isMapId, setMapRecipe, type MapRecipe } from "./map";
+import { fullCodeMapRecipe } from "./map-content";
 
 afterEach(() => {
-  for (const id of MAP_IDS) setMapRecipe(null, id);
+  for (const id of [...MAP_IDS]) setMapRecipe(null, id);
 });
 
 describe("map recipes", () => {
-  for (const id of MAP_IDS) {
+  for (const id of CODE_MAP_IDS) {
     it(`${id}: the recipe, after a trip through JSON, builds the identical map`, () => {
       const code = getMap(id);
       const recipe = JSON.parse(JSON.stringify(codeMapRecipe(id))) as MapRecipe;
@@ -35,5 +38,47 @@ describe("map recipes", () => {
     expect(getMap("forest").collision.reduce((n, c) => n + c, 0)).toBeGreaterThan(code.collision.reduce((n, c) => n + c, 0)); // no trees: more ground
     setMapRecipe(null, "forest");
     expect(getMap("forest").palette.groundA).toBe(code.palette.groundA);
+  });
+
+  it("the content taken from the code equals the tables the game reads, after a trip through JSON", () => {
+    for (const id of CODE_MAP_IDS) {
+      const recipe = JSON.parse(JSON.stringify(fullCodeMapRecipe(id))) as MapRecipe;
+      expect(recipe.content!.groups).toEqual((CLUSTERS[id] ?? []).map((g) => ({ tier: g.tier, kind: g.kind, x: g.x, y: g.y, radius: g.radius, count: g.count })));
+      expect(recipe.content!.guards).toEqual((GUARDS[id] ?? []).map((g) => [g[0], g[1]]));
+      expect(recipe.content!.bossSpot).toEqual(BOSS_SPOTS[id] ? [BOSS_SPOTS[id]![0], BOSS_SPOTS[id]![1]] : null);
+    }
+  });
+
+  it("a recipe with content replaces the groups, the guards and the boss spot of its map; removing it brings the code's back", () => {
+    const codeGroups = CLUSTERS.forest!;
+    const recipe = fullCodeMapRecipe("forest");
+    recipe.content = { groups: [{ tier: 1, kind: "soi_rung", x: 30, y: 30, radius: 2, count: 3 }], guards: [[31, 31]], bossSpot: [40, 40] };
+    setMapRecipe(recipe);
+    expect(CLUSTERS.forest).toHaveLength(1);
+    expect(GUARDS.forest).toEqual([[31, 31]]);
+    expect(BOSS_SPOTS.forest).toEqual([40, 40]);
+    setMapRecipe(null, "forest");
+    expect(CLUSTERS.forest).toEqual(codeGroups);
+    expect(BOSS_SPOTS.forest).toEqual(fullCodeMapRecipe("forest").content!.bossSpot);
+    // a recipe without content is the code's too
+    setMapRecipe(codeMapRecipe("forest"));
+    expect(CLUSTERS.forest).toEqual(codeGroups);
+  });
+
+  it("a map the code does not know registers when its recipe is installed and disappears when it is removed", () => {
+    const recipe = { ...fullCodeMapRecipe("forest"), id: "rung_moi" };
+    expect(isMapId("rung_moi")).toBe(false);
+    setMapRecipe(recipe);
+    expect(isMapId("rung_moi")).toBe(true);
+    expect(MAP_SIZE.rung_moi).toBe(recipe.size);
+    expect(MAP_REALM.rung_moi).toBe(0);
+    expect(CLUSTERS.rung_moi).toHaveLength(recipe.content!.groups.length);
+    expect(getMap("rung_moi").collision.length).toBe(getMap("forest").collision.length);
+    expect(getMap("rung_moi").npcs).toEqual([]);
+    setMapRecipe(null, "rung_moi");
+    expect(isMapId("rung_moi")).toBe(false);
+    expect(MAP_SIZE.rung_moi).toBeUndefined();
+    expect(CLUSTERS.rung_moi).toBeUndefined();
+    expect(BOSS_SPOTS.rung_moi).toBeUndefined();
   });
 });
