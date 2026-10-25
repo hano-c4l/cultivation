@@ -21,7 +21,7 @@ import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
 import { getEnhanceView, getMasterView, getSetsView, saveEnhance, saveMaster, saveSets } from "./gear-admin";
 import { addItem, addSkill, adjustMoney, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview, type StatsInput } from "./characters-admin";
 import { banAccount, getAccountDetail, listAccounts, parseAccountQuery, setTempPassword, unbanAccount } from "./accounts-admin";
-import { getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
+import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
 
@@ -707,4 +707,27 @@ export async function adminGearSave(request: Request, env: Env): Promise<Respons
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, GEAR_ERROR_STATUS[result.error] ?? 400);
   console.log("gear saved", session.accountId, body.part);
   return json({ ok: true, token: result.token });
+}
+
+/** Makes a new map from a template (POST `CreateMapInput`), or deletes one an admin added (POST `{id, updatedAt}` to /api/admin/maps/delete). */
+export async function adminMapCreate(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 16 * 1024);
+  if (!body) return errorResponse("invalid_body", 400);
+  const result = await createMap(env.DB, session.email, body);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
+  console.log("map created", session.accountId, result.id);
+  return json({ ok: true, id: result.id });
+}
+
+export async function adminMapDelete(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 4 * 1024);
+  if (typeof body?.id !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await deleteMap(env.DB, session.email, body.id, body.updatedAt);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
+  console.log("map deleted", session.accountId, body.id);
+  return json({ ok: true });
 }

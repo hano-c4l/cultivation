@@ -53,6 +53,8 @@ async function load(db: D1Database): Promise<number> {
       if (true) setMapRecipe(null, row.map_id);
     }
   }
+  // A map an admin added and then deleted must leave this isolate too (its row is gone, so the loop above never saw it).
+  for (const id of [...MAP_IDS]) if (!seen.has(id) && !(CODE_MAP_IDS as readonly string[]).includes(id)) setMapRecipe(null, id);
   return versionRow?.version ?? 0;
 }
 

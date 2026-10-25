@@ -24,6 +24,8 @@ interface View {
   updatedAt: number;
   edited: boolean;
   maps: string[];
+  /** One of the maps the code builds (it cannot be deleted). */
+  code: boolean;
 }
 
 const ERRORS: Record<string, string> = {
@@ -32,7 +34,8 @@ const ERRORS: Record<string, string> = {
   not_found: "Không tìm thấy bản đồ.",
   busy: "Dữ liệu vừa đổi. Hãy thử lại.",
   locked: "Kích thước, khung chơi, cảnh giới và cờ an toàn không đổi được ở đây.",
-  invalid: "Công thức không hợp lệ:",
+  invalid: "Không hợp lệ:",
+  exists: "Mã bản đồ này đã có.",
 };
 
 const OP_LABEL: Record<GridOp["op"], string> = {
@@ -65,7 +68,10 @@ export function mapListPage(): HTMLElement {
   void api<{ maps: Item[] }>("/api/admin/maps").then((res) => {
     if (res.status !== 200) return void root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
     const maps = res.data.maps;
+    const add = h("button", { type: "button", class: "primary" }, "+ Tạo bản đồ mới");
+    add.addEventListener("click", () => navigate("/admin/maps/new"));
     root.replaceChildren(
+      h("div", { class: "toolbar" }, add),
       h("p", { class: "muted" }, "Đổi bản đồ có hiệu lực với máy chủ sau tối đa 30 giây; người chơi nhận bản đồ mới khi vào lại game hoặc đổi bản đồ. Hãy sửa lúc không có người trong bản đồ đó: máy chủ dùng lưới mới ngay cho việc đi lại, còn quái đang chạy và máy khách của người đang đứng trong bản đồ vẫn giữ lưới cũ tới khi phòng trống hoặc họ vào lại, nên họ có thể bị giật vị trí."),
       listView<Item>({
         columns: [
@@ -145,6 +151,55 @@ function drawPreview(canvas: HTMLCanvasElement, recipe: MapRecipe): void {
   };
   for (const p of recipe.portals) dot(p.x, p.y, "#ff3b3b");
   dot(recipe.spawn[0], recipe.spawn[1], "#3bff6b");
+}
+
+/** The form that makes a new map from a template, joined to an existing map by a gate each way. */
+export function mapNewPage(): HTMLElement {
+  const root = h("div", { class: "detail wide" });
+  void api<{ maps: Item[] }>("/api/admin/maps").then((res) => {
+    if (res.status !== 200) return void root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
+    const ids = res.data.maps.map((m) => m.id);
+    const msg = h("div", { class: "msg muted" });
+    const problems = h("ul", { class: "err" });
+    const id = h("input", { type: "text", maxlength: "24", placeholder: "ma_ban_do (a-z, 0-9, _)" });
+    const template = select(ids, ids.includes("forest") ? "forest" : ids[0]!);
+    const realm = h("select", null, h("option", { value: "" }, "Thành an toàn (không quái)"), ...[0, 1, 2, 3].map((i) => h("option", { value: String(i) }, `Cảnh giới ${i}`)));
+    realm.value = "0";
+    const target = select(ids, ids.includes("town") ? "town" : ids[0]!);
+    const n = (v: number) => num(v, { step: "1" });
+    const gate = { x: n(75), y: n(75), toX: n(45), toY: n(45) };
+    const back = { x: n(48), y: n(45), toX: n(75), toY: n(75) };
+    const create = h("button", { type: "button", class: "primary" }, "Tạo bản đồ");
+    create.addEventListener("click", async () => {
+      create.disabled = true;
+      msg.textContent = "Đang tạo...";
+      const body = {
+        id: id.value.trim(),
+        template: template.value,
+        realm: realm.value === "" ? null : Number(realm.value),
+        gate: { x: Number(gate.x.value), y: Number(gate.y.value), toX: Number(gate.toX.value), toY: Number(gate.toY.value) },
+        back: { map: target.value, x: Number(back.x.value), y: Number(back.y.value), toX: Number(back.toX.value), toY: Number(back.toY.value) },
+      };
+      const out = await api<{ error?: string; problems?: string[]; id?: string }>("/api/admin/maps/create", { method: "POST", body });
+      create.disabled = false;
+      if (out.status === 200) return navigate(`/admin/maps/edit?id=${encodeURIComponent(body.id)}`);
+      msg.textContent = ERRORS[out.data.error ?? ""] ?? `Lỗi ${out.status}.`;
+      msg.className = "msg err";
+      problems.replaceChildren(...(out.data.problems ?? []).map((p) => h("li", null, p)));
+    });
+    root.replaceChildren(
+      h("a", { href: "/admin/maps" }, "‹ Danh sách bản đồ"),
+      h("h2", null, "Tạo bản đồ mới"),
+      h("p", { class: "muted" }, "Bản đồ mới bắt đầu từ ground, kích thước, màu (và quái, nếu không phải thành) của bản đồ mẫu, rồi nối hai chiều với một bản đồ đang có. Tọa độ là ô (x, y) của lưới; ô nằm trong khung chơi. Chỗ cổng và điểm đến được khoét thông sẵn; hãy Xem trước để chắc đường đi tới được, sửa bãi quái, vệ binh sau."),
+      h("section", { class: "form" }, h("div", { class: "toolbar" }, h("span", null, "Mã"), id, h("span", null, "Mẫu"), template, realm)),
+      h("section", { class: "form" }, h("h3", null, "Cổng trên bản đồ mới"), h("div", { class: "toolbar" }, h("span", null, "Cổng ở ô"), gate.x, gate.y, h("span", null, "→ đến bản đồ"), target, h("span", null, "ô"), gate.toX, gate.toY)),
+      h("section", { class: "form" }, h("h3", null, "Cổng ngược trên bản đồ kia"), h("div", { class: "toolbar" }, h("span", null, "Cổng ở ô"), back.x, back.y, h("span", null, "→ đến bản đồ mới, ô"), back.toX, back.toY, h("span", { class: "muted" }, "(ô này cũng là điểm sinh)"))),
+      h("div", { class: "toolbar" }, create),
+      msg,
+      problems,
+    );
+  });
+  return root;
 }
 
 export function mapEditPage(): HTMLElement {
@@ -235,6 +290,53 @@ function form(view: View): HTMLElement {
       return { x: Number(i[0]!.value), y: Number(i[1]!.value), toMap: (row.querySelector("select") as HTMLSelectElement).value as MapRecipe["home"], toX: Number(i[2]!.value), toY: Number(i[3]!.value) };
     }),
     ops: [...opRows.children].map((row) => (row as unknown as { read: () => GridOp }).read()),
+    ...(r.content ? { content: readContent() } : {}),
+  });
+
+  // Monster groups, guards and the boss spot (tile units).
+  const c0 = r.content ?? { groups: [], guards: [], bossSpot: null };
+  const groupRows = h("div");
+  const addGroup = (g: { tier: number; kind: string; x: number; y: number; radius: number; count: number }) => {
+    const rm = h("button", { type: "button" }, "✕");
+    const kind = h("input", { type: "text", maxlength: "40", placeholder: "mã loài", list: "map-species" });
+    kind.value = g.kind;
+    kind.style.width = "10em";
+    const row = h("div", { class: "toolbar" }, h("span", null, "Bậc"), num(g.tier, { min: "1", max: "9", step: "1" }), kind, h("span", null, "ô"), num(g.x), num(g.y), h("span", null, "bán kính"), num(g.radius), h("span", null, "số con"), num(g.count, { min: "1", step: "1" }), rm);
+    rm.addEventListener("click", () => row.remove());
+    groupRows.append(row);
+  };
+  for (const g of c0.groups) addGroup(g);
+  const addGroupBtn = h("button", { type: "button" }, "+ Thêm bãi quái");
+  addGroupBtn.addEventListener("click", () => addGroup({ tier: 1, kind: "", x: r.spawn[0], y: r.spawn[1], radius: 2, count: 4 }));
+  const guardRows = h("div");
+  const addGuard = (g: [number, number]) => {
+    const rm = h("button", { type: "button" }, "✕");
+    const row = h("div", { class: "toolbar" }, h("span", null, "Vệ binh ở ô"), num(g[0]), num(g[1]), rm);
+    rm.addEventListener("click", () => row.remove());
+    guardRows.append(row);
+  };
+  for (const g of c0.guards) addGuard(g);
+  const addGuardBtn = h("button", { type: "button" }, "+ Thêm vệ binh");
+  addGuardBtn.addEventListener("click", () => addGuard([r.spawn[0], r.spawn[1]]));
+  const boss = c0.bossSpot;
+  const bossOn = h("input", { type: "checkbox" });
+  bossOn.checked = boss !== null;
+  const bossX = num(boss?.[0] ?? r.spawn[0]);
+  const bossY = num(boss?.[1] ?? r.spawn[1]);
+  const species = h("datalist", { id: "map-species" });
+  void api<{ species: Array<{ id: string; nameVi: string }> }>("/api/admin/monsters").then((res) => {
+    if (res.status === 200) species.replaceChildren(...res.data.species.map((s) => h("option", { value: s.id }, s.nameVi)));
+  });
+  const readContent = () => ({
+    groups: [...groupRows.children].map((row) => {
+      const i = row.querySelectorAll("input");
+      return { tier: Number(i[0]!.value), kind: i[1]!.value.trim(), x: Number(i[2]!.value), y: Number(i[3]!.value), radius: Number(i[4]!.value), count: Number(i[5]!.value) };
+    }),
+    guards: [...guardRows.children].map((row): [number, number] => {
+      const i = row.querySelectorAll("input");
+      return [Number(i[0]!.value), Number(i[1]!.value)];
+    }),
+    bossSpot: bossOn.checked ? ([Number(bossX.value), Number(bossY.value)] as [number, number]) : null,
   });
 
   const canvas = h("canvas", { width: "900", height: "450" });
@@ -272,18 +374,42 @@ function form(view: View): HTMLElement {
     show(ERRORS[res.data.error ?? ""] ?? `Lỗi ${res.status}.`, "err");
   });
 
+  const del = h("button", { type: "button" }, "Xóa bản đồ");
+  del.disabled = view.code;
+  del.title = view.code ? "Bản đồ của code không xóa được" : "";
+  del.addEventListener("click", async () => {
+    if (!window.confirm(`Xóa bản đồ ${r.id}? Chỉ xóa được khi không còn nhân vật, cổng, NPC hay boss gắn với nó.`)) return;
+    const res = await api<{ error?: string; problems?: string[] }>("/api/admin/maps/delete", { method: "POST", body: { id: r.id, updatedAt: view.updatedAt } });
+    if (res.status === 200) return navigate("/admin/maps");
+    show(ERRORS[res.data.error ?? ""] ?? `Lỗi ${res.status}.`, "err", res.data.problems ?? []);
+  });
+
   return h(
     "div",
     null,
     h("a", { href: "/admin/maps" }, "‹ Danh sách bản đồ"),
     h("h2", null, `Bản đồ ${r.id}`),
-    h("p", { class: "muted" }, `Cố định: kích thước ${r.size} × ${r.size}, khung chơi ${r.rect.halfW} × ${r.rect.halfH}, ${r.safe ? "thành an toàn" : `cảnh giới ${r.realm}`}. Bãi quái, boss và vệ binh của bản đồ vẫn theo code (xem ghi chú ở docs/PHASE3.md). NPC chỉnh ở mục NPC.`),
+    h("p", { class: "muted" }, `Cố định: kích thước ${r.size} × ${r.size}, khung chơi ${r.rect.halfW} × ${r.rect.halfH}, ${r.safe ? "thành an toàn" : `cảnh giới ${r.realm}`}. Bãi quái, vệ binh và chỗ boss sửa ở mục dưới (boss của bản đồ chọn ở Quái / BOSS). NPC chỉnh ở mục NPC.`),
     h("section", { class: "form" }, h("h3", null, "Màu"), h("div", { class: "toolbar" }, h("span", null, "Nền A"), colors[0]!.i, h("span", null, "Nền B"), colors[1]!.i, h("span", null, "Vật cản"), colors[2]!.i)),
     h("section", { class: "form" }, h("h3", null, "Điểm sinh và thành về khi chết"), h("div", { class: "toolbar" }, h("span", null, "Sinh tại ô"), spawnX, spawnY, h("span", null, "Về thành"), home)),
     h("section", { class: "form" }, h("h3", null, "Cổng (ô x, ô y → bản đồ, ô đến x, ô đến y)"), portalRows, addPortalBtn),
     h("section", { class: "form" }, h("h3", null, "Các bước dựng lưới (theo thứ tự; bước sau đè bước trước)"), h("p", { class: "muted" }, "Số liệu là số đã tính của code. Các bước “trên màn hình” dùng đơn vị màn hình 32 px. Bước cuối thường là cắt ngoài khung."), opRows, h("div", { class: "toolbar" }, newKind, addOpBtn)),
+    r.content
+      ? h(
+          "section",
+          { class: "form" },
+          h("h3", null, "Quái, vệ binh và boss (ô)"),
+          h("p", { class: "muted" }, "Bậc 1-9 trong cảnh giới của bản đồ. Số quái, loài và vệ binh áp cho quái sinh ra sau đó. Thành an toàn không có bãi quái."),
+          species,
+          groupRows,
+          addGroupBtn,
+          guardRows,
+          addGuardBtn,
+          h("div", { class: "toolbar" }, h("label", { class: "radio" }, bossOn, "Chỗ boss dự phòng"), bossX, bossY),
+        )
+      : null,
     h("section", { class: "form" }, h("h3", null, "Xem trước"), h("div", { class: "toolbar" }, preview), canvas),
-    h("div", { class: "toolbar" }, save, reset),
+    h("div", { class: "toolbar" }, save, reset, del),
     msg,
     problems,
   );
