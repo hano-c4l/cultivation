@@ -574,7 +574,7 @@ export async function adminMapSave(request: Request, env: Env): Promise<Response
   if (session instanceof Response) return session;
   const body = await readJson(request, 128 * 1024);
   if (!body || typeof body.updatedAt !== "number") return errorResponse("invalid_body", 400);
-  const result = body.reset === true && typeof body.id === "string" ? await resetMap(env.DB, session.email, body.id, body.updatedAt) : await saveMap(env.DB, session.email, body.recipe, body.updatedAt);
+  const result = body.reset === true && typeof body.id === "string" ? await resetMap(env.DB, session.email, body.id, body.updatedAt) : await saveMap(env.DB, session.email, body.recipe, body.updatedAt, Date.now(), typeof body.name === "string" || body.name === null ? body.name : undefined);
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
   console.log("map saved", session.accountId);
   return json({ ok: true, updatedAt: result.updatedAt });

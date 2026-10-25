@@ -12,7 +12,7 @@ import {
   type QuestProgressView,
   type QuestRewards,
 } from "@game/shared";
-import { vi } from "./locales/vi";
+import { mapLabel, vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
 export interface QuestUi {
@@ -51,7 +51,7 @@ export function objectiveText(o: QuestObjective): string {
     case "talk":
       return vi.quests.objective.talk(vi.npcs[o.npc] ?? o.npc);
     case "kill":
-      return vi.quests.objective.kill(o.count, o.map ? (vi.maps[o.map] ?? o.map) : null, o.rare === true);
+      return vi.quests.objective.kill(o.count, o.map ? mapLabel(o.map) : null, o.rare === true);
     case "collect":
       return vi.quests.objective.collect(collectItems(o).map((c) => `${c.qty} ${nameOf(c.item)}`).join(", "));
     case "reach":

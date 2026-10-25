@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { CLUSTERS, MAP_IDS, MAP_SIZE, getMap, isMapId, overrideRecipe, setMapRecipe } from "@game/shared";
+import { CLUSTERS, MAP_IDS, MAP_NAMES, MAP_SIZE, getMap, isMapId, overrideRecipe, setMapRecipe } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
 import { getMapRecipes, resetMapsCache } from "./maps";
 import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
@@ -83,7 +83,7 @@ describe("the maps screen", () => {
     expect(code).toBe(true);
   });
 
-  const input = (over: Record<string, unknown> = {}) => ({ id: "rung_moi", template: "forest", realm: 0, gate: { x: 100, y: 100, toX: 100, toY: 100 }, back: { map: "town", x: 60, y: 60, toX: 90, toY: 90 }, ...over });
+  const input = (over: Record<string, unknown> = {}) => ({ id: "rung_moi", name: "Rừng Mới", template: "forest", realm: 0, gate: { x: 100, y: 100, toX: 100, toY: 100 }, back: { map: "town", x: 60, y: 60, toX: 90, toY: 90 }, ...over });
   const gateTile = async (map: string) => {
     const v = (await getMapAdmin(db, map))!;
     const size = v.recipe.size;
@@ -111,6 +111,28 @@ describe("the maps screen", () => {
     expect(CLUSTERS.rung_moi!.length).toBeGreaterThan(8);
     expect((await listMaps(db)).find((m) => m.id === "rung_moi")).toMatchObject({ edited: true });
     expect(await createMap(db, ADMIN, good)).toMatchObject({ ok: false, error: "invalid" }); // already there
+    expect(MAP_NAMES.rung_moi).toBe("Rừng Mới"); // the name reaches the game
+    expect(await createMap(db, ADMIN, input({ id: "khong_ten", name: "" }))).toMatchObject({ ok: false, error: "invalid" }); // a new map needs a name
+  });
+
+  it("names a map without pinning the layout of a map of the code, and clears the name", async () => {
+    const before = (await getMapAdmin(db, "cave"))!;
+    expect(before.edited).toBe(false);
+    const named = await saveMap(db, ADMIN, before.recipe, before.updatedAt, Date.now() + 100, "Hang Tối");
+    expect(named.ok).toBe(true);
+    resetMapsCache();
+    await getMapRecipes(db);
+    expect(MAP_NAMES.cave).toBe("Hang Tối");
+    const after = (await getMapAdmin(db, "cave"))!;
+    expect(after.name).toBe("Hang Tối");
+    expect(after.edited).toBe(false); // still the code's grid
+    expect(overrideRecipe("cave")).toBeUndefined();
+    expect(await saveMap(db, ADMIN, after.recipe, after.updatedAt, Date.now() + 200, "Hang Tối")).toMatchObject({ ok: false, error: "unchanged" });
+    expect(await saveMap(db, ADMIN, after.recipe, after.updatedAt, Date.now() + 200, "  bad ")).toMatchObject({ ok: false, error: "invalid" });
+    expect(await saveMap(db, ADMIN, after.recipe, after.updatedAt, Date.now() + 200, null)).toMatchObject({ ok: true });
+    resetMapsCache();
+    await getMapRecipes(db);
+    expect(MAP_NAMES.cave).toBeUndefined();
   });
 
   it("makes a safe town when the realm is none, with no monsters", async () => {

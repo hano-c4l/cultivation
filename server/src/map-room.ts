@@ -142,7 +142,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
@@ -585,6 +585,7 @@ export class MapRoom extends DurableObject<Env> {
         tuning: await getTuning(this.env.DB),
         npcs: [...npcsOf(map)],
         ...(this.pinOf(mapId).custom ? { mapRecipe: this.pinOf(mapId).recipe } : {}),
+        ...(Object.keys(MAP_NAMES).length > 0 ? { mapNames: { ...MAP_NAMES } } : {}),
         items: itemOverlays().map((o) => ({ ...o })),
         mutant: { mutantRootChancePermille: elementTuning().mutantRootChancePermille, mutantSkillBonusPct: elementTuning().mutantSkillBonusPct, mutantGearBonusPct: elementTuning().mutantGearBonusPct, mutantGearDropPermille: elementTuning().mutantGearDropPermille },
         hotbar,

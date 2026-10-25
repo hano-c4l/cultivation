@@ -1,5 +1,5 @@
 import { fullGearStats, type GuardStats } from "./guards";
-import { MAP_SIZE, onMapRecipe, screenToTile, type MapId } from "./map";
+import { MAP_NAMES, MAP_SIZE, onMapRecipe, screenToTile, type MapId } from "./map";
 import { deriveStats, levelIndex, startingStats } from "./progression";
 import { REALMS } from "./progression-data";
 import { tuning, type Tuning } from "./tuning";
@@ -140,11 +140,11 @@ export function pickByShare(shares: readonly BossShare[], roll: number): string 
 const BOSS_MAP_NAMES: Readonly<Record<string, string>> = { forest: "Hắc Mộc Lâm", cave: "U Minh Động", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên" };
 
 export function bossSpawnText(bossName: string, mapId: string, channel: string): string {
-  return `${bossName} đã xuất hiện ở ${BOSS_MAP_NAMES[mapId] ?? mapId}, kênh ${channel}!`;
+  return `${bossName} đã xuất hiện ở ${BOSS_MAP_NAMES[mapId] ?? MAP_NAMES[mapId] ?? mapId}, kênh ${channel}!`;
 }
 
 export function bossKillText(bossName: string, mapId: string, channel: string, killer: string): string {
-  return `${bossName} ở ${BOSS_MAP_NAMES[mapId] ?? mapId}, kênh ${channel} đã bị ${killer} cùng đồng đạo hạ gục.`;
+  return `${bossName} ở ${BOSS_MAP_NAMES[mapId] ?? MAP_NAMES[mapId] ?? mapId}, kênh ${channel} đã bị ${killer} cùng đồng đạo hạ gục.`;
 }
 
 /** Kills needed in one room to ask for the boss for sure. */

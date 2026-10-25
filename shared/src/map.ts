@@ -752,6 +752,28 @@ export function onMapRecipe(listener: (id: MapId, recipe: MapRecipe | null) => v
   mapListeners.push(listener);
 }
 
+/**
+ * Display names an admin gave to maps (`map_recipes.name_vi`), by map id. The server fills it from D1 and sends it in `welcome`; the client installs it with
+ * `installMapNames`. A map with no name here shows the name the client has for the code's maps, else its id.
+ */
+export const MAP_NAMES: Record<string, string> = {};
+export const MAP_NAME_MAX = 40;
+
+export function validMapName(name: unknown): name is string {
+  return typeof name === "string" && name.trim() === name && name.length >= 1 && name.length <= MAP_NAME_MAX && !/[\u0000-\u001f\u007f]/.test(name);
+}
+
+export function setMapName(id: MapId, name: string | null): void {
+  if (name !== null && validMapName(name)) MAP_NAMES[id] = name;
+  else delete MAP_NAMES[id];
+}
+
+/** Replaces every name (the client takes the whole record from `welcome`). */
+export function installMapNames(names: Record<string, string> | undefined): void {
+  for (const k of Object.keys(MAP_NAMES)) delete MAP_NAMES[k];
+  for (const [id, n] of Object.entries(names ?? {})) setMapName(id, n);
+}
+
 function registerMap(id: MapId, r: MapRecipe | null): void {
   if (r) {
     if (!MAP_IDS.includes(id)) MAP_IDS.push(id);
@@ -765,6 +787,7 @@ function registerMap(id: MapId, r: MapRecipe | null): void {
     if (i >= 0) MAP_IDS.splice(i, 1);
     delete MAP_SIZE[id];
     delete MAP_REALM[id];
+    delete MAP_NAMES[id];
   }
   for (const l of mapListeners) l(id, r);
 }
