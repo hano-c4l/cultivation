@@ -4,6 +4,7 @@ import { CLUSTERS, MAP_IDS, MAP_NAMES, MAP_SIZE, getMap, isMapId, isWaygateTown,
 import { listAdminLog, parseLogQuery } from "./admin-log";
 import { getMapRecipes, resetMapsCache } from "./maps";
 import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
+import { listTuningGroups, saveTuningGroup } from "./tuning-admin";
 import { makeDb } from "./test-db";
 
 let db: D1Database;
@@ -154,6 +155,23 @@ describe("the maps screen", () => {
     resetMapsCache();
     await getMapRecipes(db);
     expect(isWaygateTown("thanh_tt")).toBe(false);
+  });
+
+  it("the boss page offers a map an admin added, and saves a boss species for it", async () => {
+    const fm = await gateTile("forest");
+    const tm = await gateTile("town");
+    expect((await createMap(db, ADMIN, input({ gate: { x: fm.x, y: fm.y, toX: tm.x, toY: tm.y }, back: { map: "town", x: tm.x + 3, y: tm.y, toX: fm.x, toY: fm.y } }), Date.now() + 10)).ok).toBe(true);
+    resetMapsCache();
+    await getMapRecipes(db);
+    const groups = await listTuningGroups(db, "boss");
+    const boss = groups.find((g) => g.group === "boss")!;
+    expect(boss.fields.some((f) => f.path === "species.rung_moi" && f.label.includes("Rừng Mới"))).toBe(true);
+    const posted = JSON.parse(JSON.stringify(boss.value)) as { species: Record<string, string | null> };
+    posted.species.rung_moi = "huyet_lang_vuong";
+    expect(await saveTuningGroup(db, "boss", posted, boss.updatedAt, ADMIN)).toMatchObject({ ok: true });
+    posted.species.rung_moi = "no_such_species";
+    const again = (await listTuningGroups(db, "boss")).find((g) => g.group === "boss")!;
+    expect(await saveTuningGroup(db, "boss", posted, again.updatedAt, ADMIN)).toMatchObject({ ok: false, error: "invalid" });
   });
 
   it("makes a safe town when the realm is none, with no monsters", async () => {
