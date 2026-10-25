@@ -10,6 +10,7 @@ import { skillEditPage, skillListPage } from "./skills";
 import { questEditPage, questListPage } from "./quests";
 import { alchemyPage, npcEditPage, npcListPage } from "./npcs";
 import { mapEditPage, mapListPage } from "./maps";
+import { accountDetailPage, accountListPage } from "./accounts";
 import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
@@ -78,6 +79,12 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/accounts") {
+    title = "Tài khoản";
+    content = accountListPage();
+  } else if (path === "/admin/accounts/detail") {
+    title = "Tài khoản · Chi tiết";
+    content = accountDetailPage();
   } else if (path === "/admin/maps") {
     title = "Bản đồ";
     content = mapListPage();

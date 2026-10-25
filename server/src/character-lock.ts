@@ -32,6 +32,15 @@ export class CharacterLock extends DurableObject<Env> {
     await this.ctx.storage.put("holder", next);
   }
 
+  /** Kicks whoever holds the character (saving first) and frees the lock: used when an admin bans the account. */
+  async evict(characterId: string): Promise<void> {
+    const holder = await this.ctx.storage.get<Holder>("holder");
+    if (!holder) return;
+    const stub = this.env.MAP_ROOM.get(this.env.MAP_ROOM.idFromName(holder.room));
+    await stub.evictCharacter(characterId);
+    await this.ctx.storage.delete("holder");
+  }
+
   /** Called by the holding connection after it left; ignored unless the claim id still matches. */
   async release(claimId: string): Promise<void> {
     const holder = await this.ctx.storage.get<Holder>("holder");
