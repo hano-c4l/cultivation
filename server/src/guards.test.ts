@@ -41,7 +41,7 @@ function beside(guard: { path: Vec2[] }): Vec2 {
 describe("guards", () => {
   it("stand at the gate of the forest, after every cluster monster, and are flagged in their snapshot", () => {
     const { sim, guards } = forest();
-    expect(guards).toHaveLength(GUARDS.forest.length);
+    expect(guards).toHaveLength(GUARDS.forest!.length);
     expect(guards.every((g) => g.kind === "ve_binh" && g.rank === "normal")).toBe(true);
     const ids = sim.snapshots(0).map((m) => Number(m.id.slice(1)));
     expect(Math.min(...guards.map((g) => Number(g.id.slice(1))))).toBeGreaterThan(Math.max(...sim.snapshots(0).filter((m) => !m.guard).map((m) => Number(m.id.slice(1)))));

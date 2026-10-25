@@ -9,12 +9,21 @@ export const TILE_H = 32;
  */
 export const CELLS_PER_TILE = 4;
 
-export const MAP_IDS = ["town", "forest", "cave", "town2", "kimdan", "nguyenanh"] as const;
-export type MapId = (typeof MAP_IDS)[number];
+/** The maps the code builds. */
+export const CODE_MAP_IDS = ["town", "forest", "cave", "town2", "kimdan", "nguyenanh"] as const;
+export type CodeMapId = (typeof CODE_MAP_IDS)[number];
+/** A map id: the six of the code and the ones an admin added (their recipes are installed with setMapRecipe, which keeps MAP_IDS, MAP_SIZE and MAP_REALM current). */
+export type MapId = string;
+
+/** Every map in play, in order: the code's, then the ones added later. The array is changed in place, so a module that holds it always sees the current list. */
+export const MAP_IDS: string[] = [...CODE_MAP_IDS];
 
 export function isMapId(value: string): value is MapId {
-  return (MAP_IDS as readonly string[]).includes(value);
+  return MAP_IDS.includes(value);
 }
+
+/** The shape of a map id (a-z, 0-9, _): what a recipe may name before the map is installed. */
+export const MAP_ID_PATTERN = /^[a-z][a-z0-9_]{1,23}$/;
 
 /** A point in continuous tile units: tile (i, j) spans [i, i+1) x [j, j+1), its centre is (i+0.5, j+0.5). */
 export type Vec2 = [number, number];
@@ -647,11 +656,11 @@ function buildOpenMap(id: "kimdan" | "nguyenanh", rect: PlayRect, size: number, 
  * What is known about a map without building it (building one fills hundreds of thousands of collision cells, so a map is built the first time
  * it is asked for, not when the module loads: every Worker isolate and every page load imports this file).
  */
-export const MAP_SIZE: Readonly<Record<MapId, number>> = { town: TOWN_SIZE, forest: FOREST_SIZE, cave: CAVE_SIZE, town2: TOWN_SIZE, kimdan: KIMDAN_SIZE, nguyenanh: NGUYENANH_SIZE };
+export const MAP_SIZE: Record<string, number> = { town: TOWN_SIZE, forest: FOREST_SIZE, cave: CAVE_SIZE, town2: TOWN_SIZE, kimdan: KIMDAN_SIZE, nguyenanh: NGUYENANH_SIZE };
 /** The realm of each map (null for a town), the same as MapData.realm. */
-export const MAP_REALM: Readonly<Record<MapId, number | null>> = { town: null, forest: 0, cave: 1, town2: null, kimdan: 2, nguyenanh: 3 };
+export const MAP_REALM: Record<string, number | null> = { town: null, forest: 0, cave: 1, town2: null, kimdan: 2, nguyenanh: 3 };
 
-const BUILDERS: Readonly<Record<MapId, () => MapData>> = {
+const BUILDERS: Readonly<Record<string, () => MapData>> = {
   town: buildTown,
   forest: buildForest,
   cave: buildCave,
@@ -668,6 +677,13 @@ export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "
  * A map as data (what D1 keeps and the admin edits): everything about a map except its NPCs (their own table) and its monster groups (monsters.ts). Building one
  * replays `ops` on an empty grid, so a recipe taken from a code builder gives back exactly that builder's map.
  */
+/** What lives on a map besides its ground (all tile units): the monster groups, the guards beside the gates and the spot the boss falls back to. Absent in a recipe: the code's. */
+export interface MapContent {
+  groups: Array<{ tier: number; kind: string; x: number; y: number; radius: number; count: number }>;
+  guards: Array<[number, number]>;
+  bossSpot: [number, number] | null;
+}
+
 export interface MapRecipe {
   id: MapId;
   size: number;
@@ -680,17 +696,22 @@ export interface MapRecipe {
   guardRealm?: number;
   portals: Portal[];
   ops: GridOp[];
+  content?: MapContent;
 }
 
 const codeMaps = new Map<MapId, MapData>();
 function codeMap(id: MapId): MapData {
   let m = codeMaps.get(id);
-  if (!m) codeMaps.set(id, (m = BUILDERS[id]()));
+  if (!m) {
+    const build = BUILDERS[id];
+    if (!build) throw new Error(`map ${id} is not one the code builds`);
+    codeMaps.set(id, (m = build()));
+  }
   return m;
 }
 
 /** The recipe of a map as the code builds it (the default the D1 rows are seeded with). */
-export function codeMapRecipe(id: MapId): MapRecipe {
+export function codeMapRecipe(id: CodeMapId): MapRecipe {
   const m = codeMap(id);
   return { id, size: m.width, rect: { ...m.rect }, home: m.home, palette: { ...m.palette }, spawn: [...m.spawn], safe: m.safe, realm: m.realm, ...(m.guardRealm !== undefined ? { guardRealm: m.guardRealm } : {}), portals: m.portals.map((p) => ({ ...p })), ops: m.ops.map((o) => ({ ...o })) };
 }
@@ -713,7 +734,7 @@ export function buildFromRecipe(r: MapRecipe): MapData {
     realm: r.realm,
     ...(r.guardRealm !== undefined ? { guardRealm: r.guardRealm } : {}),
     portals: r.portals.map((p) => ({ ...p })),
-    npcs: codeMap(r.id).npcs,
+    npcs: BUILDERS[r.id] ? codeMap(r.id).npcs : [],
   };
 }
 
@@ -722,17 +743,46 @@ export function buildFromRecipe(r: MapRecipe): MapData {
  * recipe: the grid is built the first time the map is asked for (building one fills hundreds of thousands of cells, which a Worker route must not do).
  */
 const recipes = new Map<MapId, { json: string; recipe: MapRecipe }>();
+const CODE_SIZE: Readonly<Record<string, number>> = { ...MAP_SIZE };
+const CODE_REALM: Readonly<Record<string, number | null>> = { ...MAP_REALM };
+
+/** Called after a recipe is installed or removed (`null`): the modules that keep per-map tables (monster groups, guards, the boss spot) update them. */
+const mapListeners: Array<(id: MapId, recipe: MapRecipe | null) => void> = [];
+export function onMapRecipe(listener: (id: MapId, recipe: MapRecipe | null) => void): void {
+  mapListeners.push(listener);
+}
+
+function registerMap(id: MapId, r: MapRecipe | null): void {
+  if (r) {
+    if (!MAP_IDS.includes(id)) MAP_IDS.push(id);
+    MAP_SIZE[id] = r.size;
+    MAP_REALM[id] = r.realm;
+  } else if ((CODE_MAP_IDS as readonly string[]).includes(id)) {
+    MAP_SIZE[id] = CODE_SIZE[id]!;
+    MAP_REALM[id] = CODE_REALM[id]!;
+  } else {
+    const i = MAP_IDS.indexOf(id);
+    if (i >= 0) MAP_IDS.splice(i, 1);
+    delete MAP_SIZE[id];
+    delete MAP_REALM[id];
+  }
+  for (const l of mapListeners) l(id, r);
+}
+
 export function setMapRecipe(r: MapRecipe | null, id?: MapId): void {
   const key = r?.id ?? id;
   if (!key) return;
   if (!r) {
-    if (recipes.delete(key)) built.delete(key);
+    const had = recipes.delete(key);
+    if (had) built.delete(key);
+    if (had || !(CODE_MAP_IDS as readonly string[]).includes(key)) registerMap(key, null);
     return;
   }
   const json = JSON.stringify(r);
   if (recipes.get(key)?.json === json) return;
   recipes.set(key, { json, recipe: r });
   built.delete(key);
+  registerMap(key, r);
 }
 
 /** The recipe installed for a map (undefined: the map is the code's). */
@@ -829,7 +879,7 @@ export function validMapRecipe(r: unknown): r is MapRecipe {
   const color = (c: unknown) => Number.isInteger(c) && (c as number) >= 0 && (c as number) <= 0xffffff;
   return (
     typeof o.id === "string" &&
-    isMapId(o.id) &&
+    MAP_ID_PATTERN.test(o.id) &&
     Number.isInteger(o.size) &&
     (o.size as number) >= 20 &&
     (o.size as number) <= 400 &&
@@ -839,7 +889,7 @@ export function validMapRecipe(r: unknown): r is MapRecipe {
     rect.halfW > 0 &&
     rect.halfH > 0 &&
     typeof o.home === "string" &&
-    isMapId(o.home) &&
+    MAP_ID_PATTERN.test(o.home) &&
     !!pal &&
     color(pal.groundA) &&
     color(pal.groundB) &&
@@ -852,9 +902,27 @@ export function validMapRecipe(r: unknown): r is MapRecipe {
     (o.guardRealm === undefined || Number.isInteger(o.guardRealm)) &&
     Array.isArray(o.portals) &&
     o.portals.length <= 16 &&
-    o.portals.every((p) => typeof p === "object" && p !== null && Number.isInteger((p as Portal).x) && Number.isInteger((p as Portal).y) && (p as Portal).x >= 0 && (p as Portal).y >= 0 && (p as Portal).x < (o.size as number) && (p as Portal).y < (o.size as number) && typeof (p as Portal).toMap === "string" && isMapId((p as Portal).toMap) && Number.isInteger((p as Portal).toX) && Number.isInteger((p as Portal).toY)) &&
+    o.portals.every((p) => typeof p === "object" && p !== null && Number.isInteger((p as Portal).x) && Number.isInteger((p as Portal).y) && (p as Portal).x >= 0 && (p as Portal).y >= 0 && (p as Portal).x < (o.size as number) && (p as Portal).y < (o.size as number) && typeof (p as Portal).toMap === "string" && MAP_ID_PATTERN.test((p as Portal).toMap) && Number.isInteger((p as Portal).toX) && Number.isInteger((p as Portal).toY)) &&
     Array.isArray(o.ops) &&
     o.ops.length <= MAX_RECIPE_OPS &&
-    o.ops.every(validGridOp)
+    o.ops.every(validGridOp) &&
+    (o.content === undefined || validMapContent(o.content, o.size as number))
+  );
+}
+
+/** Whether the groups, guards and boss spot of a map are well formed and lie inside a grid of this size. */
+export function validMapContent(c: unknown, size: number): c is MapContent {
+  if (typeof c !== "object" || c === null) return false;
+  const o = c as Record<string, unknown>;
+  const inside = (v: unknown): v is number => finite(v) && v >= 0 && v < size;
+  const spot = (p: unknown) => Array.isArray(p) && p.length === 2 && inside(p[0]) && inside(p[1]);
+  return (
+    Array.isArray(o.groups) &&
+    o.groups.length <= 200 &&
+    o.groups.every((g) => typeof g === "object" && g !== null && Number.isInteger(g.tier) && g.tier >= 1 && g.tier <= 9 && typeof g.kind === "string" && /^[a-z0-9_]{1,40}$/.test(g.kind) && inside(g.x) && inside(g.y) && finite(g.radius) && g.radius >= 0 && g.radius <= 20 && Number.isInteger(g.count) && g.count >= 1 && g.count <= 50) &&
+    Array.isArray(o.guards) &&
+    o.guards.length <= 40 &&
+    o.guards.every(spot) &&
+    (o.bossSpot === null || spot(o.bossSpot))
   );
 }

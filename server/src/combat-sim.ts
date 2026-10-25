@@ -368,7 +368,7 @@ export class CombatSim {
     ranks?: Readonly<Record<string, string>>,
   ) {
     this.realm = map.realm ?? map.guardRealm ?? 0;
-    for (const cluster of CLUSTERS[mapId]) {
+    for (const cluster of CLUSTERS[mapId] ?? []) {
       const def = getMonsterDef(cluster.kind);
       if (!def) continue;
       for (const [sx, sy] of clusterSlots(cluster)) {
@@ -400,7 +400,7 @@ export class CombatSim {
     }
     // The guards come after every cluster monster, so the ids of the clusters (and the ranks saved under them) never move.
     const guardDef = getMonsterDef(GUARD_KIND);
-    for (const [sx, sy] of guardDef ? GUARDS[mapId] : []) {
+    for (const [sx, sy] of guardDef ? (GUARDS[mapId] ?? []) : []) {
       const home = nearestStandablePoint(map, sx, sy, 2);
       if (!home || !guardDef) continue;
       const id = `m${this.nextMonsterId++}`;

@@ -1,4 +1,4 @@
-import { MAP_IDS, codeMapRecipe, setMapRecipe, validMapRecipe, type MapId, type MapRecipe } from "@game/shared";
+import { CODE_MAP_IDS, MAP_IDS, fullCodeMapRecipe, setMapRecipe, validMapRecipe, type CodeMapId, type MapRecipe } from "@game/shared";
 
 /**
  * The maps in D1 (table `map_recipes`, migration 0043): seeded from the code's maps the first time they are read (only maps that have no row; an edited row is
@@ -16,9 +16,9 @@ export interface MapRow {
   updated_by: string | null;
 }
 
-async function seed(db: D1Database, missing: MapId[]): Promise<void> {
+async function seed(db: D1Database, missing: CodeMapId[]): Promise<void> {
   const now = Date.now();
-  await db.batch(missing.map((id) => db.prepare("INSERT OR IGNORE INTO map_recipes (map_id, def, updated_at) VALUES (?, ?, ?)").bind(id, JSON.stringify(codeMapRecipe(id)), now)));
+  await db.batch(missing.map((id) => db.prepare("INSERT OR IGNORE INTO map_recipes (map_id, def, updated_at) VALUES (?, ?, ?)").bind(id, JSON.stringify(fullCodeMapRecipe(id)), now)));
 }
 
 /** The recipe a row holds, or null when it does not validate or names another map. */
@@ -33,7 +33,7 @@ export function parseRecipe(row: Pick<MapRow, "map_id" | "def">): MapRecipe | nu
 
 async function load(db: D1Database): Promise<number> {
   const known = new Set((await db.prepare("SELECT map_id FROM map_recipes").all<{ map_id: string }>()).results.map((r) => r.map_id));
-  const missing = MAP_IDS.filter((id) => !known.has(id));
+  const missing = CODE_MAP_IDS.filter((id) => !known.has(id));
   if (missing.length > 0) await seed(db, missing);
   const [versionRow, rows] = await Promise.all([
     db.prepare("SELECT version FROM config_versions WHERE name = 'maps'").first<{ version: number }>(),
@@ -43,14 +43,14 @@ async function load(db: D1Database): Promise<number> {
   for (const row of rows.results) {
     seen.add(row.map_id);
     if (row.updated_by === null) {
-      if ((MAP_IDS as readonly string[]).includes(row.map_id)) setMapRecipe(null, row.map_id as MapId);
+      if (true) setMapRecipe(null, row.map_id);
       continue;
     }
     const recipe = parseRecipe(row);
     if (recipe) setMapRecipe(recipe);
     else {
       console.error(`map ${row.map_id} recipe is invalid`);
-      if ((MAP_IDS as readonly string[]).includes(row.map_id)) setMapRecipe(null, row.map_id as MapId);
+      if (true) setMapRecipe(null, row.map_id);
     }
   }
   return versionRow?.version ?? 0;
