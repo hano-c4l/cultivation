@@ -2,6 +2,7 @@ import { applyElementSettings } from "./element-settings";
 import { getEnhanceTable } from "./enhance";
 import { getGearMaster } from "./gear-master";
 import { getItemOverlays } from "./items-live";
+import { getMapRecipes } from "./maps";
 import { getNpcs } from "./npcs";
 import { getTuning } from "./tuning";
 
@@ -16,6 +17,7 @@ export async function loadLiveConfig(db: D1Database): Promise<void> {
   await getGearMaster(db); // installs the gear set names (never throws)
   await getEnhanceTable(db); // installs the blacksmith rules (never throws)
   await getTuning(db); // installs the balance numbers (never throws)
+  await getMapRecipes(db); // installs the layout of the maps (never throws; the grids are built when a map is first used)
   await getNpcs(db); // installs where the NPCs stand (never throws)
   await getItemOverlays(db); // installs what admins changed in the item catalogue (never throws)
 }
