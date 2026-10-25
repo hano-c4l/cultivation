@@ -1,5 +1,6 @@
 import { CONSTITUTION_STATS, CURRENCY_GROUPS, ELEMENT_TAGS, GIFT_BODY_MAX, type TuningPage, GIFT_MAX_ITEM_KINDS, GIFT_MAX_RECIPIENTS, GIFT_SUBJECT_MAX, giftableItems, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
-import { getSession, type AuthedSession } from "./auth";
+import { getSession, hashPassword, type AuthedSession } from "./auth";
+import { PBKDF2_ITERATIONS, toBase64 } from "./password-hasher";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
 import { applyCurrencyDelta, getWallet } from "./economy";
@@ -16,6 +17,7 @@ import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
 import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
 import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
 import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
+import { banAccount, getAccountDetail, listAccounts, parseAccountQuery, setTempPassword, unbanAccount } from "./accounts-admin";
 import { getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
@@ -573,4 +575,40 @@ export async function adminMapSave(request: Request, env: Env): Promise<Response
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
   console.log("map saved", session.accountId);
   return json({ ok: true, updatedAt: result.updatedAt });
+}
+
+const ACCOUNT_ERROR_STATUS: Record<string, number> = { invalid: 400, forbidden: 403, unchanged: 400, not_found: 404 };
+
+/** One page of accounts (search by email or character name). */
+export async function adminAccounts(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await listAccounts(env.DB, parseAccountQuery(url.searchParams)));
+}
+
+export async function adminAccountDetail(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const detail = await getAccountDetail(env.DB, url.searchParams.get("id") ?? "");
+  return detail ? json(detail) : errorResponse("not_found", 404);
+}
+
+/** POST `{id, action: "ban" | "unban" | "password", forever?, days?, reason?}`. A temporary password is in the answer once. */
+export async function adminAccountAction(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 4 * 1024);
+  if (!body || typeof body.id !== "string") return errorResponse("invalid_body", 400);
+  const result =
+    body.action === "ban"
+      ? await banAccount(env, session.email, body.id, { forever: body.forever === true, days: typeof body.days === "number" ? body.days : undefined, reason: String(body.reason ?? "") })
+      : body.action === "unban"
+        ? await unbanAccount(env, session.email, body.id)
+        : body.action === "password"
+          ? await setTempPassword(env, session.email, body.id, { hash: (p, s) => hashPassword(env, p, s), iterations: PBKDF2_ITERATIONS, newSalt: () => toBase64(crypto.getRandomValues(new Uint8Array(16))) })
+          : null;
+  if (!result) return errorResponse("invalid_body", 400);
+  if (!result.ok) return json({ error: result.error }, ACCOUNT_ERROR_STATUS[result.error] ?? 400);
+  console.log("account action", session.accountId, body.action, body.id);
+  return json({ ok: true, ...(result.password ? { password: result.password } : {}), kicked: result.kicked === true });
 }

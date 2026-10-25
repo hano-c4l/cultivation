@@ -8,7 +8,7 @@ export interface MenuItem {
 }
 
 export const MENU: MenuItem[] = [
-  { path: "/admin/accounts", label: "Tài khoản", hint: "Danh sách, ban, đặt mật khẩu, nhân vật", phase: "3m" },
+  { path: "/admin/accounts", label: "Tài khoản", hint: "Danh sách, khóa, mật khẩu tạm, nhân vật", phase: "3m", ready: true },
   { path: "/admin/maps", label: "Bản đồ", hint: "Màu, điểm sinh, cổng, vật cản, xem trước", phase: "3l", ready: true },
   { path: "/admin/npcs", label: "NPC", hint: "Vị trí, tên, cửa hàng, công thức luyện đan", phase: "3k", ready: true },
   { path: "/admin/monsters", label: "Quái / BOSS", hint: "Loài, hạng, bảng rơi, boss, vệ binh", phase: "3j", ready: true },

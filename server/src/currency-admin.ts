@@ -41,9 +41,10 @@ function dayStart(text: string | null): number | null {
 
 const DAY_MS = 24 * 3600 * 1000;
 
-/** The banned-for-good check of "Xử lý". Accounts cannot be banned yet (that comes with the account screens, 3m), so nobody is. */
-export async function isPermanentlyBanned(_db: D1Database, _accountId: string): Promise<boolean> {
-  return false;
+/** The banned-for-good check of "Xử lý": the account is banned with no end date (3m). */
+export async function isPermanentlyBanned(db: D1Database, accountId: string): Promise<boolean> {
+  const row = await db.prepare("SELECT ban_forever FROM accounts WHERE id = ?").bind(accountId).first<{ ban_forever: number }>();
+  return row?.ban_forever === 1;
 }
 
 // ---- search: one row per (character, group) ----

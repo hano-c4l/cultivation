@@ -597,6 +597,12 @@ export const vi = {
     },
   },
   roots: { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ", loi: "Lôi", bang: "Băng", phong: "Phong" } as Record<string, string>,
+  ban: {
+    title: "Tài khoản của bạn đang bị khóa.",
+    forever: "Khóa vĩnh viễn.",
+    until: (t: string) => `Khóa đến ${t}.`,
+    reason: (r: string) => `Lý do: ${r}`,
+  },
   errors: {
     invalid_email: "Email không hợp lệ.",
     invalid_password: "Mật khẩu phải từ 8 đến 128 ký tự.",

@@ -169,6 +169,18 @@ export class ChatHub extends DurableObject<Env> {
     for (const id of new Set(characterIds)) for (const ws of this.ctx.getWebSockets(id)) this.send(ws, { t: "mail_new" });
   }
 
+  /** Closes the chat sockets of a character (an admin banned the account). Called by the Worker over RPC. */
+  async kick(characterId: string): Promise<void> {
+    for (const ws of this.ctx.getWebSockets(characterId)) {
+      this.send(ws, { t: "kicked", reason: "banned" } as unknown as ServerMessage);
+      try {
+        ws.close(4001, "banned");
+      } catch {
+        // Already closed.
+      }
+    }
+  }
+
   private broadcast(msg: ServerMessage): void {
     const data = JSON.stringify(msg);
     for (const ws of this.ctx.getWebSockets()) {

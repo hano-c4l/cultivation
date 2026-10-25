@@ -9,6 +9,13 @@ function errorText(code: string | undefined): string {
   return vi.errors[code ?? "unknown"] ?? vi.errors.unknown!;
 }
 
+/** What a banned player is told at login: until when (or for good) and the reason the admin gave. */
+function banText(d: Record<string, unknown> | undefined): string {
+  const until = d?.forever === true ? vi.ban.forever : typeof d?.until === "number" ? vi.ban.until(new Date(d.until).toLocaleString("vi-VN", { hour12: false })) : "";
+  const reason = typeof d?.reason === "string" && d.reason ? vi.ban.reason(d.reason) : "";
+  return `${vi.ban.title} ${until} ${reason}`.trim();
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   props: Partial<HTMLElementTagNameMap[K]> = {},
@@ -62,7 +69,7 @@ export function showAuth(): Promise<void> {
           ? await api.register(email.value, password.value)
           : await api.login(email.value, password.value);
         if (res.ok) return resolve();
-        error.textContent = errorText(res.error);
+        error.textContent = res.error === "banned" ? banText(res.details) : errorText(res.error);
         submit.disabled = false;
       };
       mount(el("div", { className: "card" }, form));

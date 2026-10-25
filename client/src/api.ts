@@ -14,6 +14,8 @@ export interface ApiResult<T> {
   /** Error code from the server when !ok, e.g. "invalid_credentials". */
   error?: string;
   data?: T;
+  /** The whole error answer (a ban says until when and why). */
+  details?: Record<string, unknown>;
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<ApiResult<T>> {
@@ -27,7 +29,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<Ap
     const json = (await res.json().catch(() => ({}))) as T & { error?: string };
     return res.ok
       ? { ok: true, status: res.status, data: json }
-      : { ok: false, status: res.status, error: json.error ?? "unknown" };
+      : { ok: false, status: res.status, error: json.error ?? "unknown", details: json as Record<string, unknown> };
   } catch {
     return { ok: false, status: 0, error: "network" };
   }
