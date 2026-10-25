@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { REALMS, SKILLS, setItemOverlays } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
 import { REVIEW_MS, addItem, addSkill, adjustMoney, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
+import { resetItemsCache } from "./items-live";
 import { makeDb } from "./test-db";
 
 let db: D1Database;
@@ -21,6 +22,7 @@ const skill = SKILLS[0]!;
 beforeEach(() => {
   ({ db, raw } = makeDb());
   setItemOverlays([]);
+  resetItemsCache();
   kicks = [];
   raw.exec("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, created_at) VALUES ('a1', 'p@x.test', 'h', 's', 1, 0)");
   raw.prepare("INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at, hotbar) VALUES ('c1', 'a1', 'Lan Tu', 'kim', 0, 0, 0, 0, ?)").run(JSON.stringify([`s:${skill.id}`, ""]));
@@ -88,6 +90,12 @@ describe("a character under review", () => {
     expect(await removeItem(db, A, "c1", v.items[0]!.id, NOW)).toEqual({ ok: true });
     expect((await getCharacterView(db, "c1", NOW))!.items.length).toBe(1);
     expect(await removeItem(db, A, "c1", "nope", NOW)).toEqual({ ok: false, error: "not_found" });
+  });
+
+  it("adds an item an admin created (not in the code)", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    raw.prepare("INSERT INTO items (id, custom, disabled, def, updated_at) VALUES ('su_kien', 1, 0, ?, 1)").run(JSON.stringify({ id: "su_kien", nameVi: "Sự Kiện", descVi: "x", category: "consumable", maxStack: 10, rarity: "rare", grade: 2, healFraction: 0.5 }));
+    expect(await addItem(db, A, "c1", "su_kien", 2, NOW)).toEqual({ ok: true });
   });
 
   it("adds a skill once, removes it, and clears it from the hotbar", async () => {

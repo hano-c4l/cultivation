@@ -79,5 +79,24 @@ const back = await post("/api/login", { email, password: PASSWORD });
 check("the player can log in again", back.status === 200);
 const log = sql("SELECT content FROM admin_log ORDER BY id DESC LIMIT 8").map((r) => r.content).join(" | ");
 check("the log has the review and the edits", log.includes("Bắt đầu sửa nhân vật") && log.includes("Cộng 777 linh_thach") && log.includes("Xong sửa nhân vật"));
+// The room must not write its old copy over the edits (its save is debounced by 10 s): wait it out, then join again.
+await sleep(12000);
+const again = await post("/api/login", { email, password: PASSWORD });
+const fresh = await new Promise((resolve, reject) => {
+  const w = new WebSocket(`${base}/ws?ch=7`, { headers: { Cookie: again.cookie } });
+  const timer = setTimeout(() => reject(new Error("no welcome")), 8000);
+  w.addEventListener("message", (ev) => {
+    if (ev.data === "pong") return;
+    const m = JSON.parse(ev.data);
+    if (m.t === "welcome") {
+      clearTimeout(timer);
+      w.close();
+      resolve(m);
+    }
+  });
+});
+check("the game itself serves the edits after the room had time to save", fresh.wallet.linh_thach === 777 && fresh.character.realm === 1 && fresh.character.stage === 4 && fresh.bag.items.some((i) => i.type === "linh_thao" && i.qty === 5), JSON.stringify({ w: fresh.wallet.linh_thach, r: fresh.character.realm, s: fresh.character.stage }));
+const row = sql(`SELECT realm, stage FROM characters WHERE id='${id}'`)[0];
+check("and so does D1", row.realm === 1 && row.stage === 4);
 console.log(failures === 0 ? "\nall checks passed" : `\n${failures} check(s) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

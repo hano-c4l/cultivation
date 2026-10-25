@@ -2,6 +2,7 @@ import { CURRENCIES, getItemDef, isCurrency, isEquipmentType, planAdd, planRemov
 import { logStatement } from "./admin-log";
 import { applyCurrencyDelta } from "./economy";
 import { commitBagOps, loadBag } from "./inventory";
+import { getItemOverlays } from "./items-live";
 
 /**
  * The admin side of a character (docs/PHASE3.md 3m-b). A MapRoom is the only writer of an online character, so an edit works like this: "Sửa" puts the
@@ -193,6 +194,7 @@ export async function adjustMoney(db: D1Database, admin: string, id: string, cur
 
 export async function addItem(db: D1Database, admin: string, id: string, item: unknown, qty: unknown, now = Date.now()): Promise<CharacterResult> {
   if (typeof item !== "string" || !intIn(qty, 1, 9999)) return { ok: false, error: "invalid" };
+  await getItemOverlays(db); // items an admin made are not in the code's catalogue
   const def = getItemDef(item);
   if (!def || def.disabled || isEquipmentType(item)) return { ok: false, error: "unknown_item" };
   const c = await db.prepare("SELECT name FROM characters WHERE id = ?").bind(id).first<{ name: string }>();
