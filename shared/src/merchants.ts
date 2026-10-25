@@ -61,12 +61,12 @@ const PLAIN_LOW: StockRule[] = [
   { id: "dai_hoi_huyet_dan", kind: "item", item: "dai_hoi_huyet_dan", dailyLimit: 20 },
   { id: "ngo_dao_dan", kind: "item", item: "ngo_dao_dan", dailyLimit: 2 },
 ];
+/** The second town's alchemist sells the plain pills too, with bigger daily limits; Linh Nguyên, Bảo Nguyên and Thiên Ngộ are brewed (alchemy.ts). */
 const PLAIN_HIGH: StockRule[] = [
+  { id: "hoi_huyet_dan", kind: "item", item: "hoi_huyet_dan" },
+  { id: "duong_huyet_dan", kind: "item", item: "duong_huyet_dan", dailyLimit: 60 },
   { id: "dai_hoi_huyet_dan", kind: "item", item: "dai_hoi_huyet_dan", dailyLimit: 30 },
-  { id: "linh_nguyen_dan", kind: "item", item: "linh_nguyen_dan", dailyLimit: 30 },
-  { id: "bao_nguyen_dan", kind: "item", item: "bao_nguyen_dan", dailyLimit: 15 },
   { id: "ngo_dao_dan", kind: "item", item: "ngo_dao_dan", dailyLimit: 5 },
-  { id: "thien_ngo_dan", kind: "item", item: "thien_ngo_dan", dailyLimit: 2 },
 ];
 const book = (skill: string, price: number): StockRule => ({ id: bookItemId(skill), kind: "item", item: bookItemId(skill), price });
 /** Skill books (bí tịch), unlimited because a skill can only be learned once: Luyện Khí's two basic ones and the strongest of each element for Trúc Cơ. */
@@ -88,11 +88,11 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
     nameVi: "Thương nhân",
     sellRate: SELL_RATE,
     buys: null,
+    // The merchant deals in a little of everything: the basic pill and the first tier of gear. The alchemist and the blacksmith are the specialists.
     stock: [
-      ...PLAIN_LOW,
+      { id: "hoi_huyet_dan", kind: "item", item: "hoi_huyet_dan" },
       ...BOOKS_LOW,
-      { id: "gear_low", kind: "gear", realms: [0, 1], tiers: [1, 2], grade: 1 },
-      { id: "gear_low_mutant", kind: "gear", realms: [0, 1], tiers: [1, 2], grade: 1, elements: [...MUTANT_ROOTS], priceMult: 1.5 },
+      { id: "gear_low", kind: "gear", realms: [0, 1], tiers: [1], grade: 1 },
       { id: "ttp_town", kind: "item", item: "ttp_town" },
       { id: "keep_level", kind: "keep_level" },
     ],
@@ -104,12 +104,36 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
     sellRate: SELL_RATE,
     buys: null,
     stock: [
-      ...PLAIN_HIGH,
+      { id: "dai_hoi_huyet_dan", kind: "item", item: "dai_hoi_huyet_dan", dailyLimit: 30 },
       ...BOOKS_HIGH,
-      { id: "gear_high", kind: "gear", realms: [2, 3], tiers: [1, 2], grade: 1 },
-      { id: "gear_high_mutant", kind: "gear", realms: [2, 3], tiers: [1, 2], grade: 1, elements: [...MUTANT_ROOTS], priceMult: 1.5 },
+      { id: "gear_high", kind: "gear", realms: [2, 3], tiers: [1], grade: 1 },
       { id: "ttp_town2", kind: "item", item: "ttp_town2" },
       { id: "keep_level", kind: "keep_level" },
+    ],
+  },
+  // The alchemist sells and buys pills and materials (and brews: alchemy.ts); the blacksmith's goods are gear and pháp bảo.
+  alchemist: { id: "alchemist", mapId: "town", nameVi: "Đan Sư", sellRate: SELL_RATE, buys: ["pill", "material"], stock: [...PLAIN_LOW] },
+  alchemist2: { id: "alchemist2", mapId: "town2", nameVi: "Đan Sư", sellRate: SELL_RATE, buys: ["pill", "material"], stock: [...PLAIN_HIGH] },
+  smith: {
+    id: "smith",
+    mapId: "town",
+    nameVi: "Thợ Rèn",
+    sellRate: SELL_RATE,
+    buys: ["gear", "artifact"],
+    stock: [
+      { id: "gear_low", kind: "gear", realms: [0, 1], tiers: [1, 2], grade: 1 },
+      { id: "gear_low_mutant", kind: "gear", realms: [0, 1], tiers: [1, 2], grade: 1, elements: [...MUTANT_ROOTS], priceMult: 1.5 },
+    ],
+  },
+  smith2: {
+    id: "smith2",
+    mapId: "town2",
+    nameVi: "Thợ Rèn",
+    sellRate: SELL_RATE,
+    buys: ["gear", "artifact"],
+    stock: [
+      { id: "gear_high", kind: "gear", realms: [2, 3], tiers: [1, 2], grade: 1 },
+      { id: "gear_high_mutant", kind: "gear", realms: [2, 3], tiers: [1, 2], grade: 1, elements: [...MUTANT_ROOTS], priceMult: 1.5 },
     ],
   },
 };

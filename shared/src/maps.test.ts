@@ -104,7 +104,7 @@ describe("the world of two towns", () => {
     expect(getMap("town2").portals.map((p) => p.toMap).sort()).toEqual(["cave", "kimdan", "nguyenanh"]);
     expect(getMap("kimdan").realm).toBe(2);
     expect(getMap("nguyenanh").realm).toBe(3);
-    expect(getMap("town2").npcs.map((n) => n.id).sort()).toEqual(["elder2", "merchant2", "path_dan", "path_kiem", "path_thuat", "smith2", "waygate2"]);
+    expect(getMap("town2").npcs.map((n) => n.id).sort()).toEqual(["alchemist2", "elder2", "merchant2", "path_dan", "path_kiem", "path_thuat", "smith2", "waygate2"]);
   });
 });
 

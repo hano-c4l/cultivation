@@ -8,6 +8,7 @@ import { bossPage, lootPage, ranksPage, speciesEditPage, speciesListPage } from 
 import { constitutionEditPage, constitutionListPage, rootsPage } from "./talents";
 import { skillEditPage, skillListPage } from "./skills";
 import { questEditPage, questListPage } from "./quests";
+import { alchemyPage, npcEditPage, npcListPage } from "./npcs";
 import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
@@ -76,6 +77,18 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/npcs") {
+    title = "NPC";
+    content = npcListPage();
+  } else if (path === "/admin/npcs/edit") {
+    title = "NPC · Sửa";
+    content = npcEditPage();
+  } else if (path === "/admin/npcs/numbers") {
+    title = "NPC · Con số";
+    content = tuningPage("npcs");
+  } else if (path === "/admin/npcs/alchemy") {
+    title = "NPC · Công thức luyện đan";
+    content = alchemyPage();
   } else if (path === "/admin/monsters") {
     title = "Quái / BOSS · Loài quái";
     content = speciesListPage();

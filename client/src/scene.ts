@@ -72,7 +72,7 @@ import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
 import { setGearSetNames, setWornSkillSets, skillDisplayName, grayWindowMs, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
-import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
+import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
@@ -306,8 +306,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list(), this.registry.get("isAdmin") === true);
-    this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
-    this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }));
+    this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list(), (npc, view) => this.switchNpcView(npc, view));
+    this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }), (npc, view) => this.switchNpcView(npc, view));
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
     this.channel = initChannel();
@@ -477,7 +477,7 @@ export class GameScene extends Phaser.Scene {
       }
       // Placeholder figure (a robe and a head) standing on the NPC's spot, like the other placeholder art.
       const body = this.add.graphics().setDepth(p.y + 1);
-      body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
+      body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : npc.kind === "alchemist" ? 0x5aa66a : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
       body.fillStyle(0xf2d6b0, 1).fillCircle(p.x, p.y - 36, 7);
       const label = this.add
         .text(p.x, p.y - 48, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#ffe08a", stroke: "#000000", strokeThickness: 3 })
@@ -594,6 +594,14 @@ export class GameScene extends Phaser.Scene {
     }
     this.targetId = null;
     this.sendWalk(tx, ty);
+  }
+
+  /** The tabs of an NPC that has more than one window (the blacksmith's trading, the alchemist's brewing): shows the other one. */
+  private switchNpcView(npc: string, view: NpcView): void {
+    this.shop.close();
+    this.smith.close();
+    if (view === "smith") this.smith.open(npc);
+    else this.shop.open(npc, this.map.id);
   }
 
   /** Clicking an NPC opens its window when close enough; otherwise the character walks over and the player clicks again. */
@@ -928,11 +936,15 @@ export class GameScene extends Phaser.Scene {
       case "shop":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
         setMerchant(msg.merchant);
-        this.shop.setStock(msg.npc, msg.left);
+        this.shop.setStock(msg.npc, msg.left, msg.tabs);
         break;
       case "smith":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
-        this.smith.setRules(msg.npc, msg.levels, msg.pity);
+        this.smith.setRules(msg.npc, msg.levels, msg.pity, msg.tabs);
+        break;
+      case "brew":
+        setTuning(msg.tuning as unknown as Record<string, unknown>);
+        this.shop.setBrew(msg.npc, msg.jobs, msg.now, msg.tabs);
         break;
       case "smith_result": {
         const owned = [...this.worn, ...this.inventory.list()].find((x) => x.id === msg.id);

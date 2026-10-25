@@ -104,26 +104,26 @@ check("opening the shop from far away is refused", r.some((m) => m.t === "inv_er
 r = await after(c, { t: "shop_buy", npc: "merchant", offer: "hoi_huyet_dan", qty: 1 });
 check("buying from far away is refused and nothing is charged", r.some((m) => m.t === "inv_error" && m.reason === "far") && balanceOf(c) === 5000);
 
-// --- walk next to the merchant ---
-c.send({ t: "move", x: 22.5 + T, y: 18.5 + T, fx: 20.5 + T, fy: 20.5 + T, seq: 1 });
+// --- walk to a spot between the merchant and the alchemist (the plain pills with daily limits are the alchemist's now) ---
+c.send({ t: "move", x: 25.5 + T, y: 19 + T, fx: 20.5 + T, fy: 20.5 + T, seq: 1 });
 await sleep(2500);
-r = await after(c, { t: "npc_open", npc: "merchant" });
+r = await after(c, { t: "npc_open", npc: "alchemist" });
 const stock = r.find((m) => m.t === "shop");
-check("near the merchant the shop opens and reports the daily stock", !!stock && stock.left.ngo_dao_dan === 2 && stock.left.dai_hoi_huyet_dan === 20, JSON.stringify(stock?.left));
+check("near the alchemist the shop opens and reports the daily stock", !!stock && stock.left.ngo_dao_dan === 2 && stock.left.dai_hoi_huyet_dan === 20, JSON.stringify(stock?.left));
 
 // --- buying ---
-r = await after(c, { t: "shop_buy", npc: "merchant", offer: "not_an_offer", qty: 1 });
+r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "not_an_offer", qty: 1 });
 check("an unknown offer is refused", r.some((m) => m.t === "inv_error" && m.reason === "invalid"));
-r = await after(c, { t: "shop_buy", npc: "merchant", offer: "hoi_huyet_dan", qty: 5 });
+r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "hoi_huyet_dan", qty: 5 });
 check("buying 5 Hồi Huyết Đan costs 50 and puts them in the bag", r.some((m) => m.t === "shop_ok" && m.op === "buy" && m.total === 50) && balanceOf(c) === 4950 && countOf(c, "hoi_huyet_dan") === 5, `balance ${balanceOf(c)}`);
-r = await after(c, { t: "shop_buy", npc: "merchant", offer: "ngo_dao_dan", qty: 2 });
+r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "ngo_dao_dan", qty: 2 });
 check("buying the whole daily stock of Ngộ Đạo Đan works", r.some((m) => m.t === "shop_ok") && countOf(c, "ngo_dao_dan") === 2 && balanceOf(c) === 4950 - 3000);
-r = await after(c, { t: "shop_buy", npc: "merchant", offer: "ngo_dao_dan", qty: 1 });
+r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "ngo_dao_dan", qty: 1 });
 check("one more is sold out and costs nothing", r.some((m) => m.t === "inv_error" && m.reason === "sold_out") && countOf(c, "ngo_dao_dan") === 2 && balanceOf(c) === 1950);
 check("the stock message says 0 left", [...r].reverse().find((m) => m.t === "shop")?.left.ngo_dao_dan === 0);
-r = await after(c, { t: "shop_buy", npc: "merchant", offer: "dai_hoi_huyet_dan", qty: 20 });
+r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "dai_hoi_huyet_dan", qty: 20 });
 check("buying the daily 20 Đại Hồi Huyết Đan costs 1200", r.some((m) => m.t === "shop_ok" && m.total === 1200) && balanceOf(c) === 750, `balance ${balanceOf(c)}`);
-r = await after(c, { t: "shop_buy", npc: "merchant", offer: "hoi_huyet_dan", qty: 99 });
+r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "hoi_huyet_dan", qty: 99 });
 check("buying more than the money allows (990 > 750) is refused with no change", r.some((m) => m.t === "inv_error" && m.reason === "funds") && balanceOf(c) === 750 && countOf(c, "hoi_huyet_dan") === 5);
 r = await after(c, { t: "shop_buy", npc: "merchant", offer: "eq.hat.f.0.1.1.kim", qty: 1 });
 check("gear of the other style is not an offer for a male character", r.some((m) => m.t === "inv_error" && m.reason === "invalid"));
