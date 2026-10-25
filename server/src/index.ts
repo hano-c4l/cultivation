@@ -1,3 +1,4 @@
+import { getMapRecipes } from "./maps";
 import { loadLiveConfig } from "./live-config";
 import { isItemId, isMapId } from "@game/shared";
 import { isAdminPagePath } from "./admin-page-rules";
@@ -27,6 +28,7 @@ async function handleWebSocket(request: Request, env: Env, url: URL): Promise<Re
   if (!character) return errorResponse("no_character", 403);
 
   // The map is server-authoritative (the character's saved map); clients only choose the channel.
+  await getMapRecipes(env.DB); // a map an admin added is known only once its recipe is read (installing it builds nothing)
   const map = isMapId(character.map_id) ? character.map_id : "town";
   const channel = Number(url.searchParams.get("ch") ?? "1");
   if (!Number.isInteger(channel) || channel < 1 || channel > MAX_CHANNEL) {

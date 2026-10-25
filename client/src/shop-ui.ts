@@ -10,9 +10,12 @@ import {
   merchantOffers,
   merchantPays,
   shopCategoryOf,
+  tuning,
   type BagItem,
+  type BrewJobView,
   type CharacterSheet,
   type ClientMessage,
+  type NpcView,
   type ShopCategory,
   type SortMode,
 } from "@game/shared";
@@ -26,8 +29,10 @@ export interface ShopUi {
   open(npc: string, mapId: string): void;
   close(): void;
   setSheet(sheet: CharacterSheet): void;
-  /** Units left today per offer with a daily limit. */
-  setStock(npc: string, left: Record<string, number>): void;
+  /** Units left today per offer with a daily limit, and the windows this NPC has (tabs). */
+  setStock(npc: string, left: Record<string, number>, tabs: NpcView[]): void;
+  /** The alchemist's brewings (`now` is the server time, so the countdowns follow the server clock). */
+  setBrew(npc: string, jobs: BrewJobView[], now: number, tabs: NpcView[]): void;
   /** The bag changed: the list of things that can be sold may have too. */
   refresh(): void;
   /** A trade went through: shown as a green line at the top of the window. */
@@ -52,7 +57,7 @@ const ELEMENT_TABS: ReadonlySet<ShopCategory> = new Set<ShopCategory>(["all", "g
  * items he takes), each split by kind of item. Buying can be narrowed to one element. The sell tab can tick several items
  * and sell them in one go. It only sends offer ids and cells; the server prices and decides.
  */
-export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagItem[]): ShopUi {
+export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagItem[], switchView: (npc: string, view: NpcView) => void): ShopUi {
   const panel = el("div");
   panel.id = "shop-panel";
   panel.hidden = true;
@@ -61,7 +66,12 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
 
   let npc = "";
   let sheet: CharacterSheet | null = null;
-  let mode: "buy" | "sell" = "buy";
+  let mode: "buy" | "sell" | "brew" = "buy";
+  /** The windows this NPC has: more than one shows tabs (the alchemist: trading and brewing; the blacksmith: upgrading and trading). */
+  let npcTabs: NpcView[] = [];
+  let jobs: BrewJobView[] = [];
+  /** Server time minus the local time, so a countdown follows the server clock. */
+  let skewMs = 0;
   let category: ShopCategory = "all";
   /** "" means every element. Starts as the character's main element. */
   let element: string | null = null;
@@ -310,6 +320,50 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     return bar;
   }
 
+  /** Local time as the server's clock reads it. */
+  const serverNow = () => Date.now() + skewMs;
+
+  /** The brewing tab: the brewings going (with a countdown and a button to collect) and the recipes the alchemist knows. */
+  function renderBrew(): HTMLElement {
+    const box = el("div");
+    const cfg = tuning().alchemy;
+    box.append(el("div", "muted", vi.brew.jobs(jobs.length, cfg.maxJobs)));
+    if (jobs.length === 0) box.append(el("div", "muted", vi.brew.none));
+    for (const job of jobs) {
+      const row = el("div", "shop-row");
+      const left = Math.ceil((job.readyAt - serverNow()) / 1000);
+      const main = el("div");
+      main.append(el("div", "shop-name", `${nameOf(job.output)} ×${job.qty}`), el("div", "muted", left > 0 ? vi.brew.left(left) : vi.brew.ready));
+      const take = el("button", undefined, vi.brew.collect);
+      take.disabled = left > 0;
+      take.onclick = () => send({ t: "brew_collect", npc, job: job.id });
+      row.append(main, take);
+      box.append(row);
+    }
+    box.append(el("div", "shop-name", vi.brew.recipes));
+    const recipes = cfg.recipes.filter((r) => r.enabled && getItemDef(r.output) && !getItemDef(r.output)?.disabled);
+    if (recipes.length === 0) box.append(el("div", "muted", vi.brew.noRecipes));
+    const countOf = (type: string) => getBag().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0);
+    for (const recipe of recipes) {
+      const row = el("div", "shop-row");
+      const main = el("div");
+      main.append(el("div", "shop-name", `${recipe.nameVi} → ${nameOf(recipe.output)} ×${recipe.qty}`));
+      const mats = recipe.inputs.map((i) => `${nameOf(i.item)} ${i.qty} (${vi.brew.have(countOf(i.item))})`).join(", ");
+      main.append(el("div", "muted", `${mats} · ${vi.brew.cost(recipe.linhThach)} · ${vi.brew.left(recipe.seconds)}`));
+      const start = el("button", undefined, vi.brew.start);
+      start.disabled = jobs.length >= cfg.maxJobs || recipe.inputs.some((i) => countOf(i.item) < i.qty);
+      start.onclick = () => send({ t: "brew_start", npc, recipe: recipe.id });
+      row.append(main, start);
+      box.append(row);
+    }
+    return box;
+  }
+
+  // The countdowns of the brewing tab tick once a second while it is showing.
+  setInterval(() => {
+    if (!panel.hidden && mode === "brew" && jobs.some((j) => j.readyAt > serverNow() - 1000)) render();
+  }, 1000);
+
   const categoriesOf = (list: Array<Exclude<ShopCategory, "all">>): Set<Exclude<ShopCategory, "all">> => new Set(list);
 
   function render(): void {
@@ -329,15 +383,30 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     const sellCats = categoriesOf(getBag().filter((i) => merchantPays(npc, i.type, i.dur, i.max) > 0).map((i) => shopCategoryOf(i.type)));
     const buys = getMerchant(npc)?.buys;
     const available = { buy: buyCats.size > 0, sell: buys === null || (buys?.length ?? 0) > 0 };
-    if (!available[mode]) mode = available.buy ? "buy" : "sell";
-    const shownCats = mode === "buy" ? buyCats : sellCats;
+    if (mode !== "brew" && !available[mode]) mode = available.buy ? "buy" : "sell";
+    const shownCats = mode === "sell" ? sellCats : buyCats;
     if (category !== "all" && !shownCats.has(category)) category = "all";
     const modes = el("div", "eq-tabs");
+    // The blacksmith's own work is another window: its tab switches to it.
+    if (npcTabs.includes("smith")) {
+      const b = el("button", undefined, vi.npcTabs.smith);
+      b.onclick = () => switchView(npc, "smith");
+      modes.append(b);
+    }
     for (const m of ["buy", "sell"] as const) {
       if (!available[m]) continue;
       const b = el("button", m === mode ? "active" : undefined, vi.shop.tabs[m]);
       b.onclick = () => {
         mode = m;
+        render();
+      };
+      modes.append(b);
+    }
+    if (npcTabs.includes("brew")) {
+      const b = el("button", mode === "brew" ? "active" : undefined, vi.npcTabs.brew);
+      b.onclick = () => {
+        mode = "brew";
+        send({ t: "npc_open", npc, view: "brew" });
         render();
       };
       modes.append(b);
@@ -365,6 +434,12 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
         render();
       };
       cats.append(b);
+    }
+    if (mode === "brew") {
+      panel.append(head, modes);
+      if (flash) panel.append(el("div", "shop-flash", flash));
+      panel.append(renderBrew(), el("div", "muted", vi.brew.note));
+      return;
     }
     panel.append(head, modes, cats);
     if (flash && mode === "buy") panel.append(el("div", "shop-flash", flash));
@@ -398,13 +473,15 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       npc = id;
       void map;
       mode = "buy";
+      npcTabs = [];
+      jobs = [];
       category = "all";
       ticked.clear();
       flash = "";
       banned = "";
       if (element === null) element = sheet?.roots[0] ?? "";
       panel.hidden = false;
-      send({ t: "npc_open", npc: id });
+      send({ t: "npc_open", npc: id, view: "shop" });
       render();
     },
     close() {
@@ -414,9 +491,17 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       sheet = s;
       render();
     },
-    setStock(id, stock) {
+    setStock(id, stock, tabs) {
       if (id !== npc) return;
       left = stock;
+      npcTabs = tabs;
+      render();
+    },
+    setBrew(id, list, now, tabs) {
+      if (id !== npc) return;
+      jobs = list;
+      skewMs = now - Date.now();
+      npcTabs = tabs;
       render();
     },
     ban(text) {

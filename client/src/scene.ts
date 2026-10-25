@@ -54,6 +54,8 @@ import {
   setElementTuning,
   setMerchant,
   setMapNpcs,
+  setMapRecipe,
+  overrideRecipe,
   npcsOf,
 } from "@game/shared";
 import { applyTuningTheme } from "./theme";
@@ -72,7 +74,7 @@ import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
 import { setGearSetNames, setWornSkillSets, skillDisplayName, grayWindowMs, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
-import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot } from "@game/shared";
+import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
@@ -306,8 +308,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
     this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list(), this.registry.get("isAdmin") === true);
-    this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list());
-    this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }));
+    this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list(), (npc, view) => this.switchNpcView(npc, view));
+    this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }), (npc, view) => this.switchNpcView(npc, view));
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
     this.channel = initChannel();
@@ -393,6 +395,8 @@ export class GameScene extends Phaser.Scene {
   /** (Re)draws the current map's tiles and portals, destroying whatever was drawn for the previous map. */
   /** The NPC list the map was drawn with. */
   private npcKey = "";
+  /** The map recipe the current map was built from ("" for the code's map). */
+  private recipeKey = "";
 
   private drawMap(): void {
     this.npcKey = JSON.stringify(npcsOf(this.map));
@@ -477,7 +481,7 @@ export class GameScene extends Phaser.Scene {
       }
       // Placeholder figure (a robe and a head) standing on the NPC's spot, like the other placeholder art.
       const body = this.add.graphics().setDepth(p.y + 1);
-      body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
+      body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : npc.kind === "alchemist" ? 0x5aa66a : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
       body.fillStyle(0xf2d6b0, 1).fillCircle(p.x, p.y - 36, 7);
       const label = this.add
         .text(p.x, p.y - 48, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#ffe08a", stroke: "#000000", strokeThickness: 3 })
@@ -501,7 +505,8 @@ export class GameScene extends Phaser.Scene {
 
   private switchMap(mapId: string): void {
     // Same map but the NPCs changed (they are data from D1, sent with each welcome): draw it again.
-    if (!isMapId(mapId) || (this.map.id === mapId && this.npcKey === JSON.stringify(npcsOf(this.map)))) return;
+    if (!isMapId(mapId) || (this.map.id === mapId && this.npcKey === JSON.stringify(npcsOf(this.map)) && this.recipeKey === JSON.stringify(overrideRecipe(mapId) ?? ""))) return;
+    this.recipeKey = JSON.stringify(overrideRecipe(mapId) ?? "");
     this.map = getMap(mapId);
     this.shop.close();
     this.quests.close();
@@ -596,6 +601,14 @@ export class GameScene extends Phaser.Scene {
     this.sendWalk(tx, ty);
   }
 
+  /** The tabs of an NPC that has more than one window (the blacksmith's trading, the alchemist's brewing): shows the other one. */
+  private switchNpcView(npc: string, view: NpcView): void {
+    this.shop.close();
+    this.smith.close();
+    if (view === "smith") this.smith.open(npc);
+    else this.shop.open(npc, this.map.id);
+  }
+
   /** Clicking an NPC opens its window when close enough; otherwise the character walks over and the player clicks again. */
   private talkTo(npc: NpcSpot): void {
     const self = this.actors.get(this.selfId);
@@ -661,6 +674,7 @@ export class GameScene extends Phaser.Scene {
         setTuning(msg.tuning as unknown as Record<string, unknown>); // the live balance numbers (drops, kills, skills, theme...)
         applyTuningTheme();
         setMapNpcs(msg.map, msg.npcs); // who stands on this map (data from D1)
+        if (msg.mapRecipe || isMapId(msg.map)) setMapRecipe(msg.mapRecipe ?? null, msg.map); // the layout of this map when an admin changed it (before the map is built below)
         if (msg.mutant) setElementTuning(msg.mutant); // the live numbers of the mutant elements (game settings)
         setItemOverlays(msg.items ?? []); // what admins changed in the item catalogue (before the bag below is drawn)
         setMounted(false); // the snapshot of yourself (below) says whether you still ride: it is kept across maps
@@ -928,11 +942,15 @@ export class GameScene extends Phaser.Scene {
       case "shop":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
         setMerchant(msg.merchant);
-        this.shop.setStock(msg.npc, msg.left);
+        this.shop.setStock(msg.npc, msg.left, msg.tabs);
         break;
       case "smith":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
-        this.smith.setRules(msg.npc, msg.levels, msg.pity);
+        this.smith.setRules(msg.npc, msg.levels, msg.pity, msg.tabs);
+        break;
+      case "brew":
+        setTuning(msg.tuning as unknown as Record<string, unknown>);
+        this.shop.setBrew(msg.npc, msg.jobs, msg.now, msg.tabs);
         break;
       case "smith_result": {
         const owned = [...this.worn, ...this.inventory.list()].find((x) => x.id === msg.id);

@@ -68,8 +68,8 @@ describe("every map is consistent", () => {
         expect(portalNear(dest, arrive[0], arrive[1]), `${id} -> ${p.toMap}: arrival would trigger a portal at once`).toBeUndefined();
       }
       for (const n of map.npcs) reachable([n.x, n.y], `npc ${n.id}`);
-      for (const c of CLUSTERS[id]) for (const slot of clusterSlots(c)) reachable(slot, `a monster of the tier ${c.tier} group`);
-      for (const g of GUARDS[id]) reachable([g[0], g[1]], "a guard");
+      for (const c of CLUSTERS[id]!) for (const slot of clusterSlots(c)) reachable(slot, `a monster of the tier ${c.tier} group`);
+      for (const g of GUARDS[id]!) reachable([g[0], g[1]], "a guard");
       const boss = BOSS_SPOTS[id];
       if (boss) reachable([boss[0], boss[1]], "the boss spot");
     });
@@ -104,7 +104,7 @@ describe("the world of two towns", () => {
     expect(getMap("town2").portals.map((p) => p.toMap).sort()).toEqual(["cave", "kimdan", "nguyenanh"]);
     expect(getMap("kimdan").realm).toBe(2);
     expect(getMap("nguyenanh").realm).toBe(3);
-    expect(getMap("town2").npcs.map((n) => n.id).sort()).toEqual(["elder2", "merchant2", "path_dan", "path_kiem", "path_thuat", "smith2", "waygate2"]);
+    expect(getMap("town2").npcs.map((n) => n.id).sort()).toEqual(["alchemist2", "elder2", "merchant2", "path_dan", "path_kiem", "path_thuat", "smith2", "waygate2"]);
   });
 });
 

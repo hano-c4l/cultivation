@@ -27,7 +27,7 @@ describe("the merchant tables", () => {
     raw.exec("INSERT INTO shop_merchants (npc_id, map_id, name_vi, sell_rate, buys) VALUES ('herbalist', 'town', 'Dược sư', 0.2, '[\"material\"]')");
     raw.exec(`INSERT INTO shop_stock (npc_id, rule_id, sort, def) VALUES ('herbalist', 'linh_thao', 0, '{"id":"linh_thao","kind":"item","item":"linh_thao","price":4}')`);
     // Not picked up inside the cache window, picked up once the version moves.
-    expect(Object.keys(await getMerchants(db))).toEqual(["merchant", "merchant2"]);
+    expect(Object.keys(await getMerchants(db)).sort()).toEqual(Object.keys(DEFAULT_MERCHANTS).sort());
     raw.exec("UPDATE config_versions SET version = version + 1 WHERE name = 'shop'");
     const later = await getMerchants(db, Date.now() + 60_000);
     expect(later.herbalist).toMatchObject({ mapId: "town", sellRate: 0.2, buys: ["material"] });
@@ -50,7 +50,7 @@ describe("the merchant tables", () => {
     // A disabled merchant stays disabled (not re-seeded) and is simply absent.
     raw.exec("UPDATE shop_merchants SET enabled = 0 WHERE npc_id = 'merchant2'");
     resetMerchantsCache();
-    expect(Object.keys(await getMerchants(db))).toEqual(["merchant"]);
+    expect(Object.keys(await getMerchants(db)).sort()).toEqual(Object.keys(DEFAULT_MERCHANTS).filter((k) => k !== "merchant2").sort());
   });
 
   it("fall back to the default of a merchant whose row is invalid", async () => {

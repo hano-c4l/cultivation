@@ -38,9 +38,9 @@ function run(sim: CombatSim, from: number, to: number, positions: Map<string, Ve
 
 describe("CombatSim", () => {
   it("spawns every configured monster on the forest map and none in town", () => {
-    expect(forestSim().monsterCount).toBe(CLUSTERS.forest.reduce((n, c) => n + c.count, 0) + GUARDS.forest.length);
-    expect(new CombatSim(getMap("cave"), "cave", noCrit, 0).monsterCount).toBe(CLUSTERS.cave.reduce((n, c) => n + c.count, 0) + GUARDS.cave.length);
-    expect(new CombatSim(getMap("town"), "town", noCrit, 0).monsterCount).toBe(GUARDS.town.length); // only the guards at the town gate
+    expect(forestSim().monsterCount).toBe(CLUSTERS.forest!.reduce((n, c) => n + c.count, 0) + GUARDS.forest!.length);
+    expect(new CombatSim(getMap("cave"), "cave", noCrit, 0).monsterCount).toBe(CLUSTERS.cave!.reduce((n, c) => n + c.count, 0) + GUARDS.cave!.length);
+    expect(new CombatSim(getMap("town"), "town", noCrit, 0).monsterCount).toBe(GUARDS.town!.length); // only the guards at the town gate
   });
 
   it("snapshots carry a path, hp and the kind", () => {
@@ -274,7 +274,7 @@ describe("CombatSim", () => {
 
   it("clusters are fixed in size and cover bậc 1 to 9 on each combat map", () => {
     for (const id of ["forest", "cave"] as const) {
-      const clusters = CLUSTERS[id];
+      const clusters = CLUSTERS[id]!;
       expect(clusters.length).toBeGreaterThanOrEqual(8);
       expect(new Set(clusters.map((c) => c.count)).size).toBe(1); // one group size per map
       const tiers = clusters.map((c) => c.tier);

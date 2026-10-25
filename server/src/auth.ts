@@ -20,7 +20,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters } from "./admin";
+import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminMapCreate, adminMapDelete, adminAccounts, adminAccountDetail, adminAccountAction, adminCharacter, adminCharacterAction, adminGear, adminGearSave } from "./admin";
 import { getCharacterByAccount, grantExp, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
@@ -58,9 +58,9 @@ export async function getSession(request: Request, env: Env): Promise<AuthedSess
   const token = readCookie(request, SESSION_COOKIE);
   if (!token) return null;
   const row = await env.DB.prepare(
-    "SELECT a.id AS accountId, a.email AS email, a.role AS role FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ?",
+    "SELECT a.id AS accountId, a.email AS email, a.role AS role FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ? AND a.ban_forever = 0 AND (a.ban_until IS NULL OR a.ban_until <= ?) AND (a.role = 'admin' OR NOT EXISTS (SELECT 1 FROM characters c WHERE c.account_id = a.id AND c.review_until > ?))",
   )
-    .bind(await sha256Hex(token), Date.now())
+    .bind(await sha256Hex(token), Date.now(), Date.now(), Date.now())
     .first<AuthedSession>();
   return row ?? null;
 }
@@ -95,7 +95,7 @@ async function allowAttempt(env: Env, key: string, limit: number, windowSeconds:
   return (row?.count ?? 1) <= limit;
 }
 
-function hashPassword(env: Env, password: string, saltBase64: string): Promise<string> {
+export function hashPassword(env: Env, password: string, saltBase64: string): Promise<string> {
   // A handful of hasher objects lets concurrent logins hash in parallel.
   const stub = env.PASSWORD_HASHER.get(env.PASSWORD_HASHER.idFromName(`hasher-${Math.floor(Math.random() * 4)}`));
   return stub.hash(password, saltBase64, PBKDF2_ITERATIONS);
@@ -141,12 +141,20 @@ async function login(request: Request, env: Env): Promise<Response> {
   if (!email || !password || password.length > 128) return errorResponse("invalid_credentials", 401);
   if (!(await allowAttempt(env, `login-email:${email}`, 10, 300))) return errorResponse("rate_limited", 429);
 
-  const account = await env.DB.prepare("SELECT id, pw_hash, pw_salt FROM accounts WHERE email = ?")
+  const account = await env.DB.prepare("SELECT id, pw_hash, pw_salt, ban_until, ban_forever, ban_reason FROM accounts WHERE email = ?")
     .bind(email)
-    .first<{ id: string; pw_hash: string; pw_salt: string }>();
+    .first<{ id: string; pw_hash: string; pw_salt: string; ban_until: number | null; ban_forever: number; ban_reason: string | null }>();
   // Hash even for unknown emails so response time does not reveal which emails exist.
   const hash = await hashPassword(env, password, account?.pw_salt ?? DUMMY_SALT);
   if (!account || !constantTimeEqual(hash, account.pw_hash)) return errorResponse("invalid_credentials", 401);
+  // Only someone who knows the password is told they are banned (and until when, and why).
+  if (account.ban_forever === 1 || (account.ban_until !== null && account.ban_until > Date.now())) {
+    return json({ error: "banned", forever: account.ban_forever === 1, until: account.ban_until, reason: account.ban_reason ?? "" }, 403);
+  }
+
+  // A character an admin is editing cannot be played (the admin's edits are the only writer); this ends by itself.
+  const review = await env.DB.prepare("SELECT review_until FROM characters WHERE account_id = ? AND review_until > ?").bind(account.id, Date.now()).first<{ review_until: number }>();
+  if (review && !(await env.DB.prepare("SELECT 1 AS x FROM accounts WHERE id = ? AND role = 'admin'").bind(account.id).first())) return json({ error: "reviewing", until: review.review_until }, 403);
 
   const token = await createSession(env, account.id);
   return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token, SESSION_TTL_SECONDS, request) });
@@ -330,6 +338,44 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return adminSkills(request, env);
     case "POST /api/admin/skills/save":
       return adminSkillSave(request, env);
+    case "GET /api/admin/character":
+      return adminCharacter(request, env, url);
+    case "POST /api/admin/character/action":
+      return adminCharacterAction(request, env);
+    case "GET /api/admin/accounts":
+      return adminAccounts(request, env, url);
+    case "GET /api/admin/accounts/detail":
+      return adminAccountDetail(request, env, url);
+    case "POST /api/admin/accounts/action":
+      return adminAccountAction(request, env);
+    case "GET /api/admin/gear":
+      return adminGear(request, env, url);
+    case "POST /api/admin/gear/save":
+      return adminGearSave(request, env);
+    case "GET /api/admin/maps":
+      return adminMaps(request, env);
+    case "GET /api/admin/maps/recipe":
+      return adminMapRecipe(request, env, url);
+    case "POST /api/admin/maps/create":
+      return adminMapCreate(request, env);
+    case "POST /api/admin/maps/delete":
+      return adminMapDelete(request, env);
+    case "POST /api/admin/maps/save":
+      return adminMapSave(request, env);
+    case "GET /api/admin/npcs":
+      return adminNpcs(request, env);
+    case "POST /api/admin/npcs/save":
+      return adminNpcSave(request, env);
+    case "POST /api/admin/npcs/delete":
+      return adminNpcDelete(request, env);
+    case "GET /api/admin/merchant":
+      return adminMerchant(request, env, url);
+    case "POST /api/admin/merchant/save":
+      return adminMerchantSave(request, env);
+    case "GET /api/admin/alchemy":
+      return adminAlchemy(request, env);
+    case "POST /api/admin/alchemy/save":
+      return adminAlchemySave(request, env);
     case "GET /api/admin/monsters":
       return adminMonsters(request, env);
     case "POST /api/admin/monsters/save":

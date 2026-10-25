@@ -1,3 +1,4 @@
+import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
 import type { EquipKind } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import type { PathBonus } from "./paths";
@@ -138,6 +139,8 @@ export interface Tuning {
   pathBonuses: Record<string, PathBonus>;
   /** The map bosses: how long a claim lasts, the bậc they pay out at, and the species of each map (null: no boss). */
   boss: { claimTtlMs: number; tier: number; species: Record<string, string | null> };
+  /** The alchemist's brewing: how many brewings a character can have at once and the recipes (see alchemy.ts). */
+  alchemy: AlchemyCfg;
 }
 
 export interface MonsterNumbers {
@@ -403,6 +406,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     tier: 9,
     species: { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang" },
   },
+  alchemy: DEFAULT_ALCHEMY,
 };
 
 export const TUNING_GROUPS = Object.keys(DEFAULT_TUNING) as TuningGroup[];
@@ -441,6 +445,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   roots: "Linh căn: tỉ lệ và thưởng theo phẩm cấp và theo số hệ",
   pathBonuses: "Thưởng chỉ số của từng hướng tu (khi là chủ tu)",
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
+  alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
 };
 
 const num = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
@@ -702,6 +707,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       );
     case "paths":
       return int(value.swapCostBase, 0, 1_000_000_000) && int(value.dropCostBase, 0, 1_000_000_000);
+    case "alchemy":
+      return validAlchemy(value);
     case "boss": {
       const sp = value.species;
       return int(value.claimTtlMs, 60_000, 30 * 86_400_000) && int(value.tier, 1, 9) && obj(sp) && Object.entries(sp).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && (v === null || (typeof v === "string" && /^[a-z0-9_]{1,40}$/.test(v))));

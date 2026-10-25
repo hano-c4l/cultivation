@@ -8,6 +8,11 @@ import { bossPage, lootPage, ranksPage, speciesEditPage, speciesListPage } from 
 import { constitutionEditPage, constitutionListPage, rootsPage } from "./talents";
 import { skillEditPage, skillListPage } from "./skills";
 import { questEditPage, questListPage } from "./quests";
+import { alchemyPage, npcEditPage, npcListPage } from "./npcs";
+import { mapEditPage, mapListPage, mapNewPage } from "./maps";
+import { accountDetailPage, accountListPage } from "./accounts";
+import { characterPage } from "./characters";
+import { gearEnhancePage, gearMasterPage, gearSetsPage } from "./gear";
 import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
@@ -76,6 +81,45 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/gear") {
+    title = "Trang bị · Chỉ số";
+    content = gearMasterPage();
+  } else if (path === "/admin/gear/sets") {
+    title = "Trang bị · Tên bộ";
+    content = gearSetsPage();
+  } else if (path === "/admin/gear/enhance") {
+    title = "Trang bị · Bảng nâng cấp";
+    content = gearEnhancePage();
+  } else if (path === "/admin/accounts") {
+    title = "Tài khoản";
+    content = accountListPage();
+  } else if (path === "/admin/characters/detail") {
+    title = "Nhân vật";
+    content = characterPage();
+  } else if (path === "/admin/accounts/detail") {
+    title = "Tài khoản · Chi tiết";
+    content = accountDetailPage();
+  } else if (path === "/admin/maps") {
+    title = "Bản đồ";
+    content = mapListPage();
+  } else if (path === "/admin/maps/new") {
+    title = "Bản đồ · Tạo mới";
+    content = mapNewPage();
+  } else if (path === "/admin/maps/edit") {
+    title = "Bản đồ · Sửa";
+    content = mapEditPage();
+  } else if (path === "/admin/npcs") {
+    title = "NPC";
+    content = npcListPage();
+  } else if (path === "/admin/npcs/edit") {
+    title = "NPC · Sửa";
+    content = npcEditPage();
+  } else if (path === "/admin/npcs/numbers") {
+    title = "NPC · Con số";
+    content = tuningPage("npcs");
+  } else if (path === "/admin/npcs/alchemy") {
+    title = "NPC · Công thức luyện đan";
+    content = alchemyPage();
   } else if (path === "/admin/monsters") {
     title = "Quái / BOSS · Loài quái";
     content = speciesListPage();

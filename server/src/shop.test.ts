@@ -26,13 +26,13 @@ const balance = () => (raw.prepare("SELECT balance FROM currency_balances WHERE 
 const count = (type: string) => (raw.prepare("SELECT COALESCE(SUM(qty), 0) AS q FROM item_instances WHERE owner_character_id = 'char-a' AND item_type = ?").get(type) as { q: number }).q;
 
 /** Buys the way the room does: the debit, the bag cells and (for a limited offer) the counter in one batch. */
-async function buy(offerId: string, qty: number, now = NOW) {
-  const offer = findOffer("male", "merchant", offerId)!;
+async function buy(offerId: string, qty: number, now = NOW, npc = "merchant") {
+  const offer = findOffer("male", npc, offerId)!;
   const bag = await loadBag(db, A);
   const ops = planAdd(bag.items, bag.tabs, offer.item, qty, newId)!;
   const extra = [
     ...ops.flatMap((op) => opStatements(db, A, op, now)),
-    ...(offer.dailyLimit !== undefined ? limitStatements(db, A, "merchant", offer.id, qty, offer.dailyLimit, now) : []),
+    ...(offer.dailyLimit !== undefined ? limitStatements(db, A, npc, offer.id, qty, offer.dailyLimit, now) : []),
   ];
   return applyCurrencyDelta(db, { characterId: A, currency: "linh_thach", delta: -offer.price * qty, reason: "shop_buy", actor: "system", idempotencyKey: `shop:${++n}` }, extra);
 }
@@ -54,17 +54,17 @@ describe("buying", () => {
 
   it("a daily limit stops a purchase that would pass it, with no debit and no item", async () => {
     await fund(100_000);
-    expect(await buy("ngo_dao_dan", 2)).toMatchObject({ status: "applied" });
-    await expect(buy("ngo_dao_dan", 1)).rejects.toThrow(/inv_guard/);
+    expect(await buy("ngo_dao_dan", 2, NOW, "alchemist")).toMatchObject({ status: "applied" });
+    await expect(buy("ngo_dao_dan", 1, NOW, "alchemist")).rejects.toThrow(/inv_guard/);
     expect(count("ngo_dao_dan")).toBe(2);
-    expect(balance()).toBe(100_000 - 2 * findOffer("male", "merchant", "ngo_dao_dan")!.price);
-    expect(stockLeft("male", "merchant", await getPurchased(db, A, "merchant", NOW))["ngo_dao_dan"]).toBe(0);
+    expect(balance()).toBe(100_000 - 2 * findOffer("male", "alchemist", "ngo_dao_dan")!.price);
+    expect(stockLeft("male", "alchemist", await getPurchased(db, A, "alchemist", NOW))["ngo_dao_dan"]).toBe(0);
   });
 
   it("the limit starts again the next day and the old day's row is swept", async () => {
     await fund(100_000);
-    await buy("ngo_dao_dan", 2);
-    expect(await buy("ngo_dao_dan", 1, NOW + DAY)).toMatchObject({ status: "applied" });
+    await buy("ngo_dao_dan", 2, NOW, "alchemist");
+    expect(await buy("ngo_dao_dan", 1, NOW + DAY, "alchemist")).toMatchObject({ status: "applied" });
     expect(count("ngo_dao_dan")).toBe(3);
     const rows = raw.prepare("SELECT day, count FROM shop_purchases WHERE character_id = 'char-a'").all();
     expect(rows).toEqual([{ day: shopDay(NOW + DAY), count: 1 }]);

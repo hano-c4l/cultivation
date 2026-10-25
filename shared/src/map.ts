@@ -9,12 +9,21 @@ export const TILE_H = 32;
  */
 export const CELLS_PER_TILE = 4;
 
-export const MAP_IDS = ["town", "forest", "cave", "town2", "kimdan", "nguyenanh"] as const;
-export type MapId = (typeof MAP_IDS)[number];
+/** The maps the code builds. */
+export const CODE_MAP_IDS = ["town", "forest", "cave", "town2", "kimdan", "nguyenanh"] as const;
+export type CodeMapId = (typeof CODE_MAP_IDS)[number];
+/** A map id: the six of the code and the ones an admin added (their recipes are installed with setMapRecipe, which keeps MAP_IDS, MAP_SIZE and MAP_REALM current). */
+export type MapId = string;
+
+/** Every map in play, in order: the code's, then the ones added later. The array is changed in place, so a module that holds it always sees the current list. */
+export const MAP_IDS: string[] = [...CODE_MAP_IDS];
 
 export function isMapId(value: string): value is MapId {
-  return (MAP_IDS as readonly string[]).includes(value);
+  return MAP_IDS.includes(value);
 }
+
+/** The shape of a map id (a-z, 0-9, _): what a recipe may name before the map is installed. */
+export const MAP_ID_PATTERN = /^[a-z][a-z0-9_]{1,23}$/;
 
 /** A point in continuous tile units: tile (i, j) spans [i, i+1) x [j, j+1), its centre is (i+0.5, j+0.5). */
 export type Vec2 = [number, number];
@@ -31,8 +40,8 @@ export interface Portal {
 /** A non-player character standing at a fixed spot. Names and talk live in the client locale. */
 export interface NpcSpot {
   id: string;
-  /** What the NPC does: sells and buys (merchant), gives quests (quest), upgrades gear (smith) or carries one to another town (waygate: a teleport array drawn on the ground, nothing to stand beside). */
-  kind: "merchant" | "quest" | "smith" | "waygate";
+  /** What the NPC does: sells and buys (merchant), gives quests (quest), upgrades gear (smith), sells and brews pills (alchemist) or carries one to another town (waygate: a teleport array drawn on the ground, nothing to stand beside). */
+  kind: "merchant" | "quest" | "smith" | "waygate" | "alchemist";
   /** Position in tile units (continuous). */
   x: number;
   y: number;
@@ -44,6 +53,8 @@ export interface NpcSpot {
 export const NPC_NAMES_VI: Readonly<Record<string, string>> = {
   merchant: "Thương nhân",
   smith: "Thợ Rèn",
+  alchemist: "Đan Sư",
+  alchemist2: "Đan Sư",
   elder: "Trưởng Lão",
   merchant2: "Thương nhân",
   smith2: "Thợ Rèn",
@@ -54,7 +65,7 @@ export const NPC_NAMES_VI: Readonly<Record<string, string>> = {
   path_thuat: "Thuật Đạo Sư",
   path_dan: "Đan Đạo Sư",
 };
-export const NPC_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "waygate"];
+export const NPC_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "waygate", "alchemist"];
 
 /** How close (tiles) a player must be for the server to accept a command to an NPC. */
 export const NPC_INTERACT_RADIUS = 3;
@@ -83,6 +94,8 @@ export interface MapData {
   palette: { groundA: number; groundB: number; obstacle: number };
   /** Fine collision grid, row-major, (width * CELLS_PER_TILE) x (height * CELLS_PER_TILE): 1 = walkable, 0 = blocked. */
   collision: Uint8Array;
+  /** The steps that built `collision` (see GridOp); a map recipe keeps them so the grid can be rebuilt from data. */
+  ops: GridOp[];
   spawn: [number, number];
   /** Safe maps disable PvP (phase 2) and monster spawns. */
   safe: boolean;
@@ -215,8 +228,25 @@ function mulberry32(seed: number): () => number {
  * Builder for the fine collision grid. All coordinates are tile units (floats allowed) unless a method says "screen". Shapes only use
  * comparisons and +,-,* so every JS engine produces the identical grid (no trig, no pow).
  */
+/**
+ * One step of building a collision grid, as data: the map builders record the steps they take (Grid.ops) and a map recipe (the form kept in D1) replays
+ * them, in order, to get the identical grid. The numbers are the ones the builder computed, not expressions.
+ */
+export type GridOp =
+  | { op: "rect"; x0: number; y0: number; x1: number; y1: number; walkable: boolean }
+  | { op: "disc"; cx: number; cy: number; r: number; walkable: boolean }
+  | { op: "chamfered"; x0: number; y0: number; x1: number; y1: number; cut: number; walkable: boolean }
+  | { op: "srect"; px0: number; py0: number; px1: number; py1: number; walkable: boolean }
+  | { op: "blockAt"; px: number; py: number; r: number }
+  | { op: "frame"; halfW: number; halfH: number; bandX: number; bandY: number }
+  | { op: "clip"; halfW: number; halfH: number }
+  | { op: "scatter"; seed: number; count: number; rMin: number; rMax: number; halfW: number; halfH: number };
+
 class Grid {
   // Plain fields (no parameter properties) so Node's type-stripping can import this file in tools/.
+  /** The public steps taken so far (nested calls, like blockAt inside scatterDiscs, are not recorded twice). */
+  readonly ops: GridOp[] = [];
+  private depth = 0;
   readonly width: number;
   readonly height: number;
   readonly cw: number;
@@ -246,15 +276,51 @@ class Grid {
       }
     }
   }
+  private record(op: GridOp, run: () => void): void {
+    if (this.depth === 0) this.ops.push(op);
+    this.depth++;
+    run();
+    this.depth--;
+  }
+  /** Replays a recorded step. */
+  apply(op: GridOp): void {
+    switch (op.op) {
+      case "rect":
+        return this.rect(op.x0, op.y0, op.x1, op.y1, op.walkable);
+      case "disc":
+        return this.disc(op.cx, op.cy, op.r, op.walkable);
+      case "chamfered":
+        return this.chamfered(op.x0, op.y0, op.x1, op.y1, op.cut, op.walkable);
+      case "srect":
+        return this.srect(op.px0, op.py0, op.px1, op.py1, op.walkable);
+      case "blockAt":
+        return this.blockAt(op.px, op.py, op.r);
+      case "frame":
+        return this.frame(op.halfW, op.halfH, op.bandX, op.bandY);
+      case "clip":
+        return this.clipToRect(op.halfW, op.halfH);
+      case "scatter":
+        return this.scatterDiscs(op.seed, op.count, op.rMin, op.rMax, op.halfW, op.halfH);
+    }
+  }
   /** Rectangle [x0, x1) x [y0, y1) in tile units. */
   rect(x0: number, y0: number, x1: number, y1: number, walkable: boolean): void {
+    this.record({ op: "rect", x0, y0, x1, y1, walkable }, () => this.rectNow(x0, y0, x1, y1, walkable));
+  }
+  private rectNow(x0: number, y0: number, x1: number, y1: number, walkable: boolean): void {
     this.fill(x0, y0, x1, y1, walkable, (px, py) => px >= x0 && px < x1 && py >= y0 && py < y1);
   }
   disc(cx: number, cy: number, r: number, walkable: boolean): void {
+    this.record({ op: "disc", cx, cy, r, walkable }, () => this.discNow(cx, cy, r, walkable));
+  }
+  private discNow(cx: number, cy: number, r: number, walkable: boolean): void {
     this.fill(cx - r, cy - r, cx + r, cy + r, walkable, (px, py) => (px - cx) * (px - cx) + (py - cy) * (py - cy) <= r * r);
   }
   /** Rectangle with its four corners cut at 45 degrees by `cut` tiles. */
   chamfered(x0: number, y0: number, x1: number, y1: number, cut: number, walkable: boolean): void {
+    this.record({ op: "chamfered", x0, y0, x1, y1, cut, walkable }, () => this.chamferedNow(x0, y0, x1, y1, cut, walkable));
+  }
+  private chamferedNow(x0: number, y0: number, x1: number, y1: number, cut: number, walkable: boolean): void {
     this.fill(x0, y0, x1, y1, walkable, (px, py) => {
       if (px < x0 || px >= x1 || py < y0 || py >= y1) return false;
       const dx = Math.min(px - x0, x1 - px);
@@ -268,6 +334,9 @@ class Grid {
   }
   /** A rectangle ON SCREEN: screen units [px0, px1) x [py0, py1). */
   srect(px0: number, py0: number, px1: number, py1: number, walkable: boolean): void {
+    this.record({ op: "srect", px0, py0, px1, py1, walkable }, () => this.srectNow(px0, py0, px1, py1, walkable));
+  }
+  private srectNow(px0: number, py0: number, px1: number, py1: number, walkable: boolean): void {
     const corners = [this.at(px0, py0), this.at(px1, py0), this.at(px0, py1), this.at(px1, py1)];
     const xs = corners.map((c) => c[0]);
     const ys = corners.map((c) => c[1]);
@@ -280,11 +349,16 @@ class Grid {
   }
   /** A blocked disc at a screen position (a pillar, a statue). */
   blockAt(px: number, py: number, r: number): void {
-    const [x, y] = this.at(px, py);
-    this.disc(x, y, r, false);
+    this.record({ op: "blockAt", px, py, r }, () => {
+      const [x, y] = this.at(px, py);
+      this.discNow(x, y, r, false);
+    });
   }
   /** Blocks everything outside the rectangle plus a band of `bandX` / `bandY` screen units inside its edge (walls and void). */
   frame(halfW: number, halfH: number, bandX = 2, bandY = 1.5): void {
+    this.record({ op: "frame", halfW, halfH, bandX, bandY }, () => this.frameNow(halfW, halfH, bandX, bandY));
+  }
+  private frameNow(halfW: number, halfH: number, bandX: number, bandY: number): void {
     const size = this.width;
     this.fill(0, 0, this.width, this.height, false, (x, y) => {
       const sx = x - y;
@@ -294,6 +368,9 @@ class Grid {
   }
   /** Blocks only what lies outside the rectangle (used last, after gates were carved through the wall band). */
   clipToRect(halfW: number, halfH: number): void {
+    this.record({ op: "clip", halfW, halfH }, () => this.clipNow(halfW, halfH));
+  }
+  private clipNow(halfW: number, halfH: number): void {
     const size = this.width;
     this.fill(0, 0, this.width, this.height, false, (x, y) => {
       const sx = x - y;
@@ -303,12 +380,16 @@ class Grid {
   }
   /** Scatters `count` blocked discs (trees, rocks) of random radius at random, non tile-aligned positions inside the screen rectangle. */
   scatterDiscs(seed: number, count: number, rMin: number, rMax: number, halfW: number, halfH: number): void {
+    this.record({ op: "scatter", seed, count, rMin, rMax, halfW, halfH }, () => this.scatterNow(seed, count, rMin, rMax, halfW, halfH));
+  }
+  private scatterNow(seed: number, count: number, rMin: number, rMax: number, halfW: number, halfH: number): void {
     const rand = mulberry32(seed);
     for (let i = 0; i < count; i++) {
       const r = rMin + rand() * (rMax - rMin);
       const px = (rand() * 2 - 1) * (halfW - 3);
       const py = (rand() * 2 - 1) * (halfH - 2);
-      this.blockAt(px, py, r);
+      const [x, y] = this.at(px, py);
+      this.discNow(x, y, r, false);
     }
   }
 }
@@ -373,6 +454,7 @@ function townGround(g: Grid): void {
   g.rect(33 + o, 20 + o, 33.3 + o, 28.5 + o, false); // thin fence, not tile aligned
   g.disc(23.5 + o, 17.5 + o, 0.4, false); // the merchant's stall: nobody stands on the NPC
   g.disc(16.5 + o, 17.5 + o, 0.4, false); // the quest giver
+  g.disc(27.5 + o, 17.5 + o, 0.4, false); // the alchemist
   for (const x of [22.5, 25.5, 28.5]) g.disc(x + o, 24.5 + o, 0.4, false); // the three hướng tu masters
   // New ground around it: buildings in the four corners of the rectangle and a few more pillars.
   g.srect(-40, -17, -30, -9, false);
@@ -400,6 +482,7 @@ function buildTown(): MapData {
     home: "town",
     palette: { groundA: 0x3d5a3a, groundB: 0x38553a, obstacle: 0x5a4a3a },
     collision: g.cells,
+    ops: g.ops,
     spawn: [20 + o, 20 + o],
     safe: true,
     realm: null,
@@ -408,6 +491,7 @@ function buildTown(): MapData {
       { id: "merchant", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
       { id: "elder", kind: "quest", x: 16.5 + o, y: 17.5 + o },
       { id: "smith", kind: "smith", x: 15.5 + o, y: 20.5 + o },
+      { id: "alchemist", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
       { id: "waygate", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
       { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
       { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
@@ -441,6 +525,7 @@ function buildTown2(): MapData {
     home: "town2",
     palette: { groundA: 0x4a5560, groundB: 0x444f5a, obstacle: 0x6b5a4a },
     collision: g.cells,
+    ops: g.ops,
     spawn: [20 + o, 20 + o],
     safe: true,
     realm: null,
@@ -454,6 +539,7 @@ function buildTown2(): MapData {
       { id: "merchant2", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
       { id: "elder2", kind: "quest", x: 16.5 + o, y: 17.5 + o },
       { id: "smith2", kind: "smith", x: 15.5 + o, y: 20.5 + o },
+      { id: "alchemist2", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
       { id: "waygate2", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
       // The same three masters as the first town, with the same ids: their quests and rewards are the same wherever they stand.
       { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
@@ -487,6 +573,7 @@ function buildForest(): MapData {
     home: "town",
     palette: { groundA: 0x3d5a3a, groundB: 0x38553a, obstacle: 0x5a4a3a },
     collision: g.cells,
+    ops: g.ops,
     spawn: fromTown,
     safe: false,
     realm: 0,
@@ -524,6 +611,7 @@ function buildCave(): MapData {
     home: "town",
     palette: { groundA: 0x4a4540, groundB: 0x433e39, obstacle: 0x2e2a28 },
     collision: g.cells,
+    ops: g.ops,
     spawn: arrive,
     safe: false,
     realm: 1,
@@ -555,6 +643,7 @@ function buildOpenMap(id: "kimdan" | "nguyenanh", rect: PlayRect, size: number, 
     home: "town2",
     palette,
     collision: g.cells,
+    ops: g.ops,
     spawn: spot(size, -halfW + 6, 0),
     safe: false,
     realm,
@@ -567,11 +656,11 @@ function buildOpenMap(id: "kimdan" | "nguyenanh", rect: PlayRect, size: number, 
  * What is known about a map without building it (building one fills hundreds of thousands of collision cells, so a map is built the first time
  * it is asked for, not when the module loads: every Worker isolate and every page load imports this file).
  */
-export const MAP_SIZE: Readonly<Record<MapId, number>> = { town: TOWN_SIZE, forest: FOREST_SIZE, cave: CAVE_SIZE, town2: TOWN_SIZE, kimdan: KIMDAN_SIZE, nguyenanh: NGUYENANH_SIZE };
+export const MAP_SIZE: Record<string, number> = { town: TOWN_SIZE, forest: FOREST_SIZE, cave: CAVE_SIZE, town2: TOWN_SIZE, kimdan: KIMDAN_SIZE, nguyenanh: NGUYENANH_SIZE };
 /** The realm of each map (null for a town), the same as MapData.realm. */
-export const MAP_REALM: Readonly<Record<MapId, number | null>> = { town: null, forest: 0, cave: 1, town2: null, kimdan: 2, nguyenanh: 3 };
+export const MAP_REALM: Record<string, number | null> = { town: null, forest: 0, cave: 1, town2: null, kimdan: 2, nguyenanh: 3 };
 
-const BUILDERS: Readonly<Record<MapId, () => MapData>> = {
+const BUILDERS: Readonly<Record<string, () => MapData>> = {
   town: buildTown,
   forest: buildForest,
   cave: buildCave,
@@ -582,11 +671,131 @@ const BUILDERS: Readonly<Record<MapId, () => MapData>> = {
 const built = new Map<MapId, MapData>();
 
 /** Every NPC id on any map (quests name their giver and talk targets from this set; a test checks it against the maps). */
-export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2"]);
+export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "alchemist", "alchemist2", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2"]);
+
+/**
+ * A map as data (what D1 keeps and the admin edits): everything about a map except its NPCs (their own table) and its monster groups (monsters.ts). Building one
+ * replays `ops` on an empty grid, so a recipe taken from a code builder gives back exactly that builder's map.
+ */
+/** What lives on a map besides its ground (all tile units): the monster groups, the guards beside the gates and the spot the boss falls back to. Absent in a recipe: the code's. */
+export interface MapContent {
+  groups: Array<{ tier: number; kind: string; x: number; y: number; radius: number; count: number }>;
+  guards: Array<[number, number]>;
+  bossSpot: [number, number] | null;
+}
+
+export interface MapRecipe {
+  id: MapId;
+  size: number;
+  rect: PlayRect;
+  home: MapId;
+  palette: MapData["palette"];
+  spawn: [number, number];
+  safe: boolean;
+  realm: number | null;
+  guardRealm?: number;
+  portals: Portal[];
+  ops: GridOp[];
+  content?: MapContent;
+}
+
+const codeMaps = new Map<MapId, MapData>();
+function codeMap(id: MapId): MapData {
+  let m = codeMaps.get(id);
+  if (!m) {
+    const build = BUILDERS[id];
+    if (!build) throw new Error(`map ${id} is not one the code builds`);
+    codeMaps.set(id, (m = build()));
+  }
+  return m;
+}
+
+/** The recipe of a map as the code builds it (the default the D1 rows are seeded with). */
+export function codeMapRecipe(id: CodeMapId): MapRecipe {
+  const m = codeMap(id);
+  return { id, size: m.width, rect: { ...m.rect }, home: m.home, palette: { ...m.palette }, spawn: [...m.spawn], safe: m.safe, realm: m.realm, ...(m.guardRealm !== undefined ? { guardRealm: m.guardRealm } : {}), portals: m.portals.map((p) => ({ ...p })), ops: m.ops.map((o) => ({ ...o })) };
+}
+
+/** Builds a map from its recipe. The NPCs are the code's (the live ones come from `setAllNpcs`). */
+export function buildFromRecipe(r: MapRecipe): MapData {
+  const g = new Grid(r.size, r.size);
+  for (const op of r.ops) g.apply(op);
+  return {
+    id: r.id,
+    width: r.size,
+    height: r.size,
+    rect: { ...r.rect },
+    home: r.home,
+    palette: { ...r.palette },
+    collision: g.cells,
+    ops: g.ops,
+    spawn: [r.spawn[0], r.spawn[1]],
+    safe: r.safe,
+    realm: r.realm,
+    ...(r.guardRealm !== undefined ? { guardRealm: r.guardRealm } : {}),
+    portals: r.portals.map((p) => ({ ...p })),
+    npcs: BUILDERS[r.id] ? codeMap(r.id).npcs : [],
+  };
+}
+
+/**
+ * The recipes in force (the server installs them from D1, the client the one of the map it joins); a map without one is the code's. Installing only stores the
+ * recipe: the grid is built the first time the map is asked for (building one fills hundreds of thousands of cells, which a Worker route must not do).
+ */
+const recipes = new Map<MapId, { json: string; recipe: MapRecipe }>();
+const CODE_SIZE: Readonly<Record<string, number>> = { ...MAP_SIZE };
+const CODE_REALM: Readonly<Record<string, number | null>> = { ...MAP_REALM };
+
+/** Called after a recipe is installed or removed (`null`): the modules that keep per-map tables (monster groups, guards, the boss spot) update them. */
+const mapListeners: Array<(id: MapId, recipe: MapRecipe | null) => void> = [];
+export function onMapRecipe(listener: (id: MapId, recipe: MapRecipe | null) => void): void {
+  mapListeners.push(listener);
+}
+
+function registerMap(id: MapId, r: MapRecipe | null): void {
+  if (r) {
+    if (!MAP_IDS.includes(id)) MAP_IDS.push(id);
+    MAP_SIZE[id] = r.size;
+    MAP_REALM[id] = r.realm;
+  } else if ((CODE_MAP_IDS as readonly string[]).includes(id)) {
+    MAP_SIZE[id] = CODE_SIZE[id]!;
+    MAP_REALM[id] = CODE_REALM[id]!;
+  } else {
+    const i = MAP_IDS.indexOf(id);
+    if (i >= 0) MAP_IDS.splice(i, 1);
+    delete MAP_SIZE[id];
+    delete MAP_REALM[id];
+  }
+  for (const l of mapListeners) l(id, r);
+}
+
+export function setMapRecipe(r: MapRecipe | null, id?: MapId): void {
+  const key = r?.id ?? id;
+  if (!key) return;
+  if (!r) {
+    const had = recipes.delete(key);
+    if (had) built.delete(key);
+    if (had || !(CODE_MAP_IDS as readonly string[]).includes(key)) registerMap(key, null);
+    return;
+  }
+  const json = JSON.stringify(r);
+  if (recipes.get(key)?.json === json) return;
+  recipes.set(key, { json, recipe: r });
+  built.delete(key);
+  registerMap(key, r);
+}
+
+/** The recipe installed for a map (undefined: the map is the code's). */
+export function overrideRecipe(id: MapId): MapRecipe | undefined {
+  return recipes.get(id)?.recipe;
+}
 
 export function getMap(id: MapId): MapData {
   let map = built.get(id);
-  if (!map) built.set(id, (map = BUILDERS[id]()));
+  if (!map) {
+    const r = recipes.get(id)?.recipe;
+    built.set(id, (map = r ? buildFromRecipe(r) : codeMap(id)));
+  }
   return map;
 }
 
@@ -625,10 +834,95 @@ export function allNpcIds(): Set<string> {
 
 /** The NPCs the game starts with, on every map (seeds of the D1 table). */
 export function startingNpcs(): Array<NpcSpot & { mapId: MapId }> {
-  return MAP_IDS.flatMap((mapId) => getMap(mapId).npcs.map((n) => ({ ...n, mapId, name: NPC_NAMES_VI[n.id] ?? n.id })));
+  return MAP_IDS.flatMap((mapId) => codeMap(mapId).npcs.map((n) => ({ ...n, mapId, name: NPC_NAMES_VI[n.id] ?? n.id })));
 }
 
 /** The portal whose tile is within PORTAL_RADIUS of a continuous position, if any. */
 export function portalNear(map: MapData, x: number, y: number): Portal | undefined {
   return map.portals.find((p) => Math.hypot(x - (p.x + 0.5), y - (p.y + 0.5)) <= PORTAL_RADIUS);
+}
+
+const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const OP_NUMBERS: Readonly<Record<GridOp["op"], readonly string[]>> = {
+  rect: ["x0", "y0", "x1", "y1"],
+  disc: ["cx", "cy", "r"],
+  chamfered: ["x0", "y0", "x1", "y1", "cut"],
+  srect: ["px0", "py0", "px1", "py1"],
+  blockAt: ["px", "py", "r"],
+  frame: ["halfW", "halfH", "bandX", "bandY"],
+  clip: ["halfW", "halfH"],
+  scatter: ["seed", "count", "rMin", "rMax", "halfW", "halfH"],
+};
+const OP_FLAG = new Set<GridOp["op"]>(["rect", "disc", "chamfered", "srect"]);
+export const MAX_RECIPE_OPS = 400;
+/** The most discs one scatter may drop (the forest has 1300): a bound on the work a recipe can ask of every isolate and client. */
+export const MAX_SCATTER = 5000;
+
+/** Whether a step is well formed (numbers are finite and in a sane range). */
+export function validGridOp(o: unknown): o is GridOp {
+  if (typeof o !== "object" || o === null) return false;
+  const r = o as Record<string, unknown>;
+  const keys = OP_NUMBERS[r.op as GridOp["op"]];
+  if (!keys) return false;
+  if (!keys.every((k) => finite(r[k]) && Math.abs(r[k] as number) <= 100_000)) return false;
+  if (OP_FLAG.has(r.op as GridOp["op"]) && typeof r.walkable !== "boolean") return false;
+  if (r.op === "scatter") return Number.isInteger(r.count) && (r.count as number) >= 0 && (r.count as number) <= MAX_SCATTER && Number.isInteger(r.seed) && (r.rMin as number) > 0 && (r.rMax as number) >= (r.rMin as number);
+  return true;
+}
+
+/** Whether a recipe is well formed for the map it names (structure only: nothing is built, so this is cheap to call anywhere). */
+export function validMapRecipe(r: unknown): r is MapRecipe {
+  if (typeof r !== "object" || r === null) return false;
+  const o = r as Record<string, unknown>;
+  const rect = o.rect as Record<string, unknown> | undefined;
+  const pal = o.palette as Record<string, unknown> | undefined;
+  const color = (c: unknown) => Number.isInteger(c) && (c as number) >= 0 && (c as number) <= 0xffffff;
+  return (
+    typeof o.id === "string" &&
+    MAP_ID_PATTERN.test(o.id) &&
+    Number.isInteger(o.size) &&
+    (o.size as number) >= 20 &&
+    (o.size as number) <= 400 &&
+    !!rect &&
+    finite(rect.halfW) &&
+    finite(rect.halfH) &&
+    rect.halfW > 0 &&
+    rect.halfH > 0 &&
+    typeof o.home === "string" &&
+    MAP_ID_PATTERN.test(o.home) &&
+    !!pal &&
+    color(pal.groundA) &&
+    color(pal.groundB) &&
+    color(pal.obstacle) &&
+    Array.isArray(o.spawn) &&
+    o.spawn.length === 2 &&
+    o.spawn.every((n) => Number.isInteger(n) && n >= 0 && n < (o.size as number)) &&
+    typeof o.safe === "boolean" &&
+    (o.realm === null || Number.isInteger(o.realm)) &&
+    (o.guardRealm === undefined || Number.isInteger(o.guardRealm)) &&
+    Array.isArray(o.portals) &&
+    o.portals.length <= 16 &&
+    o.portals.every((p) => typeof p === "object" && p !== null && Number.isInteger((p as Portal).x) && Number.isInteger((p as Portal).y) && (p as Portal).x >= 0 && (p as Portal).y >= 0 && (p as Portal).x < (o.size as number) && (p as Portal).y < (o.size as number) && typeof (p as Portal).toMap === "string" && MAP_ID_PATTERN.test((p as Portal).toMap) && Number.isInteger((p as Portal).toX) && Number.isInteger((p as Portal).toY)) &&
+    Array.isArray(o.ops) &&
+    o.ops.length <= MAX_RECIPE_OPS &&
+    o.ops.every(validGridOp) &&
+    (o.content === undefined || validMapContent(o.content, o.size as number))
+  );
+}
+
+/** Whether the groups, guards and boss spot of a map are well formed and lie inside a grid of this size. */
+export function validMapContent(c: unknown, size: number): c is MapContent {
+  if (typeof c !== "object" || c === null) return false;
+  const o = c as Record<string, unknown>;
+  const inside = (v: unknown): v is number => finite(v) && v >= 0 && v < size;
+  const spot = (p: unknown) => Array.isArray(p) && p.length === 2 && inside(p[0]) && inside(p[1]);
+  return (
+    Array.isArray(o.groups) &&
+    o.groups.length <= 200 &&
+    o.groups.every((g) => typeof g === "object" && g !== null && Number.isInteger(g.tier) && g.tier >= 1 && g.tier <= 9 && typeof g.kind === "string" && /^[a-z0-9_]{1,40}$/.test(g.kind) && inside(g.x) && inside(g.y) && finite(g.radius) && g.radius >= 0 && g.radius <= 20 && Number.isInteger(g.count) && g.count >= 1 && g.count <= 50) &&
+    Array.isArray(o.guards) &&
+    o.guards.length <= 40 &&
+    o.guards.every(spot) &&
+    (o.bossSpot === null || spot(o.bossSpot))
+  );
 }

@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_TUNING, ITEMS, getItemDef, setItemOverlays } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
 import { deleteItem, listItems, saveItem } from "./items-admin";
+import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
 import { listLoot, saveLoot } from "./monsters-admin";
 import { getItemOverlays, resetItemsCache } from "./items-live";
 import { saveQuest } from "./quests-admin";
@@ -180,6 +181,32 @@ describe("deleting an item", () => {
     const refused = await deleteItem(db, ADMIN, "su_kien_dan", token);
     expect(refused).toMatchObject({ ok: false, error: "in_use" });
     expect(refused.ok === false && refused.problems?.[0]).toContain("Bảng rơi");
+  });
+
+  it("is refused while an alchemist recipe makes it or uses it, with which recipe", async () => {
+    const token = await make();
+    await getItemOverlays(db);
+    const view = await getAlchemyAdmin(db);
+    const recipe = { id: "su_kien", nameVi: "Luyện Sự Kiện", output: "su_kien_dan", qty: 1, inputs: [{ item: "linh_thao", qty: 2 }], linhThach: 10, seconds: 5, enabled: true };
+    expect(await saveAlchemy(db, ADMIN, { ...view.alchemy, recipes: [...view.alchemy.recipes, recipe] }, view.updatedAt, Date.now() + 5)).toMatchObject({ ok: true });
+    const refused = await deleteItem(db, ADMIN, "su_kien_dan", token);
+    expect(refused).toMatchObject({ ok: false, error: "in_use" });
+    expect(refused.ok === false && refused.problems?.[0]).toContain("Công thức luyện đan");
+  });
+
+  it("is only taken out of play (soft) while a brewing of it waits to be collected, and the recipe check ignores other broken recipes", async () => {
+    const token = await make();
+    raw.exec("INSERT INTO brew_jobs (id, character_id, npc_id, recipe_id, item, qty, started_at, ready_at, collected_at) VALUES ('j1', 'char', 'alchemist', 'old', 'su_kien_dan', 1, 0, 0, NULL)");
+    expect(await deleteItem(db, ADMIN, "su_kien_dan", token)).toMatchObject({ ok: true, mode: "soft" });
+    expect((await find("su_kien_dan"))!.disabled).toBe(true);
+    // The item is out of play now, but a recipe that does not name it can still be saved: only new or changed recipes are checked.
+    await getItemOverlays(db);
+    const view = await getAlchemyAdmin(db);
+    const broken = { ...view.alchemy, recipes: [{ id: "dead", nameVi: "Cũ", output: "su_kien_dan", qty: 1, inputs: [{ item: "linh_thao", qty: 1 }], linhThach: 0, seconds: 1, enabled: true }] };
+    raw.prepare("UPDATE game_tuning SET value = ? WHERE name = 'alchemy'").run(JSON.stringify(broken));
+    const edited = { ...broken, maxJobs: 4 };
+    expect(await saveAlchemy(db, ADMIN, edited, view.updatedAt, Date.now() + 9)).toMatchObject({ ok: true });
+    expect(await saveAlchemy(db, ADMIN, { ...edited, recipes: [{ ...edited.recipes[0]!, qty: 2 }] }, (await getAlchemyAdmin(db)).updatedAt, Date.now() + 99)).toMatchObject({ ok: false, error: "invalid" });
   });
 
   it("a quest cannot be given a deleted item as a reward", async () => {

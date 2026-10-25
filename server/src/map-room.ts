@@ -116,6 +116,10 @@ import {
   expLostOnDeath,
   findSmoothPath,
   getMap,
+  type MapRecipe,
+  type CodeMapId,
+  buildFromRecipe,
+  codeMapRecipe,
   isMapId,
   isStandable,
   lineClear,
@@ -138,9 +142,10 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
+import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
 import { getNpcs } from "./npcs";
 import { saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -394,6 +399,12 @@ export class MapRoom extends DurableObject<Env> {
     super(ctx, env);
     // Answered by the runtime while the object hibernates (no wake-up, no duration billing).
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING_MESSAGE, PONG_MESSAGE));
+    // The pinned map survives the object sleeping while players are still connected (the recipe is kept in storage; the grid is built again when asked for).
+    void this.ctx.blockConcurrencyWhile(async () => {
+      const saved = await this.ctx.storage.get<{ id: string; recipe: MapRecipe; custom: boolean }>("pin");
+      if (saved && this.ctx.getWebSockets().length > 0) this.pins.set(saved.id, { recipe: saved.recipe, custom: saved.custom });
+      else if (saved) await this.ctx.storage.delete("pin");
+    });
   }
 
   /**
@@ -459,7 +470,7 @@ export class MapRoom extends DurableObject<Env> {
       const colo = await this.knownColo();
       // The Worker routes by the character's saved map, so the row's map is this room's map.
       const mapId: MapId = isMapId(row.map_id) ? row.map_id : "town";
-      const map = getMap(mapId);
+      const map = this.mapOf(mapId);
       // Every await of the join happens before the socket is accepted. From accepting to `welcome` the code is
       // synchronous, so no broadcast, tick event or monster resync can reach the new socket ahead of its welcome
       // (the client rebuilds its actors from the welcome and would otherwise show stale ones).
@@ -573,6 +584,7 @@ export class MapRoom extends DurableObject<Env> {
         gearSets: currentGearSetNames().map((r) => [...r]),
         tuning: await getTuning(this.env.DB),
         npcs: [...npcsOf(map)],
+        ...(this.pinOf(mapId).custom ? { mapRecipe: this.pinOf(mapId).recipe } : {}),
         items: itemOverlays().map((o) => ({ ...o })),
         mutant: { mutantRootChancePermille: elementTuning().mutantRootChancePermille, mutantSkillBonusPct: elementTuning().mutantSkillBonusPct, mutantGearBonusPct: elementTuning().mutantGearBonusPct, mutantGearDropPermille: elementTuning().mutantGearDropPermille },
         hotbar,
@@ -665,6 +677,9 @@ export class MapRoom extends DurableObject<Env> {
       case "smith_refine":
       case "smith_repair":
         return this.handleSmith(ws, state, msg);
+      case "brew_start":
+      case "brew_collect":
+        return this.handleBrew(ws, state, msg);
       case "waygate_go":
         return void this.startWaygate(ws, state, msg);
       case "npc_open":
@@ -724,7 +739,7 @@ export class MapRoom extends DurableObject<Env> {
       await this.interruptTalisman(state.id, "moved");
       state = (ws.deserializeAttachment() as PlayerState | null) ?? state;
     }
-    const map = getMap(state.mapId);
+    const map = this.mapOf(state.mapId);
     const now = Date.now();
     // The mover predicts locally, so it only needs a payload when its move was corrected or rejected.
     const reject = () => this.send(ws, { t: "ack", seq: msg.seq, player: this.snapshot(state) });
@@ -762,7 +777,7 @@ export class MapRoom extends DurableObject<Env> {
   /** Portal: verify the position, then hand the character to the destination map. */
   private async handlePortal(ws: WebSocket, state: PlayerState): Promise<void> {
     const here = positionAlongPath(state.path, Date.now() - state.startedAt, state.speed);
-    const portal = portalNear(getMap(state.mapId), here.x, here.y);
+    const portal = portalNear(this.mapOf(state.mapId), here.x, here.y);
     if (!portal) return;
     await this.handoff(ws, state, portal.toMap, portal.toX + 0.5, portal.toY + 0.5);
   }
@@ -1082,8 +1097,8 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private ensureSim(mapId: MapId, ranks?: Record<string, string>): CombatSim | null {
-    const map = getMap(mapId);
-    if (map.safe && GUARDS[mapId].length === 0) return null;
+    const map = this.mapOf(mapId);
+    if (map.safe && (GUARDS[mapId] ?? []).length === 0) return null;
     if (!this.sim) this.sim = new CombatSim(map, mapId, Math.random, Date.now(), ranks);
     return this.sim;
   }
@@ -1106,7 +1121,7 @@ export class MapRoom extends DurableObject<Env> {
    */
   private wake(mapId: MapId, joinerSatNhan = 0): Promise<void> {
     // A safe map is woken only for its guards, and only when a coloured name is in it (see murdererPresent).
-    if (getMap(mapId).safe && !this.sim && (GUARDS[mapId].length === 0 || !this.murdererPresent(joinerSatNhan))) return Promise.resolve();
+    if (this.mapOf(mapId).safe && !this.sim && ((GUARDS[mapId] ?? []).length === 0 || !this.murdererPresent(joinerSatNhan))) return Promise.resolve();
     if (this.sim) {
       this.startTick();
       return Promise.resolve();
@@ -1224,6 +1239,33 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** Forgets a character's combat profile; with nobody left the tick stops and the monsters are discarded. */
+  /**
+   * The map (and the recipe it was built from) this room uses, fixed the first time it is asked for and kept until the room is empty. An admin changing the
+   * map's recipe meanwhile must not change the ground under the people standing on it: the new layout reaches a room when it is next empty, and every
+   * `welcome` sends the recipe that is pinned here, so a newcomer builds the same grid as the room.
+   */
+  private pins = new Map<string, { recipe: MapRecipe; custom: boolean; map?: MapData }>();
+  private pinOf(id: MapId): { recipe: MapRecipe; custom: boolean; map?: MapData } {
+    let pin = this.pins.get(id);
+    if (!pin) {
+      const custom = overrideRecipe(id);
+      // A map nobody changed is pinned as the code's recipe, so a later change to it does not reach this room either.
+      pin = { recipe: custom ?? codeMapRecipe(id as CodeMapId), custom: custom !== undefined, ...(custom ? {} : { map: getMap(id) }) };
+      this.pins.set(id, pin);
+      void this.ctx.storage.put("pin", { id, recipe: pin.recipe, custom: pin.custom });
+    }
+    return pin;
+  }
+  private mapOf(id: MapId): MapData {
+    const pin = this.pinOf(id);
+    if (!pin.map) {
+      // A pin restored after a sleep: when it is still what is installed, the cached grid is the same grid (the building is the expensive part).
+      const now = overrideRecipe(id);
+      pin.map = (pin.custom ? now !== undefined && JSON.stringify(now) === JSON.stringify(pin.recipe) : now === undefined) ? getMap(id) : buildFromRecipe(pin.recipe);
+    }
+    return pin.map;
+  }
+
   private dropPlayer(id: string): void {
     this.sim?.removePlayer(id);
     // A safe map's sim exists only for the guards: with no coloured name left it goes, and the room can sleep again.
@@ -1235,6 +1277,10 @@ export class MapRoom extends DurableObject<Env> {
     }
     // Judged by the sockets, not the sim: after a sleep the sim may be gone while the last players leave.
     if (this.players().length === 0) {
+      if (this.pins.size > 0) {
+        this.pins.clear(); // the next player gets the map as it is then
+        void this.ctx.storage.delete("pin");
+      }
       this.saveBossState(this.sim);
       if (this.tickTimer) clearInterval(this.tickTimer);
       this.tickTimer = null;
@@ -1672,7 +1718,7 @@ export class MapRoom extends DurableObject<Env> {
     let accepted = false;
     if (speed !== state.speed) {
       const now = Date.now();
-      const map = getMap(state.mapId);
+      const map = this.mapOf(state.mapId);
       const there = positionAlongPath(state.path, now - state.startedAt, state.speed);
       // The mover may say where it is (it predicted the change from there): trusted when close to where the server has it, like a move.
       let anchor: Vec2 = [there.x, there.y];
@@ -2119,7 +2165,7 @@ export class MapRoom extends DurableObject<Env> {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "quest_error", reason: "rate" });
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-    const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
+    const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
     if (!spot || spot.kind !== "quest") return this.send(ws, { t: "quest_error", reason: "far" });
     if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "quest_error", reason: "murderer" });
     state.lastInvAt = now;
@@ -2220,7 +2266,7 @@ export class MapRoom extends DurableObject<Env> {
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     const npcId = msg.npc;
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-    const spot = npcNear(getMap(state.mapId), npcId, here.x, here.y);
+    const spot = npcNear(this.mapOf(state.mapId), npcId, here.x, here.y);
     if (!spot) return this.send(ws, { t: "inv_error", reason: "far" });
     // Orange and red names (sát nhân over 200) may not deal with any NPC.
     if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, spot.kind === "quest" ? { t: "quest_error", reason: "murderer" } : { t: "inv_error", reason: "murderer" });
@@ -2232,16 +2278,19 @@ export class MapRoom extends DurableObject<Env> {
         // Opening any NPC counts as talking to it (a talk quest may be waiting for that).
         await this.noteTalk(id, npcId).catch((err) => console.error("quest talk failed", id, err));
         if (spot.kind === "quest") return this.sendQuests(ws, id, npcId);
-        if (spot.kind === "smith") return this.sendSmith(ws, id, npcId);
+        if (spot.kind === "smith" && msg.view !== "shop") return this.sendSmith(ws, id, npcId);
         if (spot.kind === "waygate") return this.sendWaygate(ws, state.mapId, npcId);
+        if (spot.kind === "alchemist" && msg.view === "brew") return this.sendBrew(ws, id, npcId);
       }
-      if (spot.kind !== "merchant") return;
+      // The blacksmith and the alchemist deal in goods too when they have a stock (a merchant record under their id): the shop tab of their window.
+      if (spot.kind !== "merchant" && spot.kind !== "alchemist" && spot.kind !== "smith") return;
       const wearer = await this.wearerOf(id);
       if (!wearer) return;
       // The merchants are data (D1): load them before pricing anything (the registry is state of this isolate).
       const merchant = (await getMerchants(this.env.DB))[npcId];
       if (!merchant || merchant.mapId !== state.mapId) return;
-      const sendStock = async () => this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, npcId, await getPurchased(this.env.DB, id, npcId, Date.now())), tuning: await getTuning(this.env.DB), merchant });
+      const sendStock = async () =>
+        this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, npcId, await getPurchased(this.env.DB, id, npcId, Date.now())), tuning: await getTuning(this.env.DB), merchant, tabs: npcTabs(spot.kind, true) });
       if (msg.t === "npc_open") return sendStock();
       if (msg.t === "shop_buy") return this.shopBuy(ws, id, wearer.gender, npcId, msg.offer, msg.qty, sendStock);
       if (msg.t === "shop_sell_many") return this.shopSellMany(ws, id, npcId, msg.cells);
@@ -2391,8 +2440,91 @@ export class MapRoom extends DurableObject<Env> {
 
   /** The blacksmith's window: the upgrade rules and the bonus chance each of the character's pieces has built up. */
   private async sendSmith(ws: WebSocket, id: string, npcId: string): Promise<void> {
-    const [levels, pity, tune] = await Promise.all([getEnhanceTable(this.env.DB), loadPity(this.env.DB, id), getTuning(this.env.DB)]);
-    this.send(ws, { t: "smith", npc: npcId, levels, pity, tuning: tune });
+    const [levels, pity, tune, merchants] = await Promise.all([getEnhanceTable(this.env.DB), loadPity(this.env.DB, id), getTuning(this.env.DB), getMerchants(this.env.DB)]);
+    this.send(ws, { t: "smith", npc: npcId, levels, pity, tuning: tune, tabs: npcTabs("smith", merchants[npcId] !== undefined) });
+  }
+
+  /** The alchemist's brewing tab: the brewings this character has going (waiting or ready) and, in the tuning, the recipes. */
+  private async sendBrew(ws: WebSocket, id: string, npcId: string): Promise<void> {
+    const [jobs, tune] = await Promise.all([listBrewJobs(this.env.DB, id), getTuning(this.env.DB)]);
+    this.send(ws, { t: "brew", npc: npcId, jobs, tuning: tune, tabs: npcTabs("alchemist", true), now: Date.now() });
+  }
+
+  /** Alchemist commands: start a brewing (materials and Linh Thạch taken now) and collect a finished one. Same checks as the other NPCs. */
+  private handleBrew(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "brew_start" | "brew_collect" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "alchemist") return this.send(ws, { t: "inv_error", reason: "far" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "inv_error", reason: "murderer" });
+    if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      if (msg.t === "brew_collect") return this.brewCollect(ws, id, msg.npc, msg.job);
+      return this.brewStart(ws, id, msg.npc, msg.recipe);
+    });
+  }
+
+  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string): Promise<void> {
+    const cfg = (await getTuning(this.env.DB)).alchemy;
+    const recipe = cfg.recipes.find((r) => r.id === recipeId && r.enabled);
+    const usable = (item: string) => {
+      const def = getItemDef(item);
+      return def !== undefined && def.disabled !== true;
+    };
+    if (!recipe || !usable(recipe.output) || !recipe.inputs.every((i) => usable(i.item))) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    if ((await listBrewJobs(this.env.DB, id)).length >= cfg.maxJobs) return this.send(ws, { t: "inv_error", reason: "brew_limit" });
+    const bag = await this.getBag(id);
+    const ops: BagOp[] = [];
+    for (const input of recipe.inputs) {
+      const taken = planConsume(bag.items, input.item, input.qty);
+      if (!taken) return this.send(ws, { t: "inv_error", reason: "brew_mats" });
+      ops.push(...taken);
+    }
+    const now = Date.now();
+    const extra = [...startBrewStatements(this.env.DB, id, npcId, recipe, crypto.randomUUID(), cfg.maxJobs, now), ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now))];
+    try {
+      let balance: number | undefined;
+      if (recipe.linhThach > 0) {
+        const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -recipe.linhThach, reason: `brew:${recipe.id}`, actor: "system" }, extra);
+        if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+        if (r.status !== "applied") return this.resync(ws, id, "busy");
+        balance = r.balance;
+      } else await this.env.DB.batch(extra);
+      const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
+      const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+      this.bags.set(id, after);
+      this.sendBagDelta(id, bag, after);
+      if (balance !== undefined) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance });
+      await this.sendBrew(ws, id, npcId);
+    } catch (err) {
+      if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("brew start failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+  }
+
+  private async brewCollect(ws: WebSocket, id: string, npcId: string, jobId: string): Promise<void> {
+    const job = await getBrewJob(this.env.DB, id, jobId);
+    if (!job) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    const now = Date.now();
+    if (job.readyAt > now) return this.send(ws, { t: "inv_error", reason: "brew_wait", retryMs: job.readyAt - now });
+    let full = false;
+    const res = await this.mutateBag(id, (bag) => {
+      const ops = planAdd(bag.items, bag.tabs, job.output, job.qty, () => crypto.randomUUID());
+      if (!ops) {
+        full = true;
+        return null;
+      }
+      return { ops, extra: collectBrewStatements(this.env.DB, id, job.id, now) };
+    });
+    if (!res.ok) return full ? this.send(ws, { t: "inv_error", reason: "full" }) : this.resync(ws, id, "busy");
+    this.sendBagDelta(id, res.before, res.after);
+    this.sendToCharacter(id, { t: "shop_ok", op: "buy", item: job.output, qty: job.qty, total: 0 });
+    await this.sendBrew(ws, id, npcId);
   }
 
   /** Blacksmith commands: upgrading a piece and repairing. Same checks as the merchant (close enough, no murderers, rate limit). */
@@ -2400,7 +2532,7 @@ export class MapRoom extends DurableObject<Env> {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-    const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
+    const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
     if (!spot || spot.kind !== "smith") return this.send(ws, { t: "inv_error", reason: "far" });
     if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "inv_error", reason: "murderer" });
     if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
@@ -2618,7 +2750,7 @@ export class MapRoom extends DurableObject<Env> {
     if (now - (state.lastCastAt ?? 0) < CAST_MIN_GAP_MS) return;
     state.lastCastAt = now;
     ws.serializeAttachment(state);
-    if (getMap(state.mapId).safe) return void this.send(ws, { t: "cast_error", skill: msg.skill, reason: "town" });
+    if (this.mapOf(state.mapId).safe) return void this.send(ws, { t: "cast_error", skill: msg.skill, reason: "town" });
     try {
       await this.wake(state.mapId);
     } catch (err) {
@@ -2830,7 +2962,7 @@ export class MapRoom extends DurableObject<Env> {
   private async startWaygate(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "waygate_go" }>): Promise<void> {
     const now = Date.now();
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
-    const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
+    const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
     if (!spot || spot.kind !== "waygate" || !isWaygateTown(state.mapId)) return void this.send(ws, { t: "inv_error", reason: "far" });
     const to = msg.to as MapId;
     if (!isWaygateTown(to) || to === state.mapId) return void this.send(ws, { t: "inv_error", reason: "invalid" });
@@ -2913,7 +3045,7 @@ export class MapRoom extends DurableObject<Env> {
       // The socket may have changed meanwhile (a duplicate login evicted it, a breakthrough began): act only on what it holds now.
       const fresh = ws.deserializeAttachment() as PlayerState | null;
       if (!fresh || fresh.id !== id || fresh.transferring || fresh.bt || fresh.tp || this.isMoving(fresh)) return;
-      const spawn = getMap(tp.to).spawn;
+      const spawn = this.mapOf(tp.to).spawn;
       const before = (ops as BagOp[]).flatMap((op) => opStatements(this.env.DB, id, op, Date.now()));
       if (await this.handoff(ws, fresh, tp.to, spawn[0] + 0.5, spawn[1] + 0.5, false, before)) return; // the socket is closed: the client sees the transfer
       this.bags.delete(id); // nothing was written: reload the bag and try once more (a stale cache is the usual reason)
@@ -2932,7 +3064,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!wallet || wallet.linh_thach < fee) return void this.send(ws, { t: "tp_end", ok: false, reason: "money" });
     const fresh = ws.deserializeAttachment() as PlayerState | null;
     if (!fresh || fresh.id !== id || fresh.transferring || fresh.bt || fresh.tp || this.isMoving(fresh)) return;
-    const spawn = getMap(to).spawn;
+    const spawn = this.mapOf(to).spawn;
     const before = currencyStatements(this.env.DB, { characterId: id, currency: "linh_thach", delta: -fee, reason: "waygate", actor: "system", idempotencyKey: `waygate:${id}:${endsAt}`, keyTtlMs: 24 * 3600 * 1000 }, await linhThachTraceMin(this.env.DB));
     if (await this.handoff(ws, fresh, to, spawn[0] + 0.5, spawn[1] + 0.5, false, before)) return; // the socket is closed: the client sees the transfer
     const again = ws.deserializeAttachment() as PlayerState | null;
@@ -3095,7 +3227,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!here || here.transferring || here.bt) return this.btError(ws, "busy");
     // A walk that is still going would carry on with no further message to break the breakthrough: stand still first.
     if (this.isMoving(here)) return this.btError(ws, "moving");
-    if (!getMap(here.mapId).safe) await this.wake(here.mapId);
+    if (!this.mapOf(here.mapId).safe) await this.wake(here.mapId);
     const profile = this.sim?.getPlayer(id);
     if (profile?.dead) return this.btError(ws, "dead");
     // The working copy in a combat map is newer than D1; write it first so the row and the room agree.
@@ -3176,7 +3308,7 @@ export class MapRoom extends DurableObject<Env> {
       delete s.bt;
     })?.mapId;
     const won = reason === "timeout" && rollBreakthrough(bt.ratePct, rand);
-    if (mapId && !getMap(mapId).safe) await this.wake(mapId).catch((err) => console.error("wake failed", err));
+    if (mapId && !this.mapOf(mapId).safe) await this.wake(mapId).catch((err) => console.error("wake failed", err));
     if (this.sim?.getPlayer(id)) await this.flushProgress(id);
     const loss = Math.round(expToNext(bt.from, 9) * breakthroughFailExpLoss());
     try {
@@ -3490,8 +3622,8 @@ export class MapRoom extends DurableObject<Env> {
     this.wearGearOnDeath(ws, state.id, { gender: profile.gender, realm: profile.realm, stage: profile.stage, base: profile.base }, deathDurabilityOf(tier));
     this.send(ws, { t: "died", expLost });
     await this.forceDismount(state.id); // back in town on foot
-    const home = getMap(state.mapId).home; // the town nearest to where the character died
-    const [sx, sy] = getMap(home).spawn;
+    const home = this.mapOf(state.mapId).home; // the town nearest to where the character died
+    const [sx, sy] = this.mapOf(home).spawn;
     await this.handoff(ws, state, home, sx + 0.5, sy + 0.5, true);
   }
 
@@ -3592,7 +3724,7 @@ export class MapRoom extends DurableObject<Env> {
 
   /** The server walks a player toward their target; the new path goes to everyone, including the player. */
   private chase(ws: WebSocket, state: PlayerState, to: Vec2, now: number): void {
-    const map = getMap(state.mapId);
+    const map = this.mapOf(state.mapId);
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     const from: Vec2 = [here.x, here.y];
     const path = lineClear(map, from, to) ? ([from, to] as Vec2[]) : findSmoothPath(map, from, to);
@@ -3757,7 +3889,7 @@ export class MapRoom extends DurableObject<Env> {
   /** Whether this room filters what it sends by distance: combat maps do; a town keeps telling everyone everything (it sleeps, so it keeps no such record). */
   private aoiActive(): boolean {
     const id = this.aoiMapId();
-    return id !== null && !getMap(id).safe;
+    return id !== null && !this.mapOf(id).safe;
   }
 
   /** The map of this room. `roomId` is only known once something has read it (it is lost when the object is evicted), so the players' own record of the map is the fallback. */
@@ -3819,8 +3951,8 @@ export class MapRoom extends DurableObject<Env> {
   /** Brings every player's picture up to date: tells them about what came into view and what left it. Run a few times a second and after a join. */
   private refreshAoi(now: number): void {
     const mapId = this.aoiMapId();
-    if (!mapId || getMap(mapId).safe) return;
-    const map = getMap(mapId);
+    if (!mapId || this.mapOf(mapId).safe) return;
+    const map = this.mapOf(mapId);
     const { list, players, monsters } = this.viewEntities(now);
     const positions = new Map(list.map((e) => [e.id, e.pos]));
     const live = new Set<string>();
@@ -3850,7 +3982,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!this.aoiActive()) return { players: [...players.values()], monsters: [...monsters.values()] };
     const here = list.find((e) => e.id === self.id)?.pos ?? [self.path[0]![0], self.path[0]![1]];
     const known = new Set<string>();
-    diffView(getMap(self.mapId), self.id, here as Vec2, known, list);
+    diffView(this.mapOf(self.mapId), self.id, here as Vec2, known, list);
     this.aoi.set(self.id, known);
     return {
       players: [...(me ? [me] : []), ...[...known].flatMap((id) => players.get(id) ?? [])],

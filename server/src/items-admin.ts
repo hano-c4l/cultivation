@@ -2,6 +2,7 @@ import { CUSTOM_ITEM_CATEGORIES, CUSTOM_ITEM_ID, EDITABLE_ITEM_FIELDS, ITEMS, IT
 import { logStatement } from "./admin-log";
 import { getItemOverlays, resetItemsCache } from "./items-live";
 import { getQuestCatalog } from "./quests";
+import { alchemyReferences } from "./alchemy-admin";
 import { lootReferences } from "./monsters-admin";
 import { getTuning, resetTuningCache } from "./tuning";
 
@@ -122,7 +123,9 @@ async function ownersOf(db: D1Database, id: string): Promise<{ total: number; bi
     .prepare("SELECT COUNT(*) AS n, COALESCE(MAX(json_extract(j.value, '$.qty')), 0) AS biggest FROM mailbox m, json_each(m.gift, '$.items') j WHERE m.claimed_at IS NULL AND m.gift IS NOT NULL AND json_extract(j.value, '$.type') = ?")
     .bind(id)
     .first<{ n: number; biggest: number }>();
-  return { total: inst?.total ?? 0, biggest: inst?.biggest ?? 0, gifts: gifts?.n ?? 0, biggestGift: gifts?.biggest ?? 0 };
+  // A brewing waiting to be collected holds the item too (the pill appears in the bag when it is collected), like a gift not yet claimed.
+  const brewing = await db.prepare("SELECT COUNT(*) AS n, COALESCE(MAX(qty), 0) AS biggest FROM brew_jobs WHERE item = ? AND collected_at IS NULL").bind(id).first<{ n: number; biggest: number }>();
+  return { total: inst?.total ?? 0, biggest: inst?.biggest ?? 0, gifts: (gifts?.n ?? 0) + (brewing?.n ?? 0), biggestGift: Math.max(gifts?.biggest ?? 0, brewing?.biggest ?? 0) };
 }
 
 const FIELD_LABELS: Array<[keyof ItemDef, string]> = [
@@ -261,7 +264,7 @@ async function referencesTo(db: D1Database, id: string): Promise<string[]> {
     const used = (q.rewards.items ?? []).some((i) => i.item === id) || (q.objective.kind === "collect" && (q.objective.item === id || (q.objective.also ?? []).some((a) => a.item === id)));
     if (used) out.push(`Nhiệm vụ ${q.id} — ${q.titleVi}`);
   }
-  out.push(...(await lootReferences(db, id)));
+  out.push(...(await lootReferences(db, id)), ...(await alchemyReferences(db, id)));
   const { results } = await db.prepare("SELECT npc_id, rule_id, def FROM shop_stock WHERE def LIKE ?").bind(`%${id}%`).all<{ npc_id: string; rule_id: string; def: string }>();
   for (const r of results) {
     try {
@@ -296,6 +299,7 @@ export async function deleteItem(db: D1Database, adminEmail: string, id: string,
       db
         .prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE EXISTS (SELECT 1 FROM mailbox m, json_each(m.gift, '$.items') j WHERE m.claimed_at IS NULL AND m.gift IS NOT NULL AND json_extract(j.value, '$.type') = ?)")
         .bind(id),
+      db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE EXISTS (SELECT 1 FROM brew_jobs WHERE item = ? AND collected_at IS NULL)").bind(id),
     );
     statements.push(db.prepare("DELETE FROM items WHERE id = ?").bind(id));
     // The sell value goes with it, so a new item that reuses the id does not inherit the price.

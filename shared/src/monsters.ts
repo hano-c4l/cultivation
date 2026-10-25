@@ -1,6 +1,6 @@
 import { tuning, tuningGeneration } from "./tuning";
 import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
-import { CAVE_CHAMBERS, FOREST_GLADES, KIMDAN_GLADES, MAP_IDS, MAP_REALM, MAP_SIZE, NGUYENANH_GLADES, screenToTile, type MapId } from "./map";
+import { CAVE_CHAMBERS, FOREST_GLADES, KIMDAN_GLADES, MAP_IDS, MAP_REALM, MAP_SIZE, NGUYENANH_GLADES, onMapRecipe, screenToTile, type MapId } from "./map";
 import { levelIndex, monsterBaseExp } from "./progression";
 
 /**
@@ -62,8 +62,8 @@ export function guardTier(): number {
  * Guard positions per map (tile units, snapped to standable ground by the server): beside the arrival point, off the lane. Written in screen
  * units (see PlayRect) and converted, so they follow the map's layout.
  */
-const guardSpots = (map: MapId, units: readonly (readonly [number, number])[]): readonly (readonly [number, number])[] => units.map(([px, py]) => screenToTile(MAP_SIZE[map], px, py));
-export const GUARDS: Readonly<Record<MapId, readonly (readonly [number, number])[]>> = {
+const guardSpots = (map: MapId, units: readonly (readonly [number, number])[]): readonly (readonly [number, number])[] => units.map(([px, py]) => screenToTile(MAP_SIZE[map]!, px, py));
+export const GUARDS: Record<MapId, readonly (readonly [number, number])[]> = {
   // Every portal has them on its arrival side: town (from the forest), forest (from the town and from the cave), cave (from the forest).
   town: guardSpots("town", [[-4, 17], [4, 17]]),
   forest: guardSpots("forest", [[-4, -33], [4, -33], [67, -4], [67, 4]]),
@@ -175,7 +175,7 @@ export interface Cluster {
  */
 function groupsOf(map: MapId, spots: readonly (readonly [number, number])[], tiers: readonly number[], kinds: readonly string[], radius: number, count: number): Cluster[] {
   return spots.map(([px, py], i) => {
-    const [x, y] = screenToTile(MAP_SIZE[map], px, py);
+    const [x, y] = screenToTile(MAP_SIZE[map]!, px, py);
     return { tier: tiers[i]!, kind: kinds[i]!, x, y, radius, count };
   });
 }
@@ -199,7 +199,7 @@ const KIMDAN_TIERS = tiersByDistance(KIMDAN_GLADES, [-74, 0]);
 const NGUYENANH_TIERS = tiersByDistance(NGUYENANH_GLADES, [-79, 0]);
 
 /** Forest groups stay off the east-west road and the lane from the north gate (the only way to the cave) so low-level players can still walk through. */
-export const CLUSTERS: Readonly<Record<MapId, readonly Cluster[]>> = {
+export const CLUSTERS: Record<MapId, readonly Cluster[]> = {
   town: [],
   forest: groupsOf("forest", FOREST_GLADES, FOREST_TIERS, speciesByTier(FOREST_TIERS, ["soi_rung", "heo_rung", "bao_dem"]), 2, 4),
   cave: groupsOf("cave", CAVE_CHAMBERS, CAVE_TIERS, speciesByTier(CAVE_TIERS, ["doi_u_minh", "thi_quy", "xich_thi"]), 2, 3),
@@ -207,6 +207,23 @@ export const CLUSTERS: Readonly<Record<MapId, readonly Cluster[]>> = {
   kimdan: groupsOf("kimdan", KIMDAN_GLADES, KIMDAN_TIERS, speciesByTier(KIMDAN_TIERS, ["hoa_dien_lang", "nham_giap_thu", "liet_hoa_xa"]), 2, 4),
   nguyenanh: groupsOf("nguyenanh", NGUYENANH_GLADES, NGUYENANH_TIERS, speciesByTier(NGUYENANH_TIERS, ["bang_phong_hac", "han_thi_ma", "tuyet_yeu_hau"]), 2, 4),
 };
+
+const CODE_CLUSTERS: Readonly<Record<MapId, readonly Cluster[]>> = { ...CLUSTERS };
+const CODE_GUARDS: Readonly<Record<MapId, readonly (readonly [number, number])[]>> = { ...GUARDS };
+// A map recipe with its own content sets the groups and the guards of its map; one without (or none) is the code's, and a map the code does not know has none.
+onMapRecipe((id, r) => {
+  if (r?.content) {
+    CLUSTERS[id] = r.content.groups.map((g) => ({ ...g }));
+    GUARDS[id] = r.content.guards.map((g): [number, number] => [g[0], g[1]]);
+  } else if (id in CODE_CLUSTERS) {
+    CLUSTERS[id] = CODE_CLUSTERS[id]!;
+    GUARDS[id] = CODE_GUARDS[id]!;
+  } else {
+    delete CLUSTERS[id];
+    delete GUARDS[id];
+  }
+});
+export { CODE_CLUSTERS, CODE_GUARDS };
 
 /** The positions of a cluster's monsters (before snapping to standable ground). */
 export function clusterSlots(c: Cluster): [number, number][] {
@@ -225,7 +242,7 @@ export function homeExpCap(realm: number, rank: MonsterRank): number | undefined
   let best = 0;
   for (const id of MAP_IDS) {
     if (MAP_REALM[id] !== realm) continue;
-    for (const c of CLUSTERS[id]) best = Math.max(best, monsterBaseExp(realm, c.tier));
+    for (const c of CLUSTERS[id] ?? []) best = Math.max(best, monsterBaseExp(realm, c.tier));
   }
   return best > 0 ? best * rankDef(rank).expMult : undefined;
 }
