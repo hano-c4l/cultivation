@@ -1258,7 +1258,12 @@ export class MapRoom extends DurableObject<Env> {
   }
   private mapOf(id: MapId): MapData {
     const pin = this.pinOf(id);
-    return (pin.map ??= buildFromRecipe(pin.recipe));
+    if (!pin.map) {
+      // A pin restored after a sleep: when it is still what is installed, the cached grid is the same grid (the building is the expensive part).
+      const now = overrideRecipe(id);
+      pin.map = (pin.custom ? now !== undefined && JSON.stringify(now) === JSON.stringify(pin.recipe) : now === undefined) ? getMap(id) : buildFromRecipe(pin.recipe);
+    }
+    return pin.map;
   }
 
   private dropPlayer(id: string): void {

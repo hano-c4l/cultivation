@@ -1,4 +1,4 @@
-import { CODE_MAP_IDS, GUARD_KIND, MAP_ID_PATTERN, MAP_IDS, MAP_SIZE, fullCodeMapRecipe, getMonsterDef, validMapRecipe, type CodeMapId, type MapContent, type MapRecipe } from "@game/shared";
+import { CODE_MAP_IDS, GUARD_KIND, MAP_ID_PATTERN, MAP_IDS, MAP_SIZE, codeMapContent, fullCodeMapRecipe, getMonsterDef, validMapRecipe, type CodeMapId, type MapContent, type MapRecipe } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { getMapRecipes, parseRecipe, resetMapsCache, type MapRow } from "./maps";
 
@@ -42,7 +42,7 @@ const isCode = (id: string): id is CodeMapId => (CODE_MAP_IDS as readonly string
 
 /** The content a recipe stands for: its own, or the code's for a map of the code (a recipe without `content` uses the code's). */
 export function effectiveContent(recipe: MapRecipe): MapContent | undefined {
-  return recipe.content ?? (isCode(recipe.id) ? fullCodeMapRecipe(recipe.id).content : undefined);
+  return recipe.content ?? (isCode(recipe.id) ? codeMapContent(recipe.id) : undefined); // not fullCodeMapRecipe: that builds the whole grid, which a Worker route must not do
 }
 
 export async function getMapAdmin(db: D1Database, id: string): Promise<{ recipe: MapRecipe; updatedAt: number; edited: boolean; maps: string[]; code: boolean } | null> {
@@ -129,7 +129,7 @@ export async function saveMap(db: D1Database, adminEmail: string, posted: unknow
   if (changed.length === 0) return { ok: false, error: "unchanged" };
   const stamp = Math.max(now, updatedAt + 1);
   // Content equal to the code's is stored as "the code's" (no content), so a later change to the code's data still reaches the map.
-  const store: MapRecipe = isCode(posted.id) && JSON.stringify(posted.content) === JSON.stringify(fullCodeMapRecipe(posted.id).content) ? { ...posted, content: undefined } : posted;
+  const store: MapRecipe = isCode(posted.id) && JSON.stringify(posted.content) === JSON.stringify(codeMapContent(posted.id)) ? { ...posted, content: undefined } : posted;
   return write(db, posted.id, updatedAt, JSON.stringify(store), adminEmail, adminEmail, stamp, `Sửa bản đồ ${posted.id}: ${changed.join(", ")}`, now);
 }
 
@@ -200,7 +200,9 @@ export async function createMap(db: D1Database, adminEmail: string, posted: unkn
   delete (base as { guardRealm?: number }).guardRealm;
   const fresh = withClearings(base, [[o.gate.x, o.gate.y], spawn]);
   const back = { x: o.back.x, y: o.back.y, toMap: o.id, toX: spawn[0], toY: spawn[1] };
-  const backRecipe = withClearings({ ...target.recipe, portals: [...target.recipe.portals, back] }, [[back.x, back.y]]);
+  // The other map keeps using the code's monsters, guards and boss spot unless it had its own: the copy shown for editing is not stored back.
+  const targetContent = isCode(o.back.map) && JSON.stringify(target.recipe.content) === JSON.stringify(codeMapContent(o.back.map)) ? undefined : target.recipe.content;
+  const backRecipe = withClearings({ ...target.recipe, content: targetContent, portals: [...target.recipe.portals, back] }, [[back.x, back.y]]);
   const problems = [...recipeProblems(fresh, fresh), ...recipeProblems(backRecipe, backRecipe, { [o.id]: fresh.size }), ...contentProblems(fresh)];
   // The gate of the new map arrives on the other map, and the other map's gate arrives here: both arrivals must be inside the maps they name.
   if (o.gate.toX >= target.recipe.size || o.gate.toY >= target.recipe.size) problems.push("arrival outside the target map");
@@ -237,6 +239,15 @@ export async function deleteMap(db: D1Database, adminEmail: string, id: string, 
   for (const r of await rows(db)) {
     const rec = parseRecipe(r);
     if (rec && r.map_id !== id && (rec.portals.some((p) => p.toMap === id) || rec.home === id)) problems.push(`bản đồ ${r.map_id} còn cổng hoặc thành về trỏ tới`);
+  }
+  const { results: questRows } = await db.prepare("SELECT id, def FROM quests WHERE tomb = 0 AND deleted_at IS NULL").all<{ id: string; def: string }>();
+  for (const q of questRows) {
+    try {
+      const def = JSON.parse(q.def) as { objective?: { kind?: string; map?: string } };
+      if (def.objective?.kind === "kill" && def.objective.map === id) problems.push(`nhiệm vụ ${q.id} còn yêu cầu hạ quái ở bản đồ này`);
+    } catch {
+      // a broken definition names no map
+    }
   }
   const npcs = await db.prepare("SELECT COUNT(*) AS n FROM npc_spots WHERE map_id = ?").bind(id).first<{ n: number }>();
   if ((npcs?.n ?? 0) > 0) problems.push(`${npcs!.n} NPC đứng ở bản đồ này`);

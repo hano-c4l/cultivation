@@ -140,6 +140,12 @@ describe("the maps screen", () => {
     expect(there).toMatchObject({ ok: false, error: "invalid" });
     expect(there.ok === false && there.problems!.join()).toContain("nhân vật");
     raw.exec("UPDATE characters SET map_id = 'town'");
+    // a quest that sends players to hunt there also blocks it
+    raw.prepare("INSERT INTO quests (id, chain, seq, enabled, def, updated_at, deleted_at, tomb) VALUES ('qk', 'qa', 1, 1, ?, 1, NULL, 0)").run(JSON.stringify({ id: "qk", chain: "qa", seq: 1, giver: "elder", titleVi: "x", descVi: "x", enabled: true, requires: null, objective: { kind: "kill", count: 1, map: "rung_moi" }, rewards: {} }));
+    const quest = await deleteMap(db, ADMIN, "rung_moi", v.updatedAt, Date.now() + 150);
+    expect(quest).toMatchObject({ ok: false, error: "invalid" });
+    expect(quest.ok === false && quest.problems!.join()).toContain("nhiệm vụ qk");
+    raw.exec("DELETE FROM quests WHERE id = 'qk'");
     expect((await deleteMap(db, ADMIN, "rung_moi", v.updatedAt, Date.now() + 200)).ok).toBe(true);
     resetMapsCache();
     await getMapRecipes(db);
