@@ -122,7 +122,7 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 3d. Gửi quà (thư có tiền, vật phẩm, tiêu đề, mô tả; nhiều người hoặc toàn server) — xong
   - 3e. Quản lý nhiệm vụ — xong
   - 3f. Cảnh giới và chỉ số tiềm năng — xong (trừ sửa tên và thêm cảnh giới)
-  - 3g. Vật phẩm — xong (3g-b: bảng master trang bị, tên bộ, bảng Thợ Rèn chưa làm)
+  - 3g. Vật phẩm — xong (3g-b: màn bảng master trang bị, tên bộ, bảng Thợ Rèn đã làm)
   - 3h. Kỹ năng — xong (trừ tạo kỹ năng mới)
   - 3i. Thiên phú (linh căn, thể chất, hệ biến dị) — xong (trừ thêm hệ mới)
   - 3j. Quái và BOSS — xong (trừ loài quái mới)

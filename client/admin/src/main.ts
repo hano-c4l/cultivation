@@ -11,6 +11,7 @@ import { questEditPage, questListPage } from "./quests";
 import { alchemyPage, npcEditPage, npcListPage } from "./npcs";
 import { mapEditPage, mapListPage } from "./maps";
 import { accountDetailPage, accountListPage } from "./accounts";
+import { gearEnhancePage, gearMasterPage, gearSetsPage } from "./gear";
 import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
@@ -79,6 +80,15 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/gear") {
+    title = "Trang bị · Chỉ số";
+    content = gearMasterPage();
+  } else if (path === "/admin/gear/sets") {
+    title = "Trang bị · Tên bộ";
+    content = gearSetsPage();
+  } else if (path === "/admin/gear/enhance") {
+    title = "Trang bị · Bảng nâng cấp";
+    content = gearEnhancePage();
   } else if (path === "/admin/accounts") {
     title = "Tài khoản";
     content = accountListPage();
