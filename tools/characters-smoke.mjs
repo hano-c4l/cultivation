@@ -118,5 +118,13 @@ const back = await post("/api/admin/settings", { key: settingKey, value: 3 }, ad
 check("the limit goes back to 3", back.status === 200);
 void original;
 
+// Two creations at once on an account with room for one more: the count is checked inside the INSERT, so exactly one gets in.
+const racer = await post("/api/register", { email: `ch-race-${run}@example.test`, password: PASSWORD });
+for (const i of [1, 2]) await post("/api/character", { name: `Rc${i} ${run.slice(-4)}`, gender: "male" }, racer.cookie);
+const both = await Promise.all([post("/api/character", { name: `Rc3 ${run.slice(-4)}`, gender: "male" }, racer.cookie), post("/api/character", { name: `Rc4 ${run.slice(-4)}`, gender: "female" }, racer.cookie)]);
+const codes = both.map((r) => r.status).sort();
+check("two creations at once leave the account at the limit (one 201, one 409)", codes[0] === 201 && codes[1] === 409 && both.some((r) => r.data.error === "character_limit"), JSON.stringify(codes));
+check("and the account holds exactly 3", (await get("/api/me", racer.cookie)).data.characters.length === 3);
+
 console.log(failures === 0 ? "\nall character checks passed" : `\n${failures} check(s) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

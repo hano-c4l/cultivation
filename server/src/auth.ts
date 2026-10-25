@@ -220,12 +220,13 @@ async function deleteOwnCharacter(request: Request, env: Env): Promise<Response>
   if (body?.name !== character.name) return errorResponse("name_mismatch", 400);
   const now = Date.now();
   if (await env.DB.prepare("SELECT 1 AS x FROM characters WHERE id = ? AND review_until > ?").bind(character.id, now).first()) return errorResponse("reviewing", 403);
-  await kick(env, character.id); // saves it and closes its sockets; a failure only leaves the old connection to close by itself
   const done = await env.DB.batch([
     env.DB.prepare("UPDATE characters SET deleted_at = ?, name = ?, updated_at = ? WHERE id = ? AND account_id = ? AND deleted_at IS NULL").bind(now, `~${character.id}`, now, character.id, session.accountId),
     env.DB.prepare("UPDATE sessions SET character_id = NULL WHERE character_id = ?").bind(character.id),
   ]);
   if ((done[0]?.meta?.changes ?? 0) === 0) return errorResponse("not_found", 404);
+  // After the batch, so a reconnect of another session is already refused (the character is gone from the account); the room saves it as it leaves.
+  await kick(env, character.id);
   return json({ ok: true });
 }
 
