@@ -15,7 +15,8 @@ import type { MerchantDef } from "./merchants";
 import type { MapRecipe, NpcSpot } from "./map";
 import type { ItemOverlay } from "./items";
 import type { ElementTuning } from "./element-tuning";
-import { isWaygateTown, type WaygateDest } from "./waygate";
+import { MAP_ID_PATTERN } from "./map";
+import type { WaygateDest } from "./waygate";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type Carry, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
@@ -490,7 +491,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "brew_collect":
       return isNpcId(m.npc) && typeof m.job === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.job) ? { t: "brew_collect", npc: m.npc, job: m.job } : null;
     case "waygate_go":
-      return isNpcId(m.npc) && isWaygateTown(m.to) ? { t: "waygate_go", npc: m.npc, to: m.to } : null;
+      return isNpcId(m.npc) && typeof m.to === "string" && MAP_ID_PATTERN.test(m.to) ? { t: "waygate_go", npc: m.npc, to: m.to } : null;
     case "shop_buy":
       return isNpcId(m.npc) && typeof m.offer === "string" && /^[a-z0-9_.]{1,60}$/.test(m.offer) && isInt(m.qty) && m.qty >= 1 && m.qty <= MAX_SHOP_QTY
         ? { t: "shop_buy", npc: m.npc, offer: m.offer, qty: m.qty }

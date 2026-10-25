@@ -1,3 +1,4 @@
+import { EQUIP_KINDS, GENDERED_KINDS, GEAR_ELEMENTS, WEAPON_TYPES, makeEquipmentId, type EquipKind } from "../../../shared/src/equipment-data";
 import { api, formatTime, h, navigate } from "./kit";
 
 /**
@@ -20,6 +21,8 @@ interface View {
   satKhi: number;
   satNhan: number;
   anhHung: number;
+  constitution: string;
+  constitutionTier: number;
   review: { by: string; until: number } | null;
   wallet: Record<string, number>;
   items: Array<{ id: string; type: string; qty: number; tab: number; cell: number }>;
@@ -40,6 +43,7 @@ const ERRORS: Record<string, string> = {
   funds: "Không đủ tiền để trừ.",
   busy: "Dữ liệu vừa đổi, hãy thử lại.",
   name_taken: "Đạo hiệu đã có người dùng.",
+  gender: "Trang bị này dành cho giới tính khác của nhân vật.",
   equipped: "Nhân vật đang mặc trang bị nên chưa đổi giới tính được (tháo hết đồ trước).",
   unknown_item: "Vật phẩm không có hoặc không thêm được (trang bị chưa thêm được).",
 };
@@ -48,11 +52,11 @@ export function characterPage(): HTMLElement {
   const root = h("div", { class: "detail wide" });
   const id = new URLSearchParams(location.search).get("id") ?? "";
   const load = async () => {
-    const res = await api<{ character: View; online: boolean }>(`/api/admin/character?id=${encodeURIComponent(id)}`);
+    const res = await api<{ character: View; online: boolean; constitutions: Array<{ id: string; nameVi: string; tiers: number }> }>(`/api/admin/character?id=${encodeURIComponent(id)}`);
     if (res.status !== 200) return void root.replaceChildren(h("p", { class: "err" }, "Không tìm thấy nhân vật."), h("a", { href: "/admin/accounts" }, "‹ Tài khoản"));
     const meta = await api<{ items: Array<{ id: string; nameVi: string }> }>("/api/admin/gifts/meta");
     const skills = await api<{ skills: Array<{ id: string; nameVi: string; template?: boolean }> }>("/api/admin/skills");
-    root.replaceChildren(view(res.data.character, res.data.online, meta.data.items ?? [], (skills.data.skills ?? []).filter((s) => !s.template), load));
+    root.replaceChildren(view(res.data.character, res.data.online, meta.data.items ?? [], (skills.data.skills ?? []).filter((s) => !s.template), res.data.constitutions ?? [], load));
   };
   void load();
   return root;
@@ -65,7 +69,7 @@ function num(value: number, extra: Record<string, string> = {}): HTMLInputElemen
   return i;
 }
 
-function view(c: View, online: boolean, items: Array<{ id: string; nameVi: string }>, skills: Array<{ id: string; nameVi: string }>, reload: () => Promise<void>): HTMLElement {
+function view(c: View, online: boolean, items: Array<{ id: string; nameVi: string }>, skills: Array<{ id: string; nameVi: string }>, constitutions: Array<{ id: string; nameVi: string; tiers: number }>, reload: () => Promise<void>): HTMLElement {
   const me = document.querySelector(".who .muted")?.textContent ?? "";
   const mine = c.review !== null && c.review.by === me;
   const msg = h("div", { class: "msg muted" });
@@ -113,6 +117,11 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
   const anhHung = num(c.anhHung, { min: "0" });
   const saveProfile = h("button", { type: "button", class: "primary" }, "Lưu hồ sơ");
   saveProfile.addEventListener("click", () => void act({ action: "profile", input: { name: nameInput.value, gender: gender.value, satKhi: Number(satKhi.value), satNhan: Number(satNhan.value), anhHung: Number(anhHung.value) } }));
+  const consti = h("select", null, ...constitutions.map((k) => h("option", { value: k.id }, k.nameVi)));
+  consti.value = c.constitution;
+  const tier = num(c.constitutionTier, { min: "1", max: "99" });
+  const saveConsti = h("button", { type: "button" }, "Lưu thể chất");
+  saveConsti.addEventListener("click", () => void act({ action: "constitution", constitution: consti.value, tier: Number(tier.value) }));
   const del = h("button", { type: "button" }, "Xóa nhân vật");
   del.addEventListener("click", async () => {
     const typed = window.prompt(`Xóa nhân vật «${c.name}» của ${c.email}? Nhân vật biến khỏi game và bảng xếp hạng, tài khoản tạo được nhân vật mới; sổ cái tiền vẫn giữ. Không hoàn tác. Gõ lại đúng đạo hiệu để xác nhận:`);
@@ -131,12 +140,26 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
   addItem.addEventListener("click", () => void act({ action: "addItem", item: itemId.value.trim(), qty: Number(qty.value) }));
   const nameOf = (t: string) => items.find((i) => i.id === t)?.nameVi ?? t;
 
+  const sel = (values: readonly string[], labels?: (v: string) => string) => h("select", null, ...values.map((v) => h("option", { value: v }, labels ? labels(v) : v)));
+  const gKind = sel(EQUIP_KINDS);
+  const gRealm = sel(REALMS.map((_, i) => String(i)), (v) => REALMS[Number(v)] ?? v);
+  const gTier = sel(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+  const gGrade = sel(["1", "2", "3", "4"], (v) => `phẩm ${v}`);
+  const gElement = sel(["", ...GEAR_ELEMENTS], (v) => v || "không hệ");
+  const gWeapon = sel(WEAPON_TYPES);
+  const addGear = h("button", { type: "button" }, "Thêm trang bị");
+  addGear.addEventListener("click", () => {
+    const kind = gKind.value as EquipKind;
+    const style = GENDERED_KINDS.has(kind) ? (c.gender === "female" ? "f" : "m") : "u"; // the style follows the kind and the character's gender
+    const type = makeEquipmentId(kind, style, Number(gRealm.value), Number(gTier.value), Number(gGrade.value), gElement.value || undefined, kind === "weapon" ? gWeapon.value : undefined);
+    void act({ action: "addEquipment", type });
+  });
   const sl = h("datalist", { id: "char-skills" }, ...skills.map((s) => h("option", { value: s.id }, s.nameVi)));
   const skillId = h("input", { type: "text", list: "char-skills", placeholder: "mã kỹ năng" });
   const addSkill = h("button", { type: "button" }, "Thêm kỹ năng");
   addSkill.addEventListener("click", () => void act({ action: "addSkill", skill: skillId.value.trim() }));
 
-  const editable = [nameInput, gender, satKhi, satNhan, anhHung, saveProfile, del, stage, exp, points, realm, saveStats, currency, delta, money, itemId, qty, addItem, skillId, addSkill, ...Object.values(stats)];
+  const editable = [gKind, gRealm, gTier, gGrade, gElement, gWeapon, addGear, consti, tier, saveConsti, nameInput, gender, satKhi, satNhan, anhHung, saveProfile, del, stage, exp, points, realm, saveStats, currency, delta, money, itemId, qty, addItem, skillId, addSkill, ...Object.values(stats)];
   for (const el of editable) el.disabled = !mine;
 
   return h(
@@ -156,6 +179,7 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
     h("h3", null, "Hồ sơ"),
     h("div", { class: "toolbar" }, h("span", null, "Đạo hiệu"), nameInput, h("span", null, "Giới tính"), gender, h("span", null, "Sát khí"), satKhi, h("span", null, "Sát nhân"), satNhan, h("span", null, "Anh hùng"), anhHung),
     h("div", { class: "toolbar" }, saveProfile, del),
+    h("div", { class: "toolbar" }, h("span", null, "Thể chất"), consti, h("span", null, "cấp"), tier, saveConsti, h("span", { class: "muted" }, "Cấp từ 1 tới số cấp của thể chất; xóa HP/MP đang lưu.")),
     h("h3", null, "Tiền"),
     h("p", { class: "muted" }, Object.entries(CURRENCY_LABEL).map(([k, l]) => `${l}: ${(c.wallet[k] ?? 0).toLocaleString("vi-VN")}`).join(" · ") + ". Cộng/trừ ghi vào nhóm Admin của Quản lý tiền tệ."),
     h("div", { class: "toolbar" }, currency, delta, money, h("a", { href: `/admin/currency/detail?currency=linh_thach&character=${encodeURIComponent(c.id)}` }, "Lịch sử tiền")),
@@ -181,7 +205,9 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
         ),
       ),
     ),
-    c.equipped.length ? h("p", { class: "muted" }, `Đang mặc: ${c.equipped.map((e) => `${e.slot}: ${e.type}`).join(", ")}. Trang bị chưa thêm/lấy được ở đây.`) : null,
+    h("div", { class: "toolbar" }, h("span", null, "Trang bị"), gKind, gRealm, h("span", null, "bậc"), gTier, gGrade, gElement, gWeapon, addGear),
+    h("p", { class: "muted" }, "Trang bị vào túi với độ bền đầy và chỉ số tung từ bảng master, như mua ở thương nhân. Hệ và loại vũ khí chỉ dùng cho vũ khí; món đang mặc phải được tháo ra trước khi lấy."),
+    c.equipped.length ? h("p", { class: "muted" }, `Đang mặc: ${c.equipped.map((e) => `${e.slot}: ${e.type}`).join(", ")}.`) : null,
     h("h3", null, "Kỹ năng"),
     sl,
     h("div", { class: "toolbar" }, skillId, addSkill),

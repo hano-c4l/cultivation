@@ -173,17 +173,20 @@ check("and it is written", qrow("newbie_2")?.progress === 2);
 sql(`UPDATE character_quests SET progress = 10 WHERE character_id = '${id}' AND quest_id = 'newbie_2'`);
 sql(`UPDATE characters SET map_id = 'town', x = ${18.5 + T}, y = ${16.5 + T} WHERE id = '${id}'`);
 c = await connect(reg.cookie);
+// A kill in the forest can drop this pill by chance, so the count before the hand-in is read, and the hand-in must add exactly the reward.
+const pillsBefore2 = countOf(c, "duong_huyet_dan");
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_2" }, 1000);
-// (a kill in the forest can also drop this pill by chance, so the counts are at least the reward; the ledger check below proves the reward was paid once)
-check("the kill quest is handed in for its reward", r.some((m) => m.t === "quest_done" && m.quest === "newbie_2") && countOf(c, "duong_huyet_dan") >= 3 && qrow("newbie_2")?.state === "done");
+check("the kill quest is handed in for its reward", r.some((m) => m.t === "quest_done" && m.quest === "newbie_2") && countOf(c, "duong_huyet_dan") === pillsBefore2 + 3 && qrow("newbie_2")?.state === "done", `${pillsBefore2} → ${countOf(c, "duong_huyet_dan")}`);
 
 await after(c, { t: "quest_accept", npc: "elder", quest: "newbie_3" });
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_3" });
 check("collect: with no Linh Thảo it is refused", r.some((m) => m.t === "quest_error" && m.reason === "not_ready"));
 await fetch(`${httpBase}/api/dev/loot?room=town:${CH}&char=${id}&item=linh_thao&qty=7`);
 await sleep(800);
+const pillsBefore3 = countOf(c, "duong_huyet_dan");
+const herbsBefore3 = countOf(c, "linh_thao");
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_3" }, 1000);
-check("collect: 5 of the 7 Linh Thảo are taken, the reward comes", r.some((m) => m.t === "quest_done") && countOf(c, "linh_thao") >= 2 && countOf(c, "duong_huyet_dan") >= 6, `linh thảo ${countOf(c, "linh_thao")} (kills may have dropped some)`);
+check("collect: 5 of the 7 Linh Thảo are taken, the reward comes", r.some((m) => m.t === "quest_done") && countOf(c, "linh_thao") === herbsBefore3 - 5 && countOf(c, "duong_huyet_dan") === pillsBefore3 + 3, `linh thảo ${countOf(c, "linh_thao")} (kills may have dropped some)`);
 
 // --- reach, rare kill (filled in by hand) and the last step ---
 await after(c, { t: "quest_accept", npc: "elder", quest: "newbie_4" });

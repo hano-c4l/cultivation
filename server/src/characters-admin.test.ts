@@ -2,7 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { REALMS, SKILLS, setItemOverlays } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
-import { REVIEW_MS, addItem, addSkill, adjustMoney, deleteCharacter, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
+import { REVIEW_MS, addItem, addEquipment, addSkill, adjustMoney, deleteCharacter, editConstitution, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
+import { getConstitutionCatalog } from "./constitution-catalog";
 import { realmBoard } from "./leaderboard";
 import { resetItemsCache } from "./items-live";
 import { makeDb } from "./test-db";
@@ -157,5 +158,39 @@ describe("the profile and deleting a character", () => {
     expect((await logs()).some((l) => l.includes("Xóa nhân vật «Lan Tu»"))).toBe(true);
     const board = await realmBoard(db);
     expect(board.map((r) => r.name)).toEqual(["Lan Tu"]); // only the new one (c9), not the deleted one
+  });
+});
+
+describe("the constitution", () => {
+  it("is checked against the catalogue and changed under review, clearing the stored HP/MP", async () => {
+    const catalog = await getConstitutionCatalog(db, NOW);
+    const special = catalog.constitutions.find((c) => !c.isDefault && c.tiers.length >= 2)!;
+    expect(await editConstitution(db, A, "c1", special.id, 1, NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    await startReview(db, A, "c1", kicker, NOW);
+    raw.exec("UPDATE characters SET vitals = '{\"hp\":5}' WHERE id = 'c1'");
+    expect(await editConstitution(db, A, "c1", "no_such", 1, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editConstitution(db, A, "c1", special.id, special.tiers.length + 1, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editConstitution(db, A, "c1", special.id, 2, NOW + 1)).toEqual({ ok: true });
+    expect(raw.prepare("SELECT constitution, constitution_tier, vitals FROM characters WHERE id = 'c1'").get()).toEqual({ constitution: special.id, constitution_tier: 2, vitals: null });
+    expect(await editConstitution(db, A, "c1", special.id, 2, NOW + 2)).toEqual({ ok: false, error: "unchanged" });
+    expect((await logs()).some((l) => l.includes(`→ ${special.id}/2`))).toBe(true);
+  });
+});
+
+describe("gear", () => {
+  it("adds a piece the way the merchant sells it (full durability, stats rolled in range), takes it out, and refuses the other gender or a piece that cannot exist", async () => {
+    raw.exec("UPDATE characters SET gender = 'male' WHERE id = 'c1'");
+    expect(await addEquipment(db, A, "c1", "eq.weapon.u.0.1.1.kim.kiem", NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await addEquipment(db, A, "c1", "eq.nonsense", NOW + 1)).toEqual({ ok: false, error: "unknown_item" });
+    expect(await addEquipment(db, A, "c1", "eq.robe.f.0.1.1", NOW + 1)).toEqual({ ok: false, error: "gender" });
+    expect(await addEquipment(db, A, "c1", "eq.weapon.u.0.1.1.kim.kiem", NOW + 1)).toEqual({ ok: true });
+    const row = raw.prepare("SELECT id, item_type, durability, max_durability, rolled_stats FROM item_instances WHERE owner_character_id = 'c1' AND item_type LIKE 'eq.%'").get() as { id: string; durability: number; max_durability: number; rolled_stats: string | null };
+    expect(row.durability).toBe(row.max_durability);
+    expect(row.max_durability).toBeGreaterThan(0);
+    expect(row.rolled_stats).not.toBeNull();
+    expect((await logs()).some((l) => l.includes("Thêm trang bị"))).toBe(true);
+    expect(await removeItem(db, A, "c1", row.id, NOW + 2)).toEqual({ ok: true });
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM item_instances WHERE owner_character_id = 'c1' AND item_type LIKE 'eq.%'").get()).toEqual({ n: 0 });
   });
 });

@@ -1,5 +1,5 @@
-import { CELLS_PER_TILE, buildFromRecipe, inPlayRect, nearestStandablePoint, type GridOp, type MapRecipe, type Vec2 } from "../../../shared/src/map";
-import { findSmoothPath } from "../../../shared/src/pathfinding";
+import { CELLS_PER_TILE, buildFromRecipe, type GridOp, type MapRecipe } from "../../../shared/src/map";
+import { mapRouteProblems } from "../../../shared/src/map-route";
 import { api, h, listView, navigate } from "./kit";
 
 /**
@@ -114,31 +114,6 @@ function select(options: string[], value: string): HTMLSelectElement {
 }
 
 /** Draws the collision grid of the recipe on the screen rectangle: blocked cells dark, gates red, the spawn green. */
-/**
- * What the server cannot check when saving (it does not build the grid): from the spawn point, the gates, the boss spot and the monster groups must be
- * reachable on the ground this recipe builds. Run here, in the browser, with the game's own builder and path finder. Returns the points that are not.
- */
-function routeProblems(recipe: MapRecipe): string[] {
-  const map = buildFromRecipe(recipe);
-  const ground = (x: number, y: number): Vec2 | null => {
-    const q = nearestStandablePoint(map, x + 0.5, y + 0.5, 3);
-    return q && inPlayRect(map, q[0], q[1]) ? q : null;
-  };
-  const start = ground(recipe.spawn[0], recipe.spawn[1]);
-  if (!start) return ["điểm sinh nằm trong vật cản"];
-  const out: string[] = [];
-  const check = (label: string, x: number, y: number) => {
-    const to = ground(x, y);
-    if (!to) out.push(`${label} nằm trong vật cản`);
-    else if (!findSmoothPath(map, start, to)) out.push(`${label}: không có đường đi từ điểm sinh`);
-  };
-  for (const p of recipe.portals) check(`cổng (${p.x}, ${p.y})`, p.x, p.y);
-  const c = recipe.content;
-  if (c?.bossSpot) check("chỗ boss", c.bossSpot[0], c.bossSpot[1]);
-  for (const g of (c?.groups ?? []).slice(0, 12)) check(`bãi quái (${Math.round(g.x)}, ${Math.round(g.y)})`, g.x, g.y);
-  return out;
-}
-
 function drawPreview(canvas: HTMLCanvasElement, recipe: MapRecipe): void {
   const map = buildFromRecipe(recipe);
   const { halfW, halfH } = recipe.rect;
@@ -385,7 +360,7 @@ function form(view: View): HTMLElement {
       try {
         const recipe = collect();
         drawPreview(canvas, recipe);
-        const unreachable = routeProblems(recipe);
+        const unreachable = mapRouteProblems(recipe);
         if (unreachable.length > 0) show("Xanh = điểm sinh, đỏ = cổng; ô tối = vật cản. Chưa lưu. Có chỗ không tới được:", "err", unreachable);
         else show("Xanh = điểm sinh, đỏ = cổng; ô tối = vật cản. Mọi cổng, chỗ boss và bãi quái đều có đường đi từ điểm sinh. Chưa lưu.", "muted");
       } catch (err) {
@@ -407,7 +382,7 @@ function form(view: View): HTMLElement {
     await new Promise((r) => setTimeout(r, 20));
     let unreachable: string[] = [];
     try {
-      unreachable = routeProblems(collect()); // the server does not build the grid, so this check lives here only
+      unreachable = mapRouteProblems(collect()); // the server does not build the grid, so this check lives here only
     } catch (err) {
       unreachable = [`không dựng được để kiểm: ${String(err)}`];
     }

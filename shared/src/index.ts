@@ -1,4 +1,5 @@
 export * from "./map";
+export * from "./map-route";
 export * from "./pathfinding";
 export * from "./movement";
 export * from "./monsters";

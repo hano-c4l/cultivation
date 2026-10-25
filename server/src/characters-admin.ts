@@ -1,7 +1,9 @@
-import { CURRENCIES, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, type BagItem, type EquippedItem } from "@game/shared";
+import { CURRENCIES, equipmentInfo, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, type BagItem, type EquippedItem } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { applyCurrencyDelta } from "./economy";
 import { commitBagOps, loadBag } from "./inventory";
+import { getConstitutionCatalog } from "./constitution-catalog";
+import { rollGear } from "./gear-master";
 import { getItemOverlays } from "./items-live";
 
 /**
@@ -35,6 +37,8 @@ interface Row {
   anh_hung: number;
   review_until: number | null;
   review_by: string | null;
+  constitution: string;
+  constitution_tier: number;
 }
 
 export const STAT_FIELDS = { canCot: "stat_can_cot", thanPhap: "stat_than_phap", ngoTinh: "stat_ngo_tinh", linhLuc: "stat_linh_luc", thanThuc: "stat_than_thuc", phucDuyen: "stat_phuc_duyen" } as const;
@@ -54,6 +58,8 @@ export interface CharacterView {
   satKhi: number;
   satNhan: number;
   anhHung: number;
+  constitution: string;
+  constitutionTier: number;
   review: { by: string; until: number } | null;
   wallet: Record<string, number>;
   items: Array<Pick<BagItem, "id" | "type" | "qty" | "tab" | "cell">>;
@@ -64,7 +70,7 @@ export interface CharacterView {
 export async function getCharacterView(db: D1Database, id: string, now = Date.now()): Promise<CharacterView | null> {
   const r = await db
     .prepare(
-      "SELECT c.id, c.account_id, a.email, c.name, c.gender, c.realm, c.stage, c.exp, c.potential_points, c.stat_can_cot, c.stat_than_phap, c.stat_ngo_tinh, c.stat_linh_luc, c.stat_than_thuc, c.stat_phuc_duyen, c.map_id, c.sat_khi, c.sat_nhan, c.anh_hung, c.review_until, c.review_by FROM characters c JOIN accounts a ON a.id = c.account_id WHERE c.id = ?",
+      "SELECT c.id, c.account_id, a.email, c.name, c.gender, c.realm, c.stage, c.exp, c.potential_points, c.stat_can_cot, c.stat_than_phap, c.stat_ngo_tinh, c.stat_linh_luc, c.stat_than_thuc, c.stat_phuc_duyen, c.map_id, c.sat_khi, c.sat_nhan, c.anh_hung, c.review_until, c.review_by, c.constitution, c.constitution_tier FROM characters c JOIN accounts a ON a.id = c.account_id WHERE c.id = ?",
     )
     .bind(id)
     .first<Row>();
@@ -89,6 +95,8 @@ export async function getCharacterView(db: D1Database, id: string, now = Date.no
     satKhi: r.sat_khi,
     satNhan: r.sat_nhan,
     anhHung: r.anh_hung,
+    constitution: r.constitution,
+    constitutionTier: r.constitution_tier,
     review: r.review_until !== null && r.review_until > now && r.review_by ? { by: r.review_by, until: r.review_until } : null,
     wallet: Object.fromEntries(wallet.results.map((w) => [w.currency, w.balance])),
     items: bag.items.map((i) => ({ id: i.id, type: i.type, qty: i.qty, tab: i.tab, cell: i.cell })),
@@ -97,7 +105,7 @@ export async function getCharacterView(db: D1Database, id: string, now = Date.no
   };
 }
 
-export type CharacterResult = { ok: true; kicked?: boolean } | { ok: false; error: "invalid" | "not_found" | "not_reviewing" | "reviewed_by_other" | "unchanged" | "full" | "funds" | "busy" | "unknown_item" | "name_taken" | "equipped" };
+export type CharacterResult = { ok: true; kicked?: boolean } | { ok: false; error: "invalid" | "not_found" | "not_reviewing" | "reviewed_by_other" | "unchanged" | "full" | "funds" | "busy" | "unknown_item" | "name_taken" | "equipped" | "gender" };
 
 /** Fails the batch unless this admin's review of the character is still running. */
 const reviewGuard = (db: D1Database, id: string, admin: string, now: number) =>
@@ -204,6 +212,26 @@ export async function addItem(db: D1Database, admin: string, id: string, item: u
   const ops = planAdd(bag.items, bag.tabs, item, qty, () => crypto.randomUUID());
   if (!ops) return { ok: false, error: "full" };
   const r = await commitBagOps(db, id, ops, { now, extra: [reviewGuard(db, id, admin, now), logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Thêm ${qty} ${def.nameVi} (${item}) cho «${c.name}»` }, now)] });
+  return r === "ok" ? { ok: true } : { ok: false, error: "busy" };
+}
+
+/**
+ * Adds a piece of gear to the bag the way the merchant sells it: full durability and the stats rolled from the master table (`rollGear`), one new instance. A piece
+ * made for the other gender is refused (a gendered piece carries its style in the id), a piece that cannot exist (`equipmentInfo`) is refused.
+ */
+export async function addEquipment(db: D1Database, admin: string, id: string, type: unknown, now = Date.now()): Promise<CharacterResult> {
+  const info = typeof type === "string" ? equipmentInfo(type) : undefined;
+  if (typeof type !== "string" || !info) return { ok: false, error: "unknown_item" };
+  const c = await db.prepare("SELECT name, gender FROM characters WHERE id = ?").bind(id).first<{ name: string; gender: string }>();
+  if (!c) return { ok: false, error: "not_found" };
+  if ((info.style === "m" && c.gender !== "male") || (info.style === "f" && c.gender !== "female")) return { ok: false, error: "gender" };
+  if (!(await reviewing(db, id, admin, now))) return { ok: false, error: "not_reviewing" };
+  const bag = await loadBag(db, id);
+  const max = info.maxDurability;
+  const rs = max != null ? await rollGear(db, type) : undefined;
+  const ops = planAdd(bag.items, bag.tabs, type, 1, () => crypto.randomUUID(), max != null ? { dur: max, max, ...(rs ? { rs } : {}) } : undefined);
+  if (!ops) return { ok: false, error: "full" };
+  const r = await commitBagOps(db, id, ops, { now, extra: [reviewGuard(db, id, admin, now), logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Thêm trang bị ${info.nameVi} (${type}) cho «${c.name}»` }, now)] });
   return r === "ok" ? { ok: true } : { ok: false, error: "busy" };
 }
 
@@ -324,6 +352,28 @@ export async function deleteCharacter(db: D1Database, admin: string, id: string,
       db.prepare("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, role, created_at) VALUES (?, ?, 'x', 'x', 1, 'player', ?)").bind(tomb, `deleted+${id}@invalid`, now),
       db.prepare("UPDATE characters SET account_id = ?, name = ?, deleted_at = ?, review_until = NULL, review_by = NULL, updated_at = ? WHERE id = ?").bind(tomb, `~${id}`, now, now, id),
       logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Xóa nhân vật «${before.name}» (${id}) của ${before.email}` }, now),
+    ]);
+  } catch (err) {
+    return mapGuard(err);
+  }
+  return { ok: true };
+}
+
+/** The constitution and its tier (checked against the catalogue in D1). Clears `vitals` like the other stat edits: the maximums change. */
+export async function editConstitution(db: D1Database, admin: string, id: string, constitution: unknown, tier: unknown, now = Date.now()): Promise<CharacterResult> {
+  if (typeof constitution !== "string" || !intIn(tier, 1, 99)) return { ok: false, error: "invalid" };
+  const catalog = await getConstitutionCatalog(db, now);
+  const def = catalog.constitutions.find((c) => c.id === constitution);
+  if (!def || tier > Math.max(def.tiers.length, 1)) return { ok: false, error: "invalid" };
+  const before = await getCharacterView(db, id, now);
+  if (!before) return { ok: false, error: "not_found" };
+  if (!(await reviewing(db, id, admin, now))) return { ok: false, error: "not_reviewing" };
+  if (before.constitution === constitution && before.constitutionTier === tier) return { ok: false, error: "unchanged" };
+  try {
+    await db.batch([
+      reviewGuard(db, id, admin, now),
+      db.prepare("UPDATE characters SET constitution = ?, constitution_tier = ?, vitals = NULL, updated_at = ? WHERE id = ?").bind(constitution, tier, now, id),
+      logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Sửa thể chất của «${before.name}»: ${before.constitution}/${before.constitutionTier} → ${constitution}/${tier}` }, now),
     ]);
   } catch (err) {
     return mapGuard(err);

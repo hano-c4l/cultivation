@@ -32,9 +32,10 @@ describe("the teleport array", () => {
     expect(isWaygateTown("forest")).toBe(false);
   });
 
-  it("the client message is only accepted for a main town", () => {
+  it("the client message needs a map id; whether it is a main town is for the room to say once it has the maps an admin added", () => {
     expect(parseClientMessage(JSON.stringify({ t: "waygate_go", npc: "waygate", to: "town2" }))).toEqual({ t: "waygate_go", npc: "waygate", to: "town2" });
-    expect(parseClientMessage(JSON.stringify({ t: "waygate_go", npc: "waygate", to: "forest" }))).toBeNull();
+    expect(isWaygateTown("forest")).toBe(false); // the room refuses it
+    expect(parseClientMessage(JSON.stringify({ t: "waygate_go", npc: "waygate", to: "Not A Map!" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ t: "waygate_go", npc: "waygate" }))).toBeNull();
   });
 
