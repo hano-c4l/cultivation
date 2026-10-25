@@ -9,7 +9,7 @@ import { constitutionEditPage, constitutionListPage, rootsPage } from "./talents
 import { skillEditPage, skillListPage } from "./skills";
 import { questEditPage, questListPage } from "./quests";
 import { alchemyPage, npcEditPage, npcListPage } from "./npcs";
-import { mapEditPage, mapListPage } from "./maps";
+import { mapEditPage, mapListPage, mapNewPage } from "./maps";
 import { accountDetailPage, accountListPage } from "./accounts";
 import { characterPage } from "./characters";
 import { gearEnhancePage, gearMasterPage, gearSetsPage } from "./gear";
@@ -102,6 +102,9 @@ async function render(): Promise<void> {
   } else if (path === "/admin/maps") {
     title = "Bản đồ";
     content = mapListPage();
+  } else if (path === "/admin/maps/new") {
+    title = "Bản đồ · Tạo mới";
+    content = mapNewPage();
   } else if (path === "/admin/maps/edit") {
     title = "Bản đồ · Sửa";
     content = mapEditPage();

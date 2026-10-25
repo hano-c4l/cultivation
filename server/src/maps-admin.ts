@@ -1,4 +1,4 @@
-import { CODE_MAP_IDS, MAP_IDS, MAP_SIZE, fullCodeMapRecipe, validMapRecipe, type CodeMapId, type MapRecipe } from "@game/shared";
+import { CODE_MAP_IDS, GUARD_KIND, MAP_ID_PATTERN, MAP_IDS, MAP_SIZE, fullCodeMapRecipe, getMonsterDef, validMapRecipe, type CodeMapId, type MapContent, type MapRecipe } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { getMapRecipes, parseRecipe, resetMapsCache, type MapRow } from "./maps";
 
@@ -38,10 +38,19 @@ export async function listMaps(db: D1Database): Promise<MapListItem[]> {
   return out;
 }
 
-export async function getMapAdmin(db: D1Database, id: string): Promise<{ recipe: MapRecipe; updatedAt: number; edited: boolean; maps: string[] } | null> {
+const isCode = (id: string): id is CodeMapId => (CODE_MAP_IDS as readonly string[]).includes(id);
+
+/** The content a recipe stands for: its own, or the code's for a map of the code (a recipe without `content` uses the code's). */
+export function effectiveContent(recipe: MapRecipe): MapContent | undefined {
+  return recipe.content ?? (isCode(recipe.id) ? fullCodeMapRecipe(recipe.id).content : undefined);
+}
+
+export async function getMapAdmin(db: D1Database, id: string): Promise<{ recipe: MapRecipe; updatedAt: number; edited: boolean; maps: string[]; code: boolean } | null> {
   const r = (await rows(db)).find((x) => x.map_id === id);
   const recipe = r ? parseRecipe(r) : null;
-  return r && recipe ? { recipe, updatedAt: r.updated_at, edited: r.updated_by !== null, maps: [...MAP_IDS] } : null;
+  if (!r || !recipe) return null;
+  const content = effectiveContent(recipe);
+  return { recipe: content ? { ...recipe, content } : recipe, updatedAt: r.updated_at, edited: r.updated_by !== null, maps: [...MAP_IDS], code: isCode(id) };
 }
 
 export type MapResult = { ok: true; updatedAt: number } | { ok: false; error: "invalid" | "unchanged" | "not_found" | "version_conflict" | "locked" | "busy"; problems?: string[] };
@@ -56,7 +65,7 @@ function insideRect(size: number, rect: { halfW: number; halfH: number }, x: num
 const LOCKED = ["id", "size", "rect", "realm", "safe", "guardRealm"];
 
 /** Problems that only the numbers can show: the locked fields, a spawn or gate outside the rectangle, a gate to nowhere. */
-export function recipeProblems(before: MapRecipe, after: MapRecipe): string[] {
+export function recipeProblems(before: MapRecipe, after: MapRecipe, pending: Record<string, number> = {}): string[] {
   const out: string[] = [];
   if (after.id !== before.id) out.push("id");
   if (after.size !== before.size) out.push("size");
@@ -68,7 +77,7 @@ export function recipeProblems(before: MapRecipe, after: MapRecipe): string[] {
   for (const p of after.portals) {
     if (!insideRect(after.size, after.rect, p.x, p.y)) out.push(`gate (${p.x}, ${p.y}) outside the playing area`);
     if (p.toMap === after.id) out.push(`gate (${p.x}, ${p.y}) leads to the same map`);
-    const target = MAP_SIZE[p.toMap];
+    const target = MAP_SIZE[p.toMap] ?? pending[p.toMap];
     if (target === undefined) out.push(`gate (${p.x}, ${p.y}) leads to ${p.toMap}, which is not a map`);
     else if (p.toX >= target || p.toY >= target) out.push(`gate (${p.x}, ${p.y}) arrives outside ${p.toMap}`);
   }
@@ -82,6 +91,9 @@ function describe(before: MapRecipe, after: MapRecipe): string[] {
   if (JSON.stringify(before.spawn) !== JSON.stringify(after.spawn)) changed.push("điểm sinh");
   if (JSON.stringify(before.portals) !== JSON.stringify(after.portals)) changed.push("cổng");
   if (JSON.stringify(before.ops) !== JSON.stringify(after.ops)) changed.push(`bước dựng (${before.ops.length} → ${after.ops.length})`);
+  if (JSON.stringify(effectiveContent(before)?.groups) !== JSON.stringify(effectiveContent(after)?.groups)) changed.push("bãi quái");
+  if (JSON.stringify(effectiveContent(before)?.guards) !== JSON.stringify(effectiveContent(after)?.guards)) changed.push("vệ binh");
+  if (JSON.stringify(effectiveContent(before)?.bossSpot) !== JSON.stringify(effectiveContent(after)?.bossSpot)) changed.push("chỗ boss");
   return changed;
 }
 
@@ -109,14 +121,144 @@ export async function saveMap(db: D1Database, adminEmail: string, posted: unknow
   const current = await getMapAdmin(db, posted.id);
   if (!current) return { ok: false, error: "not_found" };
   if (current.updatedAt !== updatedAt) return { ok: false, error: "version_conflict" };
-  const problems = recipeProblems(current.recipe, posted);
+  const problems = [...recipeProblems(current.recipe, posted), ...contentProblems(posted)];
   const locked = problems.filter((p) => LOCKED.includes(p));
   if (locked.length > 0) return { ok: false, error: "locked", problems: locked };
   if (problems.length > 0) return { ok: false, error: "invalid", problems };
   const changed = describe(current.recipe, posted);
   if (changed.length === 0) return { ok: false, error: "unchanged" };
   const stamp = Math.max(now, updatedAt + 1);
-  return write(db, posted.id, updatedAt, JSON.stringify(posted), adminEmail, adminEmail, stamp, `Sửa bản đồ ${posted.id}: ${changed.join(", ")}`, now);
+  // Content equal to the code's is stored as "the code's" (no content), so a later change to the code's data still reaches the map.
+  const store: MapRecipe = isCode(posted.id) && JSON.stringify(posted.content) === JSON.stringify(fullCodeMapRecipe(posted.id).content) ? { ...posted, content: undefined } : posted;
+  return write(db, posted.id, updatedAt, JSON.stringify(store), adminEmail, adminEmail, stamp, `Sửa bản đồ ${posted.id}: ${changed.join(", ")}`, now);
+}
+
+/** The species of a group must exist and must not be the guard; a map that is a safe town has no groups. */
+export function contentProblems(r: MapRecipe): string[] {
+  const out: string[] = [];
+  for (const g of r.content?.groups ?? []) {
+    const def = getMonsterDef(g.kind);
+    if (!def || g.kind === GUARD_KIND) out.push(`group: unknown species ${g.kind}`);
+  }
+  if (r.safe && (r.content?.groups.length ?? 0) > 0) out.push("a safe town has no monster groups");
+  return out;
+}
+
+const CARVE_W = 6;
+const CARVE_H = 4;
+
+/** Inserts a carved clearing (screen units around a tile) before the last step, which is the cut to the playing rectangle: gates and arrivals are never inside a wall. */
+function withClearings(r: MapRecipe, tiles: Array<[number, number]>): MapRecipe {
+  const ops = [...r.ops];
+  const last = ops.at(-1);
+  const insertAt = last?.op === "clip" ? ops.length - 1 : ops.length;
+  const carves = tiles.map(([x, y]) => {
+    const px = x + 0.5 - (y + 0.5);
+    const py = (x + 0.5 + (y + 0.5) - r.size) / 2;
+    return { op: "srect" as const, px0: px - CARVE_W, py0: py - CARVE_H, px1: px + CARVE_W, py1: py + CARVE_H, walkable: true };
+  });
+  ops.splice(insertAt, 0, ...carves);
+  return { ...r, ops };
+}
+
+export interface CreateMapInput {
+  id: string;
+  /** The map whose ground, size, colours and (unless a safe town) monsters the new one starts from. */
+  template: string;
+  realm: number | null;
+  /** Gate on the new map and where it arrives on `back.map`; and the gate on `back.map` and where it arrives on the new map. */
+  gate: { x: number; y: number; toX: number; toY: number };
+  back: { map: string; x: number; y: number; toX: number; toY: number };
+}
+
+/**
+ * Makes a new map from a template, joined to an existing map by a gate each way (a map nobody can enter or leave is no map). The two rows (the new one, and
+ * the existing map that gets the gate back) are written in one batch. Nothing is built here; clearings are carved at the gates and the arrival so they are
+ * never inside a wall, but whether the ground between them and the rest is open is for the preview to show.
+ */
+export async function createMap(db: D1Database, adminEmail: string, posted: unknown, now = Date.now()): Promise<MapResult & { id?: string }> {
+  const o = posted as Partial<CreateMapInput> | null;
+  const int = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
+  if (!o || typeof o.id !== "string" || typeof o.template !== "string" || !o.gate || !o.back || typeof o.back.map !== "string" || ![o.gate.x, o.gate.y, o.gate.toX, o.gate.toY, o.back.x, o.back.y, o.back.toX, o.back.toY].every(int) || !(o.realm === null || int(o.realm))) return { ok: false, error: "invalid", problems: ["body"] };
+  if (!MAP_ID_PATTERN.test(o.id) || isCode(o.id)) return { ok: false, error: "invalid", problems: ["id"] };
+  if ((await rows(db)).some((r) => r.map_id === o.id)) return { ok: false, error: "invalid", problems: ["exists"] };
+  const template = await getMapAdmin(db, o.template);
+  const target = await getMapAdmin(db, o.back.map);
+  if (!template || !target) return { ok: false, error: "not_found" };
+  const safe = o.realm === null;
+  const spawn: [number, number] = [o.back.toX, o.back.toY];
+  const base: MapRecipe = {
+    ...template.recipe,
+    id: o.id,
+    realm: o.realm,
+    safe,
+    home: safe ? o.id : target.recipe.home,
+    spawn,
+    portals: [{ x: o.gate.x, y: o.gate.y, toMap: o.back.map, toX: o.gate.toX, toY: o.gate.toY }],
+    content: { groups: safe ? [] : (template.recipe.content?.groups ?? []).map((g) => ({ ...g })), guards: [], bossSpot: safe ? null : (template.recipe.content?.bossSpot ?? null) },
+  };
+  delete (base as { guardRealm?: number }).guardRealm;
+  const fresh = withClearings(base, [[o.gate.x, o.gate.y], spawn]);
+  const back = { x: o.back.x, y: o.back.y, toMap: o.id, toX: spawn[0], toY: spawn[1] };
+  const backRecipe = withClearings({ ...target.recipe, portals: [...target.recipe.portals, back] }, [[back.x, back.y]]);
+  const problems = [...recipeProblems(fresh, fresh), ...recipeProblems(backRecipe, backRecipe, { [o.id]: fresh.size }), ...contentProblems(fresh)];
+  // The gate of the new map arrives on the other map, and the other map's gate arrives here: both arrivals must be inside the maps they name.
+  if (o.gate.toX >= target.recipe.size || o.gate.toY >= target.recipe.size) problems.push("arrival outside the target map");
+  if (!validMapRecipe(fresh) || !validMapRecipe(backRecipe)) problems.push("structure");
+  if (problems.length > 0) return { ok: false, error: "invalid", problems };
+  const stamp = Math.max(now, target.updatedAt + 1);
+  try {
+    await db.batch([
+      db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE EXISTS (SELECT 1 FROM map_recipes WHERE map_id = ?)").bind(o.id),
+      db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM map_recipes WHERE map_id = ? AND updated_at = ?)").bind(o.back.map, target.updatedAt),
+      db.prepare("INSERT INTO map_recipes (map_id, def, updated_at, updated_by) VALUES (?, ?, ?, ?)").bind(o.id, JSON.stringify(fresh), stamp, adminEmail),
+      db.prepare("UPDATE map_recipes SET def = ?, updated_at = ?, updated_by = ? WHERE map_id = ?").bind(JSON.stringify(backRecipe), stamp, adminEmail, o.back.map),
+      bump(db, stamp),
+      logStatement(db, { adminEmail, screen: MAP_LOG_SCREEN, content: `Thêm bản đồ ${o.id} (từ ${o.template}, ${safe ? "thành an toàn" : `cảnh giới ${o.realm}`}), nối với ${o.back.map} hai chiều` }, now),
+    ]);
+  } catch (err) {
+    if (String(err).includes("inv_guard")) return { ok: false, error: "version_conflict" };
+    console.error("map create failed", err);
+    return { ok: false, error: "busy" };
+  }
+  resetMapsCache();
+  return { ok: true, updatedAt: stamp, id: o.id };
+}
+
+/** Deletes a map an admin added (never one of the code's). Refused while anything still points at it: a character standing there, a gate of another map, an NPC. */
+export async function deleteMap(db: D1Database, adminEmail: string, id: string, updatedAt: number, now = Date.now()): Promise<MapResult> {
+  if (isCode(id)) return { ok: false, error: "locked", problems: ["code"] };
+  const current = await getMapAdmin(db, id);
+  if (!current) return { ok: false, error: "not_found" };
+  if (current.updatedAt !== updatedAt) return { ok: false, error: "version_conflict" };
+  const problems: string[] = [];
+  const there = await db.prepare("SELECT COUNT(*) AS n FROM characters WHERE map_id = ?").bind(id).first<{ n: number }>();
+  if ((there?.n ?? 0) > 0) problems.push(`${there!.n} nhân vật đang đứng ở bản đồ này`);
+  for (const r of await rows(db)) {
+    const rec = parseRecipe(r);
+    if (rec && r.map_id !== id && (rec.portals.some((p) => p.toMap === id) || rec.home === id)) problems.push(`bản đồ ${r.map_id} còn cổng hoặc thành về trỏ tới`);
+  }
+  const npcs = await db.prepare("SELECT COUNT(*) AS n FROM npc_spots WHERE map_id = ?").bind(id).first<{ n: number }>();
+  if ((npcs?.n ?? 0) > 0) problems.push(`${npcs!.n} NPC đứng ở bản đồ này`);
+  const boss = await db.prepare("SELECT COUNT(*) AS n FROM world_boss WHERE map_id = ?").bind(id).first<{ n: number }>();
+  if ((boss?.n ?? 0) > 0) problems.push("còn boss đang giữ chỗ");
+  if (problems.length > 0) return { ok: false, error: "invalid", problems };
+  const stamp = Math.max(now, updatedAt + 1);
+  try {
+    await db.batch([
+      db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM map_recipes WHERE map_id = ? AND updated_at = ?)").bind(id, updatedAt),
+      db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE EXISTS (SELECT 1 FROM characters WHERE map_id = ?)").bind(id),
+      db.prepare("DELETE FROM map_recipes WHERE map_id = ?").bind(id),
+      bump(db, stamp),
+      logStatement(db, { adminEmail, screen: MAP_LOG_SCREEN, content: `Xóa bản đồ ${id}` }, now),
+    ]);
+  } catch (err) {
+    if (String(err).includes("inv_guard")) return { ok: false, error: "version_conflict" };
+    console.error("map delete failed", err);
+    return { ok: false, error: "busy" };
+  }
+  resetMapsCache();
+  return { ok: true, updatedAt: stamp };
 }
 
 /** Puts a map back to the code's (the row becomes the seed again). */
