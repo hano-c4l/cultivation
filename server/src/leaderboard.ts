@@ -14,12 +14,12 @@ export const LEADERBOARD_TTL_MS = 60_000;
 
 const cache = new Map<Leaderboard, { at: number; rows: RankRow[] }>();
 
-async function realmBoard(db: D1Database): Promise<RankRow[]> {
+export async function realmBoard(db: D1Database): Promise<RankRow[]> {
   const { results } = await db
     .prepare(
       `SELECT c.name AS name, c.realm AS realm, c.stage AS stage, c.exp AS value
          FROM characters c JOIN accounts a ON a.id = c.account_id
-        WHERE a.role != 'admin'
+        WHERE a.role != 'admin' AND c.deleted_at IS NULL
         ORDER BY c.realm DESC, c.stage DESC, c.exp DESC, c.name
         LIMIT ?`,
     )
@@ -33,7 +33,7 @@ async function wealthBoard(db: D1Database): Promise<RankRow[]> {
     .prepare(
       `SELECT c.name AS name, c.realm AS realm, c.stage AS stage, b.balance AS value
          FROM currency_balances b JOIN characters c ON c.id = b.character_id JOIN accounts a ON a.id = c.account_id
-        WHERE b.currency = 'linh_thach' AND b.balance > 0 AND a.role != 'admin'
+        WHERE b.currency = 'linh_thach' AND b.balance > 0 AND a.role != 'admin' AND c.deleted_at IS NULL
         ORDER BY b.balance DESC, c.name
         LIMIT ?`,
     )
@@ -65,7 +65,7 @@ async function wornBoard(db: D1Database, board: "power" | "gear" | "artifact"): 
               i.item_type AS item_type, i.equip_slot AS equip_slot, i.refine_level AS refine_level
          FROM characters c JOIN accounts a ON a.id = c.account_id
          LEFT JOIN item_instances i ON i.owner_character_id = c.id AND i.equip_slot IS NOT NULL
-        WHERE a.role != 'admin'`,
+        WHERE a.role != 'admin' AND c.deleted_at IS NULL`,
     )
     .all<WornRow>();
   const byChar = new Map<string, { row: WornRow; worn: Array<{ type: string; slot: string; refine: number }> }>();

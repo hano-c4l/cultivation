@@ -2,7 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { REALMS, SKILLS, setItemOverlays } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
-import { REVIEW_MS, addItem, addSkill, adjustMoney, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
+import { REVIEW_MS, addItem, addSkill, adjustMoney, deleteCharacter, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
+import { realmBoard } from "./leaderboard";
 import { resetItemsCache } from "./items-live";
 import { makeDb } from "./test-db";
 
@@ -116,5 +117,45 @@ describe("a character under review", () => {
     expect(await adjustMoney(db, A, "c1", "linh_thach", 1, NOW + 6)).toMatchObject({ ok: false });
     expect(await endReview(db, A, "c1", NOW + 7)).toEqual({ ok: false, error: "unchanged" });
     expect((await logs()).some((l) => l.includes("Xong sửa nhân vật"))).toBe(true);
+  });
+});
+
+describe("the profile and deleting a character", () => {
+  const profile = { name: "Lan Tử", gender: "female", satKhi: 20, satNhan: 300, anhHung: 0 };
+
+  it("edits name, gender and the PvP scores under review; the name stays unique and valid", async () => {
+    expect(await editProfile(db, A, "c1", profile, NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await editProfile(db, A, "c1", { ...profile, name: "x" }, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editProfile(db, A, "c1", { ...profile, satKhi: 5000 }, NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await editProfile(db, A, "c1", profile, NOW + 1)).toEqual({ ok: true });
+    expect(raw.prepare("SELECT name, gender, sat_khi, sat_nhan FROM characters WHERE id = 'c1'").get()).toEqual({ name: "Lan Tử", gender: "female", sat_khi: 20, sat_nhan: 300 });
+    expect(await editProfile(db, A, "c1", profile, NOW + 2)).toEqual({ ok: false, error: "unchanged" });
+    raw.exec("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, created_at) VALUES ('a2', 'q@x.test', 'h', 's', 1, 0)");
+    raw.exec("INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at) VALUES ('c2', 'a2', 'Mộc Đầu', 'kim', 0, 0, 0, 0)");
+    expect(await editProfile(db, A, "c1", { ...profile, name: "Mộc Đầu" }, NOW + 3)).toEqual({ ok: false, error: "name_taken" });
+    expect((await logs()).some((l) => l.includes("tên «Lan Tu» → «Lan Tử»"))).toBe(true);
+  });
+
+  it("refuses a gender change while something is worn", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    raw.exec("INSERT INTO item_instances (id, owner_character_id, item_type, qty, created_at, equip_slot) VALUES ('w1', 'c1', 'eq.0.0.weapon', 1, 0, 'weapon')");
+    expect(await editProfile(db, A, "c1", { ...profile, gender: "female" }, NOW + 1)).toEqual({ ok: false, error: "equipped" });
+    expect(await editProfile(db, A, "c1", { ...profile, gender: "male" }, NOW + 1)).toEqual({ ok: true }); // the other fields still change
+  });
+
+  it("deletes by moving the row to a tombstone account: the name and the account are free, the ledger stays, the rankings and gifts skip it", async () => {
+    raw.exec("INSERT INTO tien_ngoc_ledger (character_id, delta, reason, actor, created_at) VALUES ('c1', 5, 'admin_grant', 'admin', 1)");
+    expect(await deleteCharacter(db, A, "c1", "Lan Tu", NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await deleteCharacter(db, A, "c1", "wrong", NOW + 1)).toEqual({ ok: false, error: "invalid" });
+    expect(await deleteCharacter(db, A, "c1", "Lan Tu", NOW + 1)).toEqual({ ok: true });
+    expect(raw.prepare("SELECT account_id, deleted_at, review_until FROM characters WHERE id = 'c1'").get()).toEqual({ account_id: "deleted:c1", deleted_at: NOW + 1, review_until: null });
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM characters WHERE account_id = 'a1'").get()).toEqual({ n: 0 }); // the account can make a new character
+    raw.exec("INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at) VALUES ('c9', 'a1', 'Lan Tu', 'kim', 0, 0, 0, 0)"); // and the name is free again
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM tien_ngoc_ledger WHERE character_id = 'c1'").get()).toEqual({ n: 1 });
+    expect((await logs()).some((l) => l.includes("Xóa nhân vật «Lan Tu»"))).toBe(true);
+    const board = await realmBoard(db);
+    expect(board.map((r) => r.name)).toEqual(["Lan Tu"]); // only the new one (c9), not the deleted one
   });
 });

@@ -269,7 +269,7 @@ export async function deleteMap(db: D1Database, adminEmail: string, id: string, 
   if (!current) return { ok: false, error: "not_found" };
   if (current.updatedAt !== updatedAt) return { ok: false, error: "version_conflict" };
   const problems: string[] = [];
-  const there = await db.prepare("SELECT COUNT(*) AS n FROM characters WHERE map_id = ?").bind(id).first<{ n: number }>();
+  const there = await db.prepare("SELECT COUNT(*) AS n FROM characters WHERE map_id = ? AND deleted_at IS NULL").bind(id).first<{ n: number }>();
   if ((there?.n ?? 0) > 0) problems.push(`${there!.n} nhân vật đang đứng ở bản đồ này`);
   for (const r of await rows(db)) {
     const rec = parseRecipe(r);
@@ -293,7 +293,7 @@ export async function deleteMap(db: D1Database, adminEmail: string, id: string, 
   try {
     await db.batch([
       db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM map_recipes WHERE map_id = ? AND updated_at = ?)").bind(id, updatedAt),
-      db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE EXISTS (SELECT 1 FROM characters WHERE map_id = ?)").bind(id),
+      db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE EXISTS (SELECT 1 FROM characters WHERE map_id = ? AND deleted_at IS NULL)").bind(id),
       db.prepare("DELETE FROM map_recipes WHERE map_id = ?").bind(id),
       bump(db, stamp),
       logStatement(db, { adminEmail, screen: MAP_LOG_SCREEN, content: `Xóa bản đồ ${id}` }, now),

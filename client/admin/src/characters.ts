@@ -1,4 +1,4 @@
-import { api, formatTime, h } from "./kit";
+import { api, formatTime, h, navigate } from "./kit";
 
 /**
  * "Nhân vật" (PHASE3 3m-b): the whole character of an account and its edit. "Sửa" puts the character under review for 30 minutes (the player cannot log in, an
@@ -39,6 +39,8 @@ const ERRORS: Record<string, string> = {
   full: "Túi đồ không đủ chỗ.",
   funds: "Không đủ tiền để trừ.",
   busy: "Dữ liệu vừa đổi, hãy thử lại.",
+  name_taken: "Đạo hiệu đã có người dùng.",
+  equipped: "Nhân vật đang mặc trang bị nên chưa đổi giới tính được (tháo hết đồ trước).",
   unknown_item: "Vật phẩm không có hoặc không thêm được (trang bị chưa thêm được).",
 };
 
@@ -102,6 +104,21 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
     void act({ action: "stats", input: { realm: Number(realm.value), stage: Number(stage.value), exp: Number(exp.value), potentialPoints: Number(points.value), stats: Object.fromEntries(Object.entries(stats).map(([k, i]) => [k, Number(i.value)])) } }),
   );
 
+  const nameInput = h("input", { type: "text", maxlength: "24" });
+  nameInput.value = c.name;
+  const gender = h("select", null, h("option", { value: "male" }, "Nam"), h("option", { value: "female" }, "Nữ"));
+  gender.value = c.gender;
+  const satKhi = num(c.satKhi, { min: "0", max: "1000" });
+  const satNhan = num(c.satNhan, { min: "0" });
+  const anhHung = num(c.anhHung, { min: "0" });
+  const saveProfile = h("button", { type: "button", class: "primary" }, "Lưu hồ sơ");
+  saveProfile.addEventListener("click", () => void act({ action: "profile", input: { name: nameInput.value, gender: gender.value, satKhi: Number(satKhi.value), satNhan: Number(satNhan.value), anhHung: Number(anhHung.value) } }));
+  const del = h("button", { type: "button" }, "Xóa nhân vật");
+  del.addEventListener("click", async () => {
+    const typed = window.prompt(`Xóa nhân vật «${c.name}» của ${c.email}? Nhân vật biến khỏi game và bảng xếp hạng, tài khoản tạo được nhân vật mới; sổ cái tiền vẫn giữ. Không hoàn tác. Gõ lại đúng đạo hiệu để xác nhận:`);
+    if (typed === null) return;
+    if (await act({ action: "delete", confirm: typed })) navigate(`/admin/accounts/detail?id=${encodeURIComponent(c.accountId)}`);
+  });
   const currency = h("select", null, ...Object.entries(CURRENCY_LABEL).map(([k, l]) => h("option", { value: k }, l)));
   const delta = num(0);
   const money = h("button", { type: "button" }, "Cộng / trừ");
@@ -119,7 +136,7 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
   const addSkill = h("button", { type: "button" }, "Thêm kỹ năng");
   addSkill.addEventListener("click", () => void act({ action: "addSkill", skill: skillId.value.trim() }));
 
-  const editable = [stage, exp, points, realm, saveStats, currency, delta, money, itemId, qty, addItem, skillId, addSkill, ...Object.values(stats)];
+  const editable = [nameInput, gender, satKhi, satNhan, anhHung, saveProfile, del, stage, exp, points, realm, saveStats, currency, delta, money, itemId, qty, addItem, skillId, addSkill, ...Object.values(stats)];
   for (const el of editable) el.disabled = !mine;
 
   return h(
@@ -136,6 +153,9 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
     h("div", { class: "toolbar" }, h("span", null, "Cảnh giới"), realm, h("span", null, "tầng"), stage, h("span", null, "EXP"), exp, h("span", null, "Điểm tiềm năng"), points),
     h("div", { class: "toolbar" }, ...Object.entries(stats).flatMap(([k, i]) => [h("span", null, STAT_LABEL[k]), i])),
     h("div", { class: "toolbar" }, saveStats),
+    h("h3", null, "Hồ sơ"),
+    h("div", { class: "toolbar" }, h("span", null, "Đạo hiệu"), nameInput, h("span", null, "Giới tính"), gender, h("span", null, "Sát khí"), satKhi, h("span", null, "Sát nhân"), satNhan, h("span", null, "Anh hùng"), anhHung),
+    h("div", { class: "toolbar" }, saveProfile, del),
     h("h3", null, "Tiền"),
     h("p", { class: "muted" }, Object.entries(CURRENCY_LABEL).map(([k, l]) => `${l}: ${(c.wallet[k] ?? 0).toLocaleString("vi-VN")}`).join(" · ") + ". Cộng/trừ ghi vào nhóm Admin của Quản lý tiền tệ."),
     h("div", { class: "toolbar" }, currency, delta, money, h("a", { href: `/admin/currency/detail?currency=linh_thach&character=${encodeURIComponent(c.id)}` }, "Lịch sử tiền")),

@@ -157,6 +157,7 @@ async function login(request: Request, env: Env): Promise<Response> {
   if (review && !(await env.DB.prepare("SELECT 1 AS x FROM accounts WHERE id = ? AND role = 'admin'").bind(account.id).first())) return json({ error: "reviewing", until: review.review_until }, 403);
 
   const token = await createSession(env, account.id);
+  await env.DB.prepare("UPDATE accounts SET last_login_at = ? WHERE id = ?").bind(Date.now(), account.id).run().catch((err) => console.error("last login not recorded", err)); // one extra row written per login
   return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token, SESSION_TTL_SECONDS, request) });
 }
 

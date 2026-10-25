@@ -38,14 +38,14 @@ export function accountListPage(): HTMLElement {
   return h(
     "div",
     null,
-    h("p", { class: "muted" }, "Tìm theo email hoặc đạo hiệu. “Phiên gần nhất” là lần đăng nhập gần nhất còn ghi lại (phiên hết hạn bị dọn dần)."),
+    h("p", { class: "muted" }, "Tìm theo email hoặc đạo hiệu. “Đăng nhập cuối” là lần đăng nhập gần nhất (với tài khoản chưa đăng nhập kể từ khi có cột này thì lấy phiên cũ còn ghi lại)."),
     listView<Row>({
       columns: [
         { key: "email", label: "Email", sortable: true, render: (r) => r.email },
         { key: "name", label: "Nhân vật", sortable: true, render: (r) => r.character ?? "—" },
         { key: "realm", label: "Cảnh giới", sortable: true, render: (r) => realmText(r.realm, r.stage) },
         { key: "created", label: "Tạo lúc", sortable: true, render: (r) => formatTime(r.createdAt) },
-        { key: "login", label: "Phiên gần nhất", sortable: true, render: (r) => (r.lastSession ? formatTime(r.lastSession) : "—") },
+        { key: "login", label: "Đăng nhập cuối", sortable: true, render: (r) => (r.lastSession ? formatTime(r.lastSession) : "—") },
         { key: "role", label: "Vai trò", render: (r) => (r.role === "admin" ? "Admin" : "Người chơi") },
         { key: "ban", label: "Trạng thái", render: (r) => banText(r) || "Bình thường" },
       ],
@@ -126,7 +126,7 @@ function view(d: Detail, reload: () => Promise<void>): HTMLElement {
       h("dd", null, admin ? "Admin" : "Người chơi"),
       h("dt", null, "Tạo lúc"),
       h("dd", null, formatTime(a.createdAt)),
-      h("dt", null, "Phiên gần nhất"),
+      h("dt", null, "Đăng nhập cuối"),
       h("dd", null, a.lastSession ? formatTime(a.lastSession) : "—"),
       h("dt", null, "Phiên đang mở"),
       h("dd", null, String(a.sessions)),
