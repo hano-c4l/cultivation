@@ -20,7 +20,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave } from "./admin";
+import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave } from "./admin";
 import { getCharacterByAccount, grantExp, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
@@ -330,6 +330,12 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return adminSkills(request, env);
     case "POST /api/admin/skills/save":
       return adminSkillSave(request, env);
+    case "GET /api/admin/maps":
+      return adminMaps(request, env);
+    case "GET /api/admin/maps/recipe":
+      return adminMapRecipe(request, env, url);
+    case "POST /api/admin/maps/save":
+      return adminMapSave(request, env);
     case "GET /api/admin/npcs":
       return adminNpcs(request, env);
     case "POST /api/admin/npcs/save":

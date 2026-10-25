@@ -16,6 +16,7 @@ import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
 import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
 import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
 import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
+import { getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
 
@@ -545,5 +546,31 @@ export async function adminAlchemySave(request: Request, env: Env): Promise<Resp
   const result = await saveAlchemy(env.DB, session.email, body.alchemy, body.updatedAt);
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
   console.log("alchemy saved", session.accountId);
+  return json({ ok: true, updatedAt: result.updatedAt });
+}
+
+/** The maps for the admin screen: one row each with whether an admin changed it. */
+export async function adminMaps(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json({ maps: await listMaps(env.DB) });
+}
+
+export async function adminMapRecipe(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const view = await getMapAdmin(env.DB, url.searchParams.get("id") ?? "");
+  return view ? json(view) : errorResponse("not_found", 404);
+}
+
+/** Saves a map recipe (POST `{recipe, updatedAt}`), or puts a map back to the code's (`{reset: true, id, updatedAt}`). */
+export async function adminMapSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 128 * 1024);
+  if (!body || typeof body.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = body.reset === true && typeof body.id === "string" ? await resetMap(env.DB, session.email, body.id, body.updatedAt) : await saveMap(env.DB, session.email, body.recipe, body.updatedAt);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
+  console.log("map saved", session.accountId);
   return json({ ok: true, updatedAt: result.updatedAt });
 }

@@ -9,6 +9,7 @@ import { constitutionEditPage, constitutionListPage, rootsPage } from "./talents
 import { skillEditPage, skillListPage } from "./skills";
 import { questEditPage, questListPage } from "./quests";
 import { alchemyPage, npcEditPage, npcListPage } from "./npcs";
+import { mapEditPage, mapListPage } from "./maps";
 import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
@@ -77,6 +78,12 @@ async function render(): Promise<void> {
   } else if (path === "/admin/currency/detail") {
     title = "Quản lý tiền tệ · Chi tiết";
     content = detailPage();
+  } else if (path === "/admin/maps") {
+    title = "Bản đồ";
+    content = mapListPage();
+  } else if (path === "/admin/maps/edit") {
+    title = "Bản đồ · Sửa";
+    content = mapEditPage();
   } else if (path === "/admin/npcs") {
     title = "NPC";
     content = npcListPage();

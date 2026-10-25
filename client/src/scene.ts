@@ -54,6 +54,8 @@ import {
   setElementTuning,
   setMerchant,
   setMapNpcs,
+  setMapRecipe,
+  overrideRecipe,
   npcsOf,
 } from "@game/shared";
 import { applyTuningTheme } from "./theme";
@@ -393,6 +395,8 @@ export class GameScene extends Phaser.Scene {
   /** (Re)draws the current map's tiles and portals, destroying whatever was drawn for the previous map. */
   /** The NPC list the map was drawn with. */
   private npcKey = "";
+  /** The map recipe the current map was built from ("" for the code's map). */
+  private recipeKey = "";
 
   private drawMap(): void {
     this.npcKey = JSON.stringify(npcsOf(this.map));
@@ -501,7 +505,8 @@ export class GameScene extends Phaser.Scene {
 
   private switchMap(mapId: string): void {
     // Same map but the NPCs changed (they are data from D1, sent with each welcome): draw it again.
-    if (!isMapId(mapId) || (this.map.id === mapId && this.npcKey === JSON.stringify(npcsOf(this.map)))) return;
+    if (!isMapId(mapId) || (this.map.id === mapId && this.npcKey === JSON.stringify(npcsOf(this.map)) && this.recipeKey === JSON.stringify(overrideRecipe(mapId) ?? ""))) return;
+    this.recipeKey = JSON.stringify(overrideRecipe(mapId) ?? "");
     this.map = getMap(mapId);
     this.shop.close();
     this.quests.close();
@@ -669,6 +674,7 @@ export class GameScene extends Phaser.Scene {
         setTuning(msg.tuning as unknown as Record<string, unknown>); // the live balance numbers (drops, kills, skills, theme...)
         applyTuningTheme();
         setMapNpcs(msg.map, msg.npcs); // who stands on this map (data from D1)
+        if (isMapId(msg.map)) setMapRecipe(msg.mapRecipe ?? null, msg.map); // the layout of this map when an admin changed it (before the map is built below)
         if (msg.mutant) setElementTuning(msg.mutant); // the live numbers of the mutant elements (game settings)
         setItemOverlays(msg.items ?? []); // what admins changed in the item catalogue (before the bag below is drawn)
         setMounted(false); // the snapshot of yourself (below) says whether you still ride: it is kept across maps
