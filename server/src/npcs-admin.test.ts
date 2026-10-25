@@ -79,7 +79,7 @@ describe("the NPC screen", () => {
     expect(created.ok).toBe(true);
     expect((await getMerchantAdmin(db, "herbalist"))!.merchant).toMatchObject({ mapId: "town", stock: [], buys: null });
     expect(await saveNpc(db, ADMIN, { id: "herbalist", mapId: "town", kind: "merchant", name: "Dược sư", x: m.x + 4, y: m.y, sort: 9, enabled: true }, true, 0)).toMatchObject({ ok: false, error: "exists" });
-    expect(await saveNpc(db, ADMIN, { id: "gate3", mapId: "town", kind: "waygate", name: "Trận", x: m.x + 4, y: m.y, sort: 9, enabled: true }, true, 0)).toMatchObject({ ok: false, error: "invalid" });
+    expect(await saveNpc(db, ADMIN, { id: "gate3", mapId: "town", kind: "dragon", name: "Trận", x: m.x + 4, y: m.y, sort: 9, enabled: true }, true, 0)).toMatchObject({ ok: false, error: "invalid" });
     const row = await find("town", "herbalist");
     expect((await deleteNpc(db, ADMIN, "town", "herbalist", row.updatedAt)).ok).toBe(true);
     expect(raw.prepare("SELECT COUNT(*) AS n FROM shop_merchants WHERE npc_id = 'herbalist'").get()).toEqual({ n: 0 });

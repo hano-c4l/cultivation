@@ -105,6 +105,7 @@ import {
   passiveTotals,
   effectiveSkill,
   skillGrade,
+  type MapContent,
 } from "@game/shared";
 
 /** Everything the simulation needs to know about a character when it joins. */
@@ -350,6 +351,16 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
 const BOSS_SPOT_TRIES = 20;
 const BOSS_MIN_GATE_DIST = 25;
 
+/** A copy of what the map has now: its monster groups, its guards and the boss spot it falls back to. */
+export function currentContent(mapId: MapId): MapContent {
+  const spot = BOSS_SPOTS[mapId];
+  return {
+    groups: (CLUSTERS[mapId] ?? []).map((g) => ({ ...g })),
+    guards: (GUARDS[mapId] ?? []).map((g): [number, number] => [g[0], g[1]]),
+    bossSpot: spot ? [spot[0], spot[1]] : null,
+  };
+}
+
 export class CombatSim {
   private monsters = new Map<string, Monster>();
   private players = new Map<string, PlayerProfile>();
@@ -358,6 +369,7 @@ export class CombatSim {
   private nextMonsterId = 1;
   /** Realm of the map; monster stats and EXP scale from it. */
   private readonly realm: number;
+  private readonly content: MapContent;
 
   constructor(
     private readonly map: MapData,
@@ -366,9 +378,12 @@ export class CombatSim {
     now: number,
     /** Classes to restore after the room slept, by monster id; without them every monster rolls its class. */
     ranks?: Readonly<Record<string, string>>,
+    /** The groups, guards and boss spot to use (the room pins them, so an admin editing the map does not change a room that is running); without it, the map's current ones. */
+    content?: MapContent,
   ) {
     this.realm = map.realm ?? map.guardRealm ?? 0;
-    for (const cluster of CLUSTERS[mapId] ?? []) {
+    this.content = content ?? currentContent(mapId);
+    for (const cluster of this.content.groups) {
       const def = getMonsterDef(cluster.kind);
       if (!def) continue;
       for (const [sx, sy] of clusterSlots(cluster)) {
@@ -400,7 +415,7 @@ export class CombatSim {
     }
     // The guards come after every cluster monster, so the ids of the clusters (and the ranks saved under them) never move.
     const guardDef = getMonsterDef(GUARD_KIND);
-    for (const [sx, sy] of guardDef ? (GUARDS[mapId] ?? []) : []) {
+    for (const [sx, sy] of guardDef ? this.content.guards : []) {
       const home = nearestStandablePoint(map, sx, sy, 2);
       if (!home || !guardDef) continue;
       const id = `m${this.nextMonsterId++}`;
@@ -567,13 +582,13 @@ export class CombatSim {
       const home = nearestStandablePoint(this.map, x, y, 2);
       if (!home || !inPlayRect(this.map, home[0], home[1])) continue;
       if (this.map.portals.some((p) => dist(home, [p.x + 0.5, p.y + 0.5]) < BOSS_MIN_GATE_DIST)) continue;
-      if ((GUARDS[mapId] ?? []).some((g) => dist(home, [g[0], g[1]]) < BOSS_MIN_GATE_DIST)) continue;
+      if (this.content.guards.some((g) => dist(home, [g[0], g[1]]) < BOSS_MIN_GATE_DIST)) continue;
       const path = findSmoothPath(this.map, arrive, home);
       const end = path?.[path.length - 1];
       if (!end || dist(end, home) > 0.6) continue;
       return home;
     }
-    const spot = BOSS_SPOTS[mapId];
+    const spot = this.content.bossSpot;
     return spot ? nearestStandablePoint(this.map, spot[0], spot[1], 3) : null;
   }
 

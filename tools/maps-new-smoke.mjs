@@ -64,7 +64,7 @@ try {
   const mid = (size) => Math.floor(size / 2);
   const create = await post("/api/admin/maps/create", {
     id: MAP,
-    template: "forest",
+    name: "Rừng Thử", template: "forest",
     realm: 0,
     gate: { x: mid(forest.size), y: mid(forest.size), toX: mid(town.size), toY: mid(town.size) },
     back: { map: "town", x: mid(town.size) + 3, y: mid(town.size), toX: mid(forest.size), toY: mid(forest.size) },

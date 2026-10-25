@@ -43,7 +43,7 @@ const MAX_EXPIRY_DAYS = 3650;
 
 /** Characters on the server now (what "the whole server" means at this moment). */
 export async function countCharacters(db: D1Database): Promise<number> {
-  return (await db.prepare("SELECT COUNT(*) AS n FROM characters").first<{ n: number }>())?.n ?? 0;
+  return (await db.prepare("SELECT COUNT(*) AS n FROM characters WHERE deleted_at IS NULL").first<{ n: number }>())?.n ?? 0;
 }
 
 /** Looks up names (exact; SQLite folds only the case of A-Z) and ids of characters for the recipient picker: the ones found and the names that matched nobody. */
@@ -51,7 +51,7 @@ export async function resolveRecipients(db: D1Database, names: readonly string[]
   const wanted = [...new Set(names.map((n) => n.normalize("NFC").trim()).filter((n) => n.length > 0 && n.length <= 40))].slice(0, GIFT_MAX_RECIPIENTS);
   if (wanted.length === 0) return { found: [], missing: [] };
   const { results } = await db
-    .prepare("SELECT id, name FROM characters WHERE lower(name) IN (SELECT lower(value) FROM json_each(?))")
+    .prepare("SELECT id, name FROM characters WHERE deleted_at IS NULL AND lower(name) IN (SELECT lower(value) FROM json_each(?))")
     .bind(JSON.stringify(wanted))
     .all<{ id: string; name: string }>();
   const have = new Set(results.map((r) => r.name.toLowerCase()));
@@ -86,7 +86,7 @@ export async function sendGift(db: D1Database, adminEmail: string, adminAccountI
   const to = `${input.batchId};`; // ';' is the character after ':' so [from, to) holds exactly this batch's mail ids
   const mailInsert =
     "INSERT INTO mailbox (id, character_id, subject, body, created_at, expires_at, gift) SELECT ?1 || ':' || c.id, c.id, ?2, ?3, ?4, ?5, ?6 FROM characters c" +
-    (audience.kind === "list" ? " WHERE c.id IN (SELECT value FROM json_each(?7))" : "");
+    (audience.kind === "list" ? " WHERE c.id IN (SELECT value FROM json_each(?7))" : " WHERE c.deleted_at IS NULL");
   const args: unknown[] = [input.batchId, subject, body, now, expiresAt, JSON.stringify(gift)];
   if (audience.kind === "list") args.push(JSON.stringify([...new Set(audience.characterIds)]));
   const summary = [

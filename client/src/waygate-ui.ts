@@ -1,5 +1,5 @@
 import type { ClientMessage, WaygateDest } from "@game/shared";
-import { vi } from "./locales/vi";
+import { mapLabel, vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
 export interface WaygateUi {
@@ -46,7 +46,7 @@ export function initWaygate(send: (msg: ClientMessage) => void): WaygateUi {
     for (const d of dests) {
       const row = el("div", "wg-row");
       const info = el("div");
-      info.append(el("div", "wg-name", vi.maps[d.map] ?? d.map), el("div", "wg-price", vi.waygate.price(d.price.toLocaleString("vi-VN"))));
+      info.append(el("div", "wg-name", mapLabel(d.map)), el("div", "wg-price", vi.waygate.price(d.price.toLocaleString("vi-VN"))));
       const go = el("button", "", vi.waygate.go);
       go.disabled = balance < d.price;
       go.title = go.disabled ? vi.waygate.poor : "";

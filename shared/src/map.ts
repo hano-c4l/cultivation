@@ -697,6 +697,8 @@ export interface MapRecipe {
   portals: Portal[];
   ops: GridOp[];
   content?: MapContent;
+  /** Where this safe town lies on the world map, which makes it a destination of the Truyền Tống Trận (docs/PHASE3.md 3l). Only for towns an admin added. */
+  world?: [number, number];
 }
 
 const codeMaps = new Map<MapId, MapData>();
@@ -752,6 +754,28 @@ export function onMapRecipe(listener: (id: MapId, recipe: MapRecipe | null) => v
   mapListeners.push(listener);
 }
 
+/**
+ * Display names an admin gave to maps (`map_recipes.name_vi`), by map id. The server fills it from D1 and sends it in `welcome`; the client installs it with
+ * `installMapNames`. A map with no name here shows the name the client has for the code's maps, else its id.
+ */
+export const MAP_NAMES: Record<string, string> = {};
+export const MAP_NAME_MAX = 40;
+
+export function validMapName(name: unknown): name is string {
+  return typeof name === "string" && name.trim() === name && name.length >= 1 && name.length <= MAP_NAME_MAX && !/[\u0000-\u001f\u007f]/.test(name);
+}
+
+export function setMapName(id: MapId, name: string | null): void {
+  if (name !== null && validMapName(name)) MAP_NAMES[id] = name;
+  else delete MAP_NAMES[id];
+}
+
+/** Replaces every name (the client takes the whole record from `welcome`). */
+export function installMapNames(names: Record<string, string> | undefined): void {
+  for (const k of Object.keys(MAP_NAMES)) delete MAP_NAMES[k];
+  for (const [id, n] of Object.entries(names ?? {})) setMapName(id, n);
+}
+
 function registerMap(id: MapId, r: MapRecipe | null): void {
   if (r) {
     if (!MAP_IDS.includes(id)) MAP_IDS.push(id);
@@ -765,6 +789,7 @@ function registerMap(id: MapId, r: MapRecipe | null): void {
     if (i >= 0) MAP_IDS.splice(i, 1);
     delete MAP_SIZE[id];
     delete MAP_REALM[id];
+    delete MAP_NAMES[id];
   }
   for (const l of mapListeners) l(id, r);
 }
@@ -832,9 +857,9 @@ export function allNpcIds(): Set<string> {
   return ids;
 }
 
-/** The NPCs the game starts with, on every map (seeds of the D1 table). */
+/** The NPCs the game starts with (seeds of the D1 table): those of the maps the code builds. A map an admin added has none, and `codeMap` throws for it. */
 export function startingNpcs(): Array<NpcSpot & { mapId: MapId }> {
-  return MAP_IDS.flatMap((mapId) => codeMap(mapId).npcs.map((n) => ({ ...n, mapId, name: NPC_NAMES_VI[n.id] ?? n.id })));
+  return CODE_MAP_IDS.flatMap((mapId) => codeMap(mapId).npcs.map((n) => ({ ...n, mapId, name: NPC_NAMES_VI[n.id] ?? n.id })));
 }
 
 /** The portal whose tile is within PORTAL_RADIUS of a continuous position, if any. */
@@ -906,7 +931,8 @@ export function validMapRecipe(r: unknown): r is MapRecipe {
     Array.isArray(o.ops) &&
     o.ops.length <= MAX_RECIPE_OPS &&
     o.ops.every(validGridOp) &&
-    (o.content === undefined || validMapContent(o.content, o.size as number))
+    (o.content === undefined || validMapContent(o.content, o.size as number)) &&
+    (o.world === undefined || (Array.isArray(o.world) && o.world.length === 2 && o.world.every((n) => finite(n) && Math.abs(n) <= 10000)))
   );
 }
 

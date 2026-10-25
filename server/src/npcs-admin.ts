@@ -15,7 +15,7 @@ import { getNpcs, resetNpcsCache } from "./npcs";
 export const NPC_LOG_SCREEN = "NPC";
 export const NAME_MAX = 40;
 /** Kinds an admin can add: a waygate needs its own destinations (waygate.ts), so only the existing ones stand. */
-export const ADDABLE_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "alchemist"];
+export const ADDABLE_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "alchemist", "waygate"];
 
 interface Row {
   npc_id: string;
@@ -188,7 +188,7 @@ export async function saveNpc(db: D1Database, adminEmail: string, posted: unknow
     if (row) return { ok: false, error: "exists" };
     if (!ADDABLE_KINDS.includes(input.kind as NpcSpot["kind"])) return { ok: false, error: "invalid", problems: ["kind"] };
     // One merchant record per id (its key is the NPC id alone): a merchant, alchemist or smith with a stock cannot stand in two towns.
-    if (input.kind !== "quest" && input.kind !== "smith" && (await db.prepare("SELECT 1 AS x FROM shop_merchants WHERE npc_id = ?").bind(input.id).first())) return { ok: false, error: "exists" };
+    if (input.kind !== "quest" && input.kind !== "smith" && input.kind !== "waygate" && (await db.prepare("SELECT 1 AS x FROM shop_merchants WHERE npc_id = ?").bind(input.id).first())) return { ok: false, error: "exists" };
     const statements = [
       db.prepare("INSERT INTO npc_spots (npc_id, map_id, kind, name_vi, x, y, sort, enabled, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(input.id, input.mapId, input.kind, input.name, input.x, input.y, input.sort, input.enabled ? 1 : 0, stamp, adminEmail),
       bumpNpcs(db, stamp),

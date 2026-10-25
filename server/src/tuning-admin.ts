@@ -1,4 +1,4 @@
-import { ADMIN_TUNING_SCREENS, CLUSTERS, DEFAULT_TUNING, GUARD_KIND, MAP_REALM, MONSTERS, adminTuningScreen, getPath, setPath, validTuningGroup, type Tuning, type TuningField, type TuningPage } from "@game/shared";
+import { ADMIN_TUNING_SCREENS, CLUSTERS, DEFAULT_TUNING, GUARD_KIND, MAP_REALM, MONSTERS, adminScreenFields, adminTuningScreen, getPath, setPath, validTuningGroup, type Tuning, type TuningField, type TuningPage } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { getTuning, resetTuningCache } from "./tuning";
 
@@ -65,7 +65,7 @@ export async function listTuningGroups(db: D1Database, page: TuningPage = "misc"
       group: g.group,
       title: g.title,
       note: g.note ?? "",
-      fields: g.fields,
+      fields: adminScreenFields(g),
       value: stored ?? clone(DEFAULT_TUNING[g.group]),
       default: clone(DEFAULT_TUNING[g.group]),
       updatedAt: row?.updated_at ?? 0,
@@ -136,7 +136,8 @@ export async function saveTuningGroup(db: D1Database, group: string, posted: unk
   if (!row) return { ok: false, error: "unknown_group" };
   const current = (usable(group, row.value) ?? clone(DEFAULT_TUNING[screen.group])) as Tuning[typeof screen.group];
   const next = clone(current);
-  for (const f of screen.fields) {
+  const fields = adminScreenFields(screen);
+  for (const f of fields) {
     const v = getPath(posted, f.path);
     const typeOk =
       f.kind === "color"
@@ -148,7 +149,7 @@ export async function saveTuningGroup(db: D1Database, group: string, posted: unk
     if (!setPath(next, f.path, v)) return { ok: false, error: "invalid" };
   }
   if (!validTuningGroup(group, next)) return { ok: false, error: "invalid" };
-  const diff = describeChanges(screen.fields, current, next);
+  const diff = describeChanges(fields, current, next);
   if (diff.count === 0) return { ok: false, error: "unchanged" };
   const problems = await groupProblems(db, group, current, next);
   if (problems.length > 0) return { ok: false, error: "invalid", problems };

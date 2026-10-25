@@ -62,13 +62,14 @@ interface Raw {
 }
 
 export async function listAccounts(db: D1Database, query: AccountQuery, now = Date.now()): Promise<{ rows: AccountRow[]; total: number }> {
-  const where = query.q ? "WHERE a.email LIKE ?1 ESCAPE '!' OR c.name LIKE ?1 ESCAPE '!'" : "";
+  // The tombstone accounts that deleted characters were moved to (see characters-admin deleteCharacter) are not accounts.
+  const where = query.q ? "WHERE a.id NOT LIKE 'deleted:%' AND (a.email LIKE ?1 ESCAPE '!' OR c.name LIKE ?1 ESCAPE '!')" : "WHERE a.id NOT LIKE 'deleted:%'";
   const args = query.q ? [like(query.q)] : [];
   const order = `${SORTS[query.sort] ?? SORTS.created} ${query.dir === "asc" ? "ASC" : "DESC"}, a.id`;
   const from = "FROM accounts a LEFT JOIN characters c ON c.account_id = a.id";
   const [page, count] = await Promise.all([
     db
-      .prepare(`SELECT a.id, a.email, a.role, a.created_at, a.ban_until, a.ban_forever, c.name, c.realm, c.stage, (SELECT MAX(s.created_at) FROM sessions s WHERE s.account_id = a.id) AS lastSession ${from} ${where} ORDER BY ${order} LIMIT ${query.size} OFFSET ${(query.page - 1) * query.size}`)
+      .prepare(`SELECT a.id, a.email, a.role, a.created_at, a.ban_until, a.ban_forever, c.name, c.realm, c.stage, COALESCE(a.last_login_at, (SELECT MAX(s.created_at) FROM sessions s WHERE s.account_id = a.id)) AS lastSession ${from} ${where} ORDER BY ${order} LIMIT ${query.size} OFFSET ${(query.page - 1) * query.size}`)
       .bind(...args)
       .all<Raw>(),
     db.prepare(`SELECT COUNT(*) AS n ${from} ${where}`).bind(...args).first<{ n: number }>(),
@@ -86,7 +87,7 @@ export interface AccountDetail {
 
 export async function getAccountDetail(db: D1Database, id: string, now = Date.now()): Promise<AccountDetail | null> {
   const a = await db
-    .prepare("SELECT id, email, role, created_at, ban_until, ban_forever, ban_reason, banned_by, (SELECT COUNT(*) FROM sessions s WHERE s.account_id = accounts.id AND s.expires_at > ?) AS sessions, (SELECT MAX(created_at) FROM sessions s WHERE s.account_id = accounts.id) AS lastSession FROM accounts WHERE id = ?")
+    .prepare("SELECT id, email, role, created_at, ban_until, ban_forever, ban_reason, banned_by, (SELECT COUNT(*) FROM sessions s WHERE s.account_id = accounts.id AND s.expires_at > ?) AS sessions, COALESCE(last_login_at, (SELECT MAX(created_at) FROM sessions s WHERE s.account_id = accounts.id)) AS lastSession FROM accounts WHERE id = ?")
     .bind(now, id)
     .first<{ id: string; email: string; role: string; created_at: number; ban_until: number | null; ban_forever: number; ban_reason: string | null; banned_by: string | null; sessions: number; lastSession: number | null }>();
   if (!a) return null;

@@ -1,4 +1,5 @@
 import { CELLS_PER_TILE, buildFromRecipe, type GridOp, type MapRecipe } from "../../../shared/src/map";
+import { mapRouteProblems } from "../../../shared/src/map-route";
 import { api, h, listView, navigate } from "./kit";
 
 /**
@@ -8,6 +9,7 @@ import { api, h, listView, navigate } from "./kit";
 
 interface Item {
   id: string;
+  name: string | null;
   size: number;
   realm: number | null;
   safe: boolean;
@@ -21,6 +23,7 @@ interface Item {
 
 interface View {
   recipe: MapRecipe;
+  name: string | null;
   updatedAt: number;
   edited: boolean;
   maps: string[];
@@ -76,6 +79,7 @@ export function mapListPage(): HTMLElement {
       listView<Item>({
         columns: [
           { key: "id", label: "Mã", sortable: true, render: (m) => m.id },
+          { key: "name", label: "Tên", render: (m) => m.name ?? "" },
           { key: "size", label: "Kích thước", sortable: true, render: (m) => `${m.size} × ${m.size}` },
           { key: "realm", label: "Cảnh giới", render: (m) => (m.safe ? "Thành an toàn" : String(m.realm ?? "")) },
           { key: "home", label: "Về thành", render: (m) => m.home },
@@ -162,6 +166,7 @@ export function mapNewPage(): HTMLElement {
     const msg = h("div", { class: "msg muted" });
     const problems = h("ul", { class: "err" });
     const id = h("input", { type: "text", maxlength: "24", placeholder: "ma_ban_do (a-z, 0-9, _)" });
+    const name = h("input", { type: "text", maxlength: "40", placeholder: "Tên người chơi đọc" });
     const template = select(ids, ids.includes("forest") ? "forest" : ids[0]!);
     const realm = h("select", null, h("option", { value: "" }, "Thành an toàn (không quái)"), ...[0, 1, 2, 3].map((i) => h("option", { value: String(i) }, `Cảnh giới ${i}`)));
     realm.value = "0";
@@ -169,14 +174,18 @@ export function mapNewPage(): HTMLElement {
     const n = (v: number) => num(v, { step: "1" });
     const gate = { x: n(75), y: n(75), toX: n(45), toY: n(45) };
     const back = { x: n(48), y: n(45), toX: n(75), toY: n(75) };
+    const worldX = h("input", { type: "number", step: "any", placeholder: "x" });
+    const worldY = h("input", { type: "number", step: "any", placeholder: "y" });
     const create = h("button", { type: "button", class: "primary" }, "Tạo bản đồ");
     create.addEventListener("click", async () => {
       create.disabled = true;
       msg.textContent = "Đang tạo...";
       const body = {
         id: id.value.trim(),
+        name: name.value.trim(),
         template: template.value,
         realm: realm.value === "" ? null : Number(realm.value),
+        ...(realm.value === "" && worldX.value !== "" && worldY.value !== "" ? { world: [Number(worldX.value), Number(worldY.value)] } : {}),
         gate: { x: Number(gate.x.value), y: Number(gate.y.value), toX: Number(gate.toX.value), toY: Number(gate.toY.value) },
         back: { map: target.value, x: Number(back.x.value), y: Number(back.y.value), toX: Number(back.toX.value), toY: Number(back.toY.value) },
       };
@@ -191,9 +200,10 @@ export function mapNewPage(): HTMLElement {
       h("a", { href: "/admin/maps" }, "‹ Danh sách bản đồ"),
       h("h2", null, "Tạo bản đồ mới"),
       h("p", { class: "muted" }, "Bản đồ mới bắt đầu từ ground, kích thước, màu (và quái, nếu không phải thành) của bản đồ mẫu, rồi nối hai chiều với một bản đồ đang có. Tọa độ là ô (x, y) của lưới; ô nằm trong khung chơi. Chỗ cổng và điểm đến được khoét thông sẵn; hãy Xem trước để chắc đường đi tới được, sửa bãi quái, vệ binh sau."),
-      h("section", { class: "form" }, h("div", { class: "toolbar" }, h("span", null, "Mã"), id, h("span", null, "Mẫu"), template, realm)),
+      h("section", { class: "form" }, h("div", { class: "toolbar" }, h("span", null, "Mã"), id, h("span", null, "Tên"), name, h("span", null, "Mẫu"), template, realm)),
       h("section", { class: "form" }, h("h3", null, "Cổng trên bản đồ mới"), h("div", { class: "toolbar" }, h("span", null, "Cổng ở ô"), gate.x, gate.y, h("span", null, "→ đến bản đồ"), target, h("span", null, "ô"), gate.toX, gate.toY)),
       h("section", { class: "form" }, h("h3", null, "Cổng ngược trên bản đồ kia"), h("div", { class: "toolbar" }, h("span", null, "Cổng ở ô"), back.x, back.y, h("span", null, "→ đến bản đồ mới, ô"), back.toX, back.toY, h("span", { class: "muted" }, "(ô này cũng là điểm sinh)"))),
+      h("section", { class: "form" }, h("h3", null, "Truyền Tống Trận (chỉ thành an toàn)"), h("div", { class: "toolbar" }, h("span", null, "Vị trí trên bản đồ thế giới"), worldX, worldY, h("span", { class: "muted" }, "Để trống: không là điểm đến. Thanh Vân Thành ở (0, 0), Thiên Hà Thành ở (100, 0); phí tính theo khoảng cách. Muốn đi từ thành mới ra thì thêm NPC loại Truyền Tống Trận ở màn NPC."))),
       h("div", { class: "toolbar" }, create),
       msg,
       problems,
@@ -291,6 +301,7 @@ function form(view: View): HTMLElement {
     }),
     ops: [...opRows.children].map((row) => (row as unknown as { read: () => GridOp }).read()),
     ...(r.content ? { content: readContent() } : {}),
+    ...(r.safe && !view.code ? { world: wx.value !== "" && wy.value !== "" ? ([Number(wx.value), Number(wy.value)] as [number, number]) : undefined } : {}),
   });
 
   // Monster groups, guards and the boss spot (tile units).
@@ -347,19 +358,41 @@ function form(view: View): HTMLElement {
     show("Đang dựng...", "muted");
     setTimeout(() => {
       try {
-        drawPreview(canvas, collect());
-        show("Xanh = điểm sinh, đỏ = cổng; ô tối = vật cản. Chưa lưu.", "muted");
+        const recipe = collect();
+        drawPreview(canvas, recipe);
+        const unreachable = mapRouteProblems(recipe);
+        if (unreachable.length > 0) show("Xanh = điểm sinh, đỏ = cổng; ô tối = vật cản. Chưa lưu. Có chỗ không tới được:", "err", unreachable);
+        else show("Xanh = điểm sinh, đỏ = cổng; ô tối = vật cản. Mọi cổng, chỗ boss và bãi quái đều có đường đi từ điểm sinh. Chưa lưu.", "muted");
       } catch (err) {
         show(`Không dựng được: ${String(err)}`, "err");
       }
     }, 20);
   });
 
+  const wx = h("input", { type: "number", step: "any", placeholder: "x" });
+  const wy = h("input", { type: "number", step: "any", placeholder: "y" });
+  wx.value = r.world ? String(r.world[0]) : "";
+  wy.value = r.world ? String(r.world[1]) : "";
+  const nameInput = h("input", { type: "text", maxlength: "40", placeholder: "Tên người chơi đọc" });
+  nameInput.value = view.name ?? "";
   const save = h("button", { type: "button", class: "primary" }, "Lưu");
   save.addEventListener("click", async () => {
     save.disabled = true;
+    show("Đang kiểm đường đi...", "muted");
+    await new Promise((r) => setTimeout(r, 20));
+    let unreachable: string[] = [];
+    try {
+      unreachable = mapRouteProblems(collect()); // the server does not build the grid, so this check lives here only
+    } catch (err) {
+      unreachable = [`không dựng được để kiểm: ${String(err)}`];
+    }
+    if (unreachable.length > 0 && !window.confirm(`Máy chủ không tự kiểm đường đi, và ở đây có chỗ không tới được từ điểm sinh:\n- ${unreachable.join("\n- ")}\nVẫn lưu?`)) {
+      save.disabled = false;
+      show("Chưa lưu.", "err", unreachable);
+      return;
+    }
     show("Đang lưu...", "muted");
-    const res = await api<{ error?: string; problems?: string[] }>("/api/admin/maps/save", { method: "POST", body: { recipe: collect(), updatedAt: view.updatedAt } });
+    const res = await api<{ error?: string; problems?: string[] }>("/api/admin/maps/save", { method: "POST", body: { recipe: collect(), updatedAt: view.updatedAt, name: nameInput.value.trim() === "" ? null : nameInput.value.trim() } });
     save.disabled = false;
     if (res.status === 200) return navigate("/admin/maps");
     const e = res.data.error ?? "";
@@ -390,6 +423,8 @@ function form(view: View): HTMLElement {
     h("a", { href: "/admin/maps" }, "‹ Danh sách bản đồ"),
     h("h2", null, `Bản đồ ${r.id}`),
     h("p", { class: "muted" }, `Cố định: kích thước ${r.size} × ${r.size}, khung chơi ${r.rect.halfW} × ${r.rect.halfH}, ${r.safe ? "thành an toàn" : `cảnh giới ${r.realm}`}. Bãi quái, vệ binh và chỗ boss sửa ở mục dưới (boss của bản đồ chọn ở Quái / BOSS). NPC chỉnh ở mục NPC.`),
+    h("section", { class: "form" }, h("h3", null, "Tên hiển thị"), h("div", { class: "toolbar" }, nameInput, h("span", { class: "muted" }, "Để trống: bản đồ của code dùng tên có sẵn, bản đồ mới hiện mã. Người chơi thấy tên mới khi vào lại game.")))  ,
+    ...(r.safe && !view.code ? [h("section", { class: "form" }, h("h3", null, "Truyền Tống Trận"), h("div", { class: "toolbar" }, h("span", null, "Vị trí trên bản đồ thế giới"), wx, wy, h("span", { class: "muted" }, "Để trống: thành này không là điểm đến. Người chơi thấy khi vào lại game.")))] : []),
     h("section", { class: "form" }, h("h3", null, "Màu"), h("div", { class: "toolbar" }, h("span", null, "Nền A"), colors[0]!.i, h("span", null, "Nền B"), colors[1]!.i, h("span", null, "Vật cản"), colors[2]!.i)),
     h("section", { class: "form" }, h("h3", null, "Điểm sinh và thành về khi chết"), h("div", { class: "toolbar" }, h("span", null, "Sinh tại ô"), spawnX, spawnY, h("span", null, "Về thành"), home)),
     h("section", { class: "form" }, h("h3", null, "Cổng (ô x, ô y → bản đồ, ô đến x, ô đến y)"), portalRows, addPortalBtn),

@@ -1,4 +1,4 @@
-import { CODE_MAP_IDS, MAP_IDS, fullCodeMapRecipe, setMapRecipe, validMapRecipe, type CodeMapId, type MapRecipe } from "@game/shared";
+import { CODE_MAP_IDS, MAP_IDS, fullCodeMapRecipe, setMapName, setMapRecipe, validMapRecipe, type CodeMapId, type MapRecipe } from "@game/shared";
 
 /**
  * The maps in D1 (table `map_recipes`, migration 0043): seeded from the code's maps the first time they are read (only maps that have no row; an edited row is
@@ -14,6 +14,8 @@ export interface MapRow {
   updated_at: number;
   /** Null while the row is the seed: a map nobody edited is the code's (so a change to the code builders still reaches it, and the clients are sent nothing). */
   updated_by: string | null;
+  /** The display name (kept apart from `def`, see migration 0046); null = none, the client's own name for a map of the code. */
+  name_vi: string | null;
 }
 
 async function seed(db: D1Database, missing: CodeMapId[]): Promise<void> {
@@ -37,11 +39,12 @@ async function load(db: D1Database): Promise<number> {
   if (missing.length > 0) await seed(db, missing);
   const [versionRow, rows] = await Promise.all([
     db.prepare("SELECT version FROM config_versions WHERE name = 'maps'").first<{ version: number }>(),
-    db.prepare("SELECT map_id, def, updated_at, updated_by FROM map_recipes").all<MapRow>(),
+    db.prepare("SELECT map_id, def, updated_at, updated_by, name_vi FROM map_recipes").all<MapRow>(),
   ]);
   const seen = new Set<string>();
   for (const row of rows.results) {
     seen.add(row.map_id);
+    setMapName(row.map_id, row.name_vi); // whether or not the layout was edited
     if (row.updated_by === null) {
       if (true) setMapRecipe(null, row.map_id);
       continue;
