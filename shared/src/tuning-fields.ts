@@ -17,7 +17,7 @@ export interface TuningField {
 }
 
 /** The admin screen a group is shown on: "misc" (Chỉ số khác), "realms" (Cảnh giới), "potential" (Chỉ số tiềm năng) or "talents" (Thiên phú: linh căn). */
-export type TuningPage = "misc" | "realms" | "potential" | "talents" | "monsters" | "boss";
+export type TuningPage = "misc" | "realms" | "potential" | "talents" | "monsters" | "boss" | "npcs";
 
 export interface TuningScreenGroup {
   group: TuningGroup;
@@ -414,7 +414,63 @@ export const MONSTER_SCREENS: readonly TuningScreenGroup[] = [
   },
 ];
 
-export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [...BASE_SCREENS, ...MONSTER_SCREENS];
+const PATH_NAMES: ReadonlyArray<[string, string]> = [["kiem", "Kiếm tu"], ["thuat", "Thuật tu"], ["dan", "Đan tu"]];
+
+/** The numbers of the NPCs that are not a stock or a position (screen "NPC · Con số"): the blacksmith's costs and the path masters' fees and bonuses. */
+const NPC_SCREENS: readonly TuningScreenGroup[] = [
+  {
+    group: "enhanceCost",
+    page: "npcs",
+    title: "Thợ Rèn: chi phí nâng cấp",
+    note: "Linh Thạch cơ bản của một bước nâng cấp, theo cảnh giới của món (nhân với hệ số của từng cấp trong bảng nâng cấp). Giới hạn cộng dồn là phần tỉ lệ thêm tối đa tích lũy sau các lần thất bại.",
+    fields: [
+      ...REALMS.map((r, i): TuningField => ({ path: `linhBase.${i}`, label: `Linh Thạch cơ bản, món ${r.nameVi}`, kind: "int", unit: "Linh Thạch" })),
+      { path: "maxPityPct", label: "Giới hạn tỉ lệ cộng dồn do thất bại", kind: "num", unit: "%" },
+    ],
+  },
+  {
+    group: "refine",
+    page: "npcs",
+    title: "Thợ Rèn: Tinh luyện",
+    fields: [
+      { path: "materials", label: "Số nguyên liệu Tinh Hoa mỗi lần", kind: "int" },
+      { path: "linhShare", label: "Linh Thạch mỗi lần (phần của Linh Thạch cơ bản)", kind: "num" },
+      { path: "statChance", label: "Xác suất mỗi chỉ số được tăng", kind: "frac" },
+    ],
+  },
+  {
+    group: "keepLevel",
+    page: "npcs",
+    title: "Thợ Rèn: Hộ Cấp Phù",
+    fields: [{ path: "priceTienNgoc", label: "Giá Hộ Cấp Phù", kind: "int", unit: "Tiên Ngọc" }],
+  },
+  {
+    group: "paths",
+    page: "npcs",
+    title: "Đạo Sư: phí đổi và bỏ hướng tu",
+    fields: [
+      { path: "swapCostBase", label: "Phí đổi chủ tu (cơ bản, nhân theo cấp hướng tu)", kind: "int", unit: "Linh Thạch" },
+      { path: "dropCostBase", label: "Phí bỏ một hướng (cơ bản, nhân theo cấp hướng tu)", kind: "int", unit: "Linh Thạch" },
+    ],
+  },
+  {
+    group: "pathBonuses",
+    page: "npcs",
+    title: "Đạo Sư: thưởng chỉ số của chủ tu",
+    note: "Phần trăm cộng thêm khi hướng này là chủ tu (phụ tu nhận một nửa).",
+    fields: PATH_NAMES.flatMap(([id, name]): TuningField[] => [
+      { path: `${id}.attackPct`, label: `${name}: công`, kind: "num", unit: "%" },
+      { path: `${id}.defensePct`, label: `${name}: thủ`, kind: "num", unit: "%" },
+      { path: `${id}.maxMpPct`, label: `${name}: linh lực tối đa`, kind: "num", unit: "%" },
+      { path: `${id}.weaponSkillPct`, label: `${name}: sát thương kỹ năng cầm vũ khí`, kind: "num", unit: "%" },
+      { path: `${id}.elementSkillPct`, label: `${name}: sát thương kỹ năng hệ`, kind: "num", unit: "%" },
+      { path: `${id}.potionHealPct`, label: `${name}: hồi máu từ đan`, kind: "num", unit: "%" },
+      { path: `${id}.masteryPct`, label: `${name}: điểm thuần thục`, kind: "num", unit: "%" },
+    ]),
+  },
+];
+
+export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [...BASE_SCREENS, ...MONSTER_SCREENS, ...NPC_SCREENS];
 
 export function adminTuningScreen(group: string): TuningScreenGroup | undefined {
   return ADMIN_TUNING_SCREENS.find((g) => g.group === group);

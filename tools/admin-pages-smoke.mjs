@@ -122,7 +122,7 @@ check("the version was bumped and the log has the change", verOf() === v0 + 1 &&
 check("a save with the old token is 409", (await post("/api/admin/tuning", { group: "waygate", updatedAt: wg.updatedAt, value: { base: 888, perUnit: wg.value.perUnit } }, adminCookie)).status === 409);
 const wg2 = (await json("/api/admin/tuning", adminCookie)).data.groups.find((g) => g.group === "waygate");
 check("an invalid or unchanged save is 400", (await post("/api/admin/tuning", { group: "waygate", updatedAt: wg2.updatedAt, value: { base: -5, perUnit: 1 } }, adminCookie)).status === 400 && (await post("/api/admin/tuning", { group: "waygate", updatedAt: wg2.updatedAt, value: wg2.value }, adminCookie)).status === 400);
-check("an unknown group is 404", (await post("/api/admin/tuning", { group: "paths", updatedAt: 0, value: {} }, adminCookie)).status === 404);
+check("an unknown group is 404", (await post("/api/admin/tuning", { group: "itemValue", updatedAt: 0, value: {} }, adminCookie)).status === 404);
 const restore = await post("/api/admin/tuning", { group: "waygate", updatedAt: wg2.updatedAt, value: origWg }, adminCookie);
 check("the original numbers are restored", restore.status === 200 && restore.data.groups.find((g) => g.group === "waygate").value.base === origWg.base);
 

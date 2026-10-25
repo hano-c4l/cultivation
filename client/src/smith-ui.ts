@@ -20,6 +20,7 @@ import {
   type EnhanceLevelDef,
   type EquipSlot,
   type EquippedItem,
+  type NpcView,
   type SortMode,
 } from "@game/shared";
 import { elementDot, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
@@ -34,7 +35,7 @@ export interface SmithUi {
   setSheet(sheet: CharacterSheet): void;
   setEquipped(items: EquippedItem[]): void;
   /** The rules and the extra chance each piece has built up. */
-  setRules(npc: string, levels: EnhanceLevelDef[], pity: Record<string, number>): void;
+  setRules(npc: string, levels: EnhanceLevelDef[], pity: Record<string, number>, tabs: NpcView[]): void;
   /** The extra chance one piece has after an upgrade attempt. */
   setPity(itemId: string, pity: number): void;
   /** The outcome of an upgrade or a refining: shown as a line at the top of the window. */
@@ -62,7 +63,7 @@ type Mode = "enhance" | "refine" | "repair";
  * them: "Cường hoá" (upgrade +1 to +10) or "Tinh luyện" (raise stats towards their maximum). It also repairs worn-down durability. It only sends
  * the piece and the choice; the server prices and decides.
  */
-export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagItem[], getWallet: () => { linh_thach: number }): SmithUi {
+export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagItem[], getWallet: () => { linh_thach: number }, switchView: (npc: string, view: NpcView) => void): SmithUi {
   const panel = el("div");
   panel.id = "smith-panel";
   panel.hidden = true;
@@ -70,6 +71,7 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
   registerWindow("smith", panel, 5);
 
   let npc = "";
+  let npcTabs: NpcView[] = [];
   let worn: EquippedItem[] = [];
   let pity: Record<string, number> = {};
   let protect = false;
@@ -165,6 +167,15 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
       panel.append(el("div", "muted", banned));
       return;
     }
+    // A blacksmith that also trades has a second tab: its goods (another window).
+    if (npcTabs.includes("shop")) {
+      const row = el("div", "eq-tabs");
+      row.append(el("button", "active", vi.npcTabs.smith));
+      const trade = el("button", undefined, vi.npcTabs.shop);
+      trade.onclick = () => switchView(npc, "shop");
+      row.append(trade);
+      panel.append(row);
+    }
     if (flash) panel.append(el("div", flash.ok ? "shop-flash" : "shop-flash smith-bad", flash.text));
 
     // What is done: one of three radio buttons (choosing one clears the other).
@@ -258,10 +269,11 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
   const ui: SmithUi = {
     open(id) {
       npc = id;
+      npcTabs = [];
       flash = null;
       banned = "";
       panel.hidden = false;
-      send({ t: "npc_open", npc: id });
+      send({ t: "npc_open", npc: id, view: "smith" });
       render();
     },
     close() {
@@ -274,10 +286,11 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
       worn = items;
       render();
     },
-    setRules(id, levels, p) {
+    setRules(id, levels, p, tabs) {
       if (id !== npc) return;
       setEnhanceTable(levels);
       pity = p;
+      npcTabs = tabs;
       render();
     },
     setPity(itemId, value) {

@@ -138,9 +138,10 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { npcTabs, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
+import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
 import { getNpcs } from "./npcs";
 import { saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
@@ -665,6 +666,9 @@ export class MapRoom extends DurableObject<Env> {
       case "smith_refine":
       case "smith_repair":
         return this.handleSmith(ws, state, msg);
+      case "brew_start":
+      case "brew_collect":
+        return this.handleBrew(ws, state, msg);
       case "waygate_go":
         return void this.startWaygate(ws, state, msg);
       case "npc_open":
@@ -2232,16 +2236,19 @@ export class MapRoom extends DurableObject<Env> {
         // Opening any NPC counts as talking to it (a talk quest may be waiting for that).
         await this.noteTalk(id, npcId).catch((err) => console.error("quest talk failed", id, err));
         if (spot.kind === "quest") return this.sendQuests(ws, id, npcId);
-        if (spot.kind === "smith") return this.sendSmith(ws, id, npcId);
+        if (spot.kind === "smith" && msg.view !== "shop") return this.sendSmith(ws, id, npcId);
         if (spot.kind === "waygate") return this.sendWaygate(ws, state.mapId, npcId);
+        if (spot.kind === "alchemist" && msg.view === "brew") return this.sendBrew(ws, id, npcId);
       }
-      if (spot.kind !== "merchant") return;
+      // The blacksmith and the alchemist deal in goods too when they have a stock (a merchant record under their id): the shop tab of their window.
+      if (spot.kind !== "merchant" && spot.kind !== "alchemist" && spot.kind !== "smith") return;
       const wearer = await this.wearerOf(id);
       if (!wearer) return;
       // The merchants are data (D1): load them before pricing anything (the registry is state of this isolate).
       const merchant = (await getMerchants(this.env.DB))[npcId];
       if (!merchant || merchant.mapId !== state.mapId) return;
-      const sendStock = async () => this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, npcId, await getPurchased(this.env.DB, id, npcId, Date.now())), tuning: await getTuning(this.env.DB), merchant });
+      const sendStock = async () =>
+        this.send(ws, { t: "shop", npc: npcId, left: stockLeft(wearer.gender, npcId, await getPurchased(this.env.DB, id, npcId, Date.now())), tuning: await getTuning(this.env.DB), merchant, tabs: npcTabs(spot.kind, true) });
       if (msg.t === "npc_open") return sendStock();
       if (msg.t === "shop_buy") return this.shopBuy(ws, id, wearer.gender, npcId, msg.offer, msg.qty, sendStock);
       if (msg.t === "shop_sell_many") return this.shopSellMany(ws, id, npcId, msg.cells);
@@ -2391,8 +2398,91 @@ export class MapRoom extends DurableObject<Env> {
 
   /** The blacksmith's window: the upgrade rules and the bonus chance each of the character's pieces has built up. */
   private async sendSmith(ws: WebSocket, id: string, npcId: string): Promise<void> {
-    const [levels, pity, tune] = await Promise.all([getEnhanceTable(this.env.DB), loadPity(this.env.DB, id), getTuning(this.env.DB)]);
-    this.send(ws, { t: "smith", npc: npcId, levels, pity, tuning: tune });
+    const [levels, pity, tune, merchants] = await Promise.all([getEnhanceTable(this.env.DB), loadPity(this.env.DB, id), getTuning(this.env.DB), getMerchants(this.env.DB)]);
+    this.send(ws, { t: "smith", npc: npcId, levels, pity, tuning: tune, tabs: npcTabs("smith", merchants[npcId] !== undefined) });
+  }
+
+  /** The alchemist's brewing tab: the brewings this character has going (waiting or ready) and, in the tuning, the recipes. */
+  private async sendBrew(ws: WebSocket, id: string, npcId: string): Promise<void> {
+    const [jobs, tune] = await Promise.all([listBrewJobs(this.env.DB, id), getTuning(this.env.DB)]);
+    this.send(ws, { t: "brew", npc: npcId, jobs, tuning: tune, tabs: npcTabs("alchemist", true), now: Date.now() });
+  }
+
+  /** Alchemist commands: start a brewing (materials and Linh Thạch taken now) and collect a finished one. Same checks as the other NPCs. */
+  private handleBrew(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "brew_start" | "brew_collect" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(getMap(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "alchemist") return this.send(ws, { t: "inv_error", reason: "far" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "inv_error", reason: "murderer" });
+    if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      if (msg.t === "brew_collect") return this.brewCollect(ws, id, msg.npc, msg.job);
+      return this.brewStart(ws, id, msg.npc, msg.recipe);
+    });
+  }
+
+  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string): Promise<void> {
+    const cfg = (await getTuning(this.env.DB)).alchemy;
+    const recipe = cfg.recipes.find((r) => r.id === recipeId && r.enabled);
+    const usable = (item: string) => {
+      const def = getItemDef(item);
+      return def !== undefined && def.disabled !== true;
+    };
+    if (!recipe || !usable(recipe.output) || !recipe.inputs.every((i) => usable(i.item))) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    if ((await listBrewJobs(this.env.DB, id)).length >= cfg.maxJobs) return this.send(ws, { t: "inv_error", reason: "brew_limit" });
+    const bag = await this.getBag(id);
+    const ops: BagOp[] = [];
+    for (const input of recipe.inputs) {
+      const taken = planConsume(bag.items, input.item, input.qty);
+      if (!taken) return this.send(ws, { t: "inv_error", reason: "brew_mats" });
+      ops.push(...taken);
+    }
+    const now = Date.now();
+    const extra = [...startBrewStatements(this.env.DB, id, npcId, recipe, crypto.randomUUID(), cfg.maxJobs, now), ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now))];
+    try {
+      let balance: number | undefined;
+      if (recipe.linhThach > 0) {
+        const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -recipe.linhThach, reason: `brew:${recipe.id}`, actor: "system" }, extra);
+        if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+        if (r.status !== "applied") return this.resync(ws, id, "busy");
+        balance = r.balance;
+      } else await this.env.DB.batch(extra);
+      const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
+      const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+      this.bags.set(id, after);
+      this.sendBagDelta(id, bag, after);
+      if (balance !== undefined) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance });
+      await this.sendBrew(ws, id, npcId);
+    } catch (err) {
+      if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("brew start failed", id, err);
+      this.bags.delete(id);
+      return this.resync(ws, id, "busy");
+    }
+  }
+
+  private async brewCollect(ws: WebSocket, id: string, npcId: string, jobId: string): Promise<void> {
+    const job = await getBrewJob(this.env.DB, id, jobId);
+    if (!job) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    const now = Date.now();
+    if (job.readyAt > now) return this.send(ws, { t: "inv_error", reason: "brew_wait", retryMs: job.readyAt - now });
+    let full = false;
+    const res = await this.mutateBag(id, (bag) => {
+      const ops = planAdd(bag.items, bag.tabs, job.output, job.qty, () => crypto.randomUUID());
+      if (!ops) {
+        full = true;
+        return null;
+      }
+      return { ops, extra: collectBrewStatements(this.env.DB, id, job.id, now) };
+    });
+    if (!res.ok) return full ? this.send(ws, { t: "inv_error", reason: "full" }) : this.resync(ws, id, "busy");
+    this.sendBagDelta(id, res.before, res.after);
+    this.sendToCharacter(id, { t: "shop_ok", op: "buy", item: job.output, qty: job.qty, total: 0 });
+    await this.sendBrew(ws, id, npcId);
   }
 
   /** Blacksmith commands: upgrading a piece and repairing. Same checks as the merchant (close enough, no murderers, rate limit). */

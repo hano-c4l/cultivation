@@ -21,7 +21,7 @@ interface Group {
   stored: boolean;
 }
 
-type Page = "misc" | "realms" | "potential" | "talents" | "monsters" | "boss";
+type Page = "misc" | "realms" | "potential" | "talents" | "monsters" | "boss" | "npcs";
 
 interface Setting {
   key: string;
@@ -248,6 +248,7 @@ const PAGE_NOTES: Record<Page, string> = {
   monsters:
     "Hạng quái và rơi đồ. Số của từng loài quái chỉnh ở tab Loài quái; bảng rơi vật phẩm ở tab Bảng rơi. Số mới áp cho quái sinh ra sau đó (quái đang sống giữ số cũ); rơi đồ áp cho lần giết kế tiếp sau tối đa 30 giây. Tăng xác suất rơi và hồi sinh nhanh hơn làm tăng số dòng ghi D1 (hạn mức Free 100.000 mỗi ngày).",
   boss: "BOSS bản đồ và vệ binh. Loài boss chỉ chọn được trong các loài không có trong bãi quái; không đổi được khi boss đang có mặt trên bản đồ. Sức mạnh boss và vệ binh dùng cùng hệ số chỉ số tiềm năng (màn Chỉ số tiềm năng). Boss tính lại khi xuất hiện, số mới áp từ lần sau.",
+  npcs: "Con số của Thợ Rèn (chi phí nâng cấp, Tinh luyện, Hộ Cấp Phù) và của Đạo Sư (phí đổi, bỏ hướng tu, thưởng chỉ số). Máy chủ dùng số mới sau tối đa 30 giây. Bảng cấp nâng cấp, nguyên liệu và tỉ lệ của từng cấp (bảng enhance_levels) chưa có màn (3g-b). Các tab khác của mục NPC: danh sách NPC, công thức luyện đan.",
   potential: "Máy chủ dùng hệ số mới sau tối đa 30 giây cho người vào game sau đó. Người đang online giữ chỉ số cũ tới khi vào lại game, lên tầng hoặc đổi trang bị.",
 };
 

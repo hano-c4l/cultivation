@@ -31,8 +31,8 @@ export interface Portal {
 /** A non-player character standing at a fixed spot. Names and talk live in the client locale. */
 export interface NpcSpot {
   id: string;
-  /** What the NPC does: sells and buys (merchant), gives quests (quest), upgrades gear (smith) or carries one to another town (waygate: a teleport array drawn on the ground, nothing to stand beside). */
-  kind: "merchant" | "quest" | "smith" | "waygate";
+  /** What the NPC does: sells and buys (merchant), gives quests (quest), upgrades gear (smith), sells and brews pills (alchemist) or carries one to another town (waygate: a teleport array drawn on the ground, nothing to stand beside). */
+  kind: "merchant" | "quest" | "smith" | "waygate" | "alchemist";
   /** Position in tile units (continuous). */
   x: number;
   y: number;
@@ -44,6 +44,8 @@ export interface NpcSpot {
 export const NPC_NAMES_VI: Readonly<Record<string, string>> = {
   merchant: "Thương nhân",
   smith: "Thợ Rèn",
+  alchemist: "Đan Sư",
+  alchemist2: "Đan Sư",
   elder: "Trưởng Lão",
   merchant2: "Thương nhân",
   smith2: "Thợ Rèn",
@@ -54,7 +56,7 @@ export const NPC_NAMES_VI: Readonly<Record<string, string>> = {
   path_thuat: "Thuật Đạo Sư",
   path_dan: "Đan Đạo Sư",
 };
-export const NPC_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "waygate"];
+export const NPC_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "waygate", "alchemist"];
 
 /** How close (tiles) a player must be for the server to accept a command to an NPC. */
 export const NPC_INTERACT_RADIUS = 3;
@@ -373,6 +375,7 @@ function townGround(g: Grid): void {
   g.rect(33 + o, 20 + o, 33.3 + o, 28.5 + o, false); // thin fence, not tile aligned
   g.disc(23.5 + o, 17.5 + o, 0.4, false); // the merchant's stall: nobody stands on the NPC
   g.disc(16.5 + o, 17.5 + o, 0.4, false); // the quest giver
+  g.disc(27.5 + o, 17.5 + o, 0.4, false); // the alchemist
   for (const x of [22.5, 25.5, 28.5]) g.disc(x + o, 24.5 + o, 0.4, false); // the three hướng tu masters
   // New ground around it: buildings in the four corners of the rectangle and a few more pillars.
   g.srect(-40, -17, -30, -9, false);
@@ -408,6 +411,7 @@ function buildTown(): MapData {
       { id: "merchant", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
       { id: "elder", kind: "quest", x: 16.5 + o, y: 17.5 + o },
       { id: "smith", kind: "smith", x: 15.5 + o, y: 20.5 + o },
+      { id: "alchemist", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
       { id: "waygate", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
       { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
       { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
@@ -454,6 +458,7 @@ function buildTown2(): MapData {
       { id: "merchant2", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
       { id: "elder2", kind: "quest", x: 16.5 + o, y: 17.5 + o },
       { id: "smith2", kind: "smith", x: 15.5 + o, y: 20.5 + o },
+      { id: "alchemist2", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
       { id: "waygate2", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
       // The same three masters as the first town, with the same ids: their quests and rewards are the same wherever they stand.
       { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
@@ -582,7 +587,7 @@ const BUILDERS: Readonly<Record<MapId, () => MapData>> = {
 const built = new Map<MapId, MapData>();
 
 /** Every NPC id on any map (quests name their giver and talk targets from this set; a test checks it against the maps). */
-export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2"]);
+export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "alchemist", "alchemist2", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2"]);
 
 export function getMap(id: MapId): MapData {
   let map = built.get(id);

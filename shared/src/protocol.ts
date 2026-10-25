@@ -10,6 +10,7 @@ import type { ConstitutionCatalog } from "./constitutions";
 import type { Currency, Wallet } from "./economy";
 import type { EnhanceLevelDef } from "./smith";
 import type { Tuning } from "./tuning";
+import type { BrewJobView } from "./alchemy";
 import type { MerchantDef } from "./merchants";
 import type { NpcSpot } from "./map";
 import type { ItemOverlay } from "./items";
@@ -47,6 +48,9 @@ export const CHAT_TARGET_MAX_LENGTH = 32;
  * announcement to everyone shown in the system tab (system, only accepted from admins).
  */
 export type ChatChannel = "world" | "map" | "whisper" | "system";
+
+/** The windows one NPC can open (tabs of the same NPC): buying and selling, the blacksmith's work, brewing pills. */
+export type NpcView = "shop" | "smith" | "brew";
 export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper", "system"];
 /** How far (tiles) the client-claimed start tile may differ from the server position and still be trusted. */
 export const MAX_DESYNC_TILES = 3;
@@ -125,7 +129,9 @@ export type ClientMessage =
   /** Drop a path (its skills go with it); costs Linh Thạch by its level, double for the chủ tu. */
   | { t: "path_drop"; path: PathId }
   /** Talk to an NPC (the server checks the distance); a merchant answers with its stock left. */
-  | { t: "npc_open"; npc: string }
+  | { t: "npc_open"; npc: string; view?: NpcView }
+  | { t: "brew_start"; npc: string; recipe: string }
+  | { t: "brew_collect"; npc: string; job: string }
   /** Use the teleport array of a town to go to another main town (the server prices the trip and takes the Linh Thạch when the channel ends). */
   | { t: "waygate_go"; npc: string; to: string }
   /** Buy `qty` of one of the merchant's offers (named by id, priced by the server). */
@@ -242,7 +248,7 @@ export type ServerMessage =
   /** Sent on the chat socket when a gift was sent to the player: the client answers with `mail_refresh` on the game socket. */
   | { t: "mail_new" }
   /** The merchant's stock for today: units this character can still buy of each offer that has a daily limit. */
-  | { t: "shop"; npc: string; left: Record<string, number>; tuning: Tuning; merchant: MerchantDef }
+  | { t: "shop"; npc: string; left: Record<string, number>; tuning: Tuning; merchant: MerchantDef; tabs: NpcView[] }
   /** A trade went through: `total` Linh Thạch paid (buy) or received (sell). */
   | { t: "shop_ok"; op: "buy" | "sell"; item: string; qty: number; total: number }
   /** A multi-item sale went through: `count` stacks sold for `total` Linh Thạch. */
@@ -286,7 +292,7 @@ export type ServerMessage =
   | { t: "waygate"; npc: string; dests: WaygateDest[] }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
   | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "money" | "other" }
-  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden"; retryMs?: number }
+  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden" | "brew_mats" | "brew_limit" | "brew_wait"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -310,7 +316,8 @@ export type ServerMessage =
   /** A repair was paid for. */
   | { t: "repaired"; cost: number }
   /** The blacksmith's window: the upgrade rules and the extra success chance (percent) each of your pieces has built up from failures. */
-  | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number>; tuning: Tuning }
+  | { t: "brew"; npc: string; jobs: BrewJobView[]; tuning: Tuning; tabs: NpcView[]; now: number }
+  | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number>; tuning: Tuning; tabs: NpcView[] }
   /** The outcome of a refining: what each stat gained (empty: nothing rose this time). */
   | { t: "smith_refined"; id: string; gains: Record<string, number> }
   /** The outcome of an upgrade: the piece, whether it worked, its level now, whether a level was lost or a Hộ Cấp Phù used, and its new bonus chance. */
@@ -475,7 +482,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "smith_repair":
       return isNpcId(m.npc) && (m.slot === "all" || isEquipSlot(m.slot)) ? { t: "smith_repair", npc: m.npc, slot: m.slot as EquipSlot | "all" } : null;
     case "npc_open":
-      return isNpcId(m.npc) ? { t: "npc_open", npc: m.npc } : null;
+      if (!isNpcId(m.npc)) return null;
+      if (m.view === undefined) return { t: "npc_open", npc: m.npc };
+      return m.view === "shop" || m.view === "smith" || m.view === "brew" ? { t: "npc_open", npc: m.npc, view: m.view } : null;
+    case "brew_start":
+      return isNpcId(m.npc) && typeof m.recipe === "string" && /^[a-z0-9_]{1,40}$/.test(m.recipe) ? { t: "brew_start", npc: m.npc, recipe: m.recipe } : null;
+    case "brew_collect":
+      return isNpcId(m.npc) && typeof m.job === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.job) ? { t: "brew_collect", npc: m.npc, job: m.job } : null;
     case "waygate_go":
       return isNpcId(m.npc) && isWaygateTown(m.to) ? { t: "waygate_go", npc: m.npc, to: m.to } : null;
     case "shop_buy":

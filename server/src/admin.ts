@@ -13,6 +13,9 @@ import { listLoot, listSpecies, saveLoot, saveSpecies } from "./monsters-admin";
 import { listSkills, saveSkillOverride } from "./skills-admin";
 import { deleteItem, listItems, saveItem } from "./items-admin";
 import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
+import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
+import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
+import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
 
@@ -264,7 +267,7 @@ export async function adminSettings(request: Request, env: Env): Promise<Respons
 export async function adminTuning(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
-  const pageOf = (raw: unknown): TuningPage => (raw === "realms" || raw === "potential" || raw === "talents" || raw === "monsters" || raw === "boss" ? raw : "misc");
+  const pageOf = (raw: unknown): TuningPage => (raw === "realms" || raw === "potential" || raw === "talents" || raw === "monsters" || raw === "boss" || raw === "npcs" ? raw : "misc");
   if (request.method === "GET") return json({ groups: await listTuningGroups(env.DB, pageOf(new URL(request.url).searchParams.get("page"))) });
   const body = await readJson(request);
   if (typeof body?.group !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
@@ -472,5 +475,75 @@ export async function adminLootSave(request: Request, env: Env): Promise<Respons
   const result = await saveLoot(env.DB, session.email, body.loot, body.token);
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, MONSTER_ERROR_STATUS[result.error] ?? 400);
   console.log("loot saved", session.accountId);
+  return json({ ok: true, updatedAt: result.updatedAt });
+}
+
+const NPC_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, locked: 409, in_use: 409, exists: 409, version_conflict: 409, busy: 409, not_found: 404 };
+
+/** The NPCs for the admin screen: where each stands, its kind, whether it has a stock and which quests name it; plus the maps and kinds the form offers. */
+export async function adminNpcs(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json({ npcs: await listNpcs(env.DB), meta: npcMeta() });
+}
+
+/** Saves an NPC (POST `{npc, isNew, updatedAt}`); 409 when someone else saved it first or it is still named by a quest (`in_use` with the list). */
+export async function adminNpcSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 8 * 1024);
+  if (!body || typeof body.npc !== "object" || typeof body.isNew !== "boolean") return errorResponse("invalid_body", 400);
+  const result = await saveNpc(env.DB, session.email, body.npc, body.isNew, typeof body.updatedAt === "number" ? body.updatedAt : 0);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
+  console.log("npc saved", session.accountId, (body.npc as { id?: string }).id);
+  return json({ ok: true, updatedAt: result.updatedAt });
+}
+
+export async function adminNpcDelete(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 4 * 1024);
+  if (typeof body?.mapId !== "string" || typeof body?.id !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await deleteNpc(env.DB, session.email, body.mapId, body.id, body.updatedAt);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
+  console.log("npc deleted", session.accountId, body.id);
+  return json({ ok: true });
+}
+
+/** A trading NPC's record (GET `?npc=`): buying rate, kinds bought, stock rules, and what the form's pickers need. */
+export async function adminMerchant(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const npc = url.searchParams.get("npc") ?? "";
+  const view = await getMerchantAdmin(env.DB, npc);
+  if (!view) return errorResponse("not_found", 404);
+  return json({ ...view, meta: await merchantMeta(env.DB) });
+}
+
+export async function adminMerchantSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 256 * 1024);
+  if (!body) return errorResponse("invalid_body", 400);
+  const result = await saveMerchant(env.DB, session.email, body);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
+  console.log("merchant saved", session.accountId, body.npc);
+  return json({ ok: true, updatedAt: result.updatedAt });
+}
+
+export async function adminAlchemy(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  return json(await getAlchemyAdmin(env.DB));
+}
+
+export async function adminAlchemySave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 128 * 1024);
+  if (!body || typeof body.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await saveAlchemy(env.DB, session.email, body.alchemy, body.updatedAt);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
+  console.log("alchemy saved", session.accountId);
   return json({ ok: true, updatedAt: result.updatedAt });
 }

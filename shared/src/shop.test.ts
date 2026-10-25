@@ -52,14 +52,17 @@ describe("shop day", () => {
 
 describe("tabs, elements, books and the talisman", () => {
   it("every offer sits in a real tab and elemental gear says its element", () => {
-    const offers = merchantOffers("male", "merchant");
-    for (const o of offers) {
+    const offers = merchantOffers("male", "smith"); // the blacksmith's gear is the full range of the first town; the merchant only has the first bậc
+    for (const o of [...offers, ...merchantOffers("male", "merchant"), ...merchantOffers("male", "alchemist")]) {
       expect(SHOP_CATEGORIES).toContain(o.category);
       expect(o.category).toBe(shopCategoryOf(o.item));
     }
     // Two bậc of each element, for each of the two realms the town sells (Luyện Khí and Trúc Cơ).
     const hats = offers.filter((o) => o.id.startsWith("eq.hat.") && !["loi", "bang", "phong"].includes(o.element ?? ""));
     expect(hats.map((o) => o.element).sort()).toEqual(["hoa", "hoa", "hoa", "hoa", "kim", "kim", "kim", "kim", "moc", "moc", "moc", "moc", "tho", "tho", "tho", "tho", "thuy", "thuy", "thuy", "thuy"]);
+    const merchantHats = merchantOffers("male", "merchant").filter((o) => o.id.startsWith("eq.hat."));
+    expect(merchantHats.length).toBe(hats.length / 2); // one bậc of the two
+    expect(merchantHats.every((o) => !["loi", "bang", "phong"].includes(o.element ?? ""))).toBe(true);
     expect(offers.find((o) => o.id === "eq.weapon.u.0.1.1.kim.kiem")?.category).toBe("gear");
     expect(offers.find((o) => o.id === "eq.charm.u.0.1.1.hoa")?.category).toBe("artifact");
     expect(shopElementOf("eq.charm.u.0.1.1.hoa")).toBe("hoa");
@@ -107,7 +110,8 @@ describe("the second town's merchant", () => {
     const gear = offers.map((o) => equipmentInfo(o.item)).filter((e) => e !== undefined);
     expect(gear.length).toBeGreaterThan(50);
     expect(new Set(gear.map((e) => e!.realm))).toEqual(new Set([2, 3]));
-    expect(offers.some((o) => o.item === "linh_nguyen_dan")).toBe(true);
+    expect(offers.some((o) => o.item === "dai_hoi_huyet_dan")).toBe(true);
+    expect(offers.some((o) => o.item === "linh_nguyen_dan")).toBe(false); // brewed by the alchemist now
     expect(offers.some((o) => o.item === "bt_hoa_4")).toBe(true);
     expect(offers.some((o) => o.item === "bt_kim_5")).toBe(true);
     expect(offers.some((o) => o.item === "ttp_town2")).toBe(true);
@@ -174,13 +178,14 @@ describe("merchants as data", () => {
   });
 
   it("sells basic gear of the variant elements at 1.5 times the value", () => {
-    const offers = merchantOffers("male", "merchant");
+    const offers = merchantOffers("male", "smith"); // the blacksmith sells them; the merchant does not
     const mutant = offers.filter((o) => o.element === "loi" || o.element === "bang" || o.element === "phong");
     expect(mutant.length).toBeGreaterThan(0);
     const hat = offers.find((o) => o.id === "eq.hat.m.0.1.1.loi")!;
     expect(hat.price).toBe(Math.round(itemValue(hat.item) * 1.5));
     expect(offers.some((o) => o.id === "eq.hat.m.2.1.1.loi")).toBe(false); // the first town stops at Trúc Cơ
-    expect(merchantOffers("male", "merchant2").some((o) => o.id === "eq.hat.m.2.1.1.loi")).toBe(true);
+    expect(merchantOffers("male", "smith2").some((o) => o.id === "eq.hat.m.2.1.1.loi")).toBe(true);
+    expect(merchantOffers("male", "merchant").some((o) => o.id === "eq.hat.m.0.1.1.loi")).toBe(false);
   });
 
   it("an edit of the item values reaches the prices on offer at once (no stale cache to buy low and sell high)", () => {
