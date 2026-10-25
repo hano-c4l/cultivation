@@ -117,6 +117,7 @@ import {
   findSmoothPath,
   getMap,
   type MapRecipe,
+  type MapContent,
   type CodeMapId,
   buildFromRecipe,
   codeMapRecipe,
@@ -184,7 +185,7 @@ import {
   type MailItem,
 } from "./inventory";
 import { claimGiftMail } from "./gifts";
-import { CombatSim, staticGuardSnapshots, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
+import { CombatSim, currentContent, staticGuardSnapshots, type PlayerProfile, type ProfileSeed, type SimEvent } from "./combat-sim";
 import type { Env } from "./env";
 import { getSetting } from "./settings";
 import { loadLiveConfig } from "./live-config";
@@ -401,8 +402,8 @@ export class MapRoom extends DurableObject<Env> {
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING_MESSAGE, PONG_MESSAGE));
     // The pinned map survives the object sleeping while players are still connected (the recipe is kept in storage; the grid is built again when asked for).
     void this.ctx.blockConcurrencyWhile(async () => {
-      const saved = await this.ctx.storage.get<{ id: string; recipe: MapRecipe; custom: boolean }>("pin");
-      if (saved && this.ctx.getWebSockets().length > 0) this.pins.set(saved.id, { recipe: saved.recipe, custom: saved.custom });
+      const saved = await this.ctx.storage.get<{ id: string; recipe: MapRecipe; custom: boolean; content?: MapContent }>("pin");
+      if (saved && this.ctx.getWebSockets().length > 0) this.pins.set(saved.id, { recipe: saved.recipe, custom: saved.custom, content: saved.content ?? currentContent(saved.id) });
       else if (saved) await this.ctx.storage.delete("pin");
     });
   }
@@ -1099,8 +1100,8 @@ export class MapRoom extends DurableObject<Env> {
 
   private ensureSim(mapId: MapId, ranks?: Record<string, string>): CombatSim | null {
     const map = this.mapOf(mapId);
-    if (map.safe && (GUARDS[mapId] ?? []).length === 0) return null;
-    if (!this.sim) this.sim = new CombatSim(map, mapId, Math.random, Date.now(), ranks);
+    if (map.safe && this.pinOf(mapId).content.guards.length === 0) return null;
+    if (!this.sim) this.sim = new CombatSim(map, mapId, Math.random, Date.now(), ranks, this.pinOf(mapId).content);
     return this.sim;
   }
 
@@ -1122,7 +1123,7 @@ export class MapRoom extends DurableObject<Env> {
    */
   private wake(mapId: MapId, joinerSatNhan = 0): Promise<void> {
     // A safe map is woken only for its guards, and only when a coloured name is in it (see murdererPresent).
-    if (this.mapOf(mapId).safe && !this.sim && ((GUARDS[mapId] ?? []).length === 0 || !this.murdererPresent(joinerSatNhan))) return Promise.resolve();
+    if (this.mapOf(mapId).safe && !this.sim && (this.pinOf(mapId).content.guards.length === 0 || !this.murdererPresent(joinerSatNhan))) return Promise.resolve();
     if (this.sim) {
       this.startTick();
       return Promise.resolve();
@@ -1245,15 +1246,15 @@ export class MapRoom extends DurableObject<Env> {
    * map's recipe meanwhile must not change the ground under the people standing on it: the new layout reaches a room when it is next empty, and every
    * `welcome` sends the recipe that is pinned here, so a newcomer builds the same grid as the room.
    */
-  private pins = new Map<string, { recipe: MapRecipe; custom: boolean; map?: MapData }>();
-  private pinOf(id: MapId): { recipe: MapRecipe; custom: boolean; map?: MapData } {
+  private pins = new Map<string, { recipe: MapRecipe; custom: boolean; map?: MapData; content: MapContent }>();
+  private pinOf(id: MapId): { recipe: MapRecipe; custom: boolean; map?: MapData; content: MapContent } {
     let pin = this.pins.get(id);
     if (!pin) {
       const custom = overrideRecipe(id);
       // A map nobody changed is pinned as the code's recipe, so a later change to it does not reach this room either.
-      pin = { recipe: custom ?? codeMapRecipe(id as CodeMapId), custom: custom !== undefined, ...(custom ? {} : { map: getMap(id) }) };
+      pin = { recipe: custom ?? codeMapRecipe(id as CodeMapId), custom: custom !== undefined, content: currentContent(id), ...(custom ? {} : { map: getMap(id) }) };
       this.pins.set(id, pin);
-      void this.ctx.storage.put("pin", { id, recipe: pin.recipe, custom: pin.custom });
+      void this.ctx.storage.put("pin", { id, recipe: pin.recipe, custom: pin.custom, content: pin.content });
     }
     return pin;
   }
