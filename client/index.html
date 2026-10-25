@@ -14,7 +14,7 @@
       #game { position: fixed; inset: 0; }
       #auth { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
         background: rgba(8, 10, 16, 0.85); font-family: "Be Vietnam Pro", system-ui, sans-serif; z-index: 10; }
-      #auth[hidden], #hud[hidden], #logout[hidden] { display: none; }
+      #auth[hidden], #hud[hidden], #logout[hidden], #switch-char[hidden] { display: none; }
       .card { width: 100%; max-width: 360px; padding: 24px; border-radius: 12px; background: #1b2130; color: var(--ui-text); box-sizing: border-box; }
       .card h1 { margin: 0 0 16px; font-size: 22px; text-align: center; }
       .card form { display: flex; flex-direction: column; gap: 12px; }
@@ -24,11 +24,15 @@
       .card label.note { margin-bottom: -6px; }
       .card button:disabled { opacity: 0.6; cursor: default; }
       .card button.link { background: none; color: #9db4e0; font-weight: 400; }
+      .char-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
+      .char-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+      .char-info b { overflow-wrap: anywhere; }
+      .char-row button { padding: 6px 10px; }
       .card .error { margin: 0; min-height: 1.2em; color: #ff8a80; font-size: 14px; }
       .card .note { margin: 0; font-size: 13px; color: #aab3c5; }
       /* Top right, one row: Linh Thạch, Cống Hiến, Tiên Ngọc, then log out; every one has its own background. */
       #topbar { position: fixed; right: 12px; top: 12px; display: flex; align-items: center; justify-content: flex-end; gap: 6px; z-index: 6; }
-      #logout { padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
+      #logout, #switch-char { padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       /* --hud-bottom follows the status line's real height (it wraps on a phone), so the HP bar never overlaps it. */
       #vitals-wrap { position: fixed; left: 12px; top: calc(var(--hud-bottom, 50px) + 6px); width: 200px; pointer-events: none; }
@@ -347,7 +351,7 @@
       #chat-input { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--ui-border); background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; }
       #chat-send { padding: 6px 10px; border-radius: 8px; border: 0; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; }
       @media (max-width: 1200px) {
-        #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout { padding: 4px 8px; font-size: 12px; }
+        #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout, #switch-char { padding: 4px 8px; font-size: 12px; }
         #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
         #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; }
       }
@@ -363,7 +367,7 @@
     <div id="auth" hidden></div>
     <div id="hud">Đang tải…</div>
     <div id="vitals-wrap"><div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div></div><div id="pk-row"></div><div id="buffs" hidden></div></div>
-    <div id="topbar"><div id="wallet" hidden></div><button id="logout" hidden></button></div>
+    <div id="topbar"><div id="wallet" hidden></div><button id="switch-char" hidden></button><button id="logout" hidden></button></div>
     <div id="chat" hidden>
       <div id="chat-tabs"></div>
       <div id="chat-log"></div>

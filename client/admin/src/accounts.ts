@@ -22,6 +22,7 @@ interface Row {
 interface Detail {
   account: { id: string; email: string; role: string; createdAt: number; banned: boolean; banForever: boolean; banUntil: number | null; banReason: string | null; bannedBy: string | null; sessions: number; lastSession: number | null };
   character: { id: string; name: string; gender: string; realm: number; stage: number; map: string; wallet: Record<string, number> } | null;
+  characters: Array<{ id: string; name: string; gender: string; realm: number; stage: number; map: string }>;
 }
 
 const REALM = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"];
@@ -113,7 +114,6 @@ function view(d: Detail, reload: () => Promise<void>): HTMLElement {
   });
   const admin = a.role === "admin";
 
-  const c = d.character;
   return h(
     "div",
     null,
@@ -133,27 +133,34 @@ function view(d: Detail, reload: () => Promise<void>): HTMLElement {
       h("dt", null, "Trạng thái"),
       h("dd", null, a.banned ? `${banText(a)} · lý do: ${a.banReason ?? ""} (bởi ${a.bannedBy ?? "?"})` : "Bình thường"),
     ),
-    h("h3", null, "Nhân vật"),
-    c
-      ? h(
-          "dl",
-          { class: "fields" },
-          h("dt", null, "Đạo hiệu"),
-          h("dd", null, c.name),
-          h("dt", null, "Giới tính"),
-          h("dd", null, c.gender === "female" ? "Nữ" : "Nam"),
-          h("dt", null, "Cảnh giới"),
-          h("dd", null, realmText(c.realm, c.stage)),
-          h("dt", null, "Bản đồ"),
-          h("dd", null, c.map),
-          h("dt", null, "Tiền"),
-          h("dd", null, Object.entries(c.wallet).map(([k, v]) => `${k}: ${v.toLocaleString("vi-VN")}`).join(" · ") || "—"),
-          h("dt", null, "Xem / sửa"),
-          h("dd", null, h("a", { href: `/admin/characters/detail?id=${encodeURIComponent(c.id)}` }, "Mở nhân vật (chỉ số, tiền, túi đồ, kỹ năng)")),
-          h("dt", null, "Lịch sử tiền"),
-          h("dd", null, h("a", { href: `/admin/currency/detail?currency=linh_thach&character=${encodeURIComponent(c.id)}` }, "Mở trong Quản lý tiền tệ")),
-        )
-      : h("p", { class: "muted" }, "Chưa tạo nhân vật."),
+    h("h3", null, `Nhân vật (${d.characters.length})`),
+    d.characters.length === 0
+      ? h("p", { class: "muted" }, "Chưa tạo nhân vật.")
+      : h(
+          "div",
+          { class: "table-wrap" },
+          h(
+            "table",
+            null,
+            h("thead", null, h("tr", null, h("th", null, "Đạo hiệu"), h("th", null, "Giới tính"), h("th", null, "Cảnh giới"), h("th", null, "Bản đồ"), h("th", null, "Xem / sửa"), h("th", null, "Lịch sử tiền"))),
+            h(
+              "tbody",
+              null,
+              ...d.characters.map((x) =>
+                h(
+                  "tr",
+                  null,
+                  h("td", null, x.name),
+                  h("td", null, x.gender === "female" ? "Nữ" : "Nam"),
+                  h("td", null, realmText(x.realm, x.stage)),
+                  h("td", null, x.map),
+                  h("td", null, h("a", { href: `/admin/characters/detail?id=${encodeURIComponent(x.id)}` }, "Mở (chỉ số, tiền, túi đồ, kỹ năng)")),
+                  h("td", null, h("a", { href: `/admin/currency/detail?currency=linh_thach&character=${encodeURIComponent(x.id)}` }, "Quản lý tiền tệ")),
+                ),
+              ),
+            ),
+          ),
+        ),
     h("h3", null, "Khóa tài khoản"),
     admin ? h("p", { class: "muted" }, "Tài khoản Admin không khóa được và không đặt mật khẩu tạm ở đây.") : null,
     h("div", { class: "toolbar" }, h("label", { class: "radio" }, forever, "Vĩnh viễn"), h("span", null, "hoặc"), days, h("span", null, "ngày"), reason, ban, unban),

@@ -55,8 +55,33 @@ const COLUMNS =
   "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, mounted, hotbar, vitals, roots, bt_started_at, paths, sat_khi, sat_nhan, anh_hung, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
-export async function getCharacterByAccount(db: D1Database, accountId: string): Promise<CharacterRow | null> {
-  return withRealRoot(await db.prepare(`SELECT ${COLUMNS} FROM characters WHERE account_id = ?`).bind(accountId).first<CharacterRow>());
+/** The characters of an account that have not been deleted, oldest first. */
+export async function listCharacters(db: D1Database, accountId: string): Promise<CharacterRow[]> {
+  const { results } = await db.prepare(`SELECT ${COLUMNS} FROM characters WHERE account_id = ? AND deleted_at IS NULL ORDER BY created_at, id`).bind(accountId).all<CharacterRow>();
+  return results.map((r) => withRealRoot(r)!);
+}
+
+/** A live character of this account by id (null: not theirs, or deleted). */
+export async function getOwnCharacter(db: D1Database, accountId: string, id: string): Promise<CharacterRow | null> {
+  return withRealRoot(await db.prepare(`SELECT ${COLUMNS} FROM characters WHERE id = ? AND account_id = ? AND deleted_at IS NULL`).bind(id, accountId).first<CharacterRow>());
+}
+
+export type ActiveCharacter = { ok: true; character: CharacterRow } | { ok: false; reason: "none" | "reviewing" };
+
+/**
+ * The character a request plays: the one the session chose; with no choice, the only live character of the account (so a client that never chooses, like the
+ * smoke scripts, keeps working with one). A character under an admin's review (migration 0045) cannot be played.
+ */
+export async function resolveActiveCharacter(db: D1Database, accountId: string, chosenId: string | null, now = Date.now()): Promise<ActiveCharacter> {
+  let character: CharacterRow | null = null;
+  if (chosenId) character = await getOwnCharacter(db, accountId, chosenId);
+  if (!character) {
+    const all = await listCharacters(db, accountId);
+    if (all.length === 1) character = all[0]!;
+  }
+  if (!character) return { ok: false, reason: "none" };
+  const review = await db.prepare("SELECT 1 AS x FROM characters WHERE id = ? AND review_until > ?").bind(character.id, now).first();
+  return review ? { ok: false, reason: "reviewing" } : { ok: true, character };
 }
 
 export async function getCharacterById(db: D1Database, id: string): Promise<CharacterRow | null> {
