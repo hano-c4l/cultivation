@@ -857,9 +857,9 @@ export function allNpcIds(): Set<string> {
   return ids;
 }
 
-/** The NPCs the game starts with, on every map (seeds of the D1 table). */
+/** The NPCs the game starts with (seeds of the D1 table): those of the maps the code builds. A map an admin added has none, and `codeMap` throws for it. */
 export function startingNpcs(): Array<NpcSpot & { mapId: MapId }> {
-  return MAP_IDS.flatMap((mapId) => codeMap(mapId).npcs.map((n) => ({ ...n, mapId, name: NPC_NAMES_VI[n.id] ?? n.id })));
+  return CODE_MAP_IDS.flatMap((mapId) => codeMap(mapId).npcs.map((n) => ({ ...n, mapId, name: NPC_NAMES_VI[n.id] ?? n.id })));
 }
 
 /** The portal whose tile is within PORTAL_RADIUS of a continuous position, if any. */

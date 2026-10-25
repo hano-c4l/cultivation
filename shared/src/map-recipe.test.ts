@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { CLUSTERS, GUARDS } from "./monsters";
 import { BOSS_SPOTS } from "./boss";
-import { CODE_MAP_IDS, MAP_IDS, MAP_REALM, MAP_SIZE, buildFromRecipe, codeMapRecipe, getMap, isMapId, setMapRecipe, type MapRecipe } from "./map";
+import { CODE_MAP_IDS, MAP_IDS, MAP_REALM, MAP_SIZE, buildFromRecipe, codeMapRecipe, getMap, isMapId, setMapRecipe, startingNpcs, type MapRecipe } from "./map";
 import { fullCodeMapRecipe } from "./map-content";
 
 afterEach(() => {
@@ -75,6 +75,9 @@ describe("map recipes", () => {
     expect(CLUSTERS.rung_moi).toHaveLength(recipe.content!.groups.length);
     expect(getMap("rung_moi").collision.length).toBe(getMap("forest").collision.length);
     expect(getMap("rung_moi").npcs).toEqual([]);
+    // the seeds of the NPC table come from the code's maps only: with an admin map installed they must still be built (they threw, and no NPC loaded at all)
+    expect(() => startingNpcs()).not.toThrow();
+    expect(startingNpcs().every((n) => (CODE_MAP_IDS as readonly string[]).includes(n.mapId))).toBe(true);
     setMapRecipe(null, "rung_moi");
     expect(isMapId("rung_moi")).toBe(false);
     expect(MAP_SIZE.rung_moi).toBeUndefined();

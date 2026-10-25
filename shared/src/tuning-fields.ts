@@ -1,5 +1,5 @@
 import { REALMS, ROOT_COUNTS, ROOT_GRADES } from "./progression-data";
-import { MAP_IDS, MAP_NAMES as LIVE_MAP_NAMES } from "./map";
+import { MAP_IDS, MAP_NAMES as LIVE_MAP_NAMES, MAP_REALM } from "./map";
 import { DEFAULT_TUNING, type Tuning, type TuningGroup } from "./tuning";
 
 /**
@@ -479,7 +479,7 @@ export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [...BASE_SCREE
 export function adminScreenFields(screen: TuningScreenGroup): TuningField[] {
   if (screen.group !== "boss") return screen.fields;
   const known = new Set(screen.fields.map((f) => f.path));
-  const extra = MAP_IDS.filter((id) => !known.has(`species.${id}`)).map((id): TuningField => ({ path: `species.${id}`, label: `Loài boss: ${LIVE_MAP_NAMES[id] ?? id}`, kind: "species" }));
+  const extra = MAP_IDS.filter((id) => !known.has(`species.${id}`) && MAP_REALM[id] !== null) /* a town has no boss */.map((id): TuningField => ({ path: `species.${id}`, label: `Loài boss: ${LIVE_MAP_NAMES[id] ?? id}`, kind: "species" }));
   return [...screen.fields, ...extra];
 }
 
