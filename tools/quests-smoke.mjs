@@ -91,6 +91,9 @@ const lastStats = (c) => [...c.log].reverse().find((m) => m.t === "stats")?.char
 const reg = await post("/api/register", { email: `quest-${run}@example.test`, password: "correct-horse-battery" });
 const created = await post("/api/character", { name: `Nv ${run.slice(-4)}`, gender: "male" }, reg.cookie);
 const id = created.data.character.id;
+// A fresh Luyện Khí character (about 175 HP) is killed now and then by two monsters at once while it walks to its prey in the forest, and the kill never comes: give it a sturdier body.
+sql(`UPDATE characters SET stat_can_cot = 200 WHERE id = '${id}'`);
+await sleep(5000); // a request right after `wrangler d1 execute --local` can be reset
 const qrow = (q) => sql(`SELECT state, progress FROM character_quests WHERE character_id = '${id}' AND quest_id = '${q}'`)[0];
 const NEAR_ELDER = { x: 18.5 + T, y: 16.5 + T };
 const NEAR_MERCHANT = { x: 21.5 + T, y: 16.5 + T };
@@ -171,7 +174,8 @@ sql(`UPDATE character_quests SET progress = 10 WHERE character_id = '${id}' AND 
 sql(`UPDATE characters SET map_id = 'town', x = ${18.5 + T}, y = ${16.5 + T} WHERE id = '${id}'`);
 c = await connect(reg.cookie);
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_2" }, 1000);
-check("the kill quest is handed in for its reward", r.some((m) => m.t === "quest_done" && m.quest === "newbie_2") && countOf(c, "duong_huyet_dan") === 3 && qrow("newbie_2")?.state === "done");
+// (a kill in the forest can also drop this pill by chance, so the counts are at least the reward; the ledger check below proves the reward was paid once)
+check("the kill quest is handed in for its reward", r.some((m) => m.t === "quest_done" && m.quest === "newbie_2") && countOf(c, "duong_huyet_dan") >= 3 && qrow("newbie_2")?.state === "done");
 
 await after(c, { t: "quest_accept", npc: "elder", quest: "newbie_3" });
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_3" });
@@ -179,7 +183,7 @@ check("collect: with no Linh Thảo it is refused", r.some((m) => m.t === "quest
 await fetch(`${httpBase}/api/dev/loot?room=town:${CH}&char=${id}&item=linh_thao&qty=7`);
 await sleep(800);
 r = await after(c, { t: "quest_turn_in", npc: "elder", quest: "newbie_3" }, 1000);
-check("collect: 5 of the 7 Linh Thảo are taken, the reward comes", r.some((m) => m.t === "quest_done") && countOf(c, "linh_thao") >= 2 && countOf(c, "duong_huyet_dan") === 6, `linh thảo ${countOf(c, "linh_thao")} (kills may have dropped some)`);
+check("collect: 5 of the 7 Linh Thảo are taken, the reward comes", r.some((m) => m.t === "quest_done") && countOf(c, "linh_thao") >= 2 && countOf(c, "duong_huyet_dan") >= 6, `linh thảo ${countOf(c, "linh_thao")} (kills may have dropped some)`);
 
 // --- reach, rare kill (filled in by hand) and the last step ---
 await after(c, { t: "quest_accept", npc: "elder", quest: "newbie_4" });
