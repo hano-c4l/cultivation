@@ -18,6 +18,7 @@ import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
 import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
 import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
 import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
+import { getEnhanceView, getMasterView, getSetsView, saveEnhance, saveMaster, saveSets } from "./gear-admin";
 import { addItem, addSkill, adjustMoney, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview, type StatsInput } from "./characters-admin";
 import { banAccount, getAccountDetail, listAccounts, parseAccountQuery, setTempPassword, unbanAccount } from "./accounts-admin";
 import { getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
@@ -673,4 +674,37 @@ export async function adminCharacterAction(request: Request, env: Env): Promise<
   if (!result.ok) return json({ error: result.error }, CHARACTER_ERROR_STATUS[result.error] ?? 400);
   console.log("character action", session.accountId, body.action, id);
   return json({ ok: true, kicked: result.kicked === true });
+}
+
+const GEAR_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, version_conflict: 409, busy: 409, not_found: 404 };
+
+/** The gear tables: GET `?part=master&kind=`, `?part=sets`, `?part=enhance`. */
+export async function adminGear(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const part = url.searchParams.get("part");
+  if (part === "sets") return json(await getSetsView(env.DB));
+  if (part === "enhance") return json(await getEnhanceView(env.DB));
+  const view = await getMasterView(env.DB, url.searchParams.get("kind") ?? "weapon");
+  return view ? json(view) : errorResponse("not_found", 404);
+}
+
+/** POST `{part: "master" | "sets" | "enhance", token, ...}`. */
+export async function adminGearSave(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 128 * 1024);
+  if (!body || typeof body.token !== "number") return errorResponse("invalid_body", 400);
+  const result =
+    body.part === "master"
+      ? await saveMaster(env.DB, session.email, String(body.kind ?? ""), body.rows, body.token)
+      : body.part === "sets"
+        ? await saveSets(env.DB, session.email, body.names, body.token)
+        : body.part === "enhance"
+          ? await saveEnhance(env.DB, session.email, body.rows, body.token)
+          : null;
+  if (!result) return errorResponse("invalid_body", 400);
+  if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, GEAR_ERROR_STATUS[result.error] ?? 400);
+  console.log("gear saved", session.accountId, body.part);
+  return json({ ok: true, token: result.token });
 }
