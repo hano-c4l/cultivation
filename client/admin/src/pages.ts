@@ -5,6 +5,7 @@ const LOGIN_ERRORS: Record<string, string> = {
   invalid_credentials: "Sai email hoặc mật khẩu.",
   rate_limited: "Thử quá nhiều lần, hãy đợi một lúc rồi thử lại.",
   banned: "Tài khoản đang bị khóa.",
+  reviewing: "Nhân vật đang được xem xét.",
 };
 
 /** The login page. A player account is signed out again at once, so a stale player session never lingers behind the admin address. */

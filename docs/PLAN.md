@@ -128,7 +128,7 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 3j. Quái và BOSS — xong (trừ loài quái mới)
   - 3k. NPC (nhiệm vụ, thương nhân, Đan Sư, thợ rèn, hướng tu) — xong (trừ bảng cấp nâng cấp của Thợ Rèn ở 3g-b, vị trí vệ binh ở 3l)
   - 3l. Bản đồ — 3l-a xong (sáu bản đồ thành công thức D1, màn sửa màu/điểm sinh/cổng/vật cản và xem trước); 3l-b (thêm bản đồ mới, bãi quái, vệ binh theo cổng) chưa làm
-  - 3m. Tài khoản và nhân vật — 3m-a xong (danh sách, khóa, mật khẩu tạm); 3m-b (sửa nhân vật, trạng thái đang xem xét) chưa làm
+  - 3m. Tài khoản và nhân vật — 3m-a xong (danh sách, khóa, mật khẩu tạm); 3m-b xong (sửa nhân vật với trạng thái đang xem xét), trừ xóa nhân vật
 - **Giai đoạn 4**: Kinh tế và xã hội (chưa chia hạng mục)
 - **Giai đoạn 5**: Hoàn thiện và vận hành (chưa chia hạng mục)
 

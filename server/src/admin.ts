@@ -1,5 +1,6 @@
-import { CONSTITUTION_STATS, CURRENCY_GROUPS, ELEMENT_TAGS, GIFT_BODY_MAX, type TuningPage, GIFT_MAX_ITEM_KINDS, GIFT_MAX_RECIPIENTS, GIFT_SUBJECT_MAX, giftableItems, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
+import { REALMS, CONSTITUTION_STATS, CURRENCY_GROUPS, ELEMENT_TAGS, GIFT_BODY_MAX, type TuningPage, GIFT_MAX_ITEM_KINDS, GIFT_MAX_RECIPIENTS, GIFT_SUBJECT_MAX, giftableItems, MAX_BAG_TABS, MAX_CONSTITUTION_TIERS, MAX_LEDGER_AMOUNT, WEAPON_TAGS, isCurrency, validSettingValue } from "@game/shared";
 import { getSession, hashPassword, type AuthedSession } from "./auth";
+import { kickCharacter } from "./accounts-admin";
 import { PBKDF2_ITERATIONS, toBase64 } from "./password-hasher";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
@@ -18,6 +19,7 @@ import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
 import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
 import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
 import { getEnhanceView, getMasterView, getSetsView, saveEnhance, saveMaster, saveSets } from "./gear-admin";
+import { addItem, addSkill, adjustMoney, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview, type StatsInput } from "./characters-admin";
 import { banAccount, getAccountDetail, listAccounts, parseAccountQuery, setTempPassword, unbanAccount } from "./accounts-admin";
 import { getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
@@ -612,6 +614,66 @@ export async function adminAccountAction(request: Request, env: Env): Promise<Re
   if (!result.ok) return json({ error: result.error }, ACCOUNT_ERROR_STATUS[result.error] ?? 400);
   console.log("account action", session.accountId, body.action, body.id);
   return json({ ok: true, ...(result.password ? { password: result.password } : {}), kicked: result.kicked === true });
+}
+
+const CHARACTER_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, funds: 400, full: 409, busy: 409, not_reviewing: 409, reviewed_by_other: 409, unknown_item: 400, not_found: 404 };
+
+/** A character for the admin screen, with whether it is online (a connection holds its lock). */
+export async function adminCharacter(request: Request, env: Env, url: URL): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const id = url.searchParams.get("id") ?? "";
+  const view = await getCharacterView(env.DB, id);
+  if (!view) return errorResponse("not_found", 404);
+  let online = false;
+  try {
+    online = await env.CHAR_LOCK.get(env.CHAR_LOCK.idFromName(id)).isHeld();
+  } catch (err) {
+    console.error("lock state unavailable", err);
+  }
+  return json({ character: view, online });
+}
+
+/** POST `{id, action: "start" | "end" | "stats" | "money" | "addItem" | "removeItem" | "addSkill" | "removeSkill", ...}`. Every change needs the admin's own review to be running. */
+export async function adminCharacterAction(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 8 * 1024);
+  if (!body || typeof body.id !== "string") return errorResponse("invalid_body", 400);
+  const id = body.id;
+  const admin = session.email;
+  let result;
+  switch (body.action) {
+    case "start":
+      result = await startReview(env.DB, admin, id, (accountId, characterId) => kickCharacter(env, characterId, accountId));
+      break;
+    case "end":
+      result = await endReview(env.DB, admin, id);
+      break;
+    case "stats":
+      result = await editStats(env.DB, admin, id, body.input as StatsInput, REALMS.length);
+      break;
+    case "money":
+      result = await adjustMoney(env.DB, admin, id, body.currency, body.delta);
+      break;
+    case "addItem":
+      result = await addItem(env.DB, admin, id, body.item, body.qty);
+      break;
+    case "removeItem":
+      result = await removeItem(env.DB, admin, id, body.instance);
+      break;
+    case "addSkill":
+      result = await addSkill(env.DB, admin, id, body.skill);
+      break;
+    case "removeSkill":
+      result = await removeSkill(env.DB, admin, id, body.skill);
+      break;
+    default:
+      return errorResponse("invalid_body", 400);
+  }
+  if (!result.ok) return json({ error: result.error }, CHARACTER_ERROR_STATUS[result.error] ?? 400);
+  console.log("character action", session.accountId, body.action, id);
+  return json({ ok: true, kicked: result.kicked === true });
 }
 
 const GEAR_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, version_conflict: 409, busy: 409, not_found: 404 };

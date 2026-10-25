@@ -609,6 +609,7 @@ export const vi = {
     email_taken: "Email này đã được đăng ký.",
     invalid_credentials: "Email hoặc mật khẩu không đúng.",
     rate_limited: "Thử quá nhiều lần, vui lòng đợi một lát.",
+    reviewing: "Nhân vật đang được xem xét, vui lòng thử lại sau 30 phút.",
     invalid_name: "Đạo hiệu chỉ gồm chữ, số, khoảng trắng và dài 2-16 ký tự.",
     name_taken: "Đạo hiệu này đã có người dùng.",
     character_exists: "Tài khoản đã có nhân vật.",

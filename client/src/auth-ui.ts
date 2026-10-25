@@ -69,7 +69,7 @@ export function showAuth(): Promise<void> {
           ? await api.register(email.value, password.value)
           : await api.login(email.value, password.value);
         if (res.ok) return resolve();
-        error.textContent = res.error === "banned" ? banText(res.details) : errorText(res.error);
+        error.textContent = res.error === "banned" ? banText(res.details) : res.error === "reviewing" ? vi.errors.reviewing! : errorText(res.error);
         submit.disabled = false;
       };
       mount(el("div", { className: "card" }, form));
