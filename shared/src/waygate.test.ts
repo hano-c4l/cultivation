@@ -19,7 +19,7 @@ describe("the teleport array", () => {
     setTuning({ waygate: { base: 100, perUnit: 10 } });
     expect(waygatePrice("town", "town2")).toBe(1100);
     // Distances come from positions: the farther the position the dearer the trip (a third town later is just one more entry).
-    expect(Math.hypot(...TOWN_WORLD_POS.town2)).toBeGreaterThan(Math.hypot(...TOWN_WORLD_POS.town));
+    expect(Math.hypot(...TOWN_WORLD_POS.town2!)).toBeGreaterThan(Math.hypot(...TOWN_WORLD_POS.town!));
   });
 
   it("every main town has exactly one array in its middle, and no other map has one", () => {

@@ -697,6 +697,8 @@ export interface MapRecipe {
   portals: Portal[];
   ops: GridOp[];
   content?: MapContent;
+  /** Where this safe town lies on the world map, which makes it a destination of the Truyền Tống Trận (docs/PHASE3.md 3l). Only for towns an admin added. */
+  world?: [number, number];
 }
 
 const codeMaps = new Map<MapId, MapData>();
@@ -929,7 +931,8 @@ export function validMapRecipe(r: unknown): r is MapRecipe {
     Array.isArray(o.ops) &&
     o.ops.length <= MAX_RECIPE_OPS &&
     o.ops.every(validGridOp) &&
-    (o.content === undefined || validMapContent(o.content, o.size as number))
+    (o.content === undefined || validMapContent(o.content, o.size as number)) &&
+    (o.world === undefined || (Array.isArray(o.world) && o.world.length === 2 && o.world.every((n) => finite(n) && Math.abs(n) <= 10000)))
   );
 }
 

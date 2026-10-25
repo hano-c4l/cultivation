@@ -173,6 +173,8 @@ export function mapNewPage(): HTMLElement {
     const n = (v: number) => num(v, { step: "1" });
     const gate = { x: n(75), y: n(75), toX: n(45), toY: n(45) };
     const back = { x: n(48), y: n(45), toX: n(75), toY: n(75) };
+    const worldX = h("input", { type: "number", step: "any", placeholder: "x" });
+    const worldY = h("input", { type: "number", step: "any", placeholder: "y" });
     const create = h("button", { type: "button", class: "primary" }, "Tạo bản đồ");
     create.addEventListener("click", async () => {
       create.disabled = true;
@@ -182,6 +184,7 @@ export function mapNewPage(): HTMLElement {
         name: name.value.trim(),
         template: template.value,
         realm: realm.value === "" ? null : Number(realm.value),
+        ...(realm.value === "" && worldX.value !== "" && worldY.value !== "" ? { world: [Number(worldX.value), Number(worldY.value)] } : {}),
         gate: { x: Number(gate.x.value), y: Number(gate.y.value), toX: Number(gate.toX.value), toY: Number(gate.toY.value) },
         back: { map: target.value, x: Number(back.x.value), y: Number(back.y.value), toX: Number(back.toX.value), toY: Number(back.toY.value) },
       };
@@ -199,6 +202,7 @@ export function mapNewPage(): HTMLElement {
       h("section", { class: "form" }, h("div", { class: "toolbar" }, h("span", null, "Mã"), id, h("span", null, "Tên"), name, h("span", null, "Mẫu"), template, realm)),
       h("section", { class: "form" }, h("h3", null, "Cổng trên bản đồ mới"), h("div", { class: "toolbar" }, h("span", null, "Cổng ở ô"), gate.x, gate.y, h("span", null, "→ đến bản đồ"), target, h("span", null, "ô"), gate.toX, gate.toY)),
       h("section", { class: "form" }, h("h3", null, "Cổng ngược trên bản đồ kia"), h("div", { class: "toolbar" }, h("span", null, "Cổng ở ô"), back.x, back.y, h("span", null, "→ đến bản đồ mới, ô"), back.toX, back.toY, h("span", { class: "muted" }, "(ô này cũng là điểm sinh)"))),
+      h("section", { class: "form" }, h("h3", null, "Truyền Tống Trận (chỉ thành an toàn)"), h("div", { class: "toolbar" }, h("span", null, "Vị trí trên bản đồ thế giới"), worldX, worldY, h("span", { class: "muted" }, "Để trống: không là điểm đến. Thanh Vân Thành ở (0, 0), Thiên Hà Thành ở (100, 0); phí tính theo khoảng cách. Muốn đi từ thành mới ra thì thêm NPC loại Truyền Tống Trận ở màn NPC."))),
       h("div", { class: "toolbar" }, create),
       msg,
       problems,
@@ -296,6 +300,7 @@ function form(view: View): HTMLElement {
     }),
     ops: [...opRows.children].map((row) => (row as unknown as { read: () => GridOp }).read()),
     ...(r.content ? { content: readContent() } : {}),
+    ...(r.safe && !view.code ? { world: wx.value !== "" && wy.value !== "" ? ([Number(wx.value), Number(wy.value)] as [number, number]) : undefined } : {}),
   });
 
   // Monster groups, guards and the boss spot (tile units).
@@ -360,6 +365,10 @@ function form(view: View): HTMLElement {
     }, 20);
   });
 
+  const wx = h("input", { type: "number", step: "any", placeholder: "x" });
+  const wy = h("input", { type: "number", step: "any", placeholder: "y" });
+  wx.value = r.world ? String(r.world[0]) : "";
+  wy.value = r.world ? String(r.world[1]) : "";
   const nameInput = h("input", { type: "text", maxlength: "40", placeholder: "Tên người chơi đọc" });
   nameInput.value = view.name ?? "";
   const save = h("button", { type: "button", class: "primary" }, "Lưu");
@@ -398,6 +407,7 @@ function form(view: View): HTMLElement {
     h("h2", null, `Bản đồ ${r.id}`),
     h("p", { class: "muted" }, `Cố định: kích thước ${r.size} × ${r.size}, khung chơi ${r.rect.halfW} × ${r.rect.halfH}, ${r.safe ? "thành an toàn" : `cảnh giới ${r.realm}`}. Bãi quái, vệ binh và chỗ boss sửa ở mục dưới (boss của bản đồ chọn ở Quái / BOSS). NPC chỉnh ở mục NPC.`),
     h("section", { class: "form" }, h("h3", null, "Tên hiển thị"), h("div", { class: "toolbar" }, nameInput, h("span", { class: "muted" }, "Để trống: bản đồ của code dùng tên có sẵn, bản đồ mới hiện mã. Người chơi thấy tên mới khi vào lại game.")))  ,
+    ...(r.safe && !view.code ? [h("section", { class: "form" }, h("h3", null, "Truyền Tống Trận"), h("div", { class: "toolbar" }, h("span", null, "Vị trí trên bản đồ thế giới"), wx, wy, h("span", { class: "muted" }, "Để trống: thành này không là điểm đến. Người chơi thấy khi vào lại game.")))] : []),
     h("section", { class: "form" }, h("h3", null, "Màu"), h("div", { class: "toolbar" }, h("span", null, "Nền A"), colors[0]!.i, h("span", null, "Nền B"), colors[1]!.i, h("span", null, "Vật cản"), colors[2]!.i)),
     h("section", { class: "form" }, h("h3", null, "Điểm sinh và thành về khi chết"), h("div", { class: "toolbar" }, h("span", null, "Sinh tại ô"), spawnX, spawnY, h("span", null, "Về thành"), home)),
     h("section", { class: "form" }, h("h3", null, "Cổng (ô x, ô y → bản đồ, ô đến x, ô đến y)"), portalRows, addPortalBtn),

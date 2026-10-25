@@ -63,7 +63,7 @@ function insideRect(size: number, rect: { halfW: number; halfH: number }, x: num
   return px >= -rect.halfW && px < rect.halfW && py >= -rect.halfH && py < rect.halfH;
 }
 
-const LOCKED = ["id", "size", "rect", "realm", "safe", "guardRealm"];
+const LOCKED = ["id", "size", "rect", "realm", "safe", "guardRealm", "world"];
 
 /** Problems that only the numbers can show: the locked fields, a spawn or gate outside the rectangle, a gate to nowhere. */
 export function recipeProblems(before: MapRecipe, after: MapRecipe, pending: Record<string, number> = {}): string[] {
@@ -74,6 +74,8 @@ export function recipeProblems(before: MapRecipe, after: MapRecipe, pending: Rec
   if (after.realm !== before.realm) out.push("realm");
   if (after.safe !== before.safe) out.push("safe");
   if (after.guardRealm !== before.guardRealm) out.push("guardRealm");
+  // The array's world position belongs to a town an admin added; the code's towns have theirs in the code.
+  if (JSON.stringify(after.world) !== JSON.stringify(before.world) && (isCode(after.id) || !after.safe)) out.push("world");
   if (!insideRect(after.size, after.rect, after.spawn[0], after.spawn[1])) out.push("spawn outside the playing area");
   for (const p of after.portals) {
     if (!insideRect(after.size, after.rect, p.x, p.y)) out.push(`gate (${p.x}, ${p.y}) outside the playing area`);
@@ -90,6 +92,7 @@ function describe(before: MapRecipe, after: MapRecipe): string[] {
   if (JSON.stringify(before.palette) !== JSON.stringify(after.palette)) changed.push("màu");
   if (before.home !== after.home) changed.push(`thành về ${before.home} → ${after.home}`);
   if (JSON.stringify(before.spawn) !== JSON.stringify(after.spawn)) changed.push("điểm sinh");
+  if (JSON.stringify(before.world) !== JSON.stringify(after.world)) changed.push("vị trí trên bản đồ thế giới (Truyền Tống Trận)");
   if (JSON.stringify(before.portals) !== JSON.stringify(after.portals)) changed.push("cổng");
   if (JSON.stringify(before.ops) !== JSON.stringify(after.ops)) changed.push(`bước dựng (${before.ops.length} → ${after.ops.length})`);
   if (JSON.stringify(effectiveContent(before)?.groups) !== JSON.stringify(effectiveContent(after)?.groups)) changed.push("bãi quái");
@@ -194,6 +197,8 @@ export interface CreateMapInput {
   /** Gate on the new map and where it arrives on `back.map`; and the gate on `back.map` and where it arrives on the new map. */
   gate: { x: number; y: number; toX: number; toY: number };
   back: { map: string; x: number; y: number; toX: number; toY: number };
+  /** A safe town only: where it lies on the world map, which makes it a destination of the Truyền Tống Trận (fee by distance). */
+  world?: [number, number];
 }
 
 /**
@@ -223,6 +228,11 @@ export async function createMap(db: D1Database, adminEmail: string, posted: unkn
     content: { groups: safe ? [] : (template.recipe.content?.groups ?? []).map((g) => ({ ...g })), guards: [], bossSpot: safe ? null : (template.recipe.content?.bossSpot ?? null) },
   };
   delete (base as { guardRealm?: number }).guardRealm;
+  delete (base as { world?: [number, number] }).world;
+  if (o.world !== undefined) {
+    if (!safe || !Array.isArray(o.world) || o.world.length !== 2) return { ok: false, error: "invalid", problems: ["world"] };
+    base.world = [o.world[0]!, o.world[1]!];
+  }
   const fresh = withClearings(base, [[o.gate.x, o.gate.y], spawn]);
   const back = { x: o.back.x, y: o.back.y, toMap: o.id, toX: spawn[0], toY: spawn[1] };
   // The other map keeps using the code's monsters, guards and boss spot unless it had its own: the copy shown for editing is not stored back.

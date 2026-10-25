@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { CLUSTERS, MAP_IDS, MAP_NAMES, MAP_SIZE, getMap, isMapId, overrideRecipe, setMapRecipe } from "@game/shared";
+import { CLUSTERS, MAP_IDS, MAP_NAMES, MAP_SIZE, getMap, isMapId, isWaygateTown, overrideRecipe, waygateDestinations, waygatePrice, setMapRecipe } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
 import { getMapRecipes, resetMapsCache } from "./maps";
 import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
@@ -133,6 +133,27 @@ describe("the maps screen", () => {
     resetMapsCache();
     await getMapRecipes(db);
     expect(MAP_NAMES.cave).toBeUndefined();
+  });
+
+  it("a safe town with a world position becomes a destination of the Truyền Tống Trận, and stops being one when deleted", async () => {
+    const t = await gateTile("town2");
+    const made = await createMap(db, ADMIN, input({ id: "thanh_tt", realm: null, world: [250, 0], gate: { x: t.x, y: t.y, toX: t.x, toY: t.y }, back: { map: "town2", x: t.x + 3, y: t.y, toX: t.x, toY: t.y } }), Date.now() + 10);
+    expect(made.ok).toBe(true);
+    resetMapsCache();
+    await getMapRecipes(db);
+    expect(isWaygateTown("thanh_tt")).toBe(true);
+    expect(waygateDestinations("town").map((d) => d.map)).toEqual(["town2", "thanh_tt"]); // nearest first
+    expect(waygatePrice("town2", "thanh_tt")).toBeGreaterThan(waygatePrice("town", "town2"));
+    // a position on a map that is not a safe town is refused; so is changing a code town's
+    expect(await createMap(db, ADMIN, input({ id: "rung_x", world: [1, 1] }))).toMatchObject({ ok: false, error: "invalid" });
+    const town = (await getMapAdmin(db, "town"))!;
+    expect(await saveMap(db, ADMIN, { ...town.recipe, world: [5, 5] }, town.updatedAt, Date.now() + 100)).toMatchObject({ ok: false, error: "locked" });
+    // the position can be changed or removed on the town an admin added
+    const v = (await getMapAdmin(db, "thanh_tt"))!;
+    expect(await saveMap(db, ADMIN, { ...v.recipe, world: undefined }, v.updatedAt, Date.now() + 200)).toMatchObject({ ok: true });
+    resetMapsCache();
+    await getMapRecipes(db);
+    expect(isWaygateTown("thanh_tt")).toBe(false);
   });
 
   it("makes a safe town when the realm is none, with no monsters", async () => {
