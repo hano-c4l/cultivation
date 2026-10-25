@@ -20,7 +20,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminAccounts, adminAccountDetail, adminAccountAction } from "./admin";
+import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminAccounts, adminAccountDetail, adminAccountAction, adminCharacter, adminCharacterAction } from "./admin";
 import { getCharacterByAccount, grantExp, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import type { Env } from "./env";
 import { getLeaderboard } from "./leaderboard";
@@ -58,9 +58,9 @@ export async function getSession(request: Request, env: Env): Promise<AuthedSess
   const token = readCookie(request, SESSION_COOKIE);
   if (!token) return null;
   const row = await env.DB.prepare(
-    "SELECT a.id AS accountId, a.email AS email, a.role AS role FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ? AND a.ban_forever = 0 AND (a.ban_until IS NULL OR a.ban_until <= ?)",
+    "SELECT a.id AS accountId, a.email AS email, a.role AS role FROM sessions s JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ? AND a.ban_forever = 0 AND (a.ban_until IS NULL OR a.ban_until <= ?) AND (a.role = 'admin' OR NOT EXISTS (SELECT 1 FROM characters c WHERE c.account_id = a.id AND c.review_until > ?))",
   )
-    .bind(await sha256Hex(token), Date.now(), Date.now())
+    .bind(await sha256Hex(token), Date.now(), Date.now(), Date.now())
     .first<AuthedSession>();
   return row ?? null;
 }
@@ -151,6 +151,10 @@ async function login(request: Request, env: Env): Promise<Response> {
   if (account.ban_forever === 1 || (account.ban_until !== null && account.ban_until > Date.now())) {
     return json({ error: "banned", forever: account.ban_forever === 1, until: account.ban_until, reason: account.ban_reason ?? "" }, 403);
   }
+
+  // A character an admin is editing cannot be played (the admin's edits are the only writer); this ends by itself.
+  const review = await env.DB.prepare("SELECT review_until FROM characters WHERE account_id = ? AND review_until > ?").bind(account.id, Date.now()).first<{ review_until: number }>();
+  if (review && !(await env.DB.prepare("SELECT 1 AS x FROM accounts WHERE id = ? AND role = 'admin'").bind(account.id).first())) return json({ error: "reviewing", until: review.review_until }, 403);
 
   const token = await createSession(env, account.id);
   return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(token, SESSION_TTL_SECONDS, request) });
@@ -334,6 +338,10 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
       return adminSkills(request, env);
     case "POST /api/admin/skills/save":
       return adminSkillSave(request, env);
+    case "GET /api/admin/character":
+      return adminCharacter(request, env, url);
+    case "POST /api/admin/character/action":
+      return adminCharacterAction(request, env);
     case "GET /api/admin/accounts":
       return adminAccounts(request, env, url);
     case "GET /api/admin/accounts/detail":

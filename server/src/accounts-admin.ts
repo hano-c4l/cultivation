@@ -105,8 +105,13 @@ async function target(db: D1Database, id: string): Promise<{ id: string; email: 
   return db.prepare("SELECT a.id, a.email, a.role, c.id AS character FROM accounts a LEFT JOIN characters c ON c.account_id = a.id WHERE a.id = ?").bind(id).first();
 }
 
+/** Kicks a character out of the game and the chat (used by the character review too: the accounts' sessions were already ended). */
+export function kickCharacter(env: Env, characterId: string, _accountId: string): Promise<boolean> {
+  return kick(env, characterId);
+}
+
 /** Ends the character's connection (saving it first). A failure is only logged: the sessions are gone, so it cannot come back. */
-async function kick(env: Env, characterId: string | null): Promise<boolean> {
+export async function kick(env: Env, characterId: string | null): Promise<boolean> {
   if (!characterId) return false;
   try {
     await env.CHAR_LOCK.get(env.CHAR_LOCK.idFromName(characterId)).evict(characterId);

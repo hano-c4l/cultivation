@@ -1,0 +1,112 @@
+import type { DatabaseSync } from "node:sqlite";
+import { beforeEach, describe, expect, it } from "vitest";
+import { REALMS, SKILLS, setItemOverlays } from "@game/shared";
+import { listAdminLog, parseLogQuery } from "./admin-log";
+import { REVIEW_MS, addItem, addSkill, adjustMoney, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
+import { makeDb } from "./test-db";
+
+let db: D1Database;
+let raw: DatabaseSync;
+let kicks: string[];
+const A = "admin@x.test";
+const B = "other@x.test";
+const NOW = 1_000_000;
+const kicker = async (_account: string, character: string) => {
+  kicks.push(character);
+  return true;
+};
+const logs = async () => (await listAdminLog(db, parseLogQuery(new URLSearchParams()))).rows.map((r) => r.content);
+const skill = SKILLS[0]!;
+
+beforeEach(() => {
+  ({ db, raw } = makeDb());
+  setItemOverlays([]);
+  kicks = [];
+  raw.exec("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, created_at) VALUES ('a1', 'p@x.test', 'h', 's', 1, 0)");
+  raw.prepare("INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at, hotbar) VALUES ('c1', 'a1', 'Lan Tu', 'kim', 0, 0, 0, 0, ?)").run(JSON.stringify([`s:${skill.id}`, ""]));
+  raw.exec("INSERT INTO sessions (token_hash, account_id, expires_at, created_at) VALUES ('t1', 'a1', 9999999999999, 1)");
+  raw.exec("INSERT INTO currency_balances (character_id, currency, balance) VALUES ('c1', 'linh_thach', 100)");
+});
+
+const stats = { canCot: 5, thanPhap: 5, ngoTinh: 5, linhLuc: 5, thanThuc: 5, phucDuyen: 5 };
+
+describe("a character under review", () => {
+  it("refuses every change until the admin starts a review, and starting it ends the sessions and kicks", async () => {
+    expect(await editStats(db, A, "c1", { realm: 1, stage: 2, exp: 0, potentialPoints: 0, stats }, REALMS.length, NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    expect(await adjustMoney(db, A, "c1", "linh_thach", 5, NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    expect(await addItem(db, A, "c1", "linh_thao", 1, NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    expect(await addSkill(db, A, "c1", skill.id, NOW)).toEqual({ ok: false, error: "not_reviewing" });
+    expect(await startReview(db, A, "c1", kicker, NOW)).toEqual({ ok: true, kicked: true });
+    expect(kicks).toEqual(["c1"]);
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 0 });
+    const v = (await getCharacterView(db, "c1", NOW + 1))!;
+    expect(v.review).toEqual({ by: A, until: NOW + REVIEW_MS });
+  });
+
+  it("is held by one admin at a time, runs out after 30 minutes, and refuses a change after that", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await startReview(db, B, "c1", kicker, NOW + 1000)).toEqual({ ok: false, error: "reviewed_by_other" });
+    expect(await adjustMoney(db, B, "c1", "linh_thach", 5, NOW + 1000)).toEqual({ ok: false, error: "not_reviewing" });
+    const late = NOW + REVIEW_MS + 1;
+    expect(await adjustMoney(db, A, "c1", "linh_thach", 5, late)).toEqual({ ok: false, error: "not_reviewing" });
+    expect((await getCharacterView(db, "c1", late))!.review).toBeNull();
+    expect(await startReview(db, B, "c1", kicker, late)).toMatchObject({ ok: true }); // the old review had run out
+  });
+
+  it("edits the sheet and logs what changed; refuses bad numbers and no-ops", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    const next = { realm: 1, stage: 3, exp: 50, potentialPoints: 9, stats: { ...stats, canCot: 40 } };
+    expect(await editStats(db, A, "c1", next, REALMS.length, NOW)).toEqual({ ok: true });
+    const v = (await getCharacterView(db, "c1", NOW))!;
+    expect(v).toMatchObject({ realm: 1, stage: 3, exp: 50, potentialPoints: 9, stats: { canCot: 40 } });
+    expect((await logs())[0]).toContain("cảnh giới 0-1 → 1-3");
+    expect(await editStats(db, A, "c1", next, REALMS.length, NOW)).toEqual({ ok: false, error: "unchanged" });
+    expect(await editStats(db, A, "c1", { ...next, realm: 9 }, REALMS.length, NOW)).toEqual({ ok: false, error: "invalid" });
+    expect(await editStats(db, A, "c1", { ...next, stage: 10 }, REALMS.length, NOW)).toEqual({ ok: false, error: "invalid" });
+  });
+
+  it("moves money through the currency statements (totals, admin group, this admin as the actor) and never below zero", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await adjustMoney(db, A, "c1", "linh_thach", 400, NOW)).toEqual({ ok: true });
+    expect((await getCharacterView(db, "c1", NOW))!.wallet.linh_thach).toBe(500);
+    expect(raw.prepare("SELECT total_in FROM linh_thach_totals WHERE character_id = 'c1' AND grp = 'admin'").get()).toEqual({ total_in: 400 });
+    expect(raw.prepare("SELECT actor FROM linh_thach_ledger WHERE character_id = 'c1'").get()).toEqual({ actor: A });
+    expect(await adjustMoney(db, A, "c1", "linh_thach", -9999, NOW)).toEqual({ ok: false, error: "funds" });
+    expect(await adjustMoney(db, A, "c1", "linh_thach", 0, NOW)).toEqual({ ok: false, error: "invalid" });
+    expect(await adjustMoney(db, A, "c1", "gold", 5, NOW)).toEqual({ ok: false, error: "invalid" });
+    expect(await adjustMoney(db, A, "c1", "tien_ngoc", 3, NOW)).toEqual({ ok: true });
+  });
+
+  it("adds items to the bag and takes a stack out; equipment and unknown items are refused", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await addItem(db, A, "c1", "linh_thao", 120, NOW)).toEqual({ ok: true });
+    const v = (await getCharacterView(db, "c1", NOW))!;
+    expect(v.items.reduce((n, i) => n + i.qty, 0)).toBe(120);
+    expect(v.items.length).toBe(2); // 99 + 21
+    expect(await addItem(db, A, "c1", "no_such_item", 1, NOW)).toEqual({ ok: false, error: "unknown_item" });
+    expect(await addItem(db, A, "c1", "eq.hat.m.0.1.1.kim", 1, NOW)).toEqual({ ok: false, error: "unknown_item" });
+    expect(await removeItem(db, A, "c1", v.items[0]!.id, NOW)).toEqual({ ok: true });
+    expect((await getCharacterView(db, "c1", NOW))!.items.length).toBe(1);
+    expect(await removeItem(db, A, "c1", "nope", NOW)).toEqual({ ok: false, error: "not_found" });
+  });
+
+  it("adds a skill once, removes it, and clears it from the hotbar", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await addSkill(db, A, "c1", skill.id, NOW)).toEqual({ ok: true });
+    expect(await addSkill(db, A, "c1", skill.id, NOW)).toEqual({ ok: false, error: "unchanged" });
+    expect(await addSkill(db, A, "c1", "no_such_skill", NOW)).toEqual({ ok: false, error: "invalid" });
+    expect((await getCharacterView(db, "c1", NOW))!.skills.map((s) => s.id)).toEqual([skill.id]);
+    expect(await removeSkill(db, A, "c1", skill.id, NOW)).toEqual({ ok: true });
+    expect(JSON.parse((raw.prepare("SELECT hotbar FROM characters WHERE id = 'c1'").get() as { hotbar: string }).hotbar)).toEqual(["", ""]);
+    expect(await removeSkill(db, A, "c1", skill.id, NOW)).toEqual({ ok: false, error: "not_found" });
+  });
+
+  it("ends the review: changes stop, ending twice is a no-op", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await endReview(db, A, "c1", NOW + 5)).toEqual({ ok: true });
+    expect((await getCharacterView(db, "c1", NOW + 6))!.review).toBeNull();
+    expect(await adjustMoney(db, A, "c1", "linh_thach", 1, NOW + 6)).toMatchObject({ ok: false });
+    expect(await endReview(db, A, "c1", NOW + 7)).toEqual({ ok: false, error: "unchanged" });
+    expect((await logs()).some((l) => l.includes("Xong sửa nhân vật"))).toBe(true);
+  });
+});

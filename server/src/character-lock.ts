@@ -48,6 +48,11 @@ export class CharacterLock extends DurableObject<Env> {
     await this.ctx.storage.delete("holder");
   }
 
+  /** Whether a connection holds the character right now (the admin screen shows it as online). */
+  async isHeld(): Promise<boolean> {
+    return (await this.ctx.storage.get<Holder>("holder")) !== undefined;
+  }
+
   /** Called by the holding connection after it left; ignored unless the claim id still matches. */
   async release(claimId: string): Promise<void> {
     const holder = await this.ctx.storage.get<Holder>("holder");

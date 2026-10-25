@@ -11,6 +11,7 @@ import { questEditPage, questListPage } from "./quests";
 import { alchemyPage, npcEditPage, npcListPage } from "./npcs";
 import { mapEditPage, mapListPage } from "./maps";
 import { accountDetailPage, accountListPage } from "./accounts";
+import { characterPage } from "./characters";
 import { miscPage, tuningPage } from "./misc";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
@@ -82,6 +83,9 @@ async function render(): Promise<void> {
   } else if (path === "/admin/accounts") {
     title = "Tài khoản";
     content = accountListPage();
+  } else if (path === "/admin/characters/detail") {
+    title = "Nhân vật";
+    content = characterPage();
   } else if (path === "/admin/accounts/detail") {
     title = "Tài khoản · Chi tiết";
     content = accountDetailPage();

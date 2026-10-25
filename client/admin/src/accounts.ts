@@ -148,6 +148,8 @@ function view(d: Detail, reload: () => Promise<void>): HTMLElement {
           h("dd", null, c.map),
           h("dt", null, "Tiền"),
           h("dd", null, Object.entries(c.wallet).map(([k, v]) => `${k}: ${v.toLocaleString("vi-VN")}`).join(" · ") || "—"),
+          h("dt", null, "Xem / sửa"),
+          h("dd", null, h("a", { href: `/admin/characters/detail?id=${encodeURIComponent(c.id)}` }, "Mở nhân vật (chỉ số, tiền, túi đồ, kỹ năng)")),
           h("dt", null, "Lịch sử tiền"),
           h("dd", null, h("a", { href: `/admin/currency/detail?currency=linh_thach&character=${encodeURIComponent(c.id)}` }, "Mở trong Quản lý tiền tệ")),
         )
