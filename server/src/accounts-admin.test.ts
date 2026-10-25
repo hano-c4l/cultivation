@@ -19,6 +19,7 @@ beforeEach(() => {
   env = {
     DB: db,
     CHAR_LOCK: { idFromName: (n: string) => n, get: (n: string) => ({ evict: async () => void evicted.push(n) }) },
+    CHAT_HUB: { idFromName: (n: string) => n, get: () => ({ kick: async () => undefined }) },
   } as unknown as Env;
   raw.exec("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, created_at) VALUES ('a1', 'alice@x.test', 'h', 's', 1, 100), ('a2', 'bob@x.test', 'h', 's', 1, 200)");
   raw.exec("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, role, created_at) VALUES ('ad', 'boss@x.test', 'h', 's', 1, 'admin', 50)");

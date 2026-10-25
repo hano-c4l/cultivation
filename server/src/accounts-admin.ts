@@ -110,6 +110,8 @@ async function kick(env: Env, characterId: string | null): Promise<boolean> {
   if (!characterId) return false;
   try {
     await env.CHAR_LOCK.get(env.CHAR_LOCK.idFromName(characterId)).evict(characterId);
+    // The chat socket is a separate connection (it only checks the session when it is opened).
+    await env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).kick(characterId);
     return true;
   } catch (err) {
     console.error("kick failed", characterId, err);
