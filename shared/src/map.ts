@@ -784,7 +784,7 @@ export function allNpcIds(): Set<string> {
 
 /** The NPCs the game starts with, on every map (seeds of the D1 table). */
 export function startingNpcs(): Array<NpcSpot & { mapId: MapId }> {
-  return MAP_IDS.flatMap((mapId) => getMap(mapId).npcs.map((n) => ({ ...n, mapId, name: NPC_NAMES_VI[n.id] ?? n.id })));
+  return MAP_IDS.flatMap((mapId) => codeMap(mapId).npcs.map((n) => ({ ...n, mapId, name: NPC_NAMES_VI[n.id] ?? n.id })));
 }
 
 /** The portal whose tile is within PORTAL_RADIUS of a continuous position, if any. */

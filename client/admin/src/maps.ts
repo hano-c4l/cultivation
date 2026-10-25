@@ -66,7 +66,7 @@ export function mapListPage(): HTMLElement {
     if (res.status !== 200) return void root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
     const maps = res.data.maps;
     root.replaceChildren(
-      h("p", { class: "muted" }, "Đổi bản đồ có hiệu lực với máy chủ sau tối đa 30 giây; người chơi nhận bản đồ mới khi vào lại game hoặc đổi bản đồ. Nên sửa lúc ít người chơi: người đang đứng trong bản đồ khi đổi có thể thấy lưới cũ tới khi vào lại."),
+      h("p", { class: "muted" }, "Đổi bản đồ có hiệu lực với máy chủ sau tối đa 30 giây; người chơi nhận bản đồ mới khi vào lại game hoặc đổi bản đồ. Hãy sửa lúc không có người trong bản đồ đó: máy chủ dùng lưới mới ngay cho việc đi lại, còn quái đang chạy và máy khách của người đang đứng trong bản đồ vẫn giữ lưới cũ tới khi phòng trống hoặc họ vào lại, nên họ có thể bị giật vị trí."),
       listView<Item>({
         columns: [
           { key: "id", label: "Mã", sortable: true, render: (m) => m.id },
