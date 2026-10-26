@@ -1,0 +1,16 @@
+{
+  "extends": "sprite-config-female.json",
+  "name": "char_male",
+  "spriteKey": "player.male",
+  "source": {
+    "model": "ubc/Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf",
+    "hair": "ubc/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_SimpleParted.gltf",
+    "outfit": "outfits/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf"
+  },
+  "bodyMesh": "SuperHero_Male",
+  "materials": {
+    "MI_Superhero_Male": { "color": [0.93, 0.76, 0.63] },
+    "MI_Regular_Male": { "color": [0.93, 0.76, 0.63] },
+    "MI_Hair_1": { "color": [0.1, 0.07, 0.07] }
+  }
+}

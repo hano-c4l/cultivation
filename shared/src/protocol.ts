@@ -211,6 +211,8 @@ export interface PlayerSnapshot {
   speed: number;
   /** Riding the flight pháp bảo (left out when on foot). */
   mounted?: true;
+  /** Drawn with the female body (left out for the male body; the gender itself is never sent). */
+  f?: true;
 }
 
 export type ServerMessage =

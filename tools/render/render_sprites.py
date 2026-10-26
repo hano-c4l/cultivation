@@ -1,7 +1,13 @@
 """
 Renders one rigged glb into a sprite atlas (phase 4b). Run it inside Blender through tools/render/run.mjs:
 
-  blender --background --factory-startup --python render_sprites.py -- <config.json> <model.glb> <out dir>
+  blender --background --factory-startup --python render_sprites.py -- <config.json> <out dir> <art root>
+
+The config names its sources relative to the art root (the folder outside the repo that holds the downloaded packs): the rigged model, optionally an
+animation file (an FBX whose actions are applied to the model, for rigs that share bone names) and optionally a hairstyle glTF. A config can
+"extends" another one (a shallow merge, `anims` and `materials` merged by key).
+An outfit (a glTF of modular clothing parts skinned to the same bone names) can be dressed on the model; with `headOnly` the model's own body is
+cut away below the neck, so that only its head shows and the clothes do not clip with a bare body.
 
 Writes into <out dir>: frames/*.png (raw frames), <name>.png + <name>.json (atlas, Phaser JSON hash), <name>.sprite.json (the manifest entry),
 contact.png (a sheet to look at), report.json, log.txt and, last of all, done.marker holding "ok" or "error" and the traceback.
@@ -9,13 +15,13 @@ contact.png (a sheet to look at), report.json, log.txt and, last of all, done.ma
 Every geometric assumption is asserted with numbers (camera, directions, animation actually moving): a wrong setup stops the run instead of
 producing 264 plausible-looking wrong frames. The raw frames and the atlas are never written inside the repo.
 """
-import bpy, sys, os, json, math, time, traceback
+import bpy, sys, os, json, math, re, time, traceback
 import numpy as np
 from mathutils import Matrix, Vector
 from bpy_extras.object_utils import world_to_camera_view
 
 ARGS = sys.argv[sys.argv.index("--") + 1:]
-CFG_PATH, GLB, OUT = ARGS[0], ARGS[1], ARGS[2]
+CFG_PATH, OUT, ART = ARGS[0], ARGS[1], ARGS[2]
 os.makedirs(os.path.join(OUT, "frames"), exist_ok=True)
 LOG = open(os.path.join(OUT, "log.txt"), "w", encoding="utf-8")
 
@@ -31,8 +37,26 @@ def check(cond, msg):
         raise AssertionError(msg)
 
 
+def load_config(path):
+    cfg = json.load(open(path, encoding="utf-8"))
+    base = cfg.pop("extends", None)
+    if base:
+        merged = load_config(os.path.join(os.path.dirname(path), base))
+        for k, v in cfg.items():
+            if k in ("anims", "materials", "palette", "source") and isinstance(v, dict):
+                merged[k] = {**merged.get(k, {}), **v}
+            else:
+                merged[k] = v
+        return merged
+    return cfg
+
+
+def art(rel):
+    return os.path.join(ART, *rel.split("/"))
+
+
 def main():
-    cfg = json.load(open(CFG_PATH, encoding="utf-8"))
+    cfg = load_config(CFG_PATH)
     F = cfg["frame"]
     anchor = cfg["anchor"]
     el = math.radians(cfg["elevationDeg"])
@@ -41,20 +65,62 @@ def main():
     ppm = 64.0 / math.sqrt(2) / cfg["tileMetres"]
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_scene.gltf(filepath=GLB)
-    scene = bpy.context.scene
-    scene.render.resolution_x = scene.render.resolution_y = F  # before the camera maths: world_to_camera_view and the lens shift read the aspect
-    scene.render.resolution_percentage = 100
-    for name in cfg["removeObjects"]:
+    src = cfg["source"]
+    if src.get("actions"):
+        # an animation file: only its actions are wanted (they drive any rig with the same bone names)
+        bpy.ops.import_scene.fbx(filepath=art(src["actions"]))
+        for o in list(bpy.data.objects):
+            bpy.data.objects.remove(o, do_unlink=True)
+        for a in bpy.data.actions:
+            a.use_fake_user = True
+            for fc in [f for f in a.fcurves if f.data_path in ("location", "rotation_euler", "rotation_quaternion", "scale")]:
+                a.fcurves.remove(fc)  # object-level motion would fight the ground placement done below
+    bpy.ops.import_scene.gltf(filepath=art(src["model"]))
+    rig = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    for name in cfg.get("removeObjects", []):
         o = bpy.data.objects.get(name)
         if o:
             bpy.data.objects.remove(o, do_unlink=True)
-    rig = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    if src.get("outfit"):
+        before_o = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=art(src["outfit"]))
+        for o in [o for o in bpy.data.objects if o not in before_o]:
+            if o.type == "MESH" and o.modifiers and o.modifiers[0].type == "ARMATURE":
+                o.parent = rig
+                o.modifiers[0].object = rig
+        for o in [o for o in bpy.data.objects if o not in before_o and (o.type == "ARMATURE" or o.name.startswith("Icosphere"))]:
+            bpy.data.objects.remove(o, do_unlink=True)
+    if cfg.get("headOnly"):
+        # keep the vertices the head and neck bones own (weight 0.5 or more) and drop the rest of the body
+        import bmesh
+        bodyobj = bpy.data.objects[cfg["bodyMesh"]]
+        keep = {g.index for g in bodyobj.vertex_groups if g.name in cfg["headBones"]}
+        bm = bmesh.new()
+        bm.from_mesh(bodyobj.data)
+        lay = bm.verts.layers.deform.active
+        drop = [v for v in bm.verts if sum(w for gi, w in v[lay].items() if gi in keep) < 0.5]
+        bmesh.ops.delete(bm, geom=drop, context="VERTS")
+        bm.to_mesh(bodyobj.data)
+        bm.free()
+        log("body cut to the head: %d vertices dropped" % len(drop))
+    if src.get("hair"):
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=art(src["hair"]))
+        for o in [o for o in bpy.data.objects if o not in before]:
+            if o.type == "MESH" and o.modifiers and o.modifiers[0].type == "ARMATURE":
+                o.parent = rig  # the hair is skinned to the same bone names: point it at the model's skeleton
+                o.modifiers[0].object = rig
+        for o in [o for o in bpy.data.objects if o not in before and o.type == "ARMATURE"]:
+            bpy.data.objects.remove(o, do_unlink=True)
+    for o in [o for o in bpy.data.objects if o.name.startswith("Icosphere")]:
+        bpy.data.objects.remove(o, do_unlink=True)  # every pack ships a little reference sphere
+    scene = bpy.context.scene
+    scene.render.resolution_x = scene.render.resolution_y = F  # before the camera maths: world_to_camera_view and the lens shift read the aspect
+    scene.render.resolution_percentage = 100
     meshes = [o for o in bpy.data.objects if o.type == "MESH"]
-    check(len(meshes) == 1, "expected exactly one mesh, got %s" % [m.name for m in meshes])
-    body = meshes[0]
+    body = bpy.data.objects[cfg["bodyMesh"]]
     rig.rotation_mode = "XYZ"  # the importer leaves objects in quaternion mode, where rotation_euler would do nothing
-    ad = rig.animation_data
+    ad = rig.animation_data or rig.animation_data_create()
     for t in list(ad.nla_tracks):  # the importer stashes every action in an NLA track; they would fight the one assigned below
         ad.nla_tracks.remove(t)
 
@@ -70,7 +136,7 @@ def main():
     pal = cfg["palette"]
     levels = cfg["toonLevels"]
 
-    def toon(mat, rgb):
+    def toon(mat, rgb, vertex=False, image=None):
         mat.use_nodes = True
         nt = mat.node_tree
         nt.nodes.clear()
@@ -90,6 +156,28 @@ def main():
         mix.blend_type = "MULTIPLY"
         mix.inputs[0].default_value = 1.0
         mix.inputs[7].default_value = (rgb[0], rgb[1], rgb[2], 1)
+        if image is not None:
+            # the clothes keep the colours of their texture; the base colour tints them
+            tex = nt.nodes.new("ShaderNodeTexImage")
+            tex.image = image
+            tex.interpolation = "Linear"
+            tmix = nt.nodes.new("ShaderNodeMix")
+            tmix.data_type = "RGBA"
+            tmix.blend_type = "MULTIPLY"
+            tmix.inputs[0].default_value = 1.0
+            tmix.inputs[7].default_value = (rgb[0], rgb[1], rgb[2], 1)
+            nt.links.new(tex.outputs["Color"], tmix.inputs[6])
+            nt.links.new(tmix.outputs[2], mix.inputs[7])
+        if vertex:
+            # the mesh paints its own regions (skin, suit...) in its vertex colours: they multiply the base colour
+            vc = nt.nodes.new("ShaderNodeVertexColor")
+            vmix = nt.nodes.new("ShaderNodeMix")
+            vmix.data_type = "RGBA"
+            vmix.blend_type = "MULTIPLY"
+            vmix.inputs[0].default_value = 1.0
+            vmix.inputs[7].default_value = (rgb[0], rgb[1], rgb[2], 1)
+            nt.links.new(vc.outputs["Color"], vmix.inputs[6])
+            nt.links.new(vmix.outputs[2], mix.inputs[7])
         emit = nt.nodes.new("ShaderNodeEmission")
         out = nt.nodes.new("ShaderNodeOutputMaterial")
         nt.links.new(diff.outputs["BSDF"], s2r.inputs["Shader"])
@@ -98,11 +186,26 @@ def main():
         nt.links.new(mix.outputs[2], emit.inputs["Color"])
         nt.links.new(emit.outputs["Emission"], out.inputs["Surface"])
 
-    for slot in body.material_slots:
-        rgb = pal.get(slot.material.name)
-        check(rgb is not None, "no palette entry for material %s" % slot.material.name)
-        toon(slot.material, rgb)
-    n_slots = len(body.material_slots)
+    mats = cfg.get("materials", {})
+    done = set()
+    for mesh in meshes:
+        for slot in mesh.material_slots:
+            m = slot.material
+            if m.name in done:
+                continue
+            done.add(m.name)
+            key = re.sub(r"\.\d{3}$", "", m.name)  # a second import of the same material is named "<name>.001"
+            spec = mats.get(key)
+            rgb = spec["color"] if isinstance(spec, dict) else pal.get(key)
+            check(rgb is not None, "no colour for material %s" % m.name)
+            image = None
+            if isinstance(spec, dict) and spec.get("texture") and m.node_tree:
+                for nd in m.node_tree.nodes:
+                    if nd.type == "TEX_IMAGE" and nd.image and "BaseColor" in nd.image.name:
+                        image = nd.image
+                        break
+                check(image is not None, "material %s has no BaseColor texture" % m.name)
+            toon(m, rgb, bool(isinstance(spec, dict) and spec.get("vertexColor")), image)
     outline = bpy.data.materials.new("outline")
     outline.use_nodes = True
     nt = outline.node_tree
@@ -112,17 +215,25 @@ def main():
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     nt.links.new(emit.outputs["Emission"], out.inputs["Surface"])
     outline.use_backface_culling = True
-    for _ in range(n_slots):  # the shell uses material index + offset, so the outline material must cover every index
-        body.data.materials.append(outline)
-    sol = body.modifiers.new("outline", "SOLIDIFY")  # after the Armature modifier, so it follows the pose
-    check(list(body.modifiers).index(sol) > 0 and body.modifiers[0].type == "ARMATURE", "the outline must come after the Armature modifier")
     fs = cfg["figureScale"]  # a person of 1.8 m would be 70 px tall; scaled down so a lying body (the death animation) and raised arms stay inside the box
     rig.scale = (fs, fs, fs)
-    sol.thickness = cfg["outlinePx"] / ppm / fs  # in the mesh's own units
-    sol.offset = 1.0
-    sol.use_flip_normals = True
-    sol.material_offset = n_slots
-    sol.use_rim = False
+    outline_names = cfg.get("outlineMeshes", [cfg["bodyMesh"]])
+    if outline_names == "all":
+        outline_names = [o.name for o in meshes if o.name not in cfg.get("noOutline", [])]
+    for name in outline_names:
+        mesh = bpy.data.objects[name]
+        n_slots = len(mesh.material_slots)
+        for _ in range(n_slots):  # the shell uses material index + offset, so the outline material must cover every index
+            mesh.data.materials.append(outline)
+        sol = mesh.modifiers.new("outline", "SOLIDIFY")  # after the Armature modifier, so it follows the pose
+        check(list(mesh.modifiers).index(sol) > 0 and mesh.modifiers[0].type == "ARMATURE", "the outline must come after the Armature modifier (%s: %s)" % (mesh.name, [m.type for m in mesh.modifiers]))
+        sol.thickness = cfg["outlinePx"] / ppm / fs  # in the mesh's own units
+        sol.offset = 1.0
+        sol.use_flip_normals = True
+        sol.material_offset = n_slots
+        sol.use_rim = False
+        if mesh is body:
+            body_sol = sol
 
     # ---- camera ----
     T = Vector((math.cos(az), math.sin(az), 0))  # on the ground, toward the viewer = down the screen
@@ -187,20 +298,23 @@ def main():
     log("engine", engine, "blender", bpy.app.version_string)
 
     # ---- the ground: the lowest point of the figure in the first idle pose stands on z = 0 (the same lift for every frame of the sprite) ----
-    first = bpy.data.actions[next(iter(cfg["anims"].values()))["action"]]
+    first = bpy.data.actions[cfg.get("actionPrefix", "") + next(iter(cfg["anims"].values()))["action"]]
     ad.action = first
     if hasattr(ad, "action_slot") and first.slots:
         ad.action_slot = first.slots[0]
     scene.frame_set(int(first.frame_range[0]))
     bpy.context.view_layer.update()
-    ev = body.evaluated_get(bpy.context.evaluated_depsgraph_get())
-    me = ev.to_mesh()
-    co = np.empty(len(me.vertices) * 3, dtype=np.float32)
-    me.vertices.foreach_get("co", co)
-    ev.to_mesh_clear()
-    mw = np.array(ev.matrix_world)
-    zw = co.reshape(-1, 3) @ mw[2, :3] + mw[2, 3]
-    lift = -float(zw.min() - sol.thickness * fs)  # the outline shell is not a part of the foot
+    lowest = 1e9
+    for mesh in meshes:
+        ev = mesh.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        me = ev.to_mesh()
+        co = np.empty(len(me.vertices) * 3, dtype=np.float32)
+        me.vertices.foreach_get("co", co)
+        ev.to_mesh_clear()
+        mw = np.array(ev.matrix_world)
+        if len(co):
+            lowest = min(lowest, float((co.reshape(-1, 3) @ mw[2, :3] + mw[2, 3]).min()))
+    lift = -(lowest - body_sol.thickness * fs)  # the outline shell is not a part of the foot
     log("lifting the figure by %.3f m so its feet stand on the ground" % lift)
 
     # ---- render every animation, direction and frame ----
@@ -210,7 +324,7 @@ def main():
     drift = {}
     t0 = time.time()
     for anim, a in cfg["anims"].items():
-        act = bpy.data.actions[a["action"]]
+        act = bpy.data.actions[cfg.get("actionPrefix", "") + a["action"]]
         ad.action = act
         if hasattr(ad, "action_slot") and act.slots:
             ad.action_slot = act.slots[0]
@@ -233,7 +347,7 @@ def main():
         # Root motion is cancelled: the hips stay over the same ground point for the whole animation (the game moves the actor, the sprite stays put).
         scene.frame_set(int(times[0]), subframe=times[0] - int(times[0]))
         bpy.context.view_layer.update()
-        hips = rig.pose.bones["DEF-hips"]
+        hips = rig.pose.bones[cfg.get("hipsBone", "DEF-hips")]
         h0 = hips.matrix.translation.copy()
         worst_drift = 0.0
         for d, vec in enumerate(cfg["directions"]):

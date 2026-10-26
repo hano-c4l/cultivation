@@ -130,6 +130,8 @@ interface Actor {
   cloud?: Phaser.GameObjects.Ellipse;
   /** The sprite that replaces the oval body when the manifest has one for it (phase 4); the body stays as the camera anchor, hidden. */
   view?: GfxView;
+  /** Drawn with the female body (from the snapshot); picks the sprite. */
+  female?: boolean;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
   snAt: number;
@@ -1188,6 +1190,7 @@ export class GameScene extends Phaser.Scene {
         this.actors.set(p.id, actor);
       }
       const now = performance.now();
+      actor.female = p.f === true;
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
@@ -1497,7 +1500,7 @@ export class GameScene extends Phaser.Scene {
       a.body.setVisible(true);
     }
     if (!a.view) {
-      const key = this.gfx.spriteKeyFor("player");
+      const key = this.gfx.spriteKeyFor("player", undefined, a.female ? "female" : "male");
       const view = key ? this.gfx.createView(key) : undefined;
       if (!view) return;
       a.view = view;

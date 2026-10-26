@@ -1,14 +1,18 @@
 {
-  "version": 2,
+  "version": 5,
   "atlases": {
-    "char_base": {
-      "image": "char_base.png",
-      "data": "char_base.json"
+    "char_female": {
+      "image": "char_female.png",
+      "data": "char_female.json"
+    },
+    "char_male": {
+      "image": "char_male.png",
+      "data": "char_male.json"
     }
   },
   "sprites": {
-    "player": {
-      "atlas": "char_base",
+    "player.female": {
+      "atlas": "char_female",
       "frame": {
         "w": 96,
         "h": 96
@@ -17,7 +21,51 @@
         "x": 48,
         "y": 84
       },
-      "head": 65,
+      "head": 64,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "player.male": {
+      "atlas": "char_male",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 66,
       "anims": {
         "idle": {
           "frames": 4,
@@ -54,7 +102,8 @@
   },
   "maps": {
     "*": [
-      "char_base"
+      "char_female",
+      "char_male"
     ]
   }
 }

@@ -65,7 +65,7 @@ Chỉ có hạ tầng, **chưa có ảnh thật nào**; game chạy y như cũ k
 **Để sang hạng mục sau:** ánh xạ D1 (4c/4e); nạp trước atlas của bản đồ kế tiếp (4h); đo VRAM (4h).
 
 ## 4b. Pipeline render (2026-10-26)
-Một lệnh biến một mô hình glb có xương và animation thành atlas: `node tools/render/run.mjs <model.glb> <thư mục ngoài repo>` (Blender chạy không giao diện; đường dẫn Blender lấy từ biến môi trường `BLENDER_EXE`, mặc định là bí danh của bản Microsoft Store), rồi `node tools/gfx-publish.mjs <thư mục đó>` chép thành phẩm vào `client/public/gfx/` và ghép vào `manifest.json` (đây là nơi **duy nhất** ghi vào thư mục đó). Cấu hình ở `tools/render/sprite-config.json` (bản sao `directions` phải trùng `DIRECTION_VECTORS`: có test).
+Một lệnh biến một mô hình có xương và animation thành atlas: `node tools/render/run.mjs <config.json> <thư mục ngoài repo>` (cấu hình nêu nguồn, xem 4d; Blender chạy không giao diện; đường dẫn Blender lấy từ biến môi trường `BLENDER_EXE`, mặc định là bí danh của bản Microsoft Store), rồi `node tools/gfx-publish.mjs <thư mục đó>` chép thành phẩm vào `client/public/gfx/` và ghép vào `manifest.json` (đây là nơi **duy nhất** ghi vào thư mục đó). Cấu hình ở `tools/render/sprite-config.json` (bản sao `directions` phải trùng `DIRECTION_VECTORS`: có test).
 
 **Cách dựng:**
 - Camera trực giao, nhìn xuống 30°, góc 45°, **1 ô = 1 m** (64/√2 ≈ 45,25 px mỗi mét), chân rơi đúng điểm neo. Mô hình xoay; ánh sáng và camera đứng yên.
@@ -78,12 +78,22 @@ Một lệnh biến một mô hình glb có xương và animation thành atlas: 
 
 **Ghi chú:** atlas là **PNG** (1,58 MB cho 264 frame); chuyển sang WebP và nén texture để 4h. Tốc độ phát lấy từ chính action (số frame ÷ độ dài ÷ 24 fps).
 
-## 4c. Nhân vật mẫu (2026-10-26) — **chờ người dùng duyệt phong cách**
+## 4c. Nhân vật mẫu (2026-10-26) — **chờ người dùng duyệt phong cách** (thân người trơn mô tả dưới đây đã được thay bằng nam và nữ mặc bộ Peasant ở 4d)
 - **Nguồn:** thân người "Mannequin" và 6 animation của Quaternius Universal Animation Library [Standard] (CC0; ghi ở `ASSETS.md`). `idle` = Idle_Loop (4 frame), `run` = Jog_Fwd_Loop (8), `attack` = Sword_Attack (6), `cast` = Spell_Simple_Shoot (6), `hit` = Hit_Chest (3), `die` = Death01 (6): 33 frame × 8 hướng = 264 frame, atlas 2016×1248. **Đây là thân người trần, chưa có trang phục**: chỉ duyệt góc camera, cỡ người so với ô, viền, bóng và chuyển động; không duyệt quần áo.
 - **Trong game:** người chơi (cả mình và người khác, một thân nam chung cho cả hai giới) dùng sprite này ở mọi bản đồ. `idle` và `run` theo di chuyển; `attack` khi đánh thường hoặc dùng kỹ năng cận chiến; `cast` khi dùng kỹ năng khác (trừ tốc biến); `hit` khi bị trúng; `die` khi chết (giữ khung cuối). Một lần chạy bị khóa tới hết (`ONE_SHOT_MS`: attack 500, cast 600, hit 320 ms), không bị idle/run cắt; thời gian này chỉ là hình, **server vẫn quyết định nhịp và thời điểm trúng đòn**.
 - **Biết là còn thiếu:** 28 trên 264 frame chạm mép khung (đều ở animation chết, vài frame đánh); quái chết bị gỡ ngay nên **chưa có animation chết cho quái** (cần trì hoãn việc gỡ, làm ở 4e); `die` của người chơi khác chưa có (server chỉ báo `died` cho chính người chết); vệ binh, NPC và quái vẫn là hình cũ.
 - **Đã kiểm trong trình duyệt local:** đứng, đi, đánh quái ở rừng, chuyển bản đồ qua cổng; chết ở hang rồi hồi sinh ở thành thì nhân vật đứng dậy và đi được (`welcome` xóa và dựng lại mọi view nên khóa `die` không kẹt).
 - **Chưa kiểm:** FPS và VRAM trên điện thoại thật (việc của người dùng), WebGL, từng animation chạy trong game (đã thấy nhân vật đứng, đi và đánh trong trình duyệt local nhưng chưa xem từng animation một).
+
+## 4d. Thân nữ, trang bị, pháp bảo, thú cưỡi (2026-10-26) — **đang làm, chia nhỏ**
+**Đã làm (hạ tầng, chưa có ảnh mới):**
+- Pipeline render nhận nguồn khác nhau qua cấu hình: `node tools/render/run.mjs <config.json> <thư mục ngoài repo>` (thư mục chứa gói tải về lấy từ `CULTIVATION_ART`, mặc định `D:/Working/cultivation-art`); cấu hình có `source` (mô hình, tệp animation FBX tùy chọn, kiểu tóc tùy chọn), `extends` (kế thừa cấu hình khác), `materials` (màu từng vật liệu, tùy chọn dùng vertex color), `bodyMesh`, `outlineMeshes`, `hipsBone`, `actionPrefix`. Có sẵn `sprite-config-female.json` và `sprite-config-male.json` (Quaternius Universal Base Characters, kèm tóc, animation lấy từ bản Unreal Engine của Universal Animation Library vì cùng tên xương: `root, pelvis, spine_01...`; bản Godot của gói animation dùng tên xương khác `DEF-...` nên **không** áp được lên thân này).
+- Server gửi thân nào cho từng người chơi: `PlayerSnapshot.f` (có khi thân nữ; `bodyOf` ở `shared/src/gender.ts`; "male_wears_female" vẫn là thân nam). Client chọn khóa sprite `player.female` hoặc `player.male`, rơi về `player` khi chưa có.
+
+**Thân nam và nữ có quần áo (đã làm):** thân của gói Universal Base Characters [Standard] là thân trần nên **chỉ lấy cái đầu** (cắt các đỉnh không thuộc xương `Head` và `neck_01` bằng `headOnly`), rồi mặc bộ **Peasant** (nam và nữ) của gói Modular Character Outfits - Fantasy [Standard] (CC0; bản Standard chỉ có 4 bộ: Peasant và Ranger, nam và nữ), cộng tóc. Quần áo giữ màu của texture BaseColor, nhân thêm màu `color` của cấu hình (đồ sáng lên bằng hệ số 2,4 vì texture tối), da là một màu phẳng. Bộ này thay hai thân người mẫu cũ: manifest nay có `player.male` và `player.female` (atlas `char_male`, `char_female`, mỗi cái khoảng 1,6 MB, 264 frame), thân người trơn `char_base` đã bị gỡ khỏi manifest (cấu hình `sprite-config.json` vẫn còn làm gốc kế thừa). Tải cả hai atlas ở mọi bản đồ vì nam và nữ có thể cùng đứng một chỗ: **VRAM tăng lên khoảng 20 MB (2 × 10 MB chưa nén)**, việc đo và nén để 4h.
+- **Còn thiếu của bản này:** chỉ một bộ (Peasant); chưa có bộ Ranger (có nón trùm, giáp vai) vào game; ba màu mỗi bộ chỉ có ở bản Source (bản Standard một màu); màu quần áo hơi tối trên nền cỏ; 22 (nữ) và 28 (nam) frame trên 264 chạm mép khung, đều ở animation chết và vài frame đánh.
+
+**Còn lại của 4d:** lớp vũ khí gắn vào xương tay (`Medieval Weapons Pack` đã tải ngoài repo, CC0, 24 vũ khí; render riêng một lớp với thân làm "holdout" để vũ khí bị thân che đúng chỗ và đặt lên trên thân ở mọi hướng); màu/bộ trang phục theo bộ trang bị bằng dữ liệu D1 (kèm việc server báo vẻ ngoài của người khác); pháp bảo phi hành và thú cưỡi.
 
 ## Nghiệm thu (bản chi tiết của `docs/PLAN.md` mục 10)
 - Nhân vật mẫu đủ 8 hướng và 6 animation hiển thị đúng trong game, **không lệch neo giữa các hướng**, và được người dùng duyệt phong cách.

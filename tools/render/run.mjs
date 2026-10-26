@@ -1,6 +1,6 @@
 // Runs render_sprites.py in Blender and waits for it (phase 4b).
-//   node tools/render/run.mjs <model.glb> <out dir> [config.json]
-// The out dir must be OUTSIDE the repo (raw frames never go in). Blender is found through the BLENDER_EXE environment variable, or else the
+//   node tools/render/run.mjs <config.json> <out dir>
+// The out dir must be OUTSIDE the repo (raw frames never go in). The config names its sources relative to the art folder (CULTIVATION_ART, default D:/Working/cultivation-art). Blender is found through the BLENDER_EXE environment variable, or else the
 // Microsoft Store alias (the Store build's launcher returns at once and shows no output, so progress is read from the log and the end from done.marker).
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
@@ -8,9 +8,9 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const [glb, outArg, cfgArg] = process.argv.slice(2);
-if (!glb || !outArg) {
-  console.error("usage: node tools/render/run.mjs <model.glb> <out dir outside the repo> [config.json]");
+const [cfgArg, outArg] = process.argv.slice(2);
+if (!cfgArg || !outArg) {
+  console.error("usage: node tools/render/run.mjs <config.json> <out dir outside the repo>");
   process.exit(2);
 }
 const out = resolve(outArg);
@@ -19,9 +19,10 @@ if (rel === "" || !(rel.startsWith("..") || isAbsolute(rel))) {
   console.error(`refusing to write raw renders inside the repo (${out})`);
   process.exit(2);
 }
-const cfg = resolve(cfgArg ?? join(root, "tools/render/sprite-config.json"));
-if (!existsSync(glb) || !existsSync(cfg)) {
-  console.error("model or config not found");
+const cfg = resolve(cfgArg);
+const artRoot = resolve(process.env.CULTIVATION_ART ?? "D:/Working/cultivation-art");
+if (!existsSync(cfg) || !existsSync(artRoot)) {
+  console.error("config or art folder not found");
   process.exit(2);
 }
 
@@ -40,7 +41,7 @@ mkdirSync(out, { recursive: true });
 const marker = join(out, "done.marker");
 rmSync(marker, { force: true });
 const script = join(root, "tools/render/render_sprites.py");
-const child = spawn(findBlender(), ["--background", "--factory-startup", "--python", script, "--", cfg, resolve(glb), out], { stdio: "ignore", detached: true });
+const child = spawn(findBlender(), ["--background", "--factory-startup", "--python", script, "--", cfg, out, artRoot], { stdio: "ignore", detached: true });
 child.unref();
 
 const deadline = Date.now() + 15 * 60_000;
