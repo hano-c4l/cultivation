@@ -110,11 +110,12 @@ describe("the render config", () => {
     expect(renderConfig.directions).toEqual(DIRECTION_VECTORS.map((v) => [...v]));
   });
 
-  it("agrees with the shipped manifest about the frame box and the feet anchor", () => {
-    const sprite = (shipped as { sprites: Record<string, { frame: { w: number; h: number }; anchor: { x: number; y: number } }> }).sprites[renderConfig.spriteKey];
-    if (!sprite) return; // nothing published yet
-    expect(sprite.frame).toEqual({ w: renderConfig.frame, h: renderConfig.frame });
-    expect(sprite.anchor).toEqual({ x: renderConfig.anchor[0], y: renderConfig.anchor[1] });
+  it("agrees with the shipped manifest about the frame box and the feet anchor, for every sprite", () => {
+    const sprites = (shipped as { sprites: Record<string, { frame: { w: number; h: number }; anchor: { x: number; y: number } }> }).sprites;
+    for (const [key, sprite] of Object.entries(sprites)) {
+      expect(sprite.frame, key).toEqual({ w: renderConfig.frame, h: renderConfig.frame });
+      expect(sprite.anchor, key).toEqual({ x: renderConfig.anchor[0], y: renderConfig.anchor[1] });
+    }
   });
 
   it("asks only for animations the manifest knows, with frames that fit one atlas page", () => {
@@ -123,5 +124,15 @@ describe("the render config", () => {
     const total = Object.values(renderConfig.anims).reduce((n, a) => n + a.frames, 0) * renderConfig.directions.length;
     const cols = Math.floor(renderConfig.atlasMaxPx / renderConfig.frame);
     expect(Math.ceil(total / cols) * renderConfig.frame).toBeLessThanOrEqual(renderConfig.atlasMaxPx);
+  });
+});
+
+describe("bodyOf", () => {
+  it("draws a character with the body of the first word of the gender", async () => {
+    const { bodyOf } = await import("./gender");
+    expect(bodyOf("male")).toBe("male");
+    expect(bodyOf("male_wears_female")).toBe("male");
+    expect(bodyOf("female")).toBe("female");
+    expect(bodyOf("female_wears_male")).toBe("female");
   });
 });

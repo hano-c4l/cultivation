@@ -143,7 +143,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { bodyOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
@@ -205,6 +205,8 @@ interface PlayerState {
   /** The account is an admin (set by the Worker when the socket opens; a role change counts from the next connection). */
   admin?: boolean;
   name: string;
+  /** Drawn with the female body (from the gender at join; it never changes while connected). */
+  female?: boolean;
   /** Lock claim id of this connection, kept so the lock can be released after a wake-up. */
   claimId: string;
   mapId: MapId;
@@ -541,6 +543,7 @@ export class MapRoom extends DurableObject<Env> {
         snAt: Date.now(),
         ah: row.anh_hung,
         name: row.name,
+        ...(bodyOf(row.gender) === "female" ? { female: true } : {}),
         claimId,
         mapId,
         path: [position],
@@ -4009,7 +4012,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {

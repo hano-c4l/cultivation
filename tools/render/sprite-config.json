@@ -1,5 +1,8 @@
 {
   "name": "char_base",
+  "source": { "model": "ual/Animation Library[Standard]/Godot/AnimationLibrary_Godot_Standard.glb" },
+  "bodyMesh": "Mannequin",
+  "hipsBone": "DEF-hips",
   "spriteKey": "player",
   "frame": 96,
   "anchor": [48, 84],

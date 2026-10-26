@@ -134,8 +134,8 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
 - **Giai đoạn 4**: Đồ họa (`docs/PHASE4.md`; chỉ mới có kế hoạch, chưa làm)
   - 4a. Nền: manifest, bộ nạp atlas và rơi về vẽ bằng code — xong phần mã (chưa có ảnh thật)
   - 4b. Pipeline render và đóng gói (Blender, toon, atlas) — xong
-  - 4c. Nhân vật mẫu 8 hướng × 6 animation, đo hiệu năng, cổng duyệt phong cách — bản đầu đã có, chờ duyệt
-  - 4d. Layer trang bị, pháp bảo, thú cưỡi
+  - 4c. Nhân vật mẫu 8 hướng × 6 animation, đo hiệu năng, cổng duyệt phong cách — bản đầu đã có, chờ duyệt (nay là nam và nữ mặc bộ Peasant, xem 4d)
+  - 4d. Thân nam/nữ có quần áo (xong), layer trang bị, pháp bảo, thú cưỡi (đang làm)
   - 4e. Quái và boss
   - 4f. Hiệu ứng kỹ năng và các hiệu ứng khác
   - 4g. Icon, NPC, ô bản đồ
