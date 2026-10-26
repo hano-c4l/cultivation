@@ -1,5 +1,8 @@
 import Phaser from "phaser";
 import {
+  headingAlongPath,
+  directionOf,
+  type GfxAnimName,
   bossKinds,
   bossRealmBonus,
   equipmentInfo,
@@ -85,6 +88,8 @@ import { DEFAULT_CHANNEL } from "./config";
 import { mapLabel, vi } from "./locales/vi";
 import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
+import { GfxKit, ONE_SHOT_MS, type GfxView } from "./gfx/kit";
+import { skillFxOf } from "./fx-kinds";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
 
@@ -123,6 +128,8 @@ interface Actor {
   /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
   mounted: boolean;
   cloud?: Phaser.GameObjects.Ellipse;
+  /** The sprite that replaces the oval body when the manifest has one for it (phase 4); the body stays as the camera anchor, hidden. */
+  view?: GfxView;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
   snAt: number;
@@ -134,6 +141,9 @@ function isBossKind(kind: string): boolean {
 
 interface MonsterActor {
   id: string;
+  kind: string;
+  /** The sprite that replaces the square when the manifest has one (phase 4); the square stays, hidden. */
+  view?: GfxView;
   /** A vệ binh: own name and colour, and it is only clicked (attacked) with the PK state on. */
   guard: boolean;
   /** The map boss: red name, big body. */
@@ -212,6 +222,7 @@ function ensureGroundTexture(scene: Phaser.Scene, palette: MapData["palette"]): 
 }
 
 export class GameScene extends Phaser.Scene {
+  private gfx!: GfxKit;
   private map: MapData = getMap("town");
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
   private actors = new Map<string, Actor>();
@@ -316,6 +327,9 @@ export class GameScene extends Phaser.Scene {
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
     this.fx = new Effects(this, (id) => this.screenPosOf(id));
+    this.gfx = new GfxKit(this);
+    this.gfx.useMap(this.map.id);
+    void this.gfx.init();
     this.rank = initRank((msg) => this.net.send(msg), this.registry.get("isAdmin") === true);
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
@@ -509,6 +523,7 @@ export class GameScene extends Phaser.Scene {
     if (!isMapId(mapId) || (this.map.id === mapId && this.npcKey === JSON.stringify(npcsOf(this.map)) && this.recipeKey === JSON.stringify(overrideRecipe(mapId) ?? ""))) return;
     this.recipeKey = JSON.stringify(overrideRecipe(mapId) ?? "");
     this.map = getMap(mapId);
+    this.gfx.useMap(mapId);
     this.shop.close();
     this.quests.close();
     this.waygate.close();
@@ -758,6 +773,7 @@ export class GameScene extends Phaser.Scene {
         this.vitals.set(msg.hp, msg.maxHp);
         break;
       case "died":
+        this.playOnce(this.selfId, "die"); // stays on the last frame until the transfer to town replaces the view
         this.hitMeAt.clear(); // the quarrel with whoever killed us is over: their name goes back to its real colour
         this.channel.stop();
         this.chat.system(vi.combat.died(msg.expLost), "important");
@@ -926,9 +942,13 @@ export class GameScene extends Phaser.Scene {
           else this.chat.system(vi.inventory.picked(name, it.qty));
         }
         break;
-      case "fx":
+      case "fx": {
+        const fxKind = skillFxOf(getSkill(msg.skill));
+        // A close-combat skill swings; the others are cast. The caster turns to its target (an actor) or to the point the skill goes to.
+        this.playOnce(msg.id, fxKind === "melee" ? "attack" : fxKind === "blink" ? undefined : "cast", msg.to ?? (msg.x !== undefined && msg.y !== undefined ? [msg.x, msg.y] : undefined));
         this.fx.skill(msg.id, msg.skill, msg.to, msg.x !== undefined && msg.y !== undefined ? toScreen(msg.x, msg.y) : undefined, msg.el);
         break;
+      }
       case "fx_cone": {
         const from = toScreen(msg.x, msg.y);
         const aim = toScreen(msg.ax, msg.ay);
@@ -1188,11 +1208,36 @@ export class GameScene extends Phaser.Scene {
     const actor = this.actors.get(id);
     if (!actor) return;
     this.fx.forget(id);
+    actor.view?.destroy();
     actor.body.destroy();
     actor.label.destroy();
     actor.tag.destroy();
     actor.cloud?.destroy();
     this.actors.delete(id);
+  }
+
+  /** Where an actor stands on the ground (tile coordinates) right now, or undefined when it is not here. */
+  private tilePosOf(id: string): Vec2 | undefined {
+    const now = performance.now();
+    const m = this.monsters.get(id);
+    if (m) {
+      const p = positionAlongPath(m.path, now - m.startedAt, m.speed);
+      return [p.x, p.y];
+    }
+    const a = this.actors.get(id);
+    if (!a) return undefined;
+    const p = currentPos(a, now);
+    return [p.x, p.y];
+  }
+
+  /** Plays an attack, cast, hit or die once on a player or a monster that shows a sprite, turned toward an actor or a tile point (and not otherwise). */
+  private playOnce(id: string, anim: GfxAnimName | undefined, toward?: string | Vec2): void {
+    const view = this.actors.get(id)?.view ?? this.monsters.get(id)?.view;
+    if (!anim || !view?.alive) return;
+    const from = this.tilePosOf(id);
+    const to = typeof toward === "string" ? this.tilePosOf(toward) : toward;
+    const dir = from && to ? directionOf(to[0] - from[0], to[1] - from[1]) : null;
+    view.playOnce(anim, dir ?? view.dir, ONE_SHOT_MS[anim]);
   }
 
   /** Where an actor (a player or a monster) stands on screen right now, or null when it is not here: effects follow it. */
@@ -1247,7 +1292,7 @@ export class GameScene extends Phaser.Scene {
         .text(0, 0, this.monsterName(snap.kind, snap.tier, snap.rank, snap.guard === true), { fontFamily: FONT, fontSize: "12px", color: "#ffffff", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1);
       const icon = this.add.circle(0, 0, 5, ELEMENT_DOT[snap.element] ?? 0xcccccc).setStrokeStyle(1, 0xffffff, 1).setVisible(snap.guard !== true);
-      m = { color: "#ffffff", icon, id: snap.id, guard: snap.guard === true, boss: snap.boss === true, tier: snap.tier, rank: snap.rank, element: snap.element, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
+      m = { color: "#ffffff", icon, id: snap.id, kind: snap.kind, guard: snap.guard === true, boss: snap.boss === true, tier: snap.tier, rank: snap.rank, element: snap.element, path: snap.path, startedAt: 0, speed: snap.speed, hp: snap.hp, maxHp: snap.maxHp, body, label, bar: this.add.graphics() };
       this.monsters.set(snap.id, m);
       this.syncRankContext();
     }
@@ -1302,6 +1347,7 @@ export class GameScene extends Phaser.Scene {
   private removeMonster(id: string): void {
     const m = this.monsters.get(id);
     if (!m) return;
+    m.view?.destroy();
     m.body.destroy();
     m.label.destroy();
     m.icon.destroy();
@@ -1413,7 +1459,11 @@ export class GameScene extends Phaser.Scene {
   private showHit(msg: Extract<ServerMessage, { t: "hit" }>): void {
     if (msg.to === this.selfId && this.actors.has(msg.from) && !msg.ret) this.hitMeAt.set(msg.from, performance.now());
     // A hit with no skill behind it is a plain attack (a skill is drawn from its own `fx` message).
-    if (!msg.skill) this.fx.basic(msg.from, msg.to, this.monsters.has(msg.from));
+    if (!msg.skill) {
+      this.fx.basic(msg.from, msg.to, this.monsters.has(msg.from));
+      this.playOnce(msg.from, "attack", msg.to);
+    }
+    if (msg.kind !== "miss") this.playOnce(msg.to, "hit", msg.from);
     const monster = this.monsters.get(msg.to);
     if (monster) monster.hp = msg.hp;
     const now = performance.now();
@@ -1440,6 +1490,41 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: label, y: label.y - 28, alpha: 0, duration: 800, onComplete: () => label.destroy() });
   }
 
+  /** Shows the sprite of a player when the manifest has one (and the oval otherwise); plays run or idle facing the way it walks. */
+  private syncActorView(a: Actor, now: number, x: number, y: number, depth: number, moving: boolean): void {
+    if (a.view && !a.view.alive) {
+      a.view = undefined;
+      a.body.setVisible(true);
+    }
+    if (!a.view) {
+      const key = this.gfx.spriteKeyFor("player");
+      const view = key ? this.gfx.createView(key) : undefined;
+      if (!view) return;
+      a.view = view;
+      a.body.setVisible(false);
+    }
+    a.view.play(moving ? "run" : "idle", headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir);
+    if (a.view.alive) a.view.place(x, y - (a.mounted ? 8 : 0), depth);
+  }
+
+  /** The same for a monster, a guard or a boss; the rank and boss sizes scale the sprite as they scale the square. */
+  private syncMonsterView(m: MonsterActor, now: number, x: number, y: number, depth: number): void {
+    if (m.view && !m.view.alive) {
+      m.view = undefined;
+      m.body.setVisible(true);
+    }
+    if (!m.view) {
+      const key = m.guard ? this.gfx.spriteKeyFor("guard") : this.gfx.spriteKeyFor("monster", m.kind);
+      const view = key ? this.gfx.createView(key) : undefined;
+      if (!view) return;
+      m.view = view;
+      m.body.setVisible(false);
+    }
+    m.view.setScale(m.boss ? 2 : m.rank === "rare2" ? 1.4 : m.rank === "rare1" ? 1.2 : 1);
+    m.view.play(positionAlongPath(m.path, now - m.startedAt, m.speed).moving ? "run" : "idle", headingAlongPath(m.path, now - m.startedAt, m.speed) ?? m.view.dir);
+    if (m.view.alive) m.view.place(x, y, depth);
+  }
+
   update(): void {
     const now = performance.now();
     this.fx.update(now);
@@ -1451,6 +1536,7 @@ export class GameScene extends Phaser.Scene {
       actor.label.setPosition(s.x, s.y - (actor.mounted ? 46 : 38));
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
+      this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);
       actor.label.setDepth(depth + 0.1);
       if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - (actor.mounted ? 47 : 39)).setDepth(depth + 0.1);
     }
@@ -1475,6 +1561,8 @@ export class GameScene extends Phaser.Scene {
         m.bar.fillStyle(0x000000, 0.7).fillRect(s.x - w / 2, s.y - 36, w, 5);
         m.bar.fillStyle(0xe53935, 1).fillRect(s.x - w / 2 + 1, s.y - 35, (w - 2) * Math.max(0, m.hp / m.maxHp), 3);
       }
+      this.syncMonsterView(m, now, s.x, s.y, depth);
+      if (m.view?.alive && m.id === this.targetId) m.bar.lineStyle(2, 0xffe08a, 1).strokeEllipse(s.x, s.y, 40, 20); // the square is hidden: ring the feet
       if (m.id === this.targetId) m.body.setStrokeStyle(3, 0xffe08a, 1);
       else m.body.setStrokeStyle(2, 0x000000, 0.7);
     }
