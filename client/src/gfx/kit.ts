@@ -67,7 +67,15 @@ export class GfxView {
   }
 
   setScale(k: number): void {
+    this.k = k;
     this.sprite.setScale(k * (this.def.scale ?? 1));
+  }
+
+  private k = 1;
+
+  /** How far above the feet the top of the head is on screen, in px (names and bars stand above it). */
+  rise(): number {
+    return (this.def.head ?? this.def.anchor.y) * this.k * (this.def.scale ?? 1);
   }
 
   destroy(): void {

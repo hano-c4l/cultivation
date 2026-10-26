@@ -272,6 +272,17 @@ def main():
         log("root motion removed for %s: up to %.2f m of drift" % (anim, worst_drift))
         log("rendered %s: %d frames x %d directions, %.1f fps, %.0fs elapsed" % (anim, n, len(cfg["directions"]), fps, time.time() - t0))
 
+    # ---- how tall the figure stands (idle frames): the game puts the name above this ----
+    head = 0
+    for name, arr in frames.items():
+        if not name.startswith("idle_"):
+            continue
+        ys = np.nonzero(arr[:, :, 3] > 0.05)[0]
+        if len(ys):
+            head = max(head, anchor[1] - (F - 1 - int(ys.max())))
+    check(head > 8, "could not measure the height of the figure")
+    log("head is %d px above the feet" % head)
+
     # ---- the atlas ----
     cols = cfg["atlasMaxPx"] // F
     names = list(frames.keys())
@@ -300,7 +311,7 @@ def main():
 
     save_array(atlas, os.path.join(OUT, img_name))
     json.dump({"frames": jframes, "meta": {"image": img_name, "size": {"w": W, "h": H}, "scale": "1"}}, open(os.path.join(OUT, cfg["name"] + ".json"), "w"))
-    json.dump({"key": cfg["spriteKey"], "atlas": cfg["name"], "image": img_name, "data": cfg["name"] + ".json", "frame": {"w": F, "h": F}, "anchor": {"x": anchor[0], "y": anchor[1]}, "anims": meta},
+    json.dump({"key": cfg["spriteKey"], "atlas": cfg["name"], "image": img_name, "data": cfg["name"] + ".json", "frame": {"w": F, "h": F}, "anchor": {"x": anchor[0], "y": anchor[1]}, "head": head, "anims": meta},
               open(os.path.join(OUT, cfg["name"] + ".sprite.json"), "w"), indent=2)
 
     # ---- a contact sheet to look at: the middle frame of each animation in the 8 directions, 2x, with the 64x32 tile under the feet ----

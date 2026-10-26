@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "atlases": {
     "char_base": {
       "image": "char_base.png",
@@ -17,6 +17,7 @@
         "x": 48,
         "y": 84
       },
+      "head": 65,
       "anims": {
         "idle": {
           "frames": 4,
