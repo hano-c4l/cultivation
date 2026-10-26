@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "atlases": {
+    "char_base": {
+      "image": "char_base.png",
+      "data": "char_base.json"
+    }
+  },
+  "sprites": {
+    "player": {
+      "atlas": "char_base",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    }
+  },
+  "maps": {
+    "*": [
+      "char_base"
+    ]
+  }
+}
