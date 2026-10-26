@@ -63,8 +63,8 @@ describe("names", () => {
 
 describe("validateManifest", () => {
   it("accepts a good manifest and the empty one", () => {
-    const r = validateManifest(good());
-    expect(r.ok).toBe(true);
+    const r = validateManifest({ ...good(), sprites: { player: { ...good().sprites.player, head: 65 } } });
+    expect(r.ok && r.manifest.sprites.player?.head).toBe(65);
     expect(validateManifest(EMPTY_MANIFEST).ok).toBe(true);
   });
 
@@ -87,6 +87,7 @@ describe("validateManifest", () => {
     ["unknown animation", (m) => ({ ...m, sprites: { p: { ...m.sprites.player, anims: { dance: { frames: 1, fps: 1, loop: true } } } } })],
     ["zero frames", (m) => ({ ...m, sprites: { p: { ...m.sprites.player, anims: { idle: { frames: 0, fps: 6, loop: true } } } } })],
     ["map with a missing atlas", (m) => ({ ...m, maps: { forest: ["ghost"] } })],
+    ["head taller than the frame", (m) => ({ ...m, sprites: { p: { ...m.sprites.player, head: 500 } } })],
     ["bad sprite key", (m) => ({ ...m, sprites: { "Bad Key": m.sprites.player } })],
   ];
   for (const [name, mutate] of bad) {

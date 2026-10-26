@@ -40,7 +40,7 @@ for (const sp of sprites) {
   copyFileSync(join(dir, sp.image), join(OUT, sp.image));
   copyFileSync(join(dir, sp.data), join(OUT, sp.data));
   manifest.atlases[sp.atlas] = { image: sp.image, data: sp.data };
-  manifest.sprites[sp.key] = { atlas: sp.atlas, frame: sp.frame, anchor: sp.anchor, anims: sp.anims };
+  manifest.sprites[sp.key] = { atlas: sp.atlas, frame: sp.frame, anchor: sp.anchor, ...(sp.head ? { head: sp.head } : {}), anims: sp.anims };
   for (const m of maps) {
     manifest.maps[m] = [...new Set([...(manifest.maps[m] ?? []), sp.atlas])];
   }

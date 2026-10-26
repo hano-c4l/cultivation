@@ -1533,12 +1533,13 @@ export class GameScene extends Phaser.Scene {
       const s = toScreen(pos.x, pos.y);
       actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
       if (actor.cloud) actor.cloud.setPosition(s.x, s.y - 4).setDepth(10 + pos.x + pos.y - 0.1);
-      actor.label.setPosition(s.x, s.y - (actor.mounted ? 46 : 38));
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);
-      actor.label.setDepth(depth + 0.1);
-      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - (actor.mounted ? 47 : 39)).setDepth(depth + 0.1);
+      // The name stands just above the head: a sprite says how tall it is, the oval has a fixed height (a rider is lifted a little).
+      const rise = actor.view?.alive ? actor.view.rise() + 6 + (actor.mounted ? 8 : 0) : actor.mounted ? 46 : 38;
+      actor.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);
+      if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - rise - 1).setDepth(depth + 0.1);
     }
 
     for (const m of this.monsters.values()) {
@@ -1547,9 +1548,11 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       // A guard stands like a player: the same body and name height, no element icon and no HP bar.
       m.body.setPosition(s.x, s.y - (m.guard ? 17 : 13)).setDepth(depth);
-      m.label.setPosition(s.x, s.y - (m.guard ? 38 : 40)).setDepth(depth + 0.1);
+      this.syncMonsterView(m, now, s.x, s.y, depth);
+      const rise = m.view?.alive ? m.view.rise() + 4 : m.guard ? 38 : 40; // above the head of a sprite, else the old fixed height
+      m.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);
       // The element icon sits just left of the name, level with its middle.
-      m.icon.setPosition(s.x - m.label.width / 2 - 8, s.y - 40 - m.label.height / 2).setDepth(depth + 0.1);
+      m.icon.setPosition(s.x - m.label.width / 2 - 8, s.y - rise - m.label.height / 2).setDepth(depth + 0.1);
       const color = this.monsterColor(m);
       if (color !== m.color) {
         m.color = color;
@@ -1558,10 +1561,9 @@ export class GameScene extends Phaser.Scene {
       m.bar.clear().setDepth(depth + 0.1);
       if (!m.guard) {
         const w = 34;
-        m.bar.fillStyle(0x000000, 0.7).fillRect(s.x - w / 2, s.y - 36, w, 5);
-        m.bar.fillStyle(0xe53935, 1).fillRect(s.x - w / 2 + 1, s.y - 35, (w - 2) * Math.max(0, m.hp / m.maxHp), 3);
+        m.bar.fillStyle(0x000000, 0.7).fillRect(s.x - w / 2, s.y - (rise - 4), w, 5);
+        m.bar.fillStyle(0xe53935, 1).fillRect(s.x - w / 2 + 1, s.y - (rise - 5), (w - 2) * Math.max(0, m.hp / m.maxHp), 3);
       }
-      this.syncMonsterView(m, now, s.x, s.y, depth);
       if (m.view?.alive && m.id === this.targetId) m.bar.lineStyle(2, 0xffe08a, 1).strokeEllipse(s.x, s.y, 40, 20); // the square is hidden: ring the feet
       if (m.id === this.targetId) m.body.setStrokeStyle(3, 0xffe08a, 1);
       else m.body.setStrokeStyle(2, 0x000000, 0.7);

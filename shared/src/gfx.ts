@@ -32,6 +32,8 @@ export interface GfxSprite {
   frame: { w: number; h: number };
   /** Where the feet are inside the frame box, in px from its top-left corner. */
   anchor: { x: number; y: number };
+  /** How many px the top of the head is above the feet, at scale 1: where the name goes (the anchor's height when omitted). */
+  head?: number;
   /** Draw scale on screen (1 when omitted). */
   scale?: number;
   anims: Partial<Record<GfxAnimName, GfxAnim>>;
@@ -139,6 +141,7 @@ export function validateManifest(raw: unknown): ManifestResult {
     const anchor = s.anchor;
     if (!isObj(frame) || !isInt(frame.w, 1, GFX_ATLAS_MAX_PX) || !isInt(frame.h, 1, GFX_ATLAS_MAX_PX)) return fail(`sprite ${key}: frame`);
     if (!isObj(anchor) || !isInt(anchor.x, 0, frame.w) || !isInt(anchor.y, 0, frame.h)) return fail(`sprite ${key}: anchor`);
+    if (s.head !== undefined && !isInt(s.head, 1, frame.h)) return fail(`sprite ${key}: head`);
     if (s.scale !== undefined && !(typeof s.scale === "number" && s.scale > 0 && s.scale <= 8)) return fail(`sprite ${key}: scale`);
     if (!isObj(s.anims)) return fail(`sprite ${key}: anims`);
     const anims: Partial<Record<GfxAnimName, GfxAnim>> = {};
@@ -147,7 +150,7 @@ export function validateManifest(raw: unknown): ManifestResult {
       if (!isObj(an) || !isInt(an.frames, 1, 64) || !isInt(an.fps, 1, 60) || typeof an.loop !== "boolean") return fail(`sprite ${key}: animation ${name}`);
       anims[name as GfxAnimName] = { frames: an.frames, fps: an.fps, loop: an.loop };
     }
-    sprites[key] = { atlas: s.atlas, frame: { w: frame.w, h: frame.h }, anchor: { x: anchor.x, y: anchor.y }, ...(s.scale !== undefined ? { scale: s.scale as number } : {}), anims };
+    sprites[key] = { atlas: s.atlas, frame: { w: frame.w, h: frame.h }, anchor: { x: anchor.x, y: anchor.y }, ...(s.head !== undefined ? { head: s.head as number } : {}), ...(s.scale !== undefined ? { scale: s.scale as number } : {}), anims };
   }
 
   const maps: Record<string, string[]> = {};
