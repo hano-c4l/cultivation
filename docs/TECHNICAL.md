@@ -1,6 +1,6 @@
 ﻿# Tài liệu kỹ thuật (hạ tầng, kiến trúc, cách chạy và kiểm thử)
 
-Phần kỹ thuật dùng chung cho mọi giai đoạn: hạ tầng Cloudflare, gói Free/Paid, kiến trúc, nơi chạy, cách chạy, kiểm thử, quy trình triển khai và các bẫy đã gặp. Kế hoạch tổng nằm ở `docs/PLAN.md`, từng giai đoạn ở `docs/PHASE1.md`, `docs/PHASE2.md`, `docs/PHASE3.md`, trạng thái hiện tại ở `docs/STATUS.md`. **Các mục 2, 2a, 3, 5, 6, 8 dưới đây được chuyển từ PLAN.md và giữ nguyên số mục** (các chỗ khác vẫn gọi "mục 2a", "mục 3"... nhưng nay là mục của file này).
+Phần kỹ thuật dùng chung cho mọi giai đoạn: hạ tầng Cloudflare, gói Free/Paid, kiến trúc, nơi chạy, cách chạy, kiểm thử, quy trình triển khai và các bẫy đã gặp. Kế hoạch tổng nằm ở `docs/PLAN.md`, từng giai đoạn ở `docs/PHASE1.md`, `docs/PHASE2.md`, `docs/PHASE3.md`, `docs/PHASE4.md`, trạng thái hiện tại ở `docs/STATUS.md`. **Các mục 2, 2a, 3, 5, 6, 8 dưới đây được chuyển từ PLAN.md và giữ nguyên số mục** (các chỗ khác vẫn gọi "mục 2a", "mục 3"... nhưng nay là mục của file này).
 
 ## 2. Hình dạng deploy
 - **Một Worker duy nhất** phục vụ client (static assets), API HTTP, WebSocket, Durable Objects và D1. Cloudflare đang gộp Pages vào Workers nên **không có deploy Pages riêng**; đáp ứng yêu cầu "Workers and Pages" bằng Workers Static Assets.
