@@ -89,6 +89,7 @@ Chi tiết kỹ thuật và giá trị nằm ở `docs/PHASE2.md`; đây chỉ l
 - **Đan Sư và NPC admin (3k, 2026-10-25):** thêm loại NPC **Đan Sư** (mỗi thành chính một người): cửa sổ có tab Mua/bán đan và tab **Luyện đan** (đưa nguyên liệu và Linh Thạch, nhận đan sau một khoảng thời gian; công thức là dữ liệu D1, nhóm `alchemy`); Linh Nguyên, Bảo Nguyên, Thiên Ngộ đan chỉ còn luyện được. **Thợ Rèn có thêm tab Mua/bán trang bị**; Thương nhân giữ ít đồ mỗi loại (đan cơ bản, trang bị bậc 1, bí tịch, phù). Admin sửa tên, vị trí, bật/tắt, thêm NPC, cửa hàng (hàng bán, loại đồ thu mua, tỉ lệ thu mua), công thức luyện đan và con số của Thợ Rèn, Đạo Sư. Chi tiết `docs/PHASE3.md` mục 3k.
 - **Nhiều nhân vật mỗi tài khoản (3m-d, 2026-10-25):** đổi quyết định "một nhân vật mỗi tài khoản" của giai đoạn 1: tối đa **3 nhân vật** (cài đặt `max_characters`, chỉnh ở "Chỉ số khác", 1-10). Tài khoản mới điền tên và giới tính như cũ; tài khoản đã có nhân vật vào danh sách để chọn, tạo thêm khi chưa đủ hoặc xóa (xóa mềm, gõ lại đạo hiệu); trong game có "Đổi nhân vật" bên trái "Đăng xuất". Mỗi nhân vật có túi đồ, tiền, thư riêng (chưa có kho chung); hai phiên của cùng tài khoản chơi được hai nhân vật cùng lúc. Chi tiết: `docs/PHASE3.md` mục 3m-d.
 - **Giai đoạn đồ họa chèn vào (2026-10-26):** thêm **giai đoạn 4: Đồ họa** (`docs/PHASE4.md`) giữa Admin và phần còn lại; kinh tế và xã hội lùi thành **giai đoạn 5**, hoàn thiện và vận hành thành **giai đoạn 6**. Mọi chỗ cũ nói "giai đoạn 4/GĐ4" (giao dịch, chợ, đấu giá) nay đọc là 5, "giai đoạn 5" (cổng thanh toán) là 6; các dòng lịch sử có ngày (như dòng "Giai đoạn admin" ở trên) giữ nguyên số cũ. Người dùng chốt phong cách kiểu Võ Lâm Truyền Kỳ, nguồn ban đầu là kit CC0 và AI làm nhanh.
+- **Đồ họa (giai đoạn 4, 2026-10-26 đến 27), chi tiết `docs/PHASE4.md`:** hình nhân vật không còn là hình vẽ bằng code mà là sprite 8 hướng render từ mô hình 3D (Blender, camera isometric khớp ô 64×32, bóng toon và viền mực); client rơi về hình cũ khi thiếu ảnh. Nam và nữ là hai thân riêng (thân của `Gender`: "male_wears_female" vẫn là thân nam) mặc bộ nông dân; vũ khí là một lớp sprite riêng vẽ lên thân, tải theo nhu cầu, theo **họ** vũ khí (`WEAPON_TYPES`). **Server nay báo vẻ ngoài của người chơi** (`PlayerSnapshot.f` thân nữ, `.w` họ vũ khí và tin `look` khi vũ khí đổi) nhưng vẫn không đổi luật chơi. Mọi atlas được cắt gọn (khoảng 30% VRAM so với khung đầy). Ánh xạ "vật phẩm → hình" bằng D1 cho Admin để ở 4i. Đồ họa hiện là bản tạm (kit CC0).
 - **Giao diện:** thanh buff dưới thanh HP/MP (kỹ năng buff và đan hồi dần, kèm thời gian còn lại); cửa sổ trang bị 2 tab (trang bị / pháp bảo).
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
@@ -132,10 +133,10 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 3l. Bản đồ — 3l-a xong (sáu bản đồ thành công thức D1, màn sửa màu/điểm sinh/cổng/vật cản và xem trước); 3l-b1 xong (mã bản đồ và dữ liệu quái/vệ binh/boss theo bản đồ đi qua công thức); 3l-b2 xong (tạo/xóa bản đồ, sửa bãi quái/vệ binh/chỗ boss, phòng ghim lưới); 3l-b3 xong (tên hiển thị, Truyền Tống Trận và boss cho bản đồ mới, kiểm đường đi ở trình duyệt admin, ghim nội dung quái)
   - 3m. Tài khoản và nhân vật — 3m-a xong (danh sách, khóa, mật khẩu tạm); 3m-b xong (sửa nhân vật với trạng thái đang xem xét); 3m-c xong (đăng nhập cuối, sửa hồ sơ, xóa nhân vật mềm); 3m-d xong (nhiều nhân vật mỗi tài khoản); 3m-e xong (sửa linh căn, chuyển giữa các nhân vật của tài khoản ở admin); sửa thể chất và thêm trang bị cũng xong (3m không còn mục nào)
 - **Giai đoạn 4**: Đồ họa (`docs/PHASE4.md`; chỉ mới có kế hoạch, chưa làm)
-  - 4a. Nền: manifest, bộ nạp atlas và rơi về vẽ bằng code — xong phần mã (chưa có ảnh thật)
-  - 4b. Pipeline render và đóng gói (Blender, toon, atlas) — xong
-  - 4c. Nhân vật mẫu 8 hướng × 6 animation, đo hiệu năng, cổng duyệt phong cách — bản đầu đã có, chờ duyệt (nay là nam và nữ mặc bộ Peasant, xem 4d)
-  - 4d. Thân nam/nữ có quần áo (xong), layer trang bị, pháp bảo, thú cưỡi (đang làm)
+  - 4a. Nền: manifest, bộ nạp atlas và rơi về vẽ bằng code — xong (preview)
+  - 4b. Pipeline render và đóng gói (Blender, toon, atlas) — xong (preview)
+  - 4c. Nhân vật mẫu 8 hướng × 6 animation, đo hiệu năng, cổng duyệt phong cách — xong ở preview (người dùng nhận xét "có vẻ ổn"; chưa đo FPS/VRAM trên điện thoại)
+  - 4d. Thân nam/nữ có quần áo và lớp vũ khí (xong ở preview); còn màu theo bộ trang bị, pháp bảo, thú cưỡi (đang làm)
   - 4e. Quái và boss
   - 4f. Hiệu ứng kỹ năng và các hiệu ứng khác
   - 4g. Icon, NPC, ô bản đồ

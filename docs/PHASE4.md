@@ -1,6 +1,6 @@
 # Giai đoạn 4: Đồ họa — kế hoạch chi tiết
 
-Trạng thái (2026-10-26): **4a (nền) và 4b (pipeline render) đã làm; 4c (nhân vật mẫu) đã có bản đầu, đang chờ người dùng duyệt phong cách; 4d trở đi chưa làm.** Giai đoạn này được chèn giữa Admin (giai đoạn 3) và Kinh tế/xã hội (nay là giai đoạn 5), xem `docs/PLAN.md` mục 9b và 10. Trạng thái làm đến đâu: `docs/STATUS.md`. Đặc tả asset gốc (tile 64×32, khung nhân vật 96×96, neo ở chân, manifest): `docs/TECHNICAL.md` mục 6.
+Trạng thái (2026-10-27): **4a, 4b, 4c xong; 4d làm được phần lớn (thân nam và nữ có quần áo, lớp vũ khí, vẻ ngoài của người khác); 4e trở đi chưa làm.** Tất cả mới ở **preview**, production chưa có mã đồ họa (chỉ có tài liệu). Không có migration D1 nào trong giai đoạn này. Giai đoạn này được chèn giữa Admin (giai đoạn 3) và Kinh tế/xã hội (nay là giai đoạn 5), xem `docs/PLAN.md` mục 9b và 10. Trạng thái làm đến đâu: `docs/STATUS.md`. Đặc tả asset gốc (tile 64×32, khung nhân vật 96×96, neo ở chân, manifest): `docs/TECHNICAL.md` mục 6.
 
 ## Mục tiêu và phạm vi
 Thay placeholder bằng đồ họa 2D kiểu Võ Lâm Truyền Kỳ: nhân vật nhiều hướng có animation, trang bị/pháp bảo/thú cưỡi hiện trên người, quái và boss, hiệu ứng kỹ năng và các hiệu ứng khác (vũ khí, đột phá, truyền tống), icon. Server không đổi luật chơi; giai đoạn này chỉ thay lớp hiển thị và dữ liệu ánh xạ hình.
@@ -36,10 +36,10 @@ Mỗi hạng mục là một nhánh `features_gfx-xxx` theo quy trình trong `CL
 
 | | Hạng mục | Ghi chú |
 |---|---|---|
-| 4a | Nền: `manifest.json`, bộ nạp atlas theo bản đồ, lớp hiển thị dùng sprite khi có và rơi về vẽ bằng code, `ASSETS.md` (giấy phép từng asset) | Game chạy y như cũ khi manifest rỗng |
-| 4b | Pipeline render và đóng gói: script Blender (`tools/render/`), camera isometric cố định, 8 hướng, 6 animation, layer; toon shader, viền mực, bảng màu; đóng gói atlas PNG + JSON (WebP ở 4h) | Nguồn Blender và ảnh thô để ngoài repo, chỉ commit thành phẩm đã xong |
-| 4c | **Nhân vật mẫu** đủ 8 hướng × 6 animation, hiển thị trong game, đo FPS và VRAM trên điện thoại thật | Một thân nam dùng chung cho cả hai giới. **Cổng duyệt phong cách:** dừng ở đây để người dùng duyệt trước khi làm tiếp |
-| 4d | Layer trang bị (theo họ vũ khí, ô, bộ), pháp bảo, thú cưỡi (layer riêng; chỉ phần hình, cơ chế thú cưỡi vẫn thuộc giai đoạn 5); giày | Thân nữ làm sau khi phong cách ở 4c được duyệt; trang bị khóa giới tính nhân đôi khối lượng |
+| 4a | Nền: `manifest.json`, bộ nạp atlas theo bản đồ, lớp hiển thị dùng sprite khi có và rơi về vẽ bằng code, `ASSETS.md` (giấy phép từng asset) | **Xong** (preview). Game chạy y như cũ khi manifest rỗng |
+| 4b | Pipeline render và đóng gói: script Blender (`tools/render/`), camera isometric cố định, 8 hướng, 6 animation, layer; toon shader, viền mực, bảng màu; đóng gói atlas PNG + JSON (WebP ở 4h) | **Xong** (preview). Nguồn Blender và ảnh thô để ngoài repo, chỉ commit thành phẩm đã xong |
+| 4c | **Nhân vật mẫu** đủ 8 hướng × 6 animation, hiển thị trong game, đo FPS và VRAM trên điện thoại thật | **Xong** (preview). Một thân nam dùng chung cho cả hai giới (sau đó thay bằng nam và nữ ở 4d). **Cổng duyệt phong cách:** dừng ở đây để người dùng duyệt trước khi làm tiếp |
+| 4d | Layer trang bị (theo họ vũ khí, ô, bộ), pháp bảo, thú cưỡi (layer riêng; chỉ phần hình, cơ chế thú cưỡi vẫn thuộc giai đoạn 5); giày | **Phần lớn xong** (thân nam/nữ, vũ khí; còn màu theo bộ, pháp bảo, thú cưỡi, Ranger). Thân nữ làm sau khi phong cách ở 4c được duyệt; trang bị khóa giới tính nhân đôi khối lượng |
 | 4e | Quái và boss theo loài (và hệ, hạng) | |
 | 4f | Hiệu ứng kỹ năng, nón/tốc biến/buff/hồi máu, đột phá, truyền tống, hiệu ứng khi trang bị vũ khí | Thay `fx.ts` dần, theo loại trong `fx-kinds.ts` |
 | 4g | Icon vật phẩm và kỹ năng, NPC, ô bản đồ, vật cản | AI 2D (ComfyUI...) phù hợp ở đây |
@@ -78,7 +78,7 @@ Một lệnh biến một mô hình có xương và animation thành atlas: `nod
 
 **Ghi chú:** atlas là **PNG** (1,58 MB cho 264 frame); chuyển sang WebP và nén texture để 4h. Tốc độ phát lấy từ chính action (số frame ÷ độ dài ÷ 24 fps).
 
-## 4c. Nhân vật mẫu (2026-10-26) — **chờ người dùng duyệt phong cách** (thân người trơn mô tả dưới đây đã được thay bằng nam và nữ mặc bộ Peasant ở 4d)
+## 4c. Nhân vật mẫu (2026-10-26) — **người dùng xem trên preview và nhận xét "có vẻ ổn"** (kèm yêu cầu đưa tên lên đầu, đã làm bằng trường `head` của manifest); thân người trơn mô tả dưới đây đã được thay bằng nam và nữ mặc bộ Peasant ở 4d
 - **Nguồn:** thân người "Mannequin" và 6 animation của Quaternius Universal Animation Library [Standard] (CC0; ghi ở `ASSETS.md`). `idle` = Idle_Loop (4 frame), `run` = Jog_Fwd_Loop (8), `attack` = Sword_Attack (6), `cast` = Spell_Simple_Shoot (6), `hit` = Hit_Chest (3), `die` = Death01 (6): 33 frame × 8 hướng = 264 frame, atlas 2016×1248. **Đây là thân người trần, chưa có trang phục**: chỉ duyệt góc camera, cỡ người so với ô, viền, bóng và chuyển động; không duyệt quần áo.
 - **Trong game:** người chơi (cả mình và người khác, một thân nam chung cho cả hai giới) dùng sprite này ở mọi bản đồ. `idle` và `run` theo di chuyển; `attack` khi đánh thường hoặc dùng kỹ năng cận chiến; `cast` khi dùng kỹ năng khác (trừ tốc biến); `hit` khi bị trúng; `die` khi chết (giữ khung cuối). Một lần chạy bị khóa tới hết (`ONE_SHOT_MS`: attack 500, cast 600, hit 320 ms), không bị idle/run cắt; thời gian này chỉ là hình, **server vẫn quyết định nhịp và thời điểm trúng đòn**.
 - **Biết là còn thiếu:** 28 trên 264 frame chạm mép khung (đều ở animation chết, vài frame đánh); quái chết bị gỡ ngay nên **chưa có animation chết cho quái** (cần trì hoãn việc gỡ, làm ở 4e); `die` của người chơi khác chưa có (server chỉ báo `died` cho chính người chết); vệ binh, NPC và quái vẫn là hình cũ.
