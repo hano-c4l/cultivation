@@ -140,6 +140,7 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 4f. Hiệu ứng kỹ năng và các hiệu ứng khác
   - 4g. Icon, NPC, ô bản đồ
   - 4h. Tối ưu và đo hiệu năng
+  - 4i. Admin gán hình khi tạo/sửa vật phẩm, trang bị, kỹ năng (cuối giai đoạn)
 - **Giai đoạn 5**: Kinh tế và xã hội (chưa chia hạng mục)
 - **Giai đoạn 6**: Hoàn thiện và vận hành (chưa chia hạng mục)
 
