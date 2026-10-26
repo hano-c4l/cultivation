@@ -132,7 +132,7 @@ tools/   smoke.mjs
 Cần `wrangler dev` chạy ở cổng 8787 và `.dev.vars` có `DISABLE_RATE_LIMIT=1` và `ENABLE_DEV_GRANT=1`. Các script tự từ chối host không phải localhost, trừ `smoke.mjs` còn chạy được trên preview.
 | Lệnh | Kiểm gì |
 |---|---|
-| `npm run typecheck`, `npm test` | Kiểu và toàn bộ test đơn vị (khoảng 936 test; một số dùng SQLite thật qua `server/src/test-db.ts`, loại khỏi `tsc` vì cần kiểu Node) |
+| `npm run typecheck`, `npm test` | Kiểu và toàn bộ test đơn vị (khoảng 942 test; một số dùng SQLite thật qua `server/src/test-db.ts`, loại khỏi `tsc` vì cần kiểu Node) |
 | `node tools/smoke.mjs [ws://localhost:8787]` | Luồng chính: đăng ký, tạo nhân vật, quái, EXP, chết, cổng bản đồ |
 | `node tools/economy-smoke.mjs` | Admin: tra cứu, cộng/trừ tiền, idempotency (bảng khóa), lịch sử Linh Thạch của admin, tổng theo nhóm (nhóm `admin`) khớp số dư, chi tiết tiền, kiểm duyệt chỉ cho admin |
 | `node tools/chat-smoke.mjs` | Chat Thế giới/Bản đồ/Truyền âm/Hệ thống, giới hạn, socket chat bị thay thế |
@@ -172,6 +172,8 @@ Cần `wrangler dev` chạy ở cổng 8787 và `.dev.vars` có `DISABLE_RATE_LI
 | `node tools/town2-smoke.mjs` | Thành thứ hai: thương nhân (kho Kim Đan/Nguyên Anh, mua đan, Truyền Tống Phù), Thợ Rèn, Trưởng Lão (nhiệm vụ đan và hằng ngày, chặn nhận khi chưa đủ cảnh giới), niệm phù từ Xích Diễm Sơn về Thiên Hà Thành |
 | `node tools/waygate-smoke.mjs` | Truyền tống trận (danh sách và giá, thiếu tiền, bị ngắt không mất tiền, trọn kênh thì phí và chuyển bản đồ cùng lúc, sổ cái) và tin hiệu ứng (`fx`, `fx_channel`) tới người đứng xem |
 | `node tools/render/run.mjs <config.json> <thư mục ngoài repo>` rồi `node tools/gfx-publish.mjs <thư mục đó>` | Không phải smoke: render sprite bằng Blender (khoảng 45 giây cho 264 frame) và đưa thành phẩm vào `client/public/gfx/`; xem `docs/PHASE4.md` mục 4b |
+| `node tools/render/render-weapons.mjs <thư mục ngoài repo> [--preview] [--family ..] [--body ..]` rồi `node tools/gfx-publish.mjs <thư mục>/<w_họ_thân> --demand` | Lớp vũ khí (4d): bảng ở `tools/render/weapons.json`, thân là holdout; xem `docs/PHASE4.md` mục 4d |
+| `node tools/look-smoke.mjs` | Vẻ ngoài của người khác (4d): thân nữ `f` và vũ khí `w` trong snapshot, tin `look` khi mặc và tháo vũ khí, người vào sau thấy kiếm trong welcome (chỉ ở local) |
 | `node tools/gfx-fixture.mjs` (`--clean` để xóa) | Không phải smoke: ghi atlas tổng hợp và manifest vào `client/dist/gfx/` (chỉ chỗ đó) để thấy đường sprite chạy ở trình duyệt local: người chơi, sói ở rừng và vệ binh dùng sprite với mũi tên chỉ hướng, một atlas khai báo mà thiếu file phải rơi về hình cũ. Chạy sau `npm run build`, rồi khởi động lại `wrangler dev` |
 | `node tools/inventory-smoke.mjs` | Túi đồ, hòm thư, hết hạn, sắp xếp, chia, đan trong rừng, đăng nhập hai nơi |
 | `node tools/load.mjs ws://localhost:8787 50 30` | 50 client săn quái 30 giây, đo tick |

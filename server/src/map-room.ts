@@ -207,6 +207,8 @@ interface PlayerState {
   name: string;
   /** Drawn with the female body (from the gender at join; it never changes while connected). */
   female?: boolean;
+  /** The weapon family in the hand, as the others see it (a broken weapon counts as none); `applyGear` keeps it current. */
+  w?: string;
   /** Lock claim id of this connection, kept so the lock can be released after a wake-up. */
   claimId: string;
   mapId: MapId;
@@ -544,6 +546,7 @@ export class MapRoom extends DurableObject<Env> {
         ah: row.anh_hung,
         name: row.name,
         ...(bodyOf(row.gender) === "female" ? { female: true } : {}),
+        ...(weaponFamily(bagNow.equipped) ? { w: weaponFamily(bagNow.equipped) as string } : {}),
         claimId,
         mapId,
         path: [position],
@@ -1822,6 +1825,17 @@ export class MapRoom extends DurableObject<Env> {
 
   /** Worn gear changed (or wore down): the combat stats follow, in a combat map. In town the next join recomputes them. */
   private applyGear(id: string, bag: BagState, direct?: WebSocket): void {
+    // The others see what is in the hand: tell them when it changes (also in town, where there is no profile below).
+    const sock = this.socketOf(id);
+    if (sock) {
+      const w = weaponFamily(bag.equipped) ?? undefined;
+      if (w !== sock.state.w) {
+        if (w) sock.state.w = w;
+        else delete sock.state.w;
+        sock.ws.serializeAttachment(sock.state);
+        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}) });
+      }
+    }
     void this.syncMount(id).catch((err) => console.error("mount sync failed", id, err));
     const p = this.sim?.getPlayer(id);
     if (!p || !this.sim) {
@@ -4012,7 +4026,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {

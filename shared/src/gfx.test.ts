@@ -3,6 +3,8 @@ import { DIRECTION_VECTORS, EMPTY_MANIFEST, GFX_ANIMS, animKey, atlasesForMap, d
 import type { Vec2 } from "./map";
 import shipped from "../../client/public/gfx/manifest.json";
 import renderConfig from "../../tools/render/sprite-config.json";
+import weaponTable from "../../tools/render/weapons.json";
+import { WEAPON_TYPES } from "./equipment-data";
 
 const good = () => ({
   version: 3,
@@ -134,5 +136,15 @@ describe("bodyOf", () => {
     expect(bodyOf("male_wears_female")).toBe("male");
     expect(bodyOf("female")).toBe("female");
     expect(bodyOf("female_wears_male")).toBe("female");
+  });
+});
+
+describe("the weapon table", () => {
+  it("only draws families the game has, and every sprite of the manifest named weapon.<family>.<body> belongs to a known family", () => {
+    for (const family of Object.keys(weaponTable.weapons)) expect(WEAPON_TYPES as readonly string[], family).toContain(family);
+    for (const key of Object.keys((shipped as { sprites: Record<string, unknown> }).sprites)) {
+      const m = /^weapon.([a-z]+).(male|female)$/.exec(key);
+      if (m) expect(Object.keys(weaponTable.weapons), key).toContain(m[1]);
+    }
   });
 });

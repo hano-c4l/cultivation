@@ -6,6 +6,9 @@ Renders one rigged glb into a sprite atlas (phase 4b). Run it inside Blender thr
 The config names its sources relative to the art root (the folder outside the repo that holds the downloaded packs): the rigged model, optionally an
 animation file (an FBX whose actions are applied to the model, for rigs that share bone names) and optionally a hairstyle glTF. A config can
 "extends" another one (a shallow merge, `anims` and `materials` merged by key).
+A "weapon" (an FBX parented to a hand bone) can be added; with `holdout` (the default) every other mesh becomes a holdout, so the frames
+hold only the parts of the weapon that the body does not hide: that layer is drawn on top of the body sprite, which plays the same animation. The atlas
+is trimmed (each frame cut to its opaque box and packed), the frame names and the source size stay the same, so layers line up.
 An outfit (a glTF of modular clothing parts skinned to the same bone names) can be dressed on the model; with `headOnly` the model's own body is
 cut away below the neck, so that only its head shows and the clothes do not clip with a bare body.
 
@@ -41,7 +44,7 @@ def load_config(path):
     cfg = json.load(open(path, encoding="utf-8"))
     base = cfg.pop("extends", None)
     if base:
-        merged = load_config(os.path.join(os.path.dirname(path), base))
+        merged = load_config(base if os.path.isabs(base) else os.path.join(os.path.dirname(path), base))
         for k, v in cfg.items():
             if k in ("anims", "materials", "palette", "source") and isinstance(v, dict):
                 merged[k] = {**merged.get(k, {}), **v}
@@ -57,6 +60,8 @@ def art(rel):
 
 def main():
     cfg = load_config(CFG_PATH)
+    if cfg.get("onlyAnims"):
+        cfg["anims"] = {k: v for k, v in cfg["anims"].items() if k in cfg["onlyAnims"]}  # a quick look at a few animations
     F = cfg["frame"]
     anchor = cfg["anchor"]
     el = math.radians(cfg["elevationDeg"])
@@ -235,6 +240,58 @@ def main():
         if mesh is body:
             body_sol = sol
 
+    # ---- a weapon in the hand ----
+    weapon_objs = []
+    wcfg = cfg.get("weapon")
+    if wcfg:
+        before_w = set(bpy.data.objects)
+        bpy.ops.import_scene.fbx(filepath=art(wcfg["model"]))
+        new = [o for o in bpy.data.objects if o not in before_w]
+        weapon_objs = [o for o in new if o.type == "MESH"]
+        check(weapon_objs, "the weapon file has no mesh")
+        for o in [o for o in new if o.type != "MESH"]:
+            bpy.data.objects.remove(o, do_unlink=True)
+        for w in weapon_objs:
+            w.parent = rig
+            w.parent_type = "BONE"
+            w.parent_bone = wcfg["bone"]
+            w.matrix_parent_inverse = Matrix.Identity(4)
+            # the file's own size is unknown (units differ between packs): scale so that the longest side is `length` metres in the world
+            w.scale = (1, 1, 1)
+            bpy.context.view_layer.update()
+            dims = tuple(w.dimensions)
+            bb = [tuple(c) for c in w.bound_box]
+            log("weapon mesh %s: dimensions %s, local box x %.2f..%.2f y %.2f..%.2f z %.2f..%.2f" % (w.name, tuple(round(d, 3) for d in dims), min(b[0] for b in bb), max(b[0] for b in bb), min(b[1] for b in bb), max(b[1] for b in bb), min(b[2] for b in bb), max(b[2] for b in bb)))
+            if wcfg.get("length"):
+                wcfg["scale"] = wcfg["length"] / (max(dims) * fs)
+            w.rotation_mode = "XYZ"
+            w.location = wcfg.get("location", [0, 0, 0])
+            w.rotation_euler = [math.radians(a) for a in wcfg.get("rotationDeg", [0, 0, 0])]
+            k = wcfg.get("scale", 1.0)
+            w.scale = (k, k, k)
+            for slot in w.material_slots:
+                m = slot.material
+                col = list(m.diffuse_color)[:3]
+                if m.use_nodes and m.node_tree:
+                    for nd in m.node_tree.nodes:
+                        if nd.type == "BSDF_PRINCIPLED":
+                            col = list(nd.inputs["Base Color"].default_value)[:3]
+                tint = wcfg.get("tint", [1, 1, 1])
+                toon(m, [col[0] * tint[0], col[1] * tint[1], col[2] * tint[2]])
+            n_w = len(w.material_slots)
+            for _ in range(n_w):
+                w.data.materials.append(outline)
+            wsol = w.modifiers.new("outline", "SOLIDIFY")
+            wsol.thickness = cfg["outlinePx"] / ppm / fs / k
+            wsol.offset = 1.0
+            wsol.use_flip_normals = True
+            wsol.material_offset = n_w
+            wsol.use_rim = False
+        if cfg.get("holdout", True):
+            for o in meshes:
+                o.is_holdout = True  # the body hides the parts of the weapon behind it, and is itself not drawn in this layer
+        log("weapon %s on %s, holdout %s" % (wcfg["model"], wcfg["bone"], cfg.get("holdout", True)))
+
     # ---- camera ----
     T = Vector((math.cos(az), math.sin(az), 0))  # on the ground, toward the viewer = down the screen
     cam_data = bpy.data.cameras.new("cam")
@@ -394,23 +451,54 @@ def main():
         ys = np.nonzero(arr[:, :, 3] > 0.05)[0]
         if len(ys):
             head = max(head, anchor[1] - (F - 1 - int(ys.max())))
-    check(head > 8, "could not measure the height of the figure")
+    check(head > 8 or wcfg, "could not measure the height of the figure")
     log("head is %d px above the feet" % head)
 
-    # ---- the atlas ----
-    cols = cfg["atlasMaxPx"] // F
-    names = list(frames.keys())
-    rows = -(-len(names) // cols)
-    check(rows * F <= cfg["atlasMaxPx"], "%d frames do not fit one %d px page" % (len(names), cfg["atlasMaxPx"]))
-    W, H = cols * F, rows * F
+    # ---- the atlas: every frame cut to its opaque box, 1 px of clear border, packed in shelves on the narrowest page that is shortest ----
+    rects = []  # (name, x0, top, w, h) of the opaque box in the frame (top-down), or a 1 x 1 clear pixel when nothing is drawn
+    for name, arr in frames.items():
+        al = arr[:, :, 3] > 0.02
+        ys = np.nonzero(al.any(axis=1))[0]
+        xs = np.nonzero(al.any(axis=0))[0]
+        if len(ys) == 0:
+            rects.append((name, 0, 0, 1, 1, None))
+            continue
+        y_lo, y_hi, x_lo, x_hi = int(ys.min()), int(ys.max()), int(xs.min()), int(xs.max())
+        rects.append((name, x_lo, F - 1 - y_hi, x_hi - x_lo + 1, y_hi - y_lo + 1, (y_lo, y_hi)))
+    order = sorted(range(len(rects)), key=lambda i: (-rects[i][4], -rects[i][3]))
+
+    def shelves(width):
+        x = y = row_h = 0
+        spots = {}
+        for i in order:
+            w, h = rects[i][3] + 2, rects[i][4] + 2
+            if x + w > width:
+                x, y, row_h = 0, y + row_h, 0
+            spots[i] = (x, y)
+            x += w
+            row_h = max(row_h, h)
+        return spots, y + row_h
+
+    best = None
+    for width in range(128, cfg["atlasMaxPx"] + 1, 32):
+        if width < max(r[3] for r in rects) + 2:
+            continue
+        spots, height = shelves(width)
+        if height <= cfg["atlasMaxPx"] and (best is None or width * height < best[0] * best[1]):
+            best = (width, height, spots)
+    check(best is not None, "%d frames do not fit one %d px page" % (len(rects), cfg["atlasMaxPx"]))
+    W, H, spots = best
     atlas = np.zeros((H, W, 4), dtype=np.float32)
     jframes = {}
-    for k, name in enumerate(names):
-        c, rw = k % cols, k // cols
-        x, y_top = c * F, rw * F
-        y0 = H - y_top - F  # the arrays are bottom-up
-        atlas[y0:y0 + F, x:x + F, :] = frames[name]
-        jframes[name] = {"frame": {"x": x, "y": y_top, "w": F, "h": F}, "rotated": False, "trimmed": False, "spriteSourceSize": {"x": 0, "y": 0, "w": F, "h": F}, "sourceSize": {"w": F, "h": F}}
+    for i, (name, x_lo, top, w, h, ys) in enumerate(rects):
+        px, py = spots[i]
+        if ys is not None:
+            y_lo, y_hi = ys
+            crop = frames[name][y_lo:y_hi + 1, x_lo:x_lo + w, :]
+            y0 = H - (py + 1) - h  # the arrays are bottom-up
+            atlas[y0:y0 + h, px + 1:px + 1 + w, :] = crop
+        jframes[name] = {"frame": {"x": px + 1, "y": py + 1, "w": w, "h": h}, "rotated": False, "trimmed": True, "spriteSourceSize": {"x": x_lo, "y": top, "w": w, "h": h}, "sourceSize": {"w": F, "h": F}}
+    log("atlas %dx%d for %d frames (%.0f%% of the untrimmed %dx%d)" % (W, H, len(rects), 100.0 * W * H / (F * F * len(rects)), F, F))
     img_name = cfg["name"] + ".png"
 
     def save_array(arr, path):
@@ -451,9 +539,9 @@ def main():
     sheet = np.repeat(np.repeat(sheet, 2, axis=0), 2, axis=1)
     save_array(sheet, os.path.join(OUT, "contact.png"))
 
-    json.dump({"atlas": {"w": W, "h": H, "frames": len(names)}, "clips": clips, "anims": meta, "seconds": round(time.time() - t0, 1), "blender": bpy.app.version_string, "engine": engine},
+    json.dump({"atlas": {"w": W, "h": H, "frames": len(rects)}, "clips": clips, "anims": meta, "seconds": round(time.time() - t0, 1), "blender": bpy.app.version_string, "engine": engine},
               open(os.path.join(OUT, "report.json"), "w"), indent=2)
-    log("atlas %dx%d, %d frames, %d frames touch the box edge" % (W, H, len(names), len(clips)))
+    log("atlas %dx%d, %d frames, %d frames touch the box edge" % (W, H, len(rects), len(clips)))
 
 
 try:

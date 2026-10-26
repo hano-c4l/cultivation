@@ -1,5 +1,6 @@
 // Copies a finished render (the atlas image, its JSON and the sprite entry from tools/render/run.mjs) into client/public/gfx/ and merges it into manifest.json.
 //   node tools/gfx-publish.mjs <render dir> [--maps '*,forest']      (default: the atlas loads on every map)
+//   node tools/gfx-publish.mjs <render dir> --demand                  (listed by no map: the client fetches it the first time a sprite of it is needed)
 //   node tools/gfx-publish.mjs --remove <atlas name>
 // This is the ONLY writer of client/public/gfx (raw frames and sources stay outside the repo). Run `npm test` afterwards: a test checks the manifest.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -31,7 +32,8 @@ if (args[0] === "--remove") {
 }
 
 const dir = resolve(args[0] ?? "");
-const maps = (args.includes("--maps") ? args[args.indexOf("--maps") + 1] : "*").split(",");
+const demand = args.includes("--demand");
+const maps = demand ? [] : (args.includes("--maps") ? args[args.indexOf("--maps") + 1] : "*").split(",");
 if (!existsSync(join(dir, "done.marker")) || !readFileSync(join(dir, "done.marker"), "utf8").startsWith("ok")) throw new Error("not a finished render (no ok marker)");
 const report = JSON.parse(readFileSync(join(dir, "report.json"), "utf8"));
 const sprites = readdirSprites(dir);
@@ -44,7 +46,7 @@ for (const sp of sprites) {
   for (const m of maps) {
     manifest.maps[m] = [...new Set([...(manifest.maps[m] ?? []), sp.atlas])];
   }
-  console.log(`published ${sp.key} (${sp.atlas}) to maps ${maps.join(", ")}`);
+  console.log(`published ${sp.key} (${sp.atlas}) ${demand ? "on demand" : "to maps " + maps.join(", ")}`);
 }
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 console.log(`manifest version ${manifest.version}; ${report.clips.length} frames touch the box edge (see report.json)`);
