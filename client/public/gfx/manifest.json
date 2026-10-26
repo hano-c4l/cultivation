@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 17,
   "atlases": {
     "char_female": {
       "image": "char_female.png",
@@ -8,6 +8,46 @@
     "char_male": {
       "image": "char_male.png",
       "data": "char_male.json"
+    },
+    "w_kiem_male": {
+      "image": "w_kiem_male.png",
+      "data": "w_kiem_male.json"
+    },
+    "w_kiem_female": {
+      "image": "w_kiem_female.png",
+      "data": "w_kiem_female.json"
+    },
+    "w_dao_male": {
+      "image": "w_dao_male.png",
+      "data": "w_dao_male.json"
+    },
+    "w_dao_female": {
+      "image": "w_dao_female.png",
+      "data": "w_dao_female.json"
+    },
+    "w_thuong_male": {
+      "image": "w_thuong_male.png",
+      "data": "w_thuong_male.json"
+    },
+    "w_thuong_female": {
+      "image": "w_thuong_female.png",
+      "data": "w_thuong_female.json"
+    },
+    "w_riu_male": {
+      "image": "w_riu_male.png",
+      "data": "w_riu_male.json"
+    },
+    "w_riu_female": {
+      "image": "w_riu_female.png",
+      "data": "w_riu_female.json"
+    },
+    "w_cung_male": {
+      "image": "w_cung_male.png",
+      "data": "w_cung_male.json"
+    },
+    "w_cung_female": {
+      "image": "w_cung_female.png",
+      "data": "w_cung_female.json"
     }
   },
   "sprites": {
@@ -66,6 +106,446 @@
         "y": 84
       },
       "head": 66,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.kiem.male": {
+      "atlas": "w_kiem_male",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 72,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.kiem.female": {
+      "atlas": "w_kiem_female",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 70,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.dao.male": {
+      "atlas": "w_dao_male",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 79,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.dao.female": {
+      "atlas": "w_dao_female",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 78,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.thuong.male": {
+      "atlas": "w_thuong_male",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 77,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.thuong.female": {
+      "atlas": "w_thuong_female",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 76,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.riu.male": {
+      "atlas": "w_riu_male",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 66,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.riu.female": {
+      "atlas": "w_riu_female",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 65,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.cung.male": {
+      "atlas": "w_cung_male",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 60,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "weapon.cung.female": {
+      "atlas": "w_cung_female",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 58,
       "anims": {
         "idle": {
           "frames": 4,

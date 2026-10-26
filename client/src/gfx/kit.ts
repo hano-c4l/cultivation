@@ -61,6 +61,16 @@ export class GfxView {
     this.sprite.play({ key: resolved, duration: ms === Infinity ? undefined : ms });
   }
 
+  /**
+   * A layer drawn over another sprite (a weapon over the body) is not animated by itself: it shows the frame of the one below it, found by name (the
+   * layers use the same frame names). Two separate animations would drift apart as soon as one of them was started later (the layer's atlas loads on demand).
+   */
+  followFrame(base: GfxView): void {
+    if (!this.alive || !base.alive) return;
+    const name = base.sprite.frame.name;
+    if (this.sprite.frame.name !== name && this.sprite.texture.has(name)) this.sprite.setFrame(name);
+  }
+
   /** Puts the feet at a screen point. */
   place(x: number, y: number, depth: number): void {
     this.sprite.setPosition(x, y).setDepth(depth);
@@ -225,10 +235,25 @@ export class GfxKit {
    * for now it follows the naming convention below; the D1 mapping (admin-editable) will wrap it in 4c/4e.
    *   player -> `player.<variant>` then `player`; monster -> `monster.<kind>`; guard -> `guard`.
    */
-  spriteKeyFor(kind: "player" | "monster" | "guard", id?: string, variant?: string): string | undefined {
+  spriteKeyFor(kind: "player" | "monster" | "guard" | "weapon", id?: string, variant?: string): string | undefined {
     if (!this.active) return undefined;
-    const candidates = kind === "player" ? [variant ? `player.${variant}` : "", "player"] : kind === "monster" ? [`monster.${id ?? ""}`] : ["guard"];
-    return candidates.find((k) => k !== "" && this.usable(k));
+    const candidates =
+      kind === "player" ? [variant ? `player.${variant}` : "", "player"] : kind === "monster" ? [`monster.${id ?? ""}`] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
+    for (const k of candidates) {
+      if (k === "") continue;
+      if (this.usable(k)) return k;
+      const atlas = this.manifest.sprites[k]?.atlas;
+      if (atlas) this.demand(atlas); // not here yet: an atlas no map lists (a weapon) is fetched the first time somebody needs it
+    }
+    return undefined;
+  }
+
+  /** Starts loading an atlas that is wanted by what is on screen and not by the map list; it is dropped again at the next map change. */
+  private demand(id: string): void {
+    if (this.loaded.has(id) || this.failed.has(id) || this.pending.has(id) || !this.manifest.atlases[id]) return;
+    this.pending.add(id);
+    this.wanted.add(id);
+    void this.loadAtlas(id);
   }
 
   private usable(key: string): boolean {

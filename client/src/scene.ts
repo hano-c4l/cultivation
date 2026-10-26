@@ -132,6 +132,9 @@ interface Actor {
   view?: GfxView;
   /** Drawn with the female body (from the snapshot); picks the sprite. */
   female?: boolean;
+  /** The weapon family in the hand (from the snapshot and the `look` messages), and the sprite drawn over the body for it. */
+  weapon?: string;
+  wview?: GfxView;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
   snAt: number;
@@ -819,6 +822,11 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       }
+      case "look": {
+        const looker = this.actors.get(msg.id);
+        if (looker) looker.weapon = msg.w;
+        break;
+      }
       case "joined":
       case "path":
         this.upsertActor([msg.player]);
@@ -1191,6 +1199,7 @@ export class GameScene extends Phaser.Scene {
       }
       const now = performance.now();
       actor.female = p.f === true;
+      actor.weapon = p.w;
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
@@ -1211,6 +1220,7 @@ export class GameScene extends Phaser.Scene {
     const actor = this.actors.get(id);
     if (!actor) return;
     this.fx.forget(id);
+    actor.wview?.destroy();
     actor.view?.destroy();
     actor.body.destroy();
     actor.label.destroy();
@@ -1496,6 +1506,8 @@ export class GameScene extends Phaser.Scene {
   /** Shows the sprite of a player when the manifest has one (and the oval otherwise); plays run or idle facing the way it walks. */
   private syncActorView(a: Actor, now: number, x: number, y: number, depth: number, moving: boolean): void {
     if (a.view && !a.view.alive) {
+      a.wview?.destroy();
+      a.wview = undefined;
       a.view = undefined;
       a.body.setVisible(true);
     }
@@ -1506,8 +1518,24 @@ export class GameScene extends Phaser.Scene {
       a.view = view;
       a.body.setVisible(false);
     }
-    a.view.play(moving ? "run" : "idle", headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir);
-    if (a.view.alive) a.view.place(x, y - (a.mounted ? 8 : 0), depth);
+    const anim = moving ? "run" : "idle";
+    const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
+    // The weapon is a second sprite over the body that shows the same frame as the body (frames line up by name); it follows what is in the hand.
+    const wkey = a.weapon ? this.gfx.spriteKeyFor("weapon", a.weapon, a.female ? "female" : "male") : undefined;
+    if (a.wview && (!a.wview.alive || a.wview.key !== wkey)) {
+      a.wview.destroy();
+      a.wview = undefined;
+    }
+    if (!a.wview && wkey) a.wview = this.gfx.createView(wkey);
+    a.view.play(anim, dir);
+    if (a.view.alive) {
+      a.wview?.followFrame(a.view);
+      a.view.place(x, y - (a.mounted ? 8 : 0), depth);
+      a.wview?.place(x, y - (a.mounted ? 8 : 0), depth + 0.02);
+    } else {
+      a.wview?.destroy();
+      a.wview = undefined;
+    }
   }
 
   /** The same for a monster, a guard or a boss; the rank and boss sizes scale the sprite as they scale the square. */
