@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { EMPTY_MANIFEST, GFX_ANIMS, animKey, atlasesForMap, frameName, validateManifest, type GfxAnimName, type GfxManifest, type GfxSprite } from "@game/shared";
+import { EMPTY_MANIFEST, GFX_ANIMS, animKey, atlasesForMap, frameName, tuning, validateManifest, type GfxAnimName, type GfxManifest, type GfxSprite } from "@game/shared";
 
 /** Where the manifest and the atlases are served from (client/public/gfx). */
 const BASE = "/gfx/";
@@ -239,7 +239,7 @@ export class GfxKit {
     if (!this.active) return undefined;
     // A player variant is `<body>` or `<body>.<outfit>`: the outfit sprite, then the plain body, then any player sprite.
     const candidates =
-      kind === "player" ? [...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
+      kind === "player" ? [...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`, ...(id && tuning().monsterModels[id] ? [`monster.${tuning().monsterModels[id]}`] : [])] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
     for (const k of candidates) {
       if (k === "") continue;
       if (this.usable(k)) return k;

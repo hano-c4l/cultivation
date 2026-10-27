@@ -1,0 +1,18 @@
+{
+  "extends": "monster-bat.json",
+  "name": "m_dragon",
+  "spriteKey": "monster.dragon",
+  "source": { "model": "monsters/Animated Monster Pack by @Quaternius/FBX/Dragon.fbx" },
+  "rigName": "DragonArmature",
+  "bodyMesh": "Dragon",
+  "stripObjectCurves": true,
+  "figureScale": 0.34,
+  "actionPrefix": "DragonArmature|DragonArmature|",
+  "anims": {
+    "idle": { "action": "Dragon_Flying", "frames": 6, "loop": true },
+    "run": { "action": "Dragon_Flying", "frames": 8, "loop": true },
+    "attack": { "action": "Dragon_Attack", "frames": 6, "loop": false },
+    "hit": { "action": "Dragon_Hit", "frames": 3, "loop": false },
+    "die": { "action": "Dragon_Death", "frames": 6, "loop": false }
+  }
+}

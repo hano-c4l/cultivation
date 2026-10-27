@@ -242,7 +242,8 @@ export type ServerMessage =
   | { t: "mounted"; on: boolean; error?: "no_flight" | "broken" | "busy" | "requirements" }
   /** A monster appeared or changed its path. */
   | { t: "mon"; monster: MonsterSnapshot }
-  | { t: "mon_gone"; id: string }
+  /** A monster left the room. `dead` when it was killed (the client plays its death before dropping it). */
+  | { t: "mon_gone"; id: string; dead?: true }
   /** One attack landed (or missed). `hp` is the target's HP afterwards; `to` is a monster id or a character id. */
   /** `ret`: a player answering a blow (not an attack of their own: it does not make them grey to the one they hit back). */
   | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; ret?: true }

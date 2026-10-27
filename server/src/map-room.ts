@@ -1440,7 +1440,7 @@ export class MapRoom extends DurableObject<Env> {
       case "mon":
         return this.broadcastAbout([ev.monster.id], { t: "mon", monster: ev.monster });
       case "mon_gone":
-        this.broadcastAbout([ev.id], { t: "mon_gone", id: ev.id });
+        this.broadcastAbout([ev.id], { t: "mon_gone", id: ev.id, dead: true });
         return this.forgetEntity(ev.id);
       case "hit": {
         this.broadcastAbout([ev.from, ev.to], { t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}) });

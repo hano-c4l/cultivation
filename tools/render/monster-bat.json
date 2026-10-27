@@ -1,0 +1,26 @@
+{
+  "extends": "sprite-config.json",
+  "name": "m_bat",
+  "spriteKey": "monster.bat",
+  "source": { "model": "monsters/Animated Monster Pack by @Quaternius/FBX/Bat.fbx" },
+  "rigName": "BatArmature",
+  "stripObjectCurves": true,
+  "eyesToBone": "Head",
+  "bodyMesh": "Bat",
+  "outlineMeshes": "all",
+  "noOutline": ["Eyes"],
+  "hipsBone": "Root",
+  "forwardBones": ["Body", "Nose_end"],
+  "autoColors": [2.2, 2.2, 2.2],
+  "figureScale": 0.28,
+  "sourceFps": 30,
+  "actionPrefix": "BatArmature|BatArmature|",
+  "onlyAnims": ["idle", "run", "attack", "hit", "die"],
+  "anims": {
+    "idle": { "action": "Bat_Flying", "frames": 6, "loop": true },
+    "run": { "action": "Bat_Flying", "frames": 8, "loop": true },
+    "attack": { "action": "Bat_Attack", "frames": 6, "loop": false },
+    "hit": { "action": "Bat_Hit", "frames": 3, "loop": false },
+    "die": { "action": "Bat_Death", "frames": 6, "loop": false }
+  }
+}
