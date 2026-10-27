@@ -237,8 +237,9 @@ export class GfxKit {
    */
   spriteKeyFor(kind: "player" | "monster" | "guard" | "weapon", id?: string, variant?: string): string | undefined {
     if (!this.active) return undefined;
+    // A player variant is `<body>` or `<body>.<outfit>`: the outfit sprite, then the plain body, then any player sprite.
     const candidates =
-      kind === "player" ? [variant ? `player.${variant}` : "", "player"] : kind === "monster" ? [`monster.${id ?? ""}`] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
+      kind === "player" ? [...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
     for (const k of candidates) {
       if (k === "") continue;
       if (this.usable(k)) return k;

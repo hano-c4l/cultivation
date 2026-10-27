@@ -386,6 +386,9 @@ def main():
         if hasattr(ad, "action_slot") and act.slots:
             ad.action_slot = act.slots[0]
         start, end = act.frame_range
+        if a.get("range"):  # only a part of the action (fractions of it): Sword_Attack is a wind-up swing, a reset and then the real forward slash
+            span0 = end - start
+            start, end = start + span0 * a["range"][0], start + span0 * a["range"][1]
         n = a["frames"]
         span = end - start
         times = [start + i * span / n for i in range(n)] if a["loop"] else [start + i * span / (n - 1) for i in range(n)]
@@ -423,6 +426,13 @@ def main():
                 h = hips.matrix.translation
                 worst_drift = max(worst_drift, math.hypot(h.x - h0.x, h.y - h0.y))
                 rig.location = -(Matrix.Rotation(rig.rotation_euler.z, 3, "Z") @ Vector((h.x - h0.x, h.y - h0.y, 0)) * fs) + Vector((0, 0, lift))
+                if weapon_objs and d == 0:  # how far ahead of the hand the blade points, per frame (1 = straight out in front, -1 = straight back)
+                    w0 = weapon_objs[0]
+                    hand = (rig.matrix_world @ rig.pose.bones[wcfg["bone"]].head)
+                    tips = [w0.matrix_world @ Vector(c) for c in w0.bound_box]
+                    tip = max(tips, key=lambda v: (v - hand).length)
+                    bv = (tip - hand).normalized()
+                    log("blade %s %02d: forward %.2f up %.2f" % (anim, i, bv.dot(ahead), bv.z))
                 name = "%s_%d_%02d" % (anim, d, i)
                 path = os.path.join(OUT, "frames", name + ".png")
                 r.filepath = path

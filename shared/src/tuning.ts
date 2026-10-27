@@ -141,6 +141,8 @@ export interface Tuning {
   boss: { claimTtlMs: number; tier: number; species: Record<string, string | null> };
   /** The alchemist's brewing: how many brewings a character can have at once and the recipes (see alchemy.ts). */
   alchemy: AlchemyCfg;
+  /** The outfit drawn on a player's sprite, by the realm of the robe worn: the rule with the highest `minRealm` the robe reaches wins (no robe or no rule: the plain peasant clothes). `outfit` names a sprite variant (`player.<body>.<outfit>`); one without a sprite is drawn as the plain clothes. */
+  outfits: { rules: Array<{ minRealm: number; outfit: string }> };
 }
 
 export interface MonsterNumbers {
@@ -407,6 +409,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     species: { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang" },
   },
   alchemy: DEFAULT_ALCHEMY,
+  outfits: { rules: [{ minRealm: 0, outfit: "ranger" }] },
 };
 
 export const TUNING_GROUPS = Object.keys(DEFAULT_TUNING) as TuningGroup[];
@@ -446,6 +449,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   pathBonuses: "Thưởng chỉ số của từng hướng tu (khi là chủ tu)",
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
+  outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
 };
 
 const num = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
@@ -707,6 +711,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       );
     case "paths":
       return int(value.swapCostBase, 0, 1_000_000_000) && int(value.dropCostBase, 0, 1_000_000_000);
+    case "outfits":
+      return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit));
     case "alchemy":
       return validAlchemy(value);
     case "boss": {
