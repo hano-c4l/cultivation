@@ -89,7 +89,7 @@ import { mapLabel, vi } from "./locales/vi";
 import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
 import { GfxKit, ONE_SHOT_MS, type GfxView } from "./gfx/kit";
-import { skillFxOf } from "./fx-kinds";
+import { skillFxOf, weaponEquipped } from "./fx-kinds";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
 
@@ -833,6 +833,7 @@ export class GameScene extends Phaser.Scene {
       case "look": {
         const looker = this.actors.get(msg.id);
         if (looker) {
+          if (weaponEquipped(looker.weapon, msg.w)) this.fx.equip(msg.id);
           looker.weapon = msg.w;
           looker.outfit = msg.o;
         }
@@ -1505,7 +1506,7 @@ export class GameScene extends Phaser.Scene {
     if (msg.to === this.selfId && this.actors.has(msg.from) && !msg.ret) this.hitMeAt.set(msg.from, performance.now());
     // A hit with no skill behind it is a plain attack (a skill is drawn from its own `fx` message).
     if (!msg.skill) {
-      this.fx.basic(msg.from, msg.to, this.monsters.has(msg.from));
+      this.fx.basic(msg.from, msg.to, this.monsters.has(msg.from), this.actors.get(msg.from)?.weapon);
       this.playOnce(msg.from, "attack", msg.to);
     }
     if (msg.kind !== "miss") this.playOnce(msg.to, "hit", msg.from);

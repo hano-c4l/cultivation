@@ -1,6 +1,6 @@
 import { getSkill, resetTuning, setTuning, SKILLS } from "@game/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { BASIC_COLOR, BASIC_MELEE_MAX_PX, BUFF_COLOR, ELEMENT_COLOR, basicFxOf, skillFxOf } from "./fx-kinds";
+import { BASIC_COLOR, BASIC_MELEE_MAX_PX, BUFF_COLOR, ELEMENT_COLOR, basicFxOf, basicProjectileOf, elementStyleOf, skillFxOf, weaponEquipped } from "./fx-kinds";
 
 afterEach(() => resetTuning());
 
@@ -42,5 +42,31 @@ describe("the effect of a plain attack", () => {
     expect(basicFxOf(BASIC_MELEE_MAX_PX)).toBe("melee");
     expect(basicFxOf(BASIC_MELEE_MAX_PX + 1)).toBe("ranged");
     expect(BASIC_COLOR.player).not.toBe(BASIC_COLOR.monster);
+  });
+});
+
+describe("element styles", () => {
+  it("every element with a colour has its own style, anything else is plain", () => {
+    for (const el of Object.keys(ELEMENT_COLOR)) expect(elementStyleOf(el)).toBe(el);
+    expect(new Set(Object.keys(ELEMENT_COLOR).map(elementStyleOf)).size).toBe(Object.keys(ELEMENT_COLOR).length);
+    expect(elementStyleOf(undefined)).toBe("plain");
+    expect(elementStyleOf("nope")).toBe("plain");
+  });
+});
+
+describe("basic projectile and the weapon flash", () => {
+  it("a bow shoots arrows, only for players", () => {
+    expect(basicProjectileOf("cung", false)).toBe("arrow");
+    expect(basicProjectileOf("cung", true)).toBe("bolt");
+    expect(basicProjectileOf("kiem", false)).toBe("bolt");
+    expect(basicProjectileOf(undefined, false)).toBe("bolt");
+  });
+
+  it("flashes only when a weapon is put on or swapped", () => {
+    expect(weaponEquipped(undefined, "kiem")).toBe(true);
+    expect(weaponEquipped("kiem", "dao")).toBe(true);
+    expect(weaponEquipped("kiem", "kiem")).toBe(false); // an outfit change repeats the weapon
+    expect(weaponEquipped("kiem", undefined)).toBe(false); // taken off or broken
+    expect(weaponEquipped(undefined, undefined)).toBe(false);
   });
 });
