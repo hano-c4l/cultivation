@@ -249,6 +249,8 @@ Các cổng chỉ có ở local (production/preview phải trả 404): `/api/dev
 - WebGL trong khung trình duyệt của app không tạo được framebuffer; client tự chuyển sang Canvas khi gặp lỗi đó.
 - Đo độ trễ từ máy phát triển không đại diện: định tuyến của máy này nhảy giữa nhiều edge (CDG, MAD, NRT, SIN) và RTT 330–450 ms.
 
+- **Đồ họa (giai đoạn 4), các bẫy đã gặp (chi tiết ở `docs/PHASE4.md`):** (1) `game_tuning` được gieo bằng `INSERT OR IGNORE`: đổi mặc định của một nhóm đã được gieo ở D1 local **không có tác dụng**, xóa dòng đó (`DELETE FROM game_tuning WHERE name='...'`) rồi chạy lại. (2) Mô hình FBX của gói quái có đường cong `scale` và `location` cấp đối tượng trong animation: chúng đè lên `figureScale` và đặt rig lệch mặt đất, nên cấu hình render cần `stripObjectCurves`. (3) Máy chủ dev của Vite (`npm run dev:client`, cổng 5173 hoặc kế tiếp) bị `/api/register` từ chối `forbidden_origin` vì khác nguồn với wrangler: đăng ký tài khoản ở `http://localhost:8787`, cookie dùng chung cổng khác nên mở Vite vẫn đăng nhập được. (4) Atlas vũ khí, Ranger và quái tải theo nhu cầu (`gfx-publish --demand`), không nằm trong danh sách bản đồ nào; mỗi lần `gfx-publish` tăng `manifest.version`. (5) Nguồn Blender và ảnh thô để ngoài repo (`D:/Working/cultivation-art`), chỉ atlas và manifest được commit.
+
 ## Ghi chú kỹ thuật khác
 - Bản đồ vẽ bằng RenderTexture: chỉ mới thử với Canvas, chưa thử WebGL trên thiết bị thật (đặc biệt điện thoại). Có `?renderer=canvas` làm đường lùi.
 - Hình ảnh vật cản và nhân vật còn là placeholder (xem mục 6 trong `docs/TECHNICAL.md`).
