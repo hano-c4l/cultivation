@@ -1,4 +1,4 @@
-// Local test of what other players look like (phase 4d): the body (`f`) and the weapon (`w`) in the snapshots, and the `look` message others
+// Local test of what other players look like (phase 4d): the body (`f`), the weapon (`w`) and the outfit (`o`) in the snapshots, and the `look` message others
 // get when a weapon is put on, taken off or when a player joins late.
 // Usage: node tools/look-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses a dev-only endpoint, so it only runs against localhost with DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars.
@@ -94,6 +94,25 @@ cb.send({ t: "eq_unequip", slot: "weapon" });
 await sleep(900);
 const off = ca.log.slice(mark2).find((m) => m.t === "look" && m.id === B.id);
 check("taking the sword off tells A that B holds nothing", off !== undefined && off.w === undefined, JSON.stringify(off));
+
+// The outfit follows the worn robe (tuning `outfits`: any robe shows the ranger clothes).
+await fetch(`${httpBase}/api/dev/loot?room=${ROOM}&char=${B.id}&item=eq.robe.f.0.1.1&qty=1`);
+await sleep(800);
+const robe = bagOf(cb).find((i) => i.type.startsWith("eq.robe"));
+check("B has a robe in the bag", !!robe, robe?.type);
+const mark3 = ca.log.length;
+cb.send({ t: "eq_equip", tab: 0, cell: robe.cell });
+await sleep(900);
+const dressed = ca.log.slice(mark3).find((m) => m.t === "look" && m.id === B.id);
+check("A is told that B wears the ranger outfit", dressed?.o === "ranger", JSON.stringify(dressed));
+const cd = await connect((await player("d", "male")).cookie);
+check("a player who joins later sees the outfit in the welcome", cd.welcome.players.find((p) => p.id === B.id)?.o === "ranger");
+const mark4 = ca.log.length;
+cb.send({ t: "eq_unequip", slot: "robe" });
+await sleep(900);
+const undressed = ca.log.slice(mark4).find((m) => m.t === "look" && m.id === B.id);
+check("taking the robe off tells A that B wears the plain clothes", undressed !== undefined && undressed.o === undefined, JSON.stringify(undressed));
+cd.ws.close();
 
 for (const c of [ca, cb, cc]) c.ws.close();
 console.log(failures === 0 ? "all ok" : `${failures} FAILED`);

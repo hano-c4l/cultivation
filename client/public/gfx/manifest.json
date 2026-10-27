@@ -1,5 +1,5 @@
 {
-  "version": 27,
+  "version": 41,
   "atlases": {
     "char_female": {
       "image": "char_female.png",
@@ -48,6 +48,14 @@
     "w_cung_female": {
       "image": "w_cung_female.png",
       "data": "w_cung_female.json"
+    },
+    "char_ranger_female": {
+      "image": "char_ranger_female.png",
+      "data": "char_ranger_female.json"
+    },
+    "char_ranger_male": {
+      "image": "char_ranger_male.png",
+      "data": "char_ranger_male.json"
     }
   },
   "sprites": {
@@ -74,8 +82,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -118,8 +126,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -149,7 +157,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 42,
+      "head": 49,
       "anims": {
         "idle": {
           "frames": 4,
@@ -162,8 +170,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -193,7 +201,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 41,
+      "head": 48,
       "anims": {
         "idle": {
           "frames": 4,
@@ -206,8 +214,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -237,7 +245,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 42,
+      "head": 52,
       "anims": {
         "idle": {
           "frames": 4,
@@ -250,8 +258,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -281,7 +289,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 40,
+      "head": 51,
       "anims": {
         "idle": {
           "frames": 4,
@@ -294,8 +302,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -325,7 +333,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 45,
+      "head": 51,
       "anims": {
         "idle": {
           "frames": 4,
@@ -338,8 +346,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -369,7 +377,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 44,
+      "head": 51,
       "anims": {
         "idle": {
           "frames": 4,
@@ -382,8 +390,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -413,7 +421,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 46,
+      "head": 45,
       "anims": {
         "idle": {
           "frames": 4,
@@ -426,8 +434,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -457,7 +465,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 46,
+      "head": 45,
       "anims": {
         "idle": {
           "frames": 4,
@@ -470,8 +478,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -514,8 +522,8 @@
           "loop": true
         },
         "attack": {
-          "frames": 6,
-          "fps": 3,
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {
@@ -558,8 +566,96 @@
           "loop": true
         },
         "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "cast": {
           "frames": 6,
-          "fps": 3,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "player.female.ranger": {
+      "atlas": "char_ranger_female",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 65,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "player.male.ranger": {
+      "atlas": "char_ranger_male",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 67,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
           "loop": false
         },
         "cast": {

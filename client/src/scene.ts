@@ -134,6 +134,8 @@ interface Actor {
   female?: boolean;
   /** The weapon family in the hand (from the snapshot and the `look` messages), and the sprite drawn over the body for it. */
   weapon?: string;
+  /** The outfit worn (from the snapshot and the `look` messages): picks the body sprite variant. */
+  outfit?: string;
   wview?: GfxView;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
@@ -824,7 +826,10 @@ export class GameScene extends Phaser.Scene {
       }
       case "look": {
         const looker = this.actors.get(msg.id);
-        if (looker) looker.weapon = msg.w;
+        if (looker) {
+          looker.weapon = msg.w;
+          looker.outfit = msg.o;
+        }
         break;
       }
       case "joined":
@@ -1201,6 +1206,7 @@ export class GameScene extends Phaser.Scene {
       const now = performance.now();
       actor.female = p.f === true;
       actor.weapon = p.w;
+      actor.outfit = p.o;
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
@@ -1512,8 +1518,16 @@ export class GameScene extends Phaser.Scene {
       a.view = undefined;
       a.body.setVisible(true);
     }
+    // The body sprite follows the outfit: an atlas that is not here yet is fetched, and the plain clothes show until it is.
+    const bodyKey = this.gfx.spriteKeyFor("player", undefined, `${a.female ? "female" : "male"}${a.outfit ? `.${a.outfit}` : ""}`);
+    if (a.view && bodyKey && a.view.key !== bodyKey) {
+      a.wview?.destroy();
+      a.wview = undefined;
+      a.view.destroy();
+      a.view = undefined;
+    }
     if (!a.view) {
-      const key = this.gfx.spriteKeyFor("player", undefined, a.female ? "female" : "male");
+      const key = bodyKey;
       const view = key ? this.gfx.createView(key) : undefined;
       if (!view) return;
       a.view = view;
