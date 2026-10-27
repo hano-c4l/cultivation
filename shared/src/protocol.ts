@@ -33,6 +33,8 @@ export const PONG_MESSAGE = "pong";
 
 export const MAX_MESSAGE_BYTES = 512;
 export const MIN_MOVE_INTERVAL_MS = 100;
+/** Moves the server accepts in a burst (bunched up by network jitter) before it holds to one per MIN_MOVE_INTERVAL_MS. */
+export const MOVE_BURST = 4;
 export const CHAT_MAX_LENGTH = 120;
 /** At most CHAT_BURST messages per CHAT_WINDOW_MS per player, and at least CHAT_MIN_GAP_MS apart. */
 export const CHAT_BURST = 5;

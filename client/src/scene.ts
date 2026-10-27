@@ -841,8 +841,9 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       case "ack":
-        // Only corrections carry a track; an accepted move keeps the local prediction untouched.
-        if (msg.player) this.upsertActor([msg.player]);
+        // Only corrections carry a track; an accepted move keeps the local prediction untouched. A correction for an older move than the last one sent
+        // (it was late: a jitter spike) is dropped: the newer move's own ack carries the fix if one is needed. Seq 0 is a server-forced correction.
+        if (msg.player && (msg.seq === 0 || msg.seq >= this.moveSeq)) this.upsertActor([msg.player]);
         break;
       case "left":
         this.removeActor(msg.id);
