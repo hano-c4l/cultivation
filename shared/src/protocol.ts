@@ -33,6 +33,8 @@ export const PONG_MESSAGE = "pong";
 
 export const MAX_MESSAGE_BYTES = 512;
 export const MIN_MOVE_INTERVAL_MS = 100;
+/** Moves the server accepts in a burst (bunched up by network jitter) before it holds to one per MIN_MOVE_INTERVAL_MS. */
+export const MOVE_BURST = 4;
 export const CHAT_MAX_LENGTH = 120;
 /** At most CHAT_BURST messages per CHAT_WINDOW_MS per player, and at least CHAT_MIN_GAP_MS apart. */
 export const CHAT_BURST = 5;
@@ -211,11 +213,19 @@ export interface PlayerSnapshot {
   speed: number;
   /** Riding the flight pháp bảo (left out when on foot). */
   mounted?: true;
+  /** Drawn with the female body (left out for the male body; the gender itself is never sent). */
+  f?: true;
+  /** The weapon family in the hand (WEAPON_TYPES), left out with no weapon or a broken one: it picks the weapon sprite drawn over the body. */
+  w?: string;
+  /** The outfit worn (an `outfits` tuning key), left out for the plain clothes: it picks the body sprite variant. */
+  o?: string;
 }
 
 export type ServerMessage =
   | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][]; tuning: Tuning; npcs: NpcSpot[]; mapRecipe?: MapRecipe; mapNames?: Record<string, string>; items?: ItemOverlay[]; mutant?: Pick<ElementTuning, "mutantRootChancePermille" | "mutantSkillBonusPct" | "mutantGearBonusPct" | "mutantGearDropPermille"> }
   | { t: "joined"; player: PlayerSnapshot }
+  /** What a player holds or wears changed (a weapon or a robe put on, taken off or broken): `w` is the weapon family and `o` the outfit, each left out for none. */
+  | { t: "look"; id: string; w?: string; o?: string }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
   /** Reply to the mover. `player` is present only when the server corrected or rejected the move. */
@@ -232,7 +242,8 @@ export type ServerMessage =
   | { t: "mounted"; on: boolean; error?: "no_flight" | "broken" | "busy" | "requirements" }
   /** A monster appeared or changed its path. */
   | { t: "mon"; monster: MonsterSnapshot }
-  | { t: "mon_gone"; id: string }
+  /** A monster left the room. `dead` when it was killed (the client plays its death before dropping it). */
+  | { t: "mon_gone"; id: string; dead?: true }
   /** One attack landed (or missed). `hp` is the target's HP afterwards; `to` is a monster id or a character id. */
   /** `ret`: a player answering a blow (not an attack of their own: it does not make them grey to the one they hit back). */
   | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; ret?: true }

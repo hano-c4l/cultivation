@@ -1,3 +1,4 @@
+import { iconFor } from "./icons";
 import {
   EQUIP_SLOTS,
   equipBlock,
@@ -80,6 +81,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       const optDot = elementDot(item.type);
       const optName = el("div", undefined, nameOf(item.type));
       if (optDot) optName.prepend(optDot);
+      row.append(iconFor(item.type));
       text.append(tagOf(item.type, item.lv), optName, el("div", "muted", equipLines(item.type, item.dur, item.max, item.lv, item.rs, item.en).join(" · ")));
       const btn = el("button", undefined, vi.inventory.wear);
       btn.onclick = () => {
@@ -156,6 +158,7 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
       if (piece) {
         const broken = piece.dur !== undefined && piece.dur <= 0;
         const dot = elementDot(piece.type);
+        middle.append(iconFor(piece.type));
         if (dot) middle.append(dot);
         middle.append(el("span", broken ? "eq-broken" : "eq-label", nameOf(piece.type)));
         tier.textContent = itemTierTag(piece.type, piece.lv) ?? "";

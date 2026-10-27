@@ -1,4 +1,5 @@
 import { BAG_CELLS_PER_TAB, BAG_COLS, MAX_BAG_TABS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type SortMode, type WearerCtx } from "@game/shared";
+import { iconFor } from "./icons";
 import { describeItem, elementDot, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
 import { wearerOfSheet } from "./wearer";
@@ -213,7 +214,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
         slot.classList.add(`cat-${def?.category ?? "material"}`, `rar-${def?.rarity ?? "common"}`);
         if (item.dur !== undefined && item.dur <= 0) slot.classList.add("broken");
         slot.title = itemName(item.type);
-        slot.append(el("span", "bag-name", itemName(item.type)));
+        slot.append(iconFor(item.type)); // the name shows in the detail box when the cell is tapped (and in the title)
         const tag = itemTierTag(item.type, item.lv);
         if (tag) slot.append(el("span", `bag-tag ${realmClass(itemTierRealm(item.type, item.lv))}`, tag));
         const dot = elementDot(item.type);

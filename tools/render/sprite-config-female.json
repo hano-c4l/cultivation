@@ -1,0 +1,28 @@
+{
+  "extends": "sprite-config.json",
+  "name": "char_female",
+  "spriteKey": "player.female",
+  "source": {
+    "model": "ubc/Universal Base Characters[Standard]/Base Characters/Godot - UE/Superhero_Female_FullBody.gltf",
+    "actions": "ual/Animation Library[Standard]/Unreal Engine/AL_Standard.fbx",
+    "hair": "ubc/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Long.gltf",
+    "outfit": "outfits/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf"
+  },
+  "removeObjects": ["Icosphere", "Icosphere.001"],
+  "bodyMesh": "Superhero_Female",
+  "headOnly": true,
+  "headBones": ["Head", "neck_01"],
+  "outlineMeshes": "all",
+  "noOutline": ["Eyes", "Eyebrows"],
+  "hipsBone": "pelvis",
+  "forwardBones": ["foot_l", "ball_l"],
+  "actionPrefix": "Rig|Rig|",
+  "sourceFps": 30,
+  "materials": {
+    "MI_Superhero_Female": { "color": [0.93, 0.76, 0.63] },
+    "MI_Regular_Female": { "color": [0.93, 0.76, 0.63] },
+    "MI_Peasant": { "color": [3.2, 3.2, 3.2], "texture": true },
+    "MI_Hair_2": { "color": [0.1, 0.07, 0.07] },
+    "MI_Eyes": { "color": [0.05, 0.05, 0.08] }
+  }
+}

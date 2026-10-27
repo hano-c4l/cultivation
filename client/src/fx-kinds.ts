@@ -60,3 +60,23 @@ export function basicFxOf(screenDist: number): "melee" | "ranged" {
 
 /** Plain attacks of players are pale gold, those of monsters red. */
 export const BASIC_COLOR = { player: 0xf4ecd0, monster: 0xff8a7a } as const;
+
+/** How an element's attack looks: each has its own shape (the colour comes from `ELEMENT_COLOR`); anything else is the plain glowing orb. */
+export type ElementStyle = "kim" | "moc" | "thuy" | "hoa" | "tho" | "loi" | "bang" | "phong" | "plain";
+const ELEMENT_STYLES: readonly ElementStyle[] = ["kim", "moc", "thuy", "hoa", "tho", "loi", "bang", "phong"];
+export function elementStyleOf(element: string | undefined): ElementStyle {
+  return ELEMENT_STYLES.find((e) => e === element) ?? "plain";
+}
+
+/** A plain ranged attack of someone holding a bow is an arrow; every other attack from afar is a bolt. */
+export function basicProjectileOf(weapon: string | undefined, byMonster: boolean): "arrow" | "bolt" {
+  return !byMonster && weapon === "cung" ? "arrow" : "bolt";
+}
+
+/**
+ * Whether a `look` update is a weapon being put on (and so gets its flash): the weapon family is now set and was not the same a moment ago.
+ * Taking it off, a broken weapon, and updates that only change the outfit show nothing.
+ */
+export function weaponEquipped(before: string | undefined, now: string | undefined): boolean {
+  return now !== undefined && now !== before;
+}

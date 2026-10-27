@@ -16,6 +16,11 @@ export function gearStyleOf(gender: Gender): GearStyle {
   return gender === "male" || gender === "female_wears_male" ? "male" : "female";
 }
 
+/** The body a character is drawn with: the first word of the gender ("male_wears_female" is a male body in female gear). */
+export function bodyOf(gender: Gender): "male" | "female" {
+  return gender === "male" || gender === "male_wears_female" ? "male" : "female";
+}
+
 /** Maps a uniform roll in 0..3 to a gender, for data without a stored choice. */
 export function genderFromRoll(roll: number): Gender {
   return GENDERS[Math.min(Math.max(Math.trunc(roll), 0), GENDERS.length - 1)] as Gender;

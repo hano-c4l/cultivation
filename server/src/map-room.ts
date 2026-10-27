@@ -108,7 +108,9 @@ import {
   type WearerCtx,
   MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
+  MOVE_BURST,
   MOVE_BUDGET_CAP,
+  takeMoveToken,
   PING_MESSAGE,
   PONG_MESSAGE,
   TICK_MS,
@@ -143,7 +145,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { bodyOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
@@ -205,6 +207,12 @@ interface PlayerState {
   /** The account is an admin (set by the Worker when the socket opens; a role change counts from the next connection). */
   admin?: boolean;
   name: string;
+  /** Drawn with the female body (from the gender at join; it never changes while connected). */
+  female?: boolean;
+  /** The weapon family in the hand, as the others see it (a broken weapon counts as none); `applyGear` keeps it current. */
+  w?: string;
+  /** The outfit shown (see `outfitOf`); `applyGear` keeps it current. */
+  o?: string;
   /** Lock claim id of this connection, kept so the lock can be released after a wake-up. */
   claimId: string;
   mapId: MapId;
@@ -232,6 +240,8 @@ interface PlayerState {
   /** Movement budget (see shared/movement.ts) and when it was last updated. */
   moveBudget?: number;
   moveBudgetAt?: number;
+  /** Moves left in the burst allowance (see MOVE_BURST) as of `lastMoveAt`. */
+  moveTokens?: number;
   /** A paid breakthrough in progress (kept here so it survives the object sleeping; the alarm ends it). */
   bt?: ActiveBreakthrough;
   /** PvP: the PK switch (off at every join), sát khí, sát nhân as of `snAt` (it falls 5 a minute from there while online), anh hùng. */
@@ -541,6 +551,9 @@ export class MapRoom extends DurableObject<Env> {
         snAt: Date.now(),
         ah: row.anh_hung,
         name: row.name,
+        ...(bodyOf(row.gender) === "female" ? { female: true } : {}),
+        ...(weaponFamily(bagNow.equipped) ? { w: weaponFamily(bagNow.equipped) as string } : {}),
+        ...(outfitOf(bagNow.equipped) ? { o: outfitOf(bagNow.equipped) as string } : {}),
         claimId,
         mapId,
         path: [position],
@@ -745,7 +758,10 @@ export class MapRoom extends DurableObject<Env> {
     const now = Date.now();
     // The mover predicts locally, so it only needs a payload when its move was corrected or rejected.
     const reject = () => this.send(ws, { t: "ack", seq: msg.seq, player: this.snapshot(state) });
-    if (now - state.lastMoveAt < MIN_MOVE_INTERVAL_MS) return reject();
+    // Network jitter bunches up messages the client sent 120 ms apart, so the gap alone must not decide: a refusal sends the old track back and pulls the
+    // character backwards. A small burst allowance still bounds the rate (one move per interval on average).
+    const tokens = takeMoveToken(state.moveTokens, now - state.lastMoveAt, MIN_MOVE_INTERVAL_MS, MOVE_BURST);
+    if (tokens === null) return reject();
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     // Trust the client's start tile when it is close to the server's view (latency drift), so the
     // client's prediction and the server path start from the same tile and nothing is pulled back.
@@ -768,6 +784,7 @@ export class MapRoom extends DurableObject<Env> {
     state.path = path;
     state.startedAt = now;
     state.lastMoveAt = now;
+    state.moveTokens = tokens;
     state.dirty = true;
     ws.serializeAttachment(state);
     // Others get the new path; the mover only gets the track back if its start tile was overridden.
@@ -1423,7 +1440,7 @@ export class MapRoom extends DurableObject<Env> {
       case "mon":
         return this.broadcastAbout([ev.monster.id], { t: "mon", monster: ev.monster });
       case "mon_gone":
-        this.broadcastAbout([ev.id], { t: "mon_gone", id: ev.id });
+        this.broadcastAbout([ev.id], { t: "mon_gone", id: ev.id, dead: true });
         return this.forgetEntity(ev.id);
       case "hit": {
         this.broadcastAbout([ev.from, ev.to], { t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}) });
@@ -1819,6 +1836,20 @@ export class MapRoom extends DurableObject<Env> {
 
   /** Worn gear changed (or wore down): the combat stats follow, in a combat map. In town the next join recomputes them. */
   private applyGear(id: string, bag: BagState, direct?: WebSocket): void {
+    // The others see what is in the hand: tell them when it changes (also in town, where there is no profile below).
+    const sock = this.socketOf(id);
+    if (sock) {
+      const w = weaponFamily(bag.equipped) ?? undefined;
+      const o = outfitOf(bag.equipped) ?? undefined;
+      if (w !== sock.state.w || o !== sock.state.o) {
+        if (w) sock.state.w = w;
+        else delete sock.state.w;
+        if (o) sock.state.o = o;
+        else delete sock.state.o;
+        sock.ws.serializeAttachment(sock.state);
+        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}), ...(o ? { o } : {}) });
+      }
+    }
     void this.syncMount(id).catch((err) => console.error("mount sync failed", id, err));
     const p = this.sim?.getPlayer(id);
     if (!p || !this.sim) {
@@ -4009,7 +4040,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {
