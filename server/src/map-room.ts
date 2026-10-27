@@ -108,7 +108,9 @@ import {
   type WearerCtx,
   MAX_DESYNC_TILES,
   MIN_MOVE_INTERVAL_MS,
+  MOVE_BURST,
   MOVE_BUDGET_CAP,
+  takeMoveToken,
   PING_MESSAGE,
   PONG_MESSAGE,
   TICK_MS,
@@ -236,6 +238,8 @@ interface PlayerState {
   /** Movement budget (see shared/movement.ts) and when it was last updated. */
   moveBudget?: number;
   moveBudgetAt?: number;
+  /** Moves left in the burst allowance (see MOVE_BURST) as of `lastMoveAt`. */
+  moveTokens?: number;
   /** A paid breakthrough in progress (kept here so it survives the object sleeping; the alarm ends it). */
   bt?: ActiveBreakthrough;
   /** PvP: the PK switch (off at every join), sát khí, sát nhân as of `snAt` (it falls 5 a minute from there while online), anh hùng. */
@@ -751,7 +755,10 @@ export class MapRoom extends DurableObject<Env> {
     const now = Date.now();
     // The mover predicts locally, so it only needs a payload when its move was corrected or rejected.
     const reject = () => this.send(ws, { t: "ack", seq: msg.seq, player: this.snapshot(state) });
-    if (now - state.lastMoveAt < MIN_MOVE_INTERVAL_MS) return reject();
+    // Network jitter bunches up messages the client sent 120 ms apart, so the gap alone must not decide: a refusal sends the old track back and pulls the
+    // character backwards. A small burst allowance still bounds the rate (one move per interval on average).
+    const tokens = takeMoveToken(state.moveTokens, now - state.lastMoveAt, MIN_MOVE_INTERVAL_MS, MOVE_BURST);
+    if (tokens === null) return reject();
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     // Trust the client's start tile when it is close to the server's view (latency drift), so the
     // client's prediction and the server path start from the same tile and nothing is pulled back.
@@ -774,6 +781,7 @@ export class MapRoom extends DurableObject<Env> {
     state.path = path;
     state.startedAt = now;
     state.lastMoveAt = now;
+    state.moveTokens = tokens;
     state.dirty = true;
     ws.serializeAttachment(state);
     // Others get the new path; the mover only gets the track back if its start tile was overridden.

@@ -36,3 +36,13 @@ export function spendMoveBudget(budget: number, elapsedMs: number, drift: number
   if (drift > maxDrift || drift > refilled) return { accepted: false, budget: refilled };
   return { accepted: true, budget: refilled - drift };
 }
+
+/**
+ * The burst allowance for move messages: network jitter bunches up messages the client sent a full interval apart, so a bare "gap since the last move"
+ * would refuse some and pull the character back. The bucket refills one token per `intervalMs` (up to `burst`); a move costs one.
+ * Returns the tokens left after this move, or null when it is refused (nothing is charged then).
+ */
+export function takeMoveToken(tokens: number | undefined, elapsedMs: number, intervalMs: number, burst: number): number | null {
+  const have = Math.min(burst, (tokens ?? burst) + Math.max(0, elapsedMs) / intervalMs);
+  return have < 1 ? null : have - 1;
+}

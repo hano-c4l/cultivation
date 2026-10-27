@@ -1,5 +1,5 @@
 {
-  "version": 17,
+  "version": 27,
   "atlases": {
     "char_female": {
       "image": "char_female.png",
@@ -149,7 +149,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 72,
+      "head": 42,
       "anims": {
         "idle": {
           "frames": 4,
@@ -193,7 +193,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 70,
+      "head": 41,
       "anims": {
         "idle": {
           "frames": 4,
@@ -237,7 +237,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 79,
+      "head": 42,
       "anims": {
         "idle": {
           "frames": 4,
@@ -281,7 +281,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 78,
+      "head": 40,
       "anims": {
         "idle": {
           "frames": 4,
@@ -325,7 +325,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 77,
+      "head": 45,
       "anims": {
         "idle": {
           "frames": 4,
@@ -369,7 +369,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 76,
+      "head": 44,
       "anims": {
         "idle": {
           "frames": 4,
@@ -413,7 +413,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 66,
+      "head": 46,
       "anims": {
         "idle": {
           "frames": 4,
@@ -457,7 +457,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 65,
+      "head": 46,
       "anims": {
         "idle": {
           "frames": 4,
