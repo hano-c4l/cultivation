@@ -1,5 +1,5 @@
 {
-  "version": 41,
+  "version": 44,
   "atlases": {
     "char_female": {
       "image": "char_female.png",
@@ -56,6 +56,18 @@
     "char_ranger_male": {
       "image": "char_ranger_male.png",
       "data": "char_ranger_male.json"
+    },
+    "m_bat": {
+      "image": "m_bat.png",
+      "data": "m_bat.json"
+    },
+    "m_dragon": {
+      "image": "m_dragon.png",
+      "data": "m_dragon.json"
+    },
+    "m_skeleton": {
+      "image": "m_skeleton.png",
+      "data": "m_skeleton.json"
     }
   },
   "sprites": {
@@ -671,6 +683,118 @@
         "die": {
           "frames": 6,
           "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "monster.bat": {
+      "atlas": "m_bat",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 57,
+      "anims": {
+        "idle": {
+          "frames": 6,
+          "fps": 6,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 8,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 7,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 2,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.dragon": {
+      "atlas": "m_dragon",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 74,
+      "anims": {
+        "idle": {
+          "frames": 6,
+          "fps": 4,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 6,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 7,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 2,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.skeleton": {
+      "atlas": "m_skeleton",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 72,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 8,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 14,
           "loop": false
         }
       }

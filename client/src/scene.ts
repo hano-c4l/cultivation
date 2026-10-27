@@ -171,7 +171,12 @@ interface MonsterActor {
   bar: Phaser.GameObjects.Graphics;
   /** Last label colour applied; Text.setColor redraws the text texture, so it is only called on a change. */
   color: string;
+  /** Killed and playing its death: when to drop it. It cannot be picked or targeted meanwhile; a respawn under the same id drops it at once. */
+  dyingUntil?: number;
 }
+
+/** How long a killed monster with a sprite stays on screen for its death animation. */
+const DEATH_LINGER_MS = 1600;
 
 /** Time constant (ms) for blending away the offset left by a path correction. */
 const CORRECTION_TAU_MS = 150;
@@ -764,7 +769,8 @@ export class GameScene extends Phaser.Scene {
         this.upsertMonster(msg.monster);
         break;
       case "mon_gone":
-        this.removeMonster(msg.id);
+        if (msg.dead) this.killMonster(msg.id);
+        else this.removeMonster(msg.id);
         break;
       case "mon_reset":
         for (const id of [...this.monsters.keys()]) this.removeMonster(id);
@@ -1289,6 +1295,7 @@ export class GameScene extends Phaser.Scene {
     let best: string | null = null;
     let bestD = MONSTER_PICK_PX;
     for (const m of this.monsters.values()) {
+      if (m.dyingUntil !== undefined) continue;
       if (m.guard && this.pk.mode() === 0) continue; // a guard is only attacked on purpose: with the PK state off a click walks past it
       const pos = positionAlongPath(m.path, now - m.startedAt, m.speed);
       const s = toScreen(pos.x, pos.y);
@@ -1304,6 +1311,10 @@ export class GameScene extends Phaser.Scene {
   private upsertMonster(snap: MonsterSnapshot): void {
     const def = getMonsterDef(snap.kind);
     let m = this.monsters.get(snap.id);
+    if (m?.dyingUntil !== undefined) {
+      this.removeMonster(snap.id); // it respawned under the same id while its corpse was still showing
+      m = undefined;
+    }
     if (!m) {
       const color = ELEMENT_COLOR[snap.element] ?? 0xcccccc;
       // A guard looks like a player (an oval body, a plain name) and shows no element, realm or HP bar; a monster is a square in its element's colour.
@@ -1361,7 +1372,21 @@ export class GameScene extends Phaser.Scene {
 
   /** Tells the ranking window what its GM buttons need: a map with monsters, and whether a boss stands here. */
   private syncRankContext(): void {
-    this.rank.setContext(!this.map.safe, [...this.monsters.values()].some((m) => m.boss));
+    this.rank.setContext(!this.map.safe, [...this.monsters.values()].some((m) => m.boss && m.dyingUntil === undefined));
+  }
+
+  /** A kill: a monster with a sprite plays its death and is dropped after a moment; one drawn as a square goes at once. */
+  private killMonster(id: string): void {
+    const m = this.monsters.get(id);
+    if (!m) return;
+    if (!m.view?.alive || m.guard) return this.removeMonster(id);
+    m.dyingUntil = performance.now() + DEATH_LINGER_MS;
+    this.playOnce(id, "die");
+    m.label.setVisible(false);
+    m.icon.setVisible(false);
+    m.bar.clear();
+    if (this.targetId === id) this.targetId = null;
+    this.syncRankContext();
   }
 
   private removeMonster(id: string): void {
@@ -1595,6 +1620,10 @@ export class GameScene extends Phaser.Scene {
       // A guard stands like a player: the same body and name height, no element icon and no HP bar.
       m.body.setPosition(s.x, s.y - (m.guard ? 17 : 13)).setDepth(depth);
       this.syncMonsterView(m, now, s.x, s.y, depth);
+      if (m.dyingUntil !== undefined) {
+        if (now >= m.dyingUntil) this.removeMonster(m.id);
+        continue; // the name, icon and bar are gone with it
+      }
       const rise = m.view?.alive ? m.view.rise() + 4 : m.guard ? 38 : 40; // above the head of a sprite, else the old fixed height
       m.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);
       // The element icon sits just left of the name, level with its middle.

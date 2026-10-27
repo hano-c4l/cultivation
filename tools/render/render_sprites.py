@@ -80,8 +80,29 @@ def main():
             a.use_fake_user = True
             for fc in [f for f in a.fcurves if f.data_path in ("location", "rotation_euler", "rotation_quaternion", "scale")]:
                 a.fcurves.remove(fc)  # object-level motion would fight the ground placement done below
-    bpy.ops.import_scene.gltf(filepath=art(src["model"]))
-    rig = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    if src["model"].lower().endswith(".fbx"):
+        bpy.ops.import_scene.fbx(filepath=art(src["model"]))
+    else:
+        bpy.ops.import_scene.gltf(filepath=art(src["model"]))
+    rig = bpy.data.objects[cfg["rigName"]] if cfg.get("rigName") else next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    if cfg.get("stripObjectCurves"):
+        for a in bpy.data.actions:  # the pack animates the armature object itself (scale, location): that would fight the size and the ground placement done below
+            for fc in [f for f in a.fcurves if f.data_path in ("location", "rotation_euler", "rotation_quaternion", "scale")]:
+                a.fcurves.remove(fc)
+        rig.location = (0, 0, 0)  # the pack puts the rig above the ground (the placement below sets the location itself and would drop the figure into it)
+    if cfg.get("eyesToBone"):
+        # a pack that ships the eyes on a rig of their own (animated by nothing): hang them on a bone of the main rig where they stand now, so they follow the head
+        bpy.context.view_layer.update()
+        for other in [o for o in bpy.data.objects if o.type == "ARMATURE" and o is not rig]:
+            for child in [c for c in bpy.data.objects if c.parent is other]:
+                for m in [m for m in child.modifiers if m.type == "ARMATURE"]:
+                    child.modifiers.remove(m)
+                world = child.matrix_world.copy()
+                child.parent = rig
+                child.parent_type = "BONE"
+                child.parent_bone = cfg["eyesToBone"]
+                child.matrix_world = world
+            bpy.data.objects.remove(other, do_unlink=True)
     for name in cfg.get("removeObjects", []):
         o = bpy.data.objects.get(name)
         if o:
@@ -130,8 +151,11 @@ def main():
         ad.nla_tracks.remove(t)
 
     # ---- the direction the model faces, from its own rest pose (heel -> toe) ----
-    b0, b1 = (rig.data.bones[n] for n in cfg["forwardBones"])
-    fwd = rig.matrix_world.to_3x3() @ (b1.head_local - b0.head_local)
+    if cfg.get("forward"):
+        fwd = Vector((cfg["forward"][0], cfg["forward"][1], 0))  # a model with no feet to read it from: the world direction it faces as imported
+    else:
+        b0, b1 = (rig.data.bones[n] for n in cfg["forwardBones"])
+        fwd = rig.matrix_world.to_3x3() @ (b1.head_local - b0.head_local)
     fwd.z = 0
     check(fwd.length > 0.01, "cannot tell which way the model faces")
     fwd.normalize()
@@ -202,6 +226,14 @@ def main():
             key = re.sub(r"\.\d{3}$", "", m.name)  # a second import of the same material is named "<name>.001"
             spec = mats.get(key)
             rgb = spec["color"] if isinstance(spec, dict) else pal.get(key)
+            if rgb is None and cfg.get("autoColors"):
+                rgb = list(m.diffuse_color)[:3]  # the pack's own colour for the material, times the species tint
+                if m.use_nodes and m.node_tree:
+                    for nd in m.node_tree.nodes:
+                        if nd.type == "BSDF_PRINCIPLED":
+                            rgb = list(nd.inputs["Base Color"].default_value)[:3]
+                tint = cfg["autoColors"] if isinstance(cfg["autoColors"], list) else [1, 1, 1]
+                rgb = [rgb[0] * tint[0], rgb[1] * tint[1], rgb[2] * tint[2]]
             check(rgb is not None, "no colour for material %s" % m.name)
             image = None
             if isinstance(spec, dict) and spec.get("texture") and m.node_tree:

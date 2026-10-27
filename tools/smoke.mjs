@@ -288,7 +288,8 @@ const prey = wd.monsters.find((m) => !m.guard && m.rank === "normal" && m.tier =
 d.send({ t: "attack", id: prey.id });
 const firstHit = await d.wait((m) => m.t === "hit" && m.from === D.character.id && m.to === prey.id, 20000, "first hit on the monster");
 assert(firstHit.kind === "miss" || firstHit.damage > 0, "attacking walks into range and lands a hit");
-await d.wait((m) => m.t === "mon_gone" && m.id === prey.id, 40000, "monster dies");
+const goneMsg = await d.wait((m) => m.t === "mon_gone" && m.id === prey.id, 40000, "monster dies");
+assert(goneMsg.dead === true, "a kill says the monster is dead (the client plays its death before dropping it)");
 const gained = await d.wait((m) => m.t === "stats" && m.character.exp > 0, 5000, "stats with EXP after the kill");
 assert(gained.character.exp > 0, "killing a monster grants EXP");
 d.ws.close();
