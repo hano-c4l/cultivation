@@ -102,10 +102,18 @@ Một lệnh biến một mô hình có xương và animation thành atlas: `nod
 - **Đã kiểm:** lớp vũ khí đặt lên thân khớp với ảnh render chung thân và vũ khí (so từng điểm ảnh trên 21 frame của kiếm, thương, rìu: sai khác trung bình dưới 0,001, tối đa 0,12 ở viền khử răng cưa); tải atlas theo nhu cầu, mặc và tháo kiếm trong trình duyệt local (kiếm hiện ở tay, biến mất khi tháo); `node tools/look-smoke.mjs` (người khác nhận `look` khi mặc và tháo, người vào sau thấy kiếm và thân nữ trong welcome).
 - **Frame chạm mép khung** (xem `report.json`): kiếm 22/22, dao 28/19, thương 27/23, rìu 22/20, cung 51/43 trên 264 frame (nam/nữ; đa số ở animation chết và đánh; cung nhiều nhất, tới cả `cast`).
 - **Chưa kiểm:** animation đánh, trúng và chết khi đang cầm vũ khí (trong game mới thấy đứng và chạy); atlas vũ khí được tải lại sau khi qua cổng bản đồ; vũ khí của người khác trong một trình duyệt thứ hai (chỉ kiểm giao thức); WebGL; FPS và VRAM trên điện thoại.
-- **Điểm yếu nhất là cái cung:** cầm ở tay trái, dùng nhát chém của kiếm, chạm mép khung ở 51 (nam) và 43 (nữ) frame, kể cả `cast`; cần animation riêng (giương cung) trước khi coi là xong.
+- **Điểm yếu nhất là cái cung (xem "Còn lại của 4d": chưa có animation cung nào để dùng):** cầm ở tay trái, dùng nhát chém của kiếm, chạm mép khung ở 51 (nam) và 43 (nữ) frame, kể cả `cast`; cần animation riêng (giương cung) trước khi coi là xong.
 - **Chưa làm:** ánh xạ "vật phẩm → sprite vũ khí" bằng D1 cho Admin (hiện chỉ theo **họ** vũ khí, qua bảng `weapons.json` và tên khóa sprite; **4i** sẽ cho Admin gán); vũ khí của quái và vệ binh; hai vũ khí cùng lúc, khiên.
 
-**Còn lại của 4d:** màu/bộ trang phục theo bộ trang bị bằng dữ liệu D1 (kèm việc server báo vẻ ngoài của người khác); pháp bảo phi hành và thú cưỡi.
+**Sửa sau lần thử tay (2026-10-27, nhánh `features_gfx-fixes4d`):**
+- **Cầm kiếm ngược:** vũ khí gắn vào xương `hand_r` xoay quanh trục X **+60°** nên mũi vũ khí chỉ về phía khuỷu tay và nhân vật đánh bằng chuôi. Đổi thành **−60°** cho kiếm, dao, thương, rìu (`tools/render/weapons.json`; cung giữ 90°, mô hình đối xứng quanh chỗ cầm). Lưỡi nay vươn ra khỏi nắm tay, chĩa xuống khi đứng và vung lên rồi đâm khi đánh. Vì lưỡi vươn xa hơn, bốn họ bị **ngắn đi khoảng 20%** (giá trị tạm: kiếm 0,7, dao 0,75, thương 0,9, rìu 0,7 m; trước đó 0,9/1/1,15/0,9) để số frame chạm mép khung vẫn ngang trước (22-35 trên 264). Đã render lại tám atlas vũ khí. Đã xem bảng mẫu của kiếm nữ và thương nam; **chưa xem trong game** (animation đánh khi cầm vũ khí chưa ai thấy).
+- **Quần áo sáng hơn:** hệ số màu bộ Peasant 2,4 → 3,2 (`sprite-config-female.json`, nam kế thừa); hình học không đổi nên lớp vũ khí vẫn khớp (cùng kích thước atlas). Chưa xem trên nền cỏ trong game.
+
+**Còn lại của 4d (chưa làm, đã cân nhắc 2026-10-27):**
+- **Màu/bộ trang phục theo bộ trang bị và bộ Ranger:** nên dùng một nhóm `game_tuning` (bộ → khóa hình, không cần migration) và để `applyGear` tính khóa rồi báo qua snapshot/`look` như `w`. **Đừng dùng tint của Phaser để đổi màu:** tint chỉ chắc chắn chạy ở WebGL, còn khung trình duyệt của app và đường lùi `?renderer=canvas` là Canvas (chưa kiểm phiên bản Phaser đang dùng); nhiều khả năng mỗi biến thể phải là một atlas riêng (khoảng 3 MB VRAM mỗi thân).
+- **Pháp bảo phi hành:** hiện vẫn là elip mây dưới chân (`Actor.cloud`); thay bằng sprite chưa làm.
+- **Thú cưỡi:** chưa có cơ chế nào (thuộc giai đoạn 5) nên chưa có gì để gắn sprite; hoãn.
+- **Giương cung:** gói animation đang dùng (UAL Standard) **không có animation cung** (chỉ có Sword_Attack, Spell_Simple_*, Pistol_*, Punch_*). Cung bị chặn bởi việc phải có animation mới (và kiểm giấy phép); chưa dùng Pistol_Shoot thay thế.
 
 ## Nghiệm thu (bản chi tiết của `docs/PLAN.md` mục 10)
 - Nhân vật mẫu đủ 8 hướng và 6 animation hiển thị đúng trong game, **không lệch neo giữa các hướng**, và được người dùng duyệt phong cách.

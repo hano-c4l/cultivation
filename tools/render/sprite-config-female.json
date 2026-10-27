@@ -21,7 +21,7 @@
   "materials": {
     "MI_Superhero_Female": { "color": [0.93, 0.76, 0.63] },
     "MI_Regular_Female": { "color": [0.93, 0.76, 0.63] },
-    "MI_Peasant": { "color": [2.4, 2.4, 2.4], "texture": true },
+    "MI_Peasant": { "color": [3.2, 3.2, 3.2], "texture": true },
     "MI_Hair_2": { "color": [0.1, 0.07, 0.07] },
     "MI_Eyes": { "color": [0.05, 0.05, 0.08] }
   }
