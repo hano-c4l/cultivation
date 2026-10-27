@@ -1,5 +1,6 @@
 import { HOTBAR_SLOTS, REALMS, getItemDef, getSkill, parseSkillSlot, skillDisplayName, type ClientMessage, type SkillContext, type SkillDef } from "@game/shared";
 import { realmClass } from "./equip-text";
+import { iconFor, skillIconFor } from "./icons";
 import { vi } from "./locales/vi";
 
 export interface HotbarUi {
@@ -61,7 +62,7 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
       const slotSkill = parseSkillSlot(v);
       if (slotSkill) {
         const skill = getSkill(slotSkill.id);
-        b.append(el("span", "hb-name", skill ? skillDisplayName(skill) : slotSkill.id));
+        b.append(skillIconFor(skill), el("span", "hb-name", skill ? skillDisplayName(skill) : slotSkill.id));
         // The element the skill is used with (its own, or the one picked when it was put here) shows in the corner, like on gear.
         const element = skill?.element ?? slotSkill.element;
         if (element) b.append(el("span", `elem-dot hb-elem elem-${element}`));
@@ -83,7 +84,7 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
       } else if (v.startsWith("i:")) {
         const type = v.slice(2);
         const count = deps.countOf(type);
-        b.append(el("span", "hb-name", getItemDef(type)?.nameVi ?? type), el("span", "hb-count", String(count)));
+        b.append(iconFor(type), el("span", "hb-name", getItemDef(type)?.nameVi ?? type), el("span", "hb-count", String(count)));
         if (count === 0) b.classList.add("dim");
       }
       b.onclick = () => {

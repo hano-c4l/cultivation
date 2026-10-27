@@ -276,6 +276,12 @@
       #bag-panel .bag-detail { max-height: 240px; overflow-y: auto; }
       #eq-panel .eq-text { position: relative; padding-top: 9px; }
       #eq-panel .eq-tag { position: absolute; top: 0; left: 0; font-size: 9px; font-weight: 700; line-height: 1; color: var(--ui-highlight); }
+      /* Icons (icons.ts): behind the name in a bag cell or hotbar slot, beside it in the gear window. */
+      .ic { display: block; flex: none; }
+      #bag-panel .bag-cell .ic, .bag-ghost .ic { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; pointer-events: none; }
+      #hotbar .hb-slot .ic, .hb-ghost .ic { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; opacity: 0.8; pointer-events: none; }
+      #bag-panel .bag-cell .bag-name, .bag-ghost .bag-name, #hotbar .hb-name { position: relative; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 2px #000; }
+      #eq-panel .eq-name .ic, #eq-panel .eq-opt > .ic { width: 22px; height: 22px; }
       #bag-panel .bag-cell.broken { opacity: 0.45; filter: grayscale(1); }
       #bag-panel .bag-cell.selected { border-color: var(--ui-highlight); box-shadow: 0 0 0 1px var(--ui-highlight) inset; }
       #bag-panel .bag-cell.cat-equipment { background: rgba(255, 183, 77, 0.25); }
