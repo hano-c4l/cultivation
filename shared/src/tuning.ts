@@ -419,13 +419,13 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   },
   alchemy: DEFAULT_ALCHEMY,
   outfits: { rules: [{ minRealm: 0, outfit: "ranger" }] },
-  // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp). Stand-ins: snake and the boss dragons use the dragon.
+  // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), golem (thú giáp), ghost (hàn thi ma), ghostskull (thi quỷ). snake (rắn). Stand-ins: the boss dragons use the dragon.
   monsterModels: {
     doi_u_minh: "bat",
     bang_phong_hac: "eagle",
-    thi_quy: "skeleton",
+    thi_quy: "ghostskull",
     xich_thi: "skeleton",
-    han_thi_ma: "skeleton",
+    han_thi_ma: "ghost",
     quy_vuong: "demon",
     tuyet_yeu_hau: "yeti",
     hoa_long_vuong: "dragon",
@@ -435,8 +435,8 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     heo_rung: "dino",
     bao_dem: "cat",
     hoa_dien_lang: "wolf",
-    nham_giap_thu: "orc",
-    liet_hoa_xa: "dragon",
+    nham_giap_thu: "golem",
+    liet_hoa_xa: "snake",
   },
   monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
   mapArt: {

@@ -1,5 +1,5 @@
 {
-  "version": 56,
+  "version": 60,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -96,6 +96,22 @@
     "m_orc": {
       "image": "m_orc.webp",
       "data": "m_orc.json"
+    },
+    "m_golem": {
+      "image": "m_golem.webp",
+      "data": "m_golem.json"
+    },
+    "m_ghost": {
+      "image": "m_ghost.webp",
+      "data": "m_ghost.json"
+    },
+    "m_ghostskull": {
+      "image": "m_ghostskull.webp",
+      "data": "m_ghostskull.json"
+    },
+    "m_snake": {
+      "image": "m_snake.webp",
+      "data": "m_snake.json"
     }
   },
   "sprites": {
@@ -1081,6 +1097,157 @@
         "die": {
           "frames": 6,
           "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.golem": {
+      "atlas": "m_golem",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 20,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 8,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 6,
+          "loop": false
+        }
+      }
+    },
+    "monster.ghost": {
+      "atlas": "m_ghost",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 34,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 8,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 6,
+          "loop": false
+        }
+      }
+    },
+    "monster.ghostskull": {
+      "atlas": "m_ghostskull",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 34,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 8,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 6,
+          "loop": false
+        }
+      }
+    },
+    "monster.snake": {
+      "atlas": "m_snake",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 33,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 12,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 9,
+          "loop": false
+        },
+        "die": {
+          "frames": 3,
+          "fps": 1,
           "loop": false
         }
       }
