@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FX lab (dev only)</title>
+  <style>
+    body { margin: 0; background: #1b2a1d; color: #ddd; font: 13px sans-serif; }
+    #bar { position: fixed; top: 0; left: 0; right: 0; z-index: 2; padding: 6px; background: rgba(0, 0, 0, 0.6); display: flex; flex-wrap: wrap; gap: 4px; }
+    button { font: inherit; padding: 3px 8px; }
+  </style>
+</head>
+<body>
+  <div id="bar"></div>
+  <div id="game"></div>
+  <script type="module" src="/src/fx-lab.ts"></script>
+</body>
+</html>

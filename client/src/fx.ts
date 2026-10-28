@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { getSkill } from "@game/shared";
-import { BASIC_COLOR, BUFF_COLOR, ELEMENT_COLOR, NEUTRAL, basicFxOf, basicProjectileOf, elementStyleOf, skillFxOf, type ElementStyle } from "./fx-kinds";
+import { FxLayer } from "./fx-layer";
+import { BASIC_COLOR, BUFF_COLOR, ELEMENT_COLOR, NEUTRAL, basicFxOf, basicProjectileOf, elementStyleOf, skillFxOf, templateOf, type ElementStyle } from "./fx-kinds";
 
 /** A point on screen (world pixels of the scene) where an effect is drawn, or null when the thing it belongs to is not in view. */
 export type PosOf = (id: string) => { x: number; y: number } | null;
@@ -14,7 +15,11 @@ interface Channel {
   id: string;
   since: number;
   gfx: Phaser.GameObjects.Graphics;
+  /** The formation circle turning under the player for as long as the channel lasts. */
+  sigil: Phaser.GameObjects.Container;
 }
+
+type P = { x: number; y: number };
 
 /**
  * The visual effects of skills and of the long channels (breakthrough, teleport). All of them are drawn with graphics and tweens (no art needed) and
@@ -25,15 +30,18 @@ export class Effects {
   private readonly posOf: PosOf;
   private readonly channels = new Map<string, Channel>();
   private oneShots = 0;
+  /** Particles, glows, rings and the formation circle (everything that is not a line or a shape). */
+  private readonly layer: FxLayer;
   /** The one-shots running now, so a clear can stop them (a tween that outlives its scene would draw into a destroyed object). */
   private readonly running = new Set<{ g: Phaser.GameObjects.Graphics; tween: Phaser.Tweens.Tween }>();
 
   constructor(scene: Phaser.Scene, posOf: PosOf) {
     this.scene = scene;
     this.posOf = posOf;
+    this.layer = new FxLayer(scene, FX_DEPTH);
   }
 
-  /** A skill went off: `id` cast it at `to` or at the point `at`, in `element`. */
+  /** A skill went off: `id` cast it at `to` or at the point `at`, in `element`. The stronger the skill, the bigger and richer the effect. */
   skill(id: string, skillId: string, to: string | undefined, at: { x: number; y: number } | undefined, element: string | undefined): void {
     const def = getSkill(skillId);
     const kind = skillFxOf(def);
@@ -41,12 +49,18 @@ export class Effects {
     const target = to ? this.posOf(to) : null;
     const color = (element ? ELEMENT_COLOR[element] : undefined) ?? (def?.element ? ELEMENT_COLOR[def.element] : undefined) ?? NEUTRAL;
     const style = elementStyleOf(element ?? def?.element ?? undefined);
+    const lvl = Math.min(1, Math.max(0, ((def?.power ?? 1.6) - 1) / 4.5));
+    const tpl = def ? templateOf(def.id) : "";
+    if (from && (kind === "melee" || kind === "ranged" || kind === "cone")) this.castSigil(from, color, lvl);
     switch (kind) {
       case "melee":
-        if (target) this.melee(target, color, style);
+        if (target) {
+          if (tpl === "ngu_kiem_tram") this.swords(from ?? target, target, color, lvl);
+          else this.melee(target, color, style, from ?? undefined, lvl, tpl);
+        }
         break;
       case "ranged":
-        if (from && target) this.bolt(from, target, color, style);
+        if (from && target) this.bolt(from, target, color, style, false, lvl);
         break;
       case "cone":
         if (from && target) this.cone(from, target, 5 * 32, 45, color);
@@ -55,12 +69,18 @@ export class Effects {
         if (from && at) this.blink(from, at);
         break;
       case "buff":
-        if (from) this.buff(from, (def?.buff ? BUFF_COLOR[def.buff.stat] : undefined) ?? NEUTRAL, id);
+        if (from) this.buff(from, (def?.buff ? BUFF_COLOR[def.buff.stat] : undefined) ?? NEUTRAL, id, lvl);
         break;
       case "heal":
-        if (from) this.heal(from, id);
+        if (from) this.heal(from, id, lvl);
         break;
     }
+  }
+
+  /** The formation circle that opens under a caster: bigger for a stronger skill, with motes of spirit light rising from it. */
+  private castSigil(from: P, color: number, lvl: number): void {
+    this.layer.sigil(from.x, from.y + 2, color, 30 + 26 * lvl, 560 + 240 * lvl, 0.7);
+    this.layer.puff("mote", from.x, from.y - 2, 4 + Math.round(6 * lvl), color);
   }
 
   /** A plain attack (no skill) of `from` on `to`: a swing up close, a bolt (an arrow, for a bow) from afar; players and monsters in their own colours. */
@@ -77,23 +97,21 @@ export class Effects {
   equip(id: string): void {
     const start = this.posOf(id);
     if (!start) return;
+    this.layer.sigil(start.x, start.y + 2, 0xfff0b0, 34, 700, 0.5, 0.7);
+    this.layer.puff("spark", start.x, start.y - 26, 8, 0xfff0b0);
     this.shot(650, FX_DEPTH, (g, p) => {
       const at = this.posOf(id) ?? start;
       g.lineStyle(3, 0xfff0b0, 1 - p).strokeEllipse(at.x, at.y - 6 - p * 30, 44 + 14 * p, 22 + 7 * p);
-      g.lineStyle(2, 0xffffff, 0.8 * (1 - p)).strokeEllipse(at.x, at.y - 2, 30 + 40 * p, 15 + 20 * p);
       // a glint of steel: two crossed strokes that open and fade at chest height
       const s = 4 + 14 * Math.sin(Math.min(1, p * 1.6) * Math.PI);
       g.lineStyle(3, 0xffffff, 1 - p).lineBetween(at.x - s, at.y - 26, at.x + s, at.y - 26).lineBetween(at.x, at.y - 26 - s, at.x, at.y - 26 + s);
-      for (let i = 0; i < 5; i++) {
-        const a = i * 1.26 + p * 2;
-        g.fillStyle(0xfff0b0, 0.9 * (1 - p)).fillCircle(at.x + Math.cos(a) * 20, at.y - 10 - p * 40 - (i % 2) * 6, 2.2);
-      }
     });
   }
 
   /** The boss's cone: from its feet towards the point it faced. `range` is in tiles, `half` is half the opening in degrees. */
   coneFrom(from: { x: number; y: number }, aim: { x: number; y: number }, rangeTiles: number, half: number): void {
     // A tile is about 45 px along the screen diagonal; the reach is drawn a little generously so the shape reads.
+    this.layer.sigil(from.x, from.y + 2, 0xff5a3c, 46, 700, 0.6);
     this.cone(from, aim, rangeTiles * 40, half, 0xff5a3c);
   }
 
@@ -103,13 +121,12 @@ export class Effects {
     const existing = this.channels.get(key);
     if (on) {
       if (existing) return;
-      this.channels.set(key, { what, id, since: performance.now(), gfx: this.scene.add.graphics().setDepth(FX_DEPTH - 1) });
+      const at0 = this.posOf(id) ?? { x: 0, y: 0 };
+      const gold = what === "bt";
+      this.channels.set(key, { what, id, since: performance.now(), gfx: this.scene.add.graphics().setDepth(FX_DEPTH - 1), sigil: this.layer.hold(at0.x, at0.y + 2, gold ? 0xffd54a : 0x9d7bff, gold ? 70 : 48) });
       return;
     }
-    if (existing) {
-      existing.gfx.destroy();
-      this.channels.delete(key);
-    }
+    if (existing) this.endChannel(key, existing);
     const at = this.posOf(id);
     if (!at) return;
     if (what === "bt") this.finale(at, ok === true);
@@ -122,22 +139,31 @@ export class Effects {
       const at = this.posOf(ch.id);
       // A teleport channel lasts a few seconds: whatever happens to the message that ends it, the drawing does not outlive that by much.
       if (!at || (ch.what === "tp" && now - ch.since > 9000)) {
-        ch.gfx.destroy();
-        this.channels.delete(key);
+        this.endChannel(key, ch);
         continue;
       }
+      ch.sigil.setPosition(at.x, at.y + 2);
       const t = (now - ch.since) / 1000;
       const g = ch.gfx;
       g.clear();
       if (ch.what === "bt") this.drawBreakthrough(g, at, t);
       else this.drawTeleport(g, at, t);
+      if (ch.what === "bt" && Math.random() < 0.28) this.layer.puff("mote", at.x + (Math.random() - 0.5) * 50, at.y, 1, 0xffe58a);
+      if (ch.what === "tp" && Math.random() < 0.35) this.layer.puff("mote", at.x + (Math.random() - 0.5) * 40, at.y, 1, 0xd9ccff);
     }
+  }
+
+  private endChannel(key: string, ch: Channel): void {
+    ch.gfx.destroy();
+    this.layer.drop(ch.sigil);
+    this.channels.delete(key);
   }
 
   /** Everything is gone (a new map, a reconnect). */
   clear(): void {
     for (const ch of this.channels.values()) ch.gfx.destroy();
     this.channels.clear();
+    this.layer.clear();
     for (const r of this.running) {
       r.tween.stop();
       r.g.destroy();
@@ -150,8 +176,7 @@ export class Effects {
   forget(id: string): void {
     for (const [key, ch] of this.channels) {
       if (ch.id !== id) continue;
-      ch.gfx.destroy();
-      this.channels.delete(key);
+      this.endChannel(key, ch);
     }
   }
 
@@ -217,21 +242,121 @@ export class Effects {
     return true;
   }
 
-  /** Close combat: a bright arc cutting across the target. */
-  private melee(at: { x: number; y: number }, color: number, style: ElementStyle = "plain"): void {
-    const cx = at.x;
-    const cy = at.y - 22;
-    this.shot(style === "plain" ? 260 : 340, FX_DEPTH, (g, p) => {
-      if (style !== "plain") this.burst(g, cx, cy, p, style, color, 0.6);
-      const sweep = -0.9 + 1.8 * Math.min(1, p * 1.4);
-      g.lineStyle(7 * (1 - p) + 1, color, 1 - p * 0.7).beginPath().arc(cx, cy, 26, -2.2 + sweep * 0.2, -2.2 + sweep, false).strokePath();
-      g.lineStyle(3 * (1 - p) + 1, 0xffffff, 1 - p).beginPath().arc(cx, cy, 26, -2.2 + sweep * 0.2, -2.2 + sweep, false).strokePath();
-      g.fillStyle(color, 0.5 * (1 - p)).fillCircle(cx, cy, 8 + 14 * p);
+  /** What an element's hit throws up at (x, y): particles of its own kind, a flash of light and a ring on the ground. `lvl` (0..1) is how strong the skill is. */
+  private impact(x: number, y: number, style: ElementStyle, color: number, lvl: number): void {
+    const n = 5 + Math.round(8 * lvl);
+    const L = this.layer;
+    L.glow(x, y, color, 0.5, 1.2 + lvl, 260);
+    L.ring(x, y + 18, color, 0.2, 0.7 + 0.5 * lvl, 420, 0.7);
+    switch (style) {
+      case "hoa":
+        L.puff("ember", x, y, n + 4, 0xff7a2a);
+        L.puff("ember", x, y, 3, 0xffe9a0);
+        L.puff("smoke", x, y - 6, 3, 0x5a4a44);
+        break;
+      case "thuy":
+        L.puff("drop", x, y, n + 3, 0x8fd0ff);
+        L.puff("spark", x, y, 3, 0xe6f6ff);
+        break;
+      case "moc":
+        L.puff("petal", x, y, n + 2, 0x8fe08f);
+        L.puff("mote", x, y, 4, 0xd6ffcf);
+        break;
+      case "kim":
+        L.puff("shard", x, y, n, 0xffe9a0);
+        L.puff("spark", x, y, 5, 0xffffff);
+        break;
+      case "tho":
+        L.puff("shard", x, y + 6, n, 0xb48a52);
+        L.puff("smoke", x, y + 6, 4, 0x8a6a3a);
+        break;
+      case "loi":
+        this.strike(x, y, color);
+        L.puff("spark", x, y, n + 4, 0xf0e0ff);
+        break;
+      case "bang":
+        L.puff("shard", x, y, n, 0xc8f4ff);
+        L.puff("spark", x, y, 4, 0xffffff);
+        L.puff("mote", x, y, 3, 0xe6f9ff);
+        break;
+      case "phong":
+        L.puff("smoke", x, y, 5, 0xcdf7dc);
+        L.puff("spark", x, y, 4, 0xe8fff0);
+        break;
+      default:
+        L.puff("spark", x, y, n, 0xffffff);
+    }
+  }
+
+  /** A bolt of lightning from the sky onto (x, y), flickering for an instant. */
+  private strike(x: number, y: number, color: number): void {
+    const top = y - 190;
+    const pts: P[] = [];
+    for (let i = 0; i <= 7; i++) pts.push({ x: x + (i === 7 ? 0 : (Math.random() - 0.5) * 26 * (1 - i / 8)), y: top + ((y - top) * i) / 7 });
+    this.shot(230, FX_DEPTH + 1, (g, p) => {
+      const a = p < 0.2 ? 1 : 0.9 * (1 - p) * (0.6 + 0.4 * Math.sin(p * 60));
+      for (const [w, c, al] of [[9, color, 0.35], [4, 0xf0e0ff, 0.8], [1.5, 0xffffff, 1]] as const) {
+        g.lineStyle(w, c, a * al).beginPath().moveTo(pts[0]?.x ?? x, pts[0]?.y ?? top);
+        for (const q of pts) g.lineTo(q.x, q.y);
+        g.strokePath();
+      }
     });
   }
 
-  /** A single target hit from afar: a glowing bolt flies from the caster to the target and bursts. */
-  private bolt(from: { x: number; y: number }, to: { x: number; y: number }, color: number, style: ElementStyle = "plain", arrow = false): void {
+  /** Close combat: a sweep of light across the target, a palm print for a palm, an element's mark under it. `from` is where the blow came from. */
+  private melee(at: P, color: number, style: ElementStyle = "plain", from?: P, lvl = 0.2, tpl = ""): void {
+    const cx = at.x;
+    const cy = at.y - 22;
+    const ang = from ? Math.atan2(at.y - from.y, at.x - from.x) : -0.6;
+    if (tpl === "chuong") {
+      // a palm: a swelling print of light with a shock ring
+      this.layer.glow(cx, cy, 0xffffff, 0.4, 1.1 + 0.6 * lvl, 280, 0.8);
+      this.layer.glow(cx, cy, color, 0.6, 1.8 + lvl, 380, 0.7);
+      this.layer.ring(cx, cy + 14, color, 0.3, 1.2 + lvl, 440, 0.9);
+    } else {
+      this.layer.crescent(cx - Math.cos(ang) * 18, cy - Math.sin(ang) * 10, ang - 0.25, tpl ? 150 + 50 * lvl : 96, color, tpl ? 380 : 260);
+      if (tpl) this.layer.crescent(cx - Math.cos(ang) * 10, cy - Math.sin(ang) * 6, ang + 0.2, 120 + 40 * lvl, 0xffffff, 300);
+    }
+    this.impact(cx, cy, style, color, tpl ? lvl : lvl * 0.4);
+    this.shot(style === "plain" ? 260 : 340, FX_DEPTH, (g, p) => {
+      if (style !== "plain") this.burst(g, cx, cy, p, style, color, 0.6);
+      g.fillStyle(color, 0.35 * (1 - p)).fillCircle(cx, cy, 8 + 14 * p);
+    });
+  }
+
+  /** Flying swords: three blades leave the caster, arc and strike the target one after another. */
+  private swords(from: P, to: P, color: number, lvl: number): void {
+    for (let i = 0; i < 3; i++) {
+      this.scene.time.delayedCall(i * 110, () => {
+        const fx = from.x + (i - 1) * 16;
+        const fy = from.y - 46 - Math.abs(i - 1) * 8;
+        const tx = to.x;
+        const ty = to.y - 22;
+        const dur = 260;
+        this.shot(dur + 120, FX_DEPTH, (g, p) => {
+          const t = Math.min(1, (p * (dur + 120)) / dur);
+          const arc = Math.sin(t * Math.PI) * (26 + 14 * i);
+          const x = fx + (tx - fx) * t;
+          const y = fy + (ty - fy) * t - arc;
+          const ang = Math.atan2(ty - fy - arc * 0.2, tx - fx);
+          if (t < 1) {
+            this.layer.puff("trail", x, y, 1, color);
+            g.fillStyle(color, 0.55);
+            this.diamond(g, x, y, ang, 21, 5);
+            g.fillStyle(0xffffff, 1);
+            this.diamond(g, x, y, ang, 15, 3.2);
+          } else if (!g.getData("hit")) {
+            g.setData("hit", true);
+            this.layer.crescent(tx - 14, ty - 6, ang, 110 + 40 * lvl, color, 300);
+            this.impact(tx, ty, "kim", color, lvl * 0.6);
+          }
+        });
+      });
+    }
+  }
+
+  /** A single target hit from afar: a glowing bolt with a trail of its element flies from the caster to the target and bursts. */
+  private bolt(from: P, to: P, color: number, style: ElementStyle = "plain", arrow = false, lvl = 0.2): void {
     const fx = from.x;
     const fy = from.y - 22;
     const tx = to.x;
@@ -244,18 +369,31 @@ export class Effects {
         const x = fx + (tx - fx) * t;
         const y = fy + (ty - fy) * t;
         const ang = Math.atan2(ty - fy, tx - fx);
-        if (arrow) this.arrowAt(g, x, y, ang, color);
-        else if (style === "plain") {
-          g.lineStyle(3, color, 0.5).lineBetween(fx + (tx - fx) * Math.max(0, t - 0.25), fy + (ty - fy) * Math.max(0, t - 0.25), x, y);
-          g.fillStyle(color, 0.95).fillCircle(x, y, 6);
-          g.fillStyle(0xffffff, 0.9).fillCircle(x, y, 3);
-        } else this.head(g, x, y, ang, t, style, color);
+        if (arrow) {
+          this.arrowAt(g, x, y, ang, color);
+          if (Math.random() < 0.4) this.layer.puff("trail", x - Math.cos(ang) * 14, y - Math.sin(ang) * 14, 1, color);
+        } else {
+          g.fillStyle(color, 0.22).fillCircle(x, y, 13 + 6 * lvl);
+          if (style === "plain") {
+            g.lineStyle(3, color, 0.5).lineBetween(fx + (tx - fx) * Math.max(0, t - 0.25), fy + (ty - fy) * Math.max(0, t - 0.25), x, y);
+            g.fillStyle(color, 0.95).fillCircle(x, y, 6);
+            g.fillStyle(0xffffff, 0.9).fillCircle(x, y, 3);
+          } else this.head(g, x, y, ang, t, style, color);
+          this.layer.puff("trail", x, y, 1, color);
+          const r = Math.random();
+          if (style === "hoa" && r < 0.6) this.layer.puff("ember", x, y, 1, 0xff7a2a);
+          else if (style === "moc" && r < 0.25) this.layer.puff("petal", x, y, 1, 0x8fe08f);
+          else if (style === "thuy" && r < 0.3) this.layer.puff("drop", x, y, 1, 0x8fd0ff);
+          else if (r < 0.2) this.layer.puff("spark", x, y, 1, 0xffffff);
+        }
       } else {
+        if (!g.getData("hit")) {
+          g.setData("hit", true);
+          this.impact(tx, ty, arrow ? "plain" : style, color, lvl);
+        }
         const k = Math.min(1, t - 1) / ((160 / flight) || 1);
-        if (style === "plain" || arrow) {
-          g.lineStyle(3, color, 1 - k).strokeCircle(tx, ty, 6 + 22 * k);
-          g.fillStyle(color, 0.45 * (1 - k)).fillCircle(tx, ty, 6 + 16 * k);
-        } else this.burst(g, tx, ty, k, style, color, 1);
+        if (style === "plain" || arrow) g.lineStyle(3, color, 1 - k).strokeCircle(tx, ty, 6 + 22 * k);
+        else this.burst(g, tx, ty, k, style, color, 1);
       }
     });
   }
@@ -433,84 +571,122 @@ export class Effects {
     }
   }
 
-  /** An area attack in a cone: the wedge flares out from the caster towards the aim point and fades. */
-  private cone(from: { x: number; y: number }, aim: { x: number; y: number }, reach: number, halfDeg: number, color: number): void {
+  /** An area attack in a cone: layered wedges flare out from the caster towards the aim point, with sparks along the front. */
+  private cone(from: P, aim: P, reach: number, halfDeg: number, color: number): void {
     const ox = from.x;
     const oy = from.y - 10;
     const dir = Math.atan2(aim.y - from.y, aim.x - from.x);
     // The ground is squashed 2:1 on screen, so the wedge is drawn on the screen as the flattened shape of a cone on the ground.
     const half = (halfDeg * Math.PI) / 180;
-    this.shot(520, FX_DEPTH - 1, (g, p) => {
-      const r = reach * Math.min(1, p * 2.4);
-      g.fillStyle(color, 0.38 * (1 - p)).lineStyle(2, 0xffffff, 0.7 * (1 - p)).beginPath().moveTo(ox, oy);
-      for (let i = 0; i <= 12; i++) {
-        const a = dir - half + (i / 12) * half * 2;
-        g.lineTo(ox + Math.cos(a) * r, oy + Math.sin(a) * r * 0.55);
+    for (let i = 0; i < 9; i++) {
+      const a = dir - half + (i / 8) * half * 2;
+      this.layer.puff(i % 2 ? "ember" : "spark", ox + Math.cos(a) * reach * 0.8, oy + Math.sin(a) * reach * 0.8 * 0.55, 2, color);
+    }
+    this.shot(560, FX_DEPTH - 1, (g, p) => {
+      for (let layer = 0; layer < 3; layer++) {
+        const r = reach * Math.min(1, Math.max(0, p * 2.4 - layer * 0.18)) * (1 - layer * 0.18);
+        if (r <= 0) continue;
+        g.fillStyle(layer === 0 ? color : 0xffffff, (layer === 0 ? 0.34 : 0.14) * (1 - p)).beginPath().moveTo(ox, oy);
+        if (layer === 0) g.lineStyle(2, 0xffffff, 0.7 * (1 - p));
+        for (let i = 0; i <= 12; i++) {
+          const a = dir - half + (i / 12) * half * 2;
+          g.lineTo(ox + Math.cos(a) * r, oy + Math.sin(a) * r * 0.55);
+        }
+        g.closePath().fillPath();
+        if (layer === 0) g.strokePath();
       }
-      g.closePath().fillPath().strokePath();
     });
   }
 
-  /** Instant movement: a streak at the start fading away, a ring opening at the destination. */
-  private blink(from: { x: number; y: number }, to: { x: number; y: number }): void {
+  /** Instant movement: the caster leaves a streak and afterimages, the destination opens in a ring with a burst of light. */
+  private blink(from: P, to: P): void {
+    const ang = Math.atan2(to.y - from.y, to.x - from.x);
+    const dist = Math.hypot(to.x - from.x, to.y - from.y);
+    for (let i = 0; i < 4; i++) this.layer.glow(from.x + (to.x - from.x) * (i / 4), from.y - 22 + (to.y - from.y) * (i / 4), 0xb8e8ff, 0.8, 0.2, 260 + i * 60, 0.7);
+    this.layer.ray(to.x, to.y - 20, ang, Math.min(dist, 260), 10, 0xb8e8ff, 320);
+    this.layer.puff("smoke", from.x, from.y - 14, 4, 0xdff4ff);
+    this.layer.puff("spark", from.x, from.y - 14, 6, 0xffffff);
+    this.layer.sigil(to.x, to.y + 2, 0xb8e8ff, 36, 520, 0.6);
+    this.layer.puff("spark", to.x, to.y - 20, 8, 0xe6f9ff);
+    this.layer.glow(to.x, to.y - 20, 0xffffff, 0.4, 1.8, 300);
     this.shot(320, FX_DEPTH, (g, p) => {
-      g.lineStyle(4 * (1 - p) + 1, 0xb8e8ff, 0.8 * (1 - p)).lineBetween(from.x, from.y - 20, to.x, to.y - 20);
-      g.lineStyle(3, 0xb8e8ff, 1 - p).strokeEllipse(from.x, from.y, 40 * (1 - p) + 6, 20 * (1 - p) + 3);
       g.lineStyle(3, 0xffffff, p).strokeEllipse(to.x, to.y, 12 + 44 * p, 6 + 22 * p);
-      g.fillStyle(0xb8e8ff, 0.4 * (1 - p)).fillEllipse(to.x, to.y, 12 + 44 * p, 6 + 22 * p);
     });
   }
 
-  /** A buff: two rings rising round the caster in the colour of what it raises (attack red, defence blue, dodge green). */
-  private buff(at: { x: number; y: number }, color: number, id: string): void {
-    this.shot(700, FX_DEPTH, (g, p) => {
+  /** A buff: a formation circle under the caster in the colour of what it raises (attack red, defence blue, dodge green), a column of light and rising sparks. */
+  private buff(at: P, color: number, id: string, lvl = 0.3): void {
+    this.layer.sigil(at.x, at.y + 2, color, 36 + 18 * lvl, 1000, 1.2, 0.9);
+    this.layer.puff("mote", at.x, at.y - 4, 8 + Math.round(6 * lvl), color);
+    this.layer.puff("spark", at.x, at.y - 20, 5, 0xffffff);
+    this.layer.glow(at.x, at.y - 24, color, 0.6, 1.6 + lvl, 600, 0.5);
+    this.shot(900, FX_DEPTH, (g, p) => {
       const now = this.posOf(id) ?? at;
       for (let i = 0; i < 2; i++) {
         const q = Math.min(1, Math.max(0, p * 1.3 - i * 0.25));
-        g.lineStyle(3, color, 0.9 * (1 - q)).strokeEllipse(now.x, now.y - 8 - q * 46, 40 + 8 * q, 20 + 4 * q);
+        g.lineStyle(3, color, 0.9 * (1 - q)).strokeEllipse(now.x, now.y - 8 - q * 56, 40 + 8 * q, 20 + 4 * q);
       }
-      for (let i = 0; i < 5; i++) {
-        const a = i * 1.26 + p * 3;
-        g.fillStyle(color, 0.9 * (1 - p)).fillCircle(now.x + Math.cos(a) * 18, now.y - 6 - p * 50 - (i % 2) * 8, 2.4);
-      }
+      // the column: three nested strips, brightest at the foot
+      for (let i = 0; i < 3; i++) g.fillStyle(color, (0.16 - i * 0.04) * Math.sin(Math.min(1, p) * Math.PI)).fillRect(now.x - 15 + i * 4, now.y - 90 * (1 - i * 0.12), 30 - i * 8, 90 * (1 - i * 0.12));
     });
   }
 
-  /** A heal: soft green light and small crosses drifting up. */
-  private heal(at: { x: number; y: number }, id: string): void {
-    this.shot(800, FX_DEPTH, (g, p) => {
+  /** Eight petals of a lotus opening on the ground at (x, y); `open` runs 0..1. */
+  private lotus(g: Phaser.GameObjects.Graphics, x: number, y: number, open: number, radius: number, color: number, alpha: number): void {
+    for (let ring = 0; ring < 2; ring++) {
+      const r = radius * (1 - ring * 0.35) * (0.3 + 0.7 * open);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + ring * 0.39;
+        const tip = { x: x + Math.cos(a) * r, y: y + Math.sin(a) * r * 0.5 };
+        const l = { x: x + Math.cos(a - 0.38) * r * 0.55, y: y + Math.sin(a - 0.38) * r * 0.55 * 0.5 };
+        const rr = { x: x + Math.cos(a + 0.38) * r * 0.55, y: y + Math.sin(a + 0.38) * r * 0.55 * 0.5 };
+        g.fillStyle(ring === 0 ? color : 0xffffff, alpha * (ring === 0 ? 0.55 : 0.4)).fillTriangle(x, y, l.x, l.y, tip.x, tip.y).fillTriangle(x, y, rr.x, rr.y, tip.x, tip.y);
+      }
+    }
+  }
+
+  /** A heal: a lotus opening under the caster, petals and soft green light rising. */
+  private heal(at: P, id: string, lvl = 0.3): void {
+    this.layer.sigil(at.x, at.y + 2, 0x7dff9c, 34 + 14 * lvl, 900, 0.8, 0.7);
+    this.layer.puff("petal", at.x, at.y - 6, 7 + Math.round(6 * lvl), 0xb6ffc8);
+    this.layer.puff("mote", at.x, at.y - 4, 8, 0x9dffb4);
+    this.layer.glow(at.x, at.y - 22, 0x7dff9c, 0.8, 2, 700, 0.5);
+    this.shot(900, FX_DEPTH, (g, p) => {
       const now = this.posOf(id) ?? at;
-      g.fillStyle(0x7dff9c, 0.25 * (1 - p)).fillEllipse(now.x, now.y - 4, 56, 28);
-      for (let i = 0; i < 4; i++) {
-        const x = now.x + (i - 1.5) * 12;
-        const y = now.y - 14 - p * 44 - (i % 2) * 10;
-        const s = 4;
-        g.lineStyle(3, 0xb6ffc8, 1 - p).lineBetween(x - s, y, x + s, y).lineBetween(x, y - s, x, y + s);
-      }
+      this.lotus(g, now.x, now.y, Math.min(1, p * 2.2), 30 + 14 * lvl, 0x9dffb4, 1 - p);
+      const y = now.y - 14 - p * 40;
+      g.lineStyle(3, 0xb6ffc8, 1 - p).lineBetween(now.x - 5, y, now.x + 5, y).lineBetween(now.x, y - 5, now.x, y + 5);
     });
   }
 
-  /** The end of a breakthrough: success is a burst of golden light, failure a grey crack and puff. */
-  private finale(at: { x: number; y: number }, ok: boolean): void {
+  /** The end of a breakthrough: success is a burst of golden light with a lotus and a rain of sparks, failure a grey crack and puff. */
+  private finale(at: P, ok: boolean): void {
     if (ok) {
+      this.layer.sigil(at.x, at.y + 2, 0xffd54a, 110, 1100, 0.8, 0.9);
+      this.layer.ring(at.x, at.y, 0xffe58a, 0.4, 2.4, 900, 0.9);
+      this.layer.glow(at.x, at.y - 30, 0xfff0b0, 0.8, 4, 700, 0.8);
+      this.layer.puff("spark", at.x, at.y - 24, 14, 0xfff0b0);
+      this.layer.puff("petal", at.x, at.y - 10, 12, 0xffe58a);
+      this.layer.puff("mote", at.x, at.y, 14, 0xffd54a);
       this.shot(1100, FX_DEPTH, (g, p) => {
         g.lineStyle(5 * (1 - p) + 1, 0xffd54a, 1 - p).strokeEllipse(at.x, at.y, 40 + 220 * p, 20 + 110 * p);
         g.fillStyle(0xfff0b0, 0.5 * (1 - p)).fillRect(at.x - 14 * (1 - p) - 4, at.y - 220 * p - 20, 8 + 28 * (1 - p), 220 * p + 20);
-        for (let i = 0; i < 12; i++) {
-          const a = (i / 12) * Math.PI * 2;
-          g.lineStyle(3, 0xffe58a, 1 - p).lineBetween(at.x + Math.cos(a) * 20 * p, at.y - 20 + Math.sin(a) * 10 * p, at.x + Math.cos(a) * (30 + 110 * p), at.y - 20 + Math.sin(a) * (15 + 55 * p));
-        }
+        this.lotus(g, at.x, at.y, Math.min(1, p * 3), 80, 0xffe58a, 1 - p);
       });
     } else {
+      this.layer.puff("smoke", at.x, at.y - 10, 8, 0x777777);
+      this.layer.ring(at.x, at.y, 0x884444, 0.4, 1.2, 600, 0.7);
       this.shot(900, FX_DEPTH, (g, p) => {
-        g.fillStyle(0x6b6b6b, 0.5 * (1 - p)).fillEllipse(at.x, at.y - 10 - 20 * p, 60 + 50 * p, 30 + 20 * p);
         g.lineStyle(3, 0xff5a5a, 1 - p).lineBetween(at.x - 8, at.y - 50, at.x + 4, at.y - 30).lineBetween(at.x + 4, at.y - 30, at.x - 4, at.y - 12);
       });
     }
   }
 
-  /** A flash of light at a spot (a teleport leaving). */
-  private flash(at: { x: number; y: number }, color: number): void {
+  /** A flash of light at a spot (a teleport leaving): a beam of light rising out of a circle that opens. */
+  private flash(at: P, color: number): void {
+    this.layer.sigil(at.x, at.y + 2, color, 52, 600, 0.6);
+    this.layer.puff("spark", at.x, at.y - 30, 10, 0xffffff);
+    this.layer.puff("mote", at.x, at.y, 8, color);
     this.shot(500, FX_DEPTH, (g, p) => {
       g.fillStyle(color, 0.55 * (1 - p)).fillRect(at.x - 10 - 10 * (1 - p), at.y - 260 * p - 30, 20 + 20 * (1 - p), 260 * p + 30);
       g.lineStyle(3, 0xffffff, 1 - p).strokeEllipse(at.x, at.y, 30 + 60 * p, 15 + 30 * p);
