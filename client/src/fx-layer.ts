@@ -5,6 +5,8 @@ import { FX_TEX, ensureFxTextures } from "./fx-art";
 export type Puff = "spark" | "mote" | "trail" | "ember" | "drop" | "petal" | "shard" | "smoke";
 
 const ADD = Phaser.BlendModes.ADD;
+/** Ground decals (circles, rings) are drawn just above the ground, under every actor (actors sit at 10 + x + y), so they lie under the feet and not over the legs. */
+const GROUND_DEPTH = 0.6;
 
 /** The configs of the emitters: what each looks like (the colour comes with every call). */
 const PUFFS: Readonly<Record<Puff, { tex: string; cfg: Phaser.Types.GameObjects.Particles.ParticleEmitterConfig }>> = {
@@ -60,22 +62,22 @@ export class FxLayer {
 
   /** A soft light that swells (or shrinks) and fades at (x, y). */
   glow(x: number, y: number, color: number, from: number, to: number, ms: number, alpha = 0.9): void {
-    this.sprite(FX_TEX.glow, x, y, color, from, to, ms, alpha, 1);
+    this.sprite(FX_TEX.glow, x, y, color, from, to, ms, alpha, 1, this.depth);
   }
 
   /** A ring lying on the ground (flattened as the ground is seen) that opens and fades. */
   ring(x: number, y: number, color: number, from: number, to: number, ms: number, alpha = 0.9): void {
-    this.sprite(FX_TEX.ring, x, y, color, from, to, ms, alpha, 0.5);
+    this.sprite(FX_TEX.ring, x, y, color, from, to, ms, alpha, 0.5, GROUND_DEPTH);
   }
 
   /**
    * The formation circle on the ground under (x, y): it opens, turns (as the ground turns: inside a flattened container, so it spins on the floor and
    * not on the screen), and fades. `ms` is its life, `turns` how many half turns it makes.
    */
-  sigil(x: number, y: number, color: number, radius: number, ms: number, turns = 1, alpha = 0.85, depthShift = -2): Phaser.GameObjects.Container | null {
+  sigil(x: number, y: number, color: number, radius: number, ms: number, turns = 1, alpha = 0.85): Phaser.GameObjects.Container | null {
     if (this.live.size >= MAX_SPRITES) return null;
     const img = this.scene.add.image(0, 0, FX_TEX.rune).setBlendMode(ADD).setTint(color).setAlpha(0);
-    const box = this.scene.add.container(x, y, [img]).setScale(radius / 128, (radius / 128) * 0.5).setDepth(this.depth + depthShift);
+    const box = this.scene.add.container(x, y, [img]).setScale(radius / 128, (radius / 128) * 0.5).setDepth(GROUND_DEPTH);
     const state = { p: 0 };
     const entry = { obj: box, tween: undefined as unknown as Phaser.Tweens.Tween };
     entry.tween = this.scene.tweens.add({
@@ -99,7 +101,7 @@ export class FxLayer {
   /** A formation circle that keeps turning until `drop` (a channel lasts as long as it lasts); the caller moves it with `setPosition`. */
   hold(x: number, y: number, color: number, radius: number, alpha = 0.8): Phaser.GameObjects.Container {
     const img = this.scene.add.image(0, 0, FX_TEX.rune).setBlendMode(ADD).setTint(color).setAlpha(alpha);
-    const box = this.scene.add.container(x, y, [img]).setScale(radius / 128, (radius / 128) * 0.5).setDepth(this.depth - 2);
+    const box = this.scene.add.container(x, y, [img]).setScale(radius / 128, (radius / 128) * 0.5).setDepth(GROUND_DEPTH);
     box.setData("spin", this.scene.tweens.add({ targets: img, rotation: Math.PI * 2, duration: 7000, repeat: -1 }));
     this.holds.add(box);
     return box;
@@ -153,9 +155,9 @@ export class FxLayer {
     this.live.add(entry);
   }
 
-  private sprite(tex: string, x: number, y: number, color: number, from: number, to: number, ms: number, alpha: number, squash: number): void {
+  private sprite(tex: string, x: number, y: number, color: number, from: number, to: number, ms: number, alpha: number, squash: number, depth: number): void {
     if (this.live.size >= MAX_SPRITES) return;
-    const img = this.scene.add.image(x, y, tex).setBlendMode(ADD).setTint(color).setDepth(this.depth).setAlpha(alpha).setScale(from, from * squash);
+    const img = this.scene.add.image(x, y, tex).setBlendMode(ADD).setTint(color).setDepth(depth).setAlpha(alpha).setScale(from, from * squash);
     const entry = { obj: img, tween: undefined as unknown as Phaser.Tweens.Tween };
     entry.tween = this.scene.tweens.add({
       targets: img,

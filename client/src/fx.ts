@@ -587,7 +587,7 @@ export class Effects {
       const a = dir - half + (i / 8) * half * 2;
       this.layer.puff(i % 2 ? "ember" : "spark", ox + Math.cos(a) * reach * 0.8, oy + Math.sin(a) * reach * 0.8 * 0.55, 2, color);
     }
-    this.shot(560, FX_DEPTH - 1, (g, p) => {
+    this.shot(560, 0.62, (g, p) => {
       for (let layer = 0; layer < 3; layer++) {
         const r = reach * Math.min(1, Math.max(0, p * 2.4 - layer * 0.18)) * (1 - layer * 0.18);
         if (r <= 0) continue;

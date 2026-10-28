@@ -15,8 +15,8 @@ class Lab extends Phaser.Scene {
   create(): void {
     this.cameras.main.setBackgroundColor("#2c4a2e");
     for (const p of [caster, target]) this.add.ellipse(p.x, p.y, 36, 16, 0x000000, 0.35);
-    this.add.rectangle(caster.x, caster.y - 22, 14, 36, 0xeeeeee);
-    this.add.rectangle(target.x, target.y - 22, 14, 36, 0xcc5555);
+    this.add.rectangle(caster.x, caster.y - 22, 14, 36, 0xeeeeee).setDepth(10);
+    this.add.rectangle(target.x, target.y - 22, 14, 36, 0xcc5555).setDepth(10);
     ensureFlightTextures(this);
     (["plain", "sword", "cloud", "lotus"] as const).forEach((k, i) => {
       const x = 120 + i * 150;
