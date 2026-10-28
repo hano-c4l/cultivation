@@ -1,0 +1,53 @@
+{
+  "extends": "sprite-config.json",
+  "name": "m_wolf",
+  "spriteKey": "monster.wolf",
+  "source": {
+    "model": "downloads/animals2/x/Animal Pack Vol.2 by @Quaternius/FBX/Wolf.fbx"
+  },
+  "rigName": "WolfArmature",
+  "stripObjectCurves": true,
+  "bodyMesh": "Wolf",
+  "hipsBone": "Bone",
+  "forwardBones": [
+    "Bone.001",
+    "Bone.003_end"
+  ],
+  "autoColors": [
+    1.6,
+    1.6,
+    1.6
+  ],
+  "figureScale": 0.24,
+  "sourceFps": 30,
+  "actionPrefix": "WolfArmature|WolfArmature|",
+  "onlyAnims": [
+    "idle",
+    "run",
+    "attack",
+    "die"
+  ],
+  "anims": {
+    "idle": {
+      "action": "Idle",
+      "frames": 4,
+      "loop": true
+    },
+    "run": {
+      "action": "Walking",
+      "frames": 8,
+      "loop": true
+    },
+    "attack": {
+      "action": "Walking",
+      "frames": 6,
+      "loop": false
+    },
+    "die": {
+      "action": "Idle",
+      "frames": 3,
+      "loop": false
+    }
+  },
+  "animsNote": "the pack has only Idle and Walking: attack replays the move once, die holds the idle pose (no hit animation either)"
+}

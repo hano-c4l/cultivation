@@ -1,5 +1,5 @@
 {
-  "version": 46,
+  "version": 56,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -68,6 +68,34 @@
     "m_skeleton": {
       "image": "m_skeleton.webp",
       "data": "m_skeleton.json"
+    },
+    "m_wolf": {
+      "image": "m_wolf.webp",
+      "data": "m_wolf.json"
+    },
+    "m_cat": {
+      "image": "m_cat.webp",
+      "data": "m_cat.json"
+    },
+    "m_eagle": {
+      "image": "m_eagle.webp",
+      "data": "m_eagle.json"
+    },
+    "m_yeti": {
+      "image": "m_yeti.webp",
+      "data": "m_yeti.json"
+    },
+    "m_demon": {
+      "image": "m_demon.webp",
+      "data": "m_demon.json"
+    },
+    "m_dino": {
+      "image": "m_dino.webp",
+      "data": "m_dino.json"
+    },
+    "m_orc": {
+      "image": "m_orc.webp",
+      "data": "m_orc.json"
     }
   },
   "sprites": {
@@ -795,6 +823,264 @@
         "die": {
           "frames": 6,
           "fps": 14,
+          "loop": false
+        }
+      }
+    },
+    "monster.wolf": {
+      "atlas": "m_wolf",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 51,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 6,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 4,
+          "loop": false
+        },
+        "die": {
+          "frames": 3,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "monster.cat": {
+      "atlas": "m_cat",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 58,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 6,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 4,
+          "loop": false
+        },
+        "die": {
+          "frames": 3,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "monster.eagle": {
+      "atlas": "m_eagle",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 47,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 8,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "die": {
+          "frames": 3,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "monster.yeti": {
+      "atlas": "m_yeti",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 44,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.demon": {
+      "atlas": "m_demon",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 50,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.dino": {
+      "atlas": "m_dino",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 48,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.orc": {
+      "atlas": "m_orc",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 49,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
           "loop": false
         }
       }
