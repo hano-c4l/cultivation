@@ -1,5 +1,5 @@
 {
-  "version": 45,
+  "version": 46,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -803,7 +803,8 @@
   "maps": {
     "*": [
       "char_female",
-      "char_male"
+      "char_male",
+      "m_dragon"
     ]
   }
 }

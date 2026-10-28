@@ -41,6 +41,7 @@ import {
   isMapId,
   mapArtOf,
   guardLookOf,
+  monsterTintOf,
   npcLookOf,
   playRectPixels,
   portalNear,
@@ -1605,6 +1606,7 @@ export class GameScene extends Phaser.Scene {
     }
     const scale = (look?.scale ?? 1) * (m.boss ? 2 : m.rank === "rare2" ? 1.4 : m.rank === "rare1" ? 1.2 : 1);
     m.view.setScale(scale);
+    if (!look) m.view.setTint(monsterTintOf(m.element)); // one model, a colour for each element
     m.view.play(positionAlongPath(m.path, now - m.startedAt, m.speed).moving ? "run" : "idle", headingAlongPath(m.path, now - m.startedAt, m.speed) ?? m.view.dir);
     if (!m.view.alive) return;
     m.view.place(x, y, depth);

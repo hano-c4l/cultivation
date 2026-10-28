@@ -146,6 +146,8 @@ export interface Tuning {
   outfits: { rules: Array<{ minRealm: number; outfit: string }> };
   /** Which sprite model draws a species (`monster.<species>` is tried first): species id -> model key (`monster.<model>`). Several species can share one model; a species with neither is drawn as the square. */
   monsterModels: Record<string, string>;
+  /** The colour a monster sprite is multiplied by, by element (`#rrggbb`), so one model looks different in each element; an element without one is drawn in the model's own colours. */
+  monsterTints: Record<string, string>;
   /** How each map is drawn: ground details and the shape of the small obstacles (trees, rocks...), by map id; a map without an entry is drawn plain. */
   mapArt: { maps: Record<string, { ground: GroundStyle; obstacle: ObstacleStyle; mix?: ObstacleStyle[] }> };
   /** How the NPCs look: a player body with an optional outfit and weapon, by NPC id (a trailing number is ignored: `smith2` is `smith`) or else by kind. */
@@ -417,7 +419,26 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   },
   alchemy: DEFAULT_ALCHEMY,
   outfits: { rules: [{ minRealm: 0, outfit: "ranger" }] },
-  monsterModels: { doi_u_minh: "bat", thi_quy: "skeleton", xich_thi: "skeleton", han_thi_ma: "skeleton", hoa_long_vuong: "dragon" },
+  // Only three models exist so far (bat, skeleton, dragon): flyers use the bat, undead and apes the skeleton, every beast, snake and boss the dragon.
+  monsterModels: {
+    doi_u_minh: "bat",
+    bang_phong_hac: "bat",
+    thi_quy: "skeleton",
+    xich_thi: "skeleton",
+    han_thi_ma: "skeleton",
+    quy_vuong: "skeleton",
+    tuyet_yeu_hau: "skeleton",
+    hoa_long_vuong: "dragon",
+    bang_hoang: "dragon",
+    huyet_lang_vuong: "dragon",
+    soi_rung: "dragon",
+    heo_rung: "dragon",
+    bao_dem: "dragon",
+    hoa_dien_lang: "dragon",
+    nham_giap_thu: "dragon",
+    liet_hoa_xa: "dragon",
+  },
+  monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
   mapArt: {
     maps: {
       town: { ground: "grass", obstacle: "tree", mix: ["tree", "tree", "tree", "bush", "bush", "stump", "rock"] },
@@ -472,6 +493,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
+  monsterTints: "Màu phủ lên hình quái theo hệ (một mô hình trông khác nhau ở mỗi hệ)",
   monsterModels: "Hình quái: loài quái nào dùng mô hình nào (một mô hình có thể dùng chung cho nhiều loài)",
   mapArt: "Hình bản đồ: kiểu nền và kiểu vật cản nhỏ (cây, đá, cột, tinh thể) của từng bản đồ",
   npcLooks: "Hình NPC: thân nam hoặc nữ, trang phục và vũ khí, theo mã NPC hoặc theo loại NPC",
@@ -743,6 +765,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       const table = (t: unknown): boolean => obj(t) && Object.keys(t).length <= 100 && Object.entries(t).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && look(v));
       return table(value.byKind) && table(value.byId);
     }
+    case "monsterTints":
+      return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z]{1,16}$/.test(k) && typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v));
     case "monsterModels":
       return Object.keys(value).length <= 100 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && /^[a-z]{1,16}$/.test(v));
     case "outfits":

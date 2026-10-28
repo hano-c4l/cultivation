@@ -35,6 +35,7 @@ export * from "./gear-names";
 export * from "./outfit";
 export * from "./art-styles";
 export * from "./map-art";
+export * from "./monster-look";
 export * from "./npc-look";
 export * from "./smith";
 export * from "./gear-master";
