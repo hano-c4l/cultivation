@@ -420,7 +420,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     species: { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang" },
   },
   alchemy: DEFAULT_ALCHEMY,
-  outfits: { rules: [{ minRealm: 0, outfit: "ranger" }] },
+  outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 2, outfit: "tien" }] }, // Kim Đan robes and above: the white xianxia robe
   // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp), ghost (hàn thi ma), snake (rắn). Stand-ins: the boss dragons use the dragon.
   monsterModels: {
     doi_u_minh: "bat",
