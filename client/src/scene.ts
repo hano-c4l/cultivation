@@ -75,11 +75,13 @@ import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { Effects } from "./fx";
+import { FLIGHT_GLOW, FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
+import { FX_TEX, ensureFxTextures } from "./fx-art";
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
 import { setGearSetNames, setWornSkillSets, skillDisplayName, grayWindowMs, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
-import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
+import { NPC_INTERACT_RADIUS, flightStyleOf, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
@@ -130,7 +132,7 @@ interface Actor {
   pk: PkMode;
   /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
   mounted: boolean;
-  cloud?: Phaser.GameObjects.Ellipse;
+  cloud?: Phaser.GameObjects.Image;
   /** The sprite that replaces the oval body when the manifest has one for it (phase 4); the body stays as the camera anchor, hidden. */
   view?: GfxView;
   /** Drawn with the female body (from the snapshot); picks the sprite. */
@@ -322,6 +324,8 @@ export class GameScene extends Phaser.Scene {
     this.pk = initPk((msg) => this.net.send(msg));
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
+    ensureFlightTextures(this);
+    ensureFxTextures(this);
     this.fx = new Effects(this, (id) => this.screenPosOf(id));
     this.gfx = new GfxKit(this);
     this.gfx.useMap(this.map.id);
@@ -449,19 +453,21 @@ export class GameScene extends Phaser.Scene {
     for (const npc of npcsOf(this.map)) {
       const p = toScreen(npc.x, npc.y);
       if (npc.kind === "waygate") {
-        // A magic circle on the ground (nothing blocks it: characters arrive standing on it).
-        const g = this.add.graphics().setDepth(0.4);
+        // A formation circle on the ground (nothing blocks it: characters arrive standing on it): the trigram ring turns slowly, with a soft violet light under it.
         const rx = WAYGATE_RADIUS * TILE_W * 0.5;
         const ry = WAYGATE_RADIUS * TILE_H * 0.5;
-        g.lineStyle(3, 0x7b61ff, 0.95).strokeEllipse(p.x, p.y, rx * 2, ry * 2);
-        g.lineStyle(2, 0xd9ccff, 0.9).strokeEllipse(p.x, p.y, rx * 1.35, ry * 1.35);
-        g.fillStyle(0x7b61ff, 0.22).fillEllipse(p.x, p.y, rx * 1.9, ry * 1.9);
-        for (let i = 0; i < 6; i++) {
-          const a = (i / 6) * Math.PI * 2;
-          g.fillStyle(0xe8e0ff, 0.9).fillCircle(p.x + Math.cos(a) * rx * 0.67, p.y + Math.sin(a) * ry * 0.67, 2.5);
-        }
+        const g = this.add.graphics().setDepth(0.4);
+        g.fillStyle(0x7b61ff, 0.2).fillEllipse(p.x, p.y, rx * 1.9, ry * 1.9);
+        const rune = this.add.image(0, 0, FX_TEX.rune).setBlendMode(Phaser.BlendModes.ADD).setTint(0xb9a4ff).setAlpha(0.95);
+        const ring = this.add.container(p.x, p.y, [rune]).setScale((rx * 2.1) / 256, (ry * 2.1) / 256).setDepth(0.41);
+        const spin = this.tweens.add({ targets: rune, rotation: Math.PI * 2, duration: 14_000, repeat: -1 });
+        const pulse = this.tweens.add({ targets: rune, alpha: 0.6, duration: 1600, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+        ring.once("destroy", () => {
+          spin.stop();
+          pulse.stop();
+        });
         const label = this.add.text(p.x, p.y - ry - 4, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#e8e0ff", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(10 + npc.x + npc.y + 0.1);
-        this.mapObjects.push(g, label);
+        this.mapObjects.push(g, ring, label);
         continue;
       }
       // Placeholder figure (a robe and a head) standing on the NPC's spot; a player body replaces it once the sprites are loaded (syncNpcViews).
@@ -1422,7 +1428,7 @@ export class GameScene extends Phaser.Scene {
   private setActorMounted(actor: Actor, on: boolean): void {
     if (actor.mounted === on) return;
     actor.mounted = on;
-    if (on && !actor.cloud) actor.cloud = this.add.ellipse(0, 0, 40, 16, 0x9fe8ff, 0.75).setStrokeStyle(2, 0xffffff, 0.8);
+    if (on && !actor.cloud) actor.cloud = this.add.image(0, 0, FLIGHT_TEX[flightStyleOf()]).setAlpha(0.95);
     actor.cloud?.setVisible(on);
     if (actor.id === this.selfId && isMounted() !== on) this.applyMounted(on);
   }
@@ -1636,7 +1642,12 @@ export class GameScene extends Phaser.Scene {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
       actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
-      if (actor.cloud) actor.cloud.setPosition(s.x, s.y - 4).setDepth(10 + pos.x + pos.y - 0.1);
+      if (actor.cloud) {
+        // the flight pháp bảo hovers: a slow bob (out of step between riders), and a trail of spirit light while they move
+        const bob = Math.sin(now / 340 + actor.id.length * 1.7) * 2.2;
+        actor.cloud.setPosition(s.x, s.y - 4 + bob).setDepth(10 + pos.x + pos.y - 0.1);
+        if (pos.moving && Math.random() < 0.35) this.fx.puff("trail", s.x - 14, s.y - 2, 1, FLIGHT_GLOW[flightStyleOf()]);
+      }
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);

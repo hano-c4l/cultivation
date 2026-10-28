@@ -58,6 +58,152 @@ def art(rel):
     return os.path.join(ART, *rel.split("/"))
 
 
+
+# ---- generated clothing (a robe built from rings and tubes, skinned by hand to the rig's own bones) ----
+def _clamp01(x):
+    return max(0.0, min(1.0, x))
+
+
+def add_generated(rig, spec):
+    """
+    Dresses the rig in a long xianxia robe made in code: a flared skirt, a wrapped top, wide sleeves, a sash with two ribbons and trims. Every vertex
+    gets its weights from where it is (height along the spine, side for the legs, distance along the arm), so it moves with the body; the rest pose is a T-pose.
+    `spec` has `parts` (a list of names) and the materials `robe`, `trim`, `sash`; sizes scale with `scale`.
+    """
+    import bmesh
+    B = rig.data.bones
+    head = lambda n: B[n].head_local
+    spine = [("pelvis", head("pelvis").z), ("spine_01", head("spine_01").z), ("spine_02", head("spine_02").z), ("spine_03", head("spine_03").z), ("neck_01", head("neck_01").z)]
+    waist = head("pelvis").z + 0.03
+    hem = spec.get("hemZ", 0.16)
+    k = spec.get("scale", 1.0)  # a wider body (the male one) widens the garments
+
+    def spine_w(z):
+        if z <= spine[0][1]:
+            return {"pelvis": 1.0}
+        for (b0, z0), (b1, z1) in zip(spine, spine[1:]):
+            if z <= z1:
+                t = (z - z0) / (z1 - z0)
+                return {b0: 1 - t, b1: t}
+        return {"neck_01": 1.0}
+
+    def leg_w(x, t, down):
+        """The skirt: the pelvis near the waist, the thighs (by side) further down."""
+        side_l = _clamp01(0.5 + x / 0.16)
+        leg = down * t
+        return {"pelvis": 1 - leg, "thigh_l": leg * side_l, "thigh_r": leg * (1 - side_l)}
+
+    def build(name, mat, pts, faces, weights):
+        me = bpy.data.meshes.new(name)
+        bm = bmesh.new()
+        vs = [bm.verts.new(p) for p in pts]
+        bm.verts.ensure_lookup_table()
+        for f in faces:
+            try:
+                bm.faces.new([vs[i] for i in f])
+            except ValueError:
+                pass
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        bm.to_mesh(me)
+        bm.free()
+        ob = bpy.data.objects.new(name, me)
+        bpy.context.collection.objects.link(ob)
+        ob.parent = rig
+        mod = ob.modifiers.new("Armature", "ARMATURE")
+        mod.object = rig
+        me.materials.append(mat)
+        groups = {}
+        for i, w in enumerate(weights):
+            tot = sum(w.values())
+            check(tot > 0, "%s: vertex %d has no weight" % (name, i))
+            for bone, val in w.items():
+                if val <= 1e-4:
+                    continue
+                g = groups.get(bone) or ob.vertex_groups.new(name=bone)
+                groups[bone] = g
+                g.add([i], val / tot, "REPLACE")
+        return ob
+
+    def ring_faces(n_rings, n_seg):
+        faces = []
+        for r in range(n_rings - 1):
+            for a in range(n_seg):
+                a2 = (a + 1) % n_seg
+                faces.append((r * n_seg + a, r * n_seg + a2, (r + 1) * n_seg + a2, (r + 1) * n_seg + a))
+        return faces
+
+    def lathe(name, mat, zs, rx_of, ry_of, cx, cy, weight_of, n_seg=24):
+        pts, ws = [], []
+        for zi, z in enumerate(zs):
+            t = zi / (len(zs) - 1)
+            for a in range(n_seg):
+                ang = a / n_seg * math.tau
+                x = cx + math.cos(ang) * rx_of(t)
+                y = cy + math.sin(ang) * ry_of(t)
+                pts.append((x, y, z))
+                ws.append(weight_of(x, z, t))
+        return build(name, mat, pts, ring_faces(len(zs), n_seg), ws)
+
+    def tube(name, mat, axis_pts, radius_of, weight_of, n_seg=14):
+        pts, ws = [], []
+        for ti, (px, py, pz) in enumerate(axis_pts):
+            t = ti / (len(axis_pts) - 1)
+            r = radius_of(t)
+            for a in range(n_seg):
+                ang = a / n_seg * math.tau
+                pts.append((px, py + math.cos(ang) * r, pz + math.sin(ang) * r))
+                ws.append(weight_of(px, t))
+        return build(name, mat, pts, ring_faces(len(axis_pts), n_seg), ws)
+
+    robe, trim, sash = spec["robe"], spec["trim"], spec["sash"]
+    parts = spec.get("parts", [])
+    cy = 0.03
+    if "skirt" in parts:
+        zs = [waist - (waist - hem) * i / 9 for i in range(10)]
+        flare = lambda t: 0.19 * k + (0.40 * k - 0.19 * k) * (t ** 0.75)
+        lathe("XianSkirt", robe, zs, flare, lambda t: flare(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, 0.62))
+        lathe("XianHem", trim, [hem + 0.04, hem - 0.005], lambda t: 0.40 * k + 0.012, lambda t: (0.40 * k + 0.012) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, 1.0, 0.62))
+    if "top" in parts:
+        top_z = head("neck_01").z - 0.02
+        zs = [waist - 0.02 + (top_z - waist + 0.02) * i / 7 for i in range(8)]
+        prof = lambda t: (0.185 + 0.03 * math.sin(t * math.pi * 0.9)) * k * (1.0 - 0.45 * max(0.0, t - 0.82) / 0.18)
+        lathe("XianTop", robe, zs, prof, lambda t: prof(t) * 0.78, 0.0, 0.02, lambda x, z, t: spine_w(z))
+        lathe("XianCollar", trim, [top_z + 0.02, top_z - 0.06], lambda t: 0.095 * k, lambda t: 0.085 * k, 0.0, 0.035, lambda x, z, t: {"neck_01": 0.7, "spine_03": 0.3})
+    if "sash" in parts:
+        lathe("XianSash", sash, [waist + 0.07, waist - 0.02], lambda t: 0.205 * k, lambda t: 0.205 * k * 0.8, 0.0, 0.02, lambda x, z, t: {"pelvis": 0.6, "spine_01": 0.4})
+        for sx in (-1, 1):
+            # two ribbons hanging from the sash at the back, flowing with the legs
+            n = 8
+            pts, ws = [], []
+            for i in range(n):
+                t = i / (n - 1)
+                z = waist - 0.02 - t * 0.5
+                for dx in (-0.03, 0.03):
+                    x = sx * 0.09 + dx
+                    pts.append((x, 0.2 * k + 0.02 * t, z))
+                    ws.append(leg_w(x, t, 0.5))
+            faces = [(2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2) for i in range(n - 1)]
+            build("XianRibbon", sash, pts, faces, ws)
+    if "sleeves" in parts:
+        for side, sx in (("l", 1), ("r", -1)):
+            ua, la = head("upperarm_" + side), head("lowerarm_" + side)
+            end_x = abs(head("hand_" + side).x) - 0.025
+            xs = [sx * (0.10 + (end_x - 0.10) * i / 8) for i in range(9)]
+            axis = [(x, ua.y, ua.z) for x in xs]
+            ru = lambda t: (0.075 - 0.012 * t + 0.07 * max(0.0, (t - 0.7) / 0.3) ** 1.6) * k
+            elbow = abs(la.x)
+
+            def w_arm(x, t, side=side, elbow=elbow):
+                d = abs(x)
+                u = _clamp01((d - (elbow - 0.06)) / 0.12)
+                return {"upperarm_" + side: 1 - u, "lowerarm_" + side: u, "clavicle_" + side: 0.35 * _clamp01(1 - d / 0.2)}
+
+            tube("XianSleeve_" + side, robe, axis, ru, w_arm)
+            cuff = [(sx * (end_x - 0.05 + 0.05 * i / 2), ua.y, ua.z) for i in range(3)]
+            tube("XianCuff_" + side, trim, cuff, lambda t: (0.075 + 0.07) * k + 0.006, w_arm)
+    log("generated clothing: %s" % ", ".join(parts))
+
+
 def main():
     cfg = load_config(CFG_PATH)
     if cfg.get("onlyAnims"):
@@ -140,6 +286,10 @@ def main():
             bpy.data.objects.remove(o, do_unlink=True)
     for o in [o for o in bpy.data.objects if o.name.startswith("Icosphere")]:
         bpy.data.objects.remove(o, do_unlink=True)  # every pack ships a little reference sphere
+    if cfg.get("generated"):
+        g = cfg["generated"]
+        gm = {n: bpy.data.materials.new(n) for n in (g["robe"], g["trim"], g["sash"])}
+        add_generated(rig, {**g, "robe": gm[g["robe"]], "trim": gm[g["trim"]], "sash": gm[g["sash"]]})
     scene = bpy.context.scene
     scene.render.resolution_x = scene.render.resolution_y = F  # before the camera maths: world_to_camera_view and the lens shift read the aspect
     scene.render.resolution_percentage = 100

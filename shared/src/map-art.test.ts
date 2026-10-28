@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { CELLS_PER_TILE, DEFAULT_TUNING, SMALL_BLOB_CELLS, getMap, guardLookOf, hash2, isCellWalkable, mapArtOf, monsterModelOf, monsterTintOf, MONSTERS, npcLookOf, obstacleBlobs, obstacleStyleOf, resetTuning, setTuning, validTuningGroup } from "./index";
+import { CELLS_PER_TILE, DEFAULT_TUNING, SMALL_BLOB_CELLS, getMap, guardLookOf, hash2, isCellWalkable, mapArtOf, flightStyleOf, monsterModelOf, monsterTintOf, MONSTERS, npcLookOf, obstacleBlobs, obstacleStyleOf, resetTuning, setTuning, validTuningGroup } from "./index";
 
 afterEach(() => resetTuning());
 
@@ -100,6 +100,14 @@ describe("map art and NPC looks", () => {
     expect(monsterTintOf("nope")).toBeUndefined();
     expect(validTuningGroup("monsterTints", DEFAULT_TUNING.monsterTints)).toBe(true);
     expect(validTuningGroup("monsterTints", { hoa: "red" })).toBe(false);
+  });
+
+  it("a rider has a flight look, validated, even from a table stored before it existed", () => {
+    expect(flightStyleOf()).toBe(DEFAULT_TUNING.flightLooks.default);
+    setTuning({ flightLooks: { default: "lotus" } });
+    expect(flightStyleOf()).toBe("lotus");
+    expect(validTuningGroup("flightLooks", DEFAULT_TUNING.flightLooks)).toBe(true);
+    expect(validTuningGroup("flightLooks", { default: "jetpack" })).toBe(false);
   });
 
   it("validates both groups", () => {

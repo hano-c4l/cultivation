@@ -18,3 +18,6 @@ Mỗi ảnh, mô hình, animation hay font được dùng trong game phải có 
 | Quaternius Easy Animated Enemy Pack (Frog, Rat, Snake, Snake_angry, Spider, Wasp; dùng 1: Snake_angry; **repo chứa ảnh đã render** `client/public/gfx/m_snake.*`) | [quaternius.itch.io/animated-easy-enemies](https://quaternius.itch.io/animated-easy-enemies) (tệp zip 3,1 MB, SHA-256 `a97f38b981fec2f42b263fe92828a7bf73f9da1228d5aac906fe354cd2b21004`) | CC0 theo trang itch.io; zip không có tệp giấy phép | 2026-10-28 | | https://creativecommons.org/publicdomain/zero/1.0/ | Không | Chưa chụp |
 
 Quy ước: nguồn Blender và ảnh thô để ngoài repo; chỉ thành phẩm (atlas webp/png, JSON, `manifest.json`) được commit.
+
+## Đồ tự vẽ hoặc tự sinh (không có gói nguồn)
+Những thứ sau do chúng tôi tự tạo bằng code (không sao chép từ gói nào, nên không cần giấy phép bên thứ ba): trang phục `tien` (sinh trong Blender bằng `tools/render/render_sprites.py`, đặt lên thân Peasant của gói Modular Character Outfits và thân của Universal Base Characters, hai gói này có dòng riêng ở trên; atlas `client/public/gfx/char_tien_*`), hình pháp bảo phi hành (kiếm, mây, sen, `client/src/flight-art.ts`), các hình hiệu ứng và vòng trận pháp (`client/src/fx-art.ts`), nền và vật cản bản đồ (`client/src/map-layer.ts`). Mã nguồn của chúng nằm trong repo.
