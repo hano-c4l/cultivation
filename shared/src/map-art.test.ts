@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { CELLS_PER_TILE, DEFAULT_TUNING, SMALL_BLOB_CELLS, getMap, guardLookOf, hash2, isCellWalkable, mapArtOf, npcLookOf, obstacleBlobs, obstacleStyleOf, resetTuning, setTuning, validTuningGroup } from "./index";
+import { CELLS_PER_TILE, DEFAULT_TUNING, SMALL_BLOB_CELLS, getMap, guardLookOf, hash2, isCellWalkable, mapArtOf, monsterModelOf, monsterTintOf, MONSTERS, npcLookOf, obstacleBlobs, obstacleStyleOf, resetTuning, setTuning, validTuningGroup } from "./index";
 
 afterEach(() => resetTuning());
 
@@ -91,6 +91,15 @@ describe("map art and NPC looks", () => {
     expect(guardLookOf().weapon).toBeTruthy();
     setTuning({ npcLooks: { byKind: {}, byId: {} } });
     expect(guardLookOf()).toEqual(DEFAULT_TUNING.npcLooks.byKind.guard);
+  });
+
+  it("every species has a model and every element a tint, even from a table stored before they existed", () => {
+    setTuning({ monsterModels: {} });
+    for (const id of Object.keys(MONSTERS).filter((k) => k !== "ve_binh")) expect(monsterModelOf(id), id).toBeTruthy(); // a guard is a player body
+    for (const e of ["kim", "moc", "thuy", "hoa", "tho", "loi", "bang", "phong"]) expect(monsterTintOf(e), e).toBeTypeOf("number");
+    expect(monsterTintOf("nope")).toBeUndefined();
+    expect(validTuningGroup("monsterTints", DEFAULT_TUNING.monsterTints)).toBe(true);
+    expect(validTuningGroup("monsterTints", { hoa: "red" })).toBe(false);
   });
 
   it("validates both groups", () => {

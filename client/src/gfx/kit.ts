@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { EMPTY_MANIFEST, GFX_ANIMS, animKey, atlasesForMap, frameName, tuning, validateManifest, type GfxAnimName, type GfxManifest, type GfxSprite } from "@game/shared";
+import { EMPTY_MANIFEST, GFX_ANIMS, animKey, atlasesForMap, frameName, monsterModelOf, tuning, validateManifest, type GfxAnimName, type GfxManifest, type GfxSprite } from "@game/shared";
 
 /** Where the manifest and the atlases are served from (client/public/gfx). */
 const BASE = "/gfx/";
@@ -84,6 +84,12 @@ export class GfxView {
   }
 
   private k = 1;
+
+  /** Multiplies the sprite's colours by `color` (0xRRGGBB); undefined shows the model's own colours. */
+  setTint(color: number | undefined): void {
+    if (color === undefined) this.sprite.clearTint();
+    else this.sprite.setTint(color);
+  }
 
   /** How far above the feet the top of the head is on screen, in px (names and bars stand above it). */
   rise(): number {
@@ -274,7 +280,7 @@ export class GfxKit {
     if (!this.active) return undefined;
     // A player variant is `<body>` or `<body>.<outfit>`: the outfit sprite, then the plain body, then any player sprite.
     const candidates =
-      kind === "player" ? [...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`, ...(id && tuning().monsterModels[id] ? [`monster.${tuning().monsterModels[id]}`] : [])] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
+      kind === "player" ? [...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`, ...(id && monsterModelOf(id) ? [`monster.${monsterModelOf(id)}`] : [])] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
     for (const k of candidates) {
       if (k === "") continue;
       if (this.usable(k)) return k;

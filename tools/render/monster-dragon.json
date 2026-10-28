@@ -6,6 +6,7 @@
   "rigName": "DragonArmature",
   "bodyMesh": "Dragon",
   "stripObjectCurves": true,
+  "autoColors": [4.5, 4.5, 4.5],
   "figureScale": 0.34,
   "actionPrefix": "DragonArmature|DragonArmature|",
   "anims": {
