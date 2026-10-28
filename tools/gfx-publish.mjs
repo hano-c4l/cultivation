@@ -38,10 +38,22 @@ if (!existsSync(join(dir, "done.marker")) || !readFileSync(join(dir, "done.marke
 const report = JSON.parse(readFileSync(join(dir, "report.json"), "utf8"));
 const sprites = readdirSprites(dir);
 mkdirSync(OUT, { recursive: true });
+// The image is published as lossless WebP when `sharp` is there (about 45% smaller than the PNG, same pixels); otherwise as the PNG.
+let toWebp = null;
+try {
+  toWebp = (await import("./gfx-webp.mjs")).toWebp;
+} catch {
+  console.warn("sharp is not installed: publishing PNG images (npm install brings it)");
+}
 for (const sp of sprites) {
   copyFileSync(join(dir, sp.image), join(OUT, sp.image));
   copyFileSync(join(dir, sp.data), join(OUT, sp.data));
-  manifest.atlases[sp.atlas] = { image: sp.image, data: sp.data };
+  let image = sp.image;
+  if (toWebp && image.endsWith(".png")) {
+    image = (await toWebp(image)).name;
+    rmSync(join(OUT, sp.image));
+  }
+  manifest.atlases[sp.atlas] = { image, data: sp.data };
   manifest.sprites[sp.key] = { atlas: sp.atlas, frame: sp.frame, anchor: sp.anchor, ...(sp.head ? { head: sp.head } : {}), anims: sp.anims };
   for (const m of maps) {
     manifest.maps[m] = [...new Set([...(manifest.maps[m] ?? []), sp.atlas])];

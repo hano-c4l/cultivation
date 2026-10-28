@@ -1,4 +1,5 @@
 import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
+import { GROUND_STYLES, OBSTACLE_STYLES, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
 import type { EquipKind } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import type { PathBonus } from "./paths";
@@ -145,6 +146,10 @@ export interface Tuning {
   outfits: { rules: Array<{ minRealm: number; outfit: string }> };
   /** Which sprite model draws a species (`monster.<species>` is tried first): species id -> model key (`monster.<model>`). Several species can share one model; a species with neither is drawn as the square. */
   monsterModels: Record<string, string>;
+  /** How each map is drawn: ground details and the shape of the small obstacles (trees, rocks...), by map id; a map without an entry is drawn plain. */
+  mapArt: { maps: Record<string, { ground: GroundStyle; obstacle: ObstacleStyle }> };
+  /** How the NPCs look: a player body with an optional outfit and weapon, by NPC id (a trailing number is ignored: `smith2` is `smith`) or else by kind. */
+  npcLooks: { byKind: Record<string, NpcLook>; byId: Record<string, NpcLook> };
 }
 
 export interface MonsterNumbers {
@@ -413,6 +418,20 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   alchemy: DEFAULT_ALCHEMY,
   outfits: { rules: [{ minRealm: 0, outfit: "ranger" }] },
   monsterModels: { doi_u_minh: "bat", thi_quy: "skeleton", xich_thi: "skeleton", han_thi_ma: "skeleton", hoa_long_vuong: "dragon" },
+  mapArt: {
+    maps: {
+      town: { ground: "grass", obstacle: "tree" },
+      forest: { ground: "grass", obstacle: "tree" },
+      cave: { ground: "stone", obstacle: "pillar" },
+      town2: { ground: "stone", obstacle: "rock" },
+      kimdan: { ground: "lava", obstacle: "rock" },
+      nguyenanh: { ground: "snow", obstacle: "crystal" },
+    },
+  },
+  npcLooks: {
+    byKind: { merchant: { body: "male" }, quest: { body: "female" }, smith: { body: "male", weapon: "riu" }, alchemist: { body: "female", outfit: "ranger" } },
+    byId: { elder: { body: "male", outfit: "ranger" }, path_kiem: { body: "male", outfit: "ranger", weapon: "kiem" }, path_thuat: { body: "female", outfit: "ranger" }, path_dan: { body: "female" } },
+  },
 };
 
 export const TUNING_GROUPS = Object.keys(DEFAULT_TUNING) as TuningGroup[];
@@ -454,6 +473,8 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
   monsterModels: "Hình quái: loài quái nào dùng mô hình nào (một mô hình có thể dùng chung cho nhiều loài)",
+  mapArt: "Hình bản đồ: kiểu nền và kiểu vật cản nhỏ (cây, đá, cột, tinh thể) của từng bản đồ",
+  npcLooks: "Hình NPC: thân nam hoặc nữ, trang phục và vũ khí, theo mã NPC hoặc theo loại NPC",
 };
 
 const num = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
@@ -715,6 +736,13 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       );
     case "paths":
       return int(value.swapCostBase, 0, 1_000_000_000) && int(value.dropCostBase, 0, 1_000_000_000);
+    case "mapArt":
+      return obj(value.maps) && Object.keys(value.maps).length <= 100 && Object.entries(value.maps).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && obj(v) && (GROUND_STYLES as readonly unknown[]).includes(v.ground) && (OBSTACLE_STYLES as readonly unknown[]).includes(v.obstacle));
+    case "npcLooks": {
+      const look = (v: unknown): boolean => obj(v) && (v.body === "male" || v.body === "female") && (v.outfit === undefined || (typeof v.outfit === "string" && /^[a-z]{1,16}$/.test(v.outfit))) && (v.weapon === undefined || (typeof v.weapon === "string" && /^[a-z]{1,16}$/.test(v.weapon)));
+      const table = (t: unknown): boolean => obj(t) && Object.keys(t).length <= 100 && Object.entries(t).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && look(v));
+      return table(value.byKind) && table(value.byId);
+    }
     case "monsterModels":
       return Object.keys(value).length <= 100 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && /^[a-z]{1,16}$/.test(v));
     case "outfits":
