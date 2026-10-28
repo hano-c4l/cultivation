@@ -1,5 +1,5 @@
 import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
-import { GROUND_STYLES, OBSTACLE_STYLES, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
+import { FLIGHT_STYLES, GROUND_STYLES, OBSTACLE_STYLES, type FlightStyle, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
 import type { EquipKind } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import type { PathBonus } from "./paths";
@@ -152,6 +152,8 @@ export interface Tuning {
   mapArt: { maps: Record<string, { ground: GroundStyle; obstacle: ObstacleStyle; mix?: ObstacleStyle[] }> };
   /** How the NPCs look: a player body with an optional outfit and weapon, by NPC id (a trailing number is ignored: `smith2` is `smith`) or else by kind. */
   npcLooks: { byKind: Record<string, NpcLook>; byId: Record<string, NpcLook> };
+  /** What a rider of the flight pháp bảo stands on (one look for everyone while the server syncs only "is riding"; a look per item waits for the Admin art screens). */
+  flightLooks: { default: FlightStyle };
 }
 
 export interface MonsterNumbers {
@@ -438,6 +440,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     nham_giap_thu: "orc",
     liet_hoa_xa: "snake",
   },
+  flightLooks: { default: "sword" },
   monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
   mapArt: {
     maps: {
@@ -493,6 +496,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
+  flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen)",
   monsterTints: "Màu phủ lên hình quái theo hệ (một mô hình trông khác nhau ở mỗi hệ)",
   monsterModels: "Hình quái: loài quái nào dùng mô hình nào (một mô hình có thể dùng chung cho nhiều loài)",
   mapArt: "Hình bản đồ: kiểu nền và kiểu vật cản nhỏ (cây, đá, cột, tinh thể) của từng bản đồ",
@@ -765,6 +769,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       const table = (t: unknown): boolean => obj(t) && Object.keys(t).length <= 100 && Object.entries(t).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && look(v));
       return table(value.byKind) && table(value.byId);
     }
+    case "flightLooks":
+      return (FLIGHT_STYLES as readonly unknown[]).includes(value.default);
     case "monsterTints":
       return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z]{1,16}$/.test(k) && typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v));
     case "monsterModels":

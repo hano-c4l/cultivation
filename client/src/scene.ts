@@ -75,11 +75,12 @@ import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { Effects } from "./fx";
+import { FLIGHT_GLOW, FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
 import { setGearSetNames, setWornSkillSets, skillDisplayName, grayWindowMs, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
-import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
+import { NPC_INTERACT_RADIUS, flightStyleOf, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
@@ -130,7 +131,7 @@ interface Actor {
   pk: PkMode;
   /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
   mounted: boolean;
-  cloud?: Phaser.GameObjects.Ellipse;
+  cloud?: Phaser.GameObjects.Image;
   /** The sprite that replaces the oval body when the manifest has one for it (phase 4); the body stays as the camera anchor, hidden. */
   view?: GfxView;
   /** Drawn with the female body (from the snapshot); picks the sprite. */
@@ -322,6 +323,7 @@ export class GameScene extends Phaser.Scene {
     this.pk = initPk((msg) => this.net.send(msg));
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
+    ensureFlightTextures(this);
     this.fx = new Effects(this, (id) => this.screenPosOf(id));
     this.gfx = new GfxKit(this);
     this.gfx.useMap(this.map.id);
@@ -1422,7 +1424,7 @@ export class GameScene extends Phaser.Scene {
   private setActorMounted(actor: Actor, on: boolean): void {
     if (actor.mounted === on) return;
     actor.mounted = on;
-    if (on && !actor.cloud) actor.cloud = this.add.ellipse(0, 0, 40, 16, 0x9fe8ff, 0.75).setStrokeStyle(2, 0xffffff, 0.8);
+    if (on && !actor.cloud) actor.cloud = this.add.image(0, 0, FLIGHT_TEX[flightStyleOf()]).setAlpha(0.95);
     actor.cloud?.setVisible(on);
     if (actor.id === this.selfId && isMounted() !== on) this.applyMounted(on);
   }
@@ -1636,7 +1638,12 @@ export class GameScene extends Phaser.Scene {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
       actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
-      if (actor.cloud) actor.cloud.setPosition(s.x, s.y - 4).setDepth(10 + pos.x + pos.y - 0.1);
+      if (actor.cloud) {
+        // the flight pháp bảo hovers: a slow bob (out of step between riders), and a trail of spirit light while they move
+        const bob = Math.sin(now / 340 + actor.id.length * 1.7) * 2.2;
+        actor.cloud.setPosition(s.x, s.y - 4 + bob).setDepth(10 + pos.x + pos.y - 0.1);
+        if (pos.moving && Math.random() < 0.35) this.fx.puff("trail", s.x - 14, s.y - 2, 1, FLIGHT_GLOW[flightStyleOf()]);
+      }
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);

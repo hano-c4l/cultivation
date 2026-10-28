@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { Effects } from "./fx";
+import { FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
 
 /**
  * A dev-only page (`/fx-lab.html` under `npm run dev -w client`; the build does not include it): two dots stand in for a caster and a target and every
@@ -16,6 +17,13 @@ class Lab extends Phaser.Scene {
     for (const p of [caster, target]) this.add.ellipse(p.x, p.y, 36, 16, 0x000000, 0.35);
     this.add.rectangle(caster.x, caster.y - 22, 14, 36, 0xeeeeee);
     this.add.rectangle(target.x, target.y - 22, 14, 36, 0xcc5555);
+    ensureFlightTextures(this);
+    (["plain", "sword", "cloud", "lotus"] as const).forEach((k, i) => {
+      const x = 120 + i * 150;
+      this.add.rectangle(x, 470 - 25, 14, 36, 0xeeeeee).setDepth(1);
+      this.add.image(x, 466, FLIGHT_TEX[k]).setDepth(0);
+      this.add.text(x - 20, 488, k, { color: "#ddd", fontSize: "12px" });
+    });
     this.fx = new Effects(this, posOf);
     const bar = document.getElementById("bar") as HTMLElement;
     const add = (label: string, run: () => void): void => {

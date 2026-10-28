@@ -5,6 +5,10 @@ export type GroundStyle = (typeof GROUND_STYLES)[number];
 export const OBSTACLE_STYLES = ["plain", "tree", "bush", "stump", "rock", "boulder", "pillar", "crystal", "ember"] as const;
 export type ObstacleStyle = (typeof OBSTACLE_STYLES)[number];
 
+/** What a rider of the flight pháp bảo stands on: a flying sword, a cloud, a lotus, or the bare cloud-disc of old (`plain`). */
+export const FLIGHT_STYLES = ["plain", "sword", "cloud", "lotus"] as const;
+export type FlightStyle = (typeof FLIGHT_STYLES)[number];
+
 /** How an NPC is drawn: one of the player bodies, an optional outfit (`outfits` tuning key), an optional weapon family. */
 export interface NpcLook {
   body: "male" | "female";

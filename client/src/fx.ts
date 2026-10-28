@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { getSkill } from "@game/shared";
-import { FxLayer } from "./fx-layer";
+import { FxLayer, type Puff } from "./fx-layer";
 import { BASIC_COLOR, BUFF_COLOR, ELEMENT_COLOR, NEUTRAL, basicFxOf, basicProjectileOf, elementStyleOf, skillFxOf, templateOf, type ElementStyle } from "./fx-kinds";
 
 /** A point on screen (world pixels of the scene) where an effect is drawn, or null when the thing it belongs to is not in view. */
@@ -75,6 +75,11 @@ export class Effects {
         if (from) this.heal(from, id, lvl);
         break;
     }
+  }
+
+  /** A few particles of a kind at a spot (the trail of a flying sword, say): the layer's emitters are shared, so this costs one explode. */
+  puff(kind: Puff, x: number, y: number, n: number, color: number): void {
+    this.layer.puff(kind, x, y, n, color);
   }
 
   /** The formation circle that opens under a caster: bigger for a stronger skill, with motes of spirit light rising from it. */
