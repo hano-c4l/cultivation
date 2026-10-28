@@ -1,0 +1,23 @@
+{
+  "extends": "sprite-config.json",
+  "name": "m_ghost",
+  "spriteKey": "monster.ghost",
+  "source": { "model": "downloads/ultimate-monsters/Ultimate Monsters/Flying/FBX/Ghost.fbx" },
+  "rigName": "CharacterArmature",
+  "stripObjectCurves": true,
+  "bodyMesh": "Ghost",
+  "hipsBone": "Root",
+  "forwardBones": ["Head", "Head_end"],
+  "autoColors": [1.0, 1.0, 1.0],
+  "figureScale": 0.3,
+  "sourceFps": 24,
+  "actionPrefix": "CharacterArmature|CharacterArmature|",
+  "onlyAnims": ["idle", "run", "attack", "hit", "die"],
+  "anims": {
+    "idle": { "action": "Flying_Idle", "frames": 4, "loop": true },
+    "run": { "action": "Fast_Flying", "frames": 8, "loop": true },
+    "attack": { "action": "Punch", "frames": 6, "loop": false },
+    "hit": { "action": "HitReact", "frames": 3, "loop": false },
+    "die": { "action": "Death", "frames": 6, "loop": false }
+  }
+}

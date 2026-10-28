@@ -16,7 +16,7 @@ const SKILL_FX: Readonly<Record<string, SkillFx>> = {
 };
 
 /** The id of the template a skill id comes from: `tram_2` -> `tram`, `hoa_4` -> `hoa`. */
-const templateOf = (id: string): string => id.replace(/_\d+$/, "");
+export const templateOf = (id: string): string => id.replace(/_\d+$/, "");
 
 export function skillFxOf(def: SkillDef | undefined): SkillFx {
   if (!def) return "ranged";

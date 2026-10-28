@@ -1,11 +1,13 @@
 import Phaser from "phaser";
-import { EMPTY_MANIFEST, GFX_ANIMS, animKey, atlasesForMap, frameName, tuning, validateManifest, type GfxAnimName, type GfxManifest, type GfxSprite } from "@game/shared";
+import { EMPTY_MANIFEST, GFX_ANIMS, animKey, atlasesForMap, frameName, monsterModelOf, tuning, validateManifest, type GfxAnimName, type GfxManifest, type GfxSprite } from "@game/shared";
 
 /** Where the manifest and the atlases are served from (client/public/gfx). */
 const BASE = "/gfx/";
 const manifestUrl = () => `${BASE}manifest.json`;
 /** Prefix of the Phaser texture key of an atlas. */
 const TEX = "gfx:";
+/** How long an on-demand atlas stays loaded with no sprite using it (ms). */
+const IDLE_UNLOAD_MS = 120_000;
 
 /**
  * One sprite on screen, owned by the kit. `alive` turns false when its atlas is unloaded (a map change); the owner then drops it and draws its
@@ -83,6 +85,12 @@ export class GfxView {
 
   private k = 1;
 
+  /** Multiplies the sprite's colours by `color` (0xRRGGBB); undefined shows the model's own colours. */
+  setTint(color: number | undefined): void {
+    if (color === undefined) this.sprite.clearTint();
+    else this.sprite.setTint(color);
+  }
+
   /** How far above the feet the top of the head is on screen, in px (names and bars stand above it). */
   rise(): number {
     return (this.def.head ?? this.def.anchor.y) * this.k * (this.def.scale ?? 1);
@@ -115,6 +123,9 @@ export class GfxKit {
   /** Sprite keys whose frames turned out to be missing from the atlas. */
   private broken = new Set<string>();
   private views = new Map<string, Set<GfxView>>();
+  /** The atlases the current map lists (they stay while the map does), and when each other atlas last had a sprite on screen (they go after IDLE_UNLOAD_MS of none). */
+  private mapAtlases = new Set<string>();
+  private lastUsed = new Map<string, number>();
 
   constructor(private readonly scene: Phaser.Scene) {
     scene.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
@@ -125,6 +136,7 @@ export class GfxKit {
 
   /** Fetches the manifest, then loads the atlases of the current map. Never throws. */
   async init(): Promise<void> {
+    if (new URLSearchParams(location.search).get("gfx") === "off") return; // `?gfx=off`: everything stays code-drawn (the comparison for `?perf=1`)
     try {
       const res = await fetch(manifestUrl(), { cache: "no-cache" });
       if (!res.ok) return;
@@ -144,6 +156,13 @@ export class GfxKit {
     if (this.mapId) this.useMap(this.mapId);
   }
 
+  /** Counts for the performance overlay (`?perf=1`). */
+  stats(): { views: number; atlases: number } {
+    let views = 0;
+    for (const set of this.views.values()) views += set.size;
+    return { views, atlases: this.loaded.size };
+  }
+
   /** True when at least one sprite could ever show; lets the per-frame code skip all lookups in the common (empty) case. */
   get active(): boolean {
     return this.loaded.size > 0;
@@ -155,6 +174,8 @@ export class GfxKit {
     if (!this.ready) return;
     const want = new Set(atlasesForMap(this.manifest, mapId));
     this.wanted = want;
+    this.mapAtlases = new Set(want);
+    this.lastUsed.clear();
     for (const id of [...this.loaded]) if (!want.has(id)) this.unload(id);
     for (const id of want) {
       if (this.loaded.has(id) || this.failed.has(id) || this.pending.has(id)) continue;
@@ -215,6 +236,26 @@ export class GfxKit {
       return;
     }
     this.loaded.add(id);
+    this.lastUsed.set(id, performance.now());
+  }
+
+  /**
+   * Drops an on-demand atlas (a weapon, an outfit, a monster) that no sprite has used for IDLE_UNLOAD_MS: the memory comes back, and the atlas is
+   * fetched again the next time somebody needs it. The grace period keeps one that comes and goes (a monster that respawns) from reloading all the time.
+   * Atlases the map lists are never dropped here. Call now and then.
+   */
+  sweepIdle(now = performance.now()): void {
+    for (const id of [...this.loaded]) {
+      if (this.mapAtlases.has(id)) continue;
+      if ((this.views.get(id)?.size ?? 0) > 0) {
+        this.lastUsed.set(id, now);
+        continue;
+      }
+      if (now - (this.lastUsed.get(id) ?? now) < IDLE_UNLOAD_MS) continue;
+      this.unload(id);
+      this.wanted.delete(id);
+      this.lastUsed.delete(id);
+    }
   }
 
   /** Drops an atlas: its sprites first, then their animations, then the texture. */
@@ -233,13 +274,13 @@ export class GfxKit {
   /**
    * The sprite key to use for a kind of actor, or undefined to keep the shape. This is the one place that turns "what is it" into "which sprite":
    * for now it follows the naming convention below; the D1 mapping (admin-editable) will wrap it in 4c/4e.
-   *   player -> `player.<variant>` then `player`; monster -> `monster.<kind>`; guard -> `guard`.
+   *   player -> `player.<variant>` then `player`; monster -> `monster.<kind>`; guard -> the player body of `npcLooks.byKind.guard` (the scene asks for `player.*` and `weapon.*` itself).
    */
   spriteKeyFor(kind: "player" | "monster" | "guard" | "weapon", id?: string, variant?: string): string | undefined {
     if (!this.active) return undefined;
     // A player variant is `<body>` or `<body>.<outfit>`: the outfit sprite, then the plain body, then any player sprite.
     const candidates =
-      kind === "player" ? [...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`, ...(id && tuning().monsterModels[id] ? [`monster.${tuning().monsterModels[id]}`] : [])] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
+      kind === "player" ? [...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`, ...(id && monsterModelOf(id) ? [`monster.${monsterModelOf(id)}`] : [])] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
     for (const k of candidates) {
       if (k === "") continue;
       if (this.usable(k)) return k;

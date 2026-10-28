@@ -36,12 +36,13 @@ import {
   type CharacterSheet,
   type MonsterRank,
   type MonsterSnapshot,
-  CELLS_PER_TILE,
   findSmoothPath,
   getMap,
-  isCellWalkable,
-  inPlayRect,
   isMapId,
+  mapArtOf,
+  guardLookOf,
+  monsterTintOf,
+  npcLookOf,
   playRectPixels,
   portalNear,
   positionAlongPath,
@@ -74,11 +75,13 @@ import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { Effects } from "./fx";
+import { FLIGHT_GLOW, FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
+import { FX_TEX, ensureFxTextures } from "./fx-art";
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
 import { setGearSetNames, setWornSkillSets, skillDisplayName, grayWindowMs, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
-import { NPC_INTERACT_RADIUS, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
+import { NPC_INTERACT_RADIUS, flightStyleOf, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
@@ -90,6 +93,8 @@ import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
 import { GfxKit, ONE_SHOT_MS, type GfxView } from "./gfx/kit";
 import { skillFxOf, weaponEquipped } from "./fx-kinds";
+import { initPerf } from "./perf-ui";
+import { MapLayer } from "./map-layer";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
 
@@ -127,7 +132,7 @@ interface Actor {
   pk: PkMode;
   /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
   mounted: boolean;
-  cloud?: Phaser.GameObjects.Ellipse;
+  cloud?: Phaser.GameObjects.Image;
   /** The sprite that replaces the oval body when the manifest has one for it (phase 4); the body stays as the camera anchor, hidden. */
   view?: GfxView;
   /** Drawn with the female body (from the snapshot); picks the sprite. */
@@ -151,6 +156,8 @@ interface MonsterActor {
   kind: string;
   /** The sprite that replaces the square when the manifest has one (phase 4); the square stays, hidden. */
   view?: GfxView;
+  /** The weapon sprite of a guard (a guard is drawn as a player body holding a weapon, from the tuning `npcLooks`). */
+  wview?: GfxView;
   /** A vệ binh: own name and colour, and it is only clicked (attacked) with the PK state on. */
   guard: boolean;
   /** The map boss: red name, big body. */
@@ -207,36 +214,15 @@ function applyTrack(actor: Actor, path: Vec2[], startedAt: number, speed: number
 
 /** Radius (tiles) of the teleport array drawn on the ground and of the click that opens it. */
 const WAYGATE_RADIUS = 1.3;
-/** Pixel size of one texture of obstacles (kept under the 4096 limit of small GPUs, and not too many textures for a big map). */
-const CHUNK = 1024;
-
-
-/**
- * The repeating ground pattern: 64 x 32 px holding two tiles of the checker, so it lines up with the isometric grid when tiled (the tile whose top
- * vertex is at world (0, 0) is the even one; its pattern x is the world x plus half a tile).
- */
-function ensureGroundTexture(scene: Phaser.Scene, palette: MapData["palette"]): string {
-  const key = `ground-${palette.groundA.toString(16)}-${palette.groundB.toString(16)}`;
-  if (scene.textures.exists(key)) return key;
-  const g = scene.make.graphics({}, false);
-  const tile = (cx: number, cy: number, color: number) => {
-    const pts = [new Phaser.Math.Vector2(cx, cy - TILE_H / 2), new Phaser.Math.Vector2(cx + TILE_W / 2, cy), new Phaser.Math.Vector2(cx, cy + TILE_H / 2), new Phaser.Math.Vector2(cx - TILE_W / 2, cy)];
-    g.fillStyle(color, 1);
-    g.lineStyle(1, 0x000000, 0.18);
-    g.fillPoints(pts, true);
-    g.strokePoints(pts, true);
-  };
-  tile(TILE_W / 2, TILE_H / 2, palette.groundA);
-  for (const [cx, cy] of [[0, 0], [TILE_W, 0], [0, TILE_H], [TILE_W, TILE_H]] as const) tile(cx, cy, palette.groundB);
-  g.generateTexture(key, TILE_W, TILE_H);
-  g.destroy();
-  return key;
-}
-
 export class GameScene extends Phaser.Scene {
   private gfx!: GfxKit;
   private map: MapData = getMap("town");
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
+  /** The obstacles and walls around the camera (built and dropped as it moves). */
+  private mapLayer?: MapLayer;
+  private lastSweepAt = 0;
+  /** The NPCs of the current map: their shape figure, name, and the sprite views that replace the figure. */
+  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView }> = [];
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
   private targetId: string | null = null;
@@ -338,10 +324,13 @@ export class GameScene extends Phaser.Scene {
     this.pk = initPk((msg) => this.net.send(msg));
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
+    ensureFlightTextures(this);
+    ensureFxTextures(this);
     this.fx = new Effects(this, (id) => this.screenPosOf(id));
     this.gfx = new GfxKit(this);
     this.gfx.useMap(this.map.id);
     void this.gfx.init();
+    if (new URLSearchParams(location.search).get("perf") === "1") initPerf(this.game, this, () => ({ ...this.gfx.stats(), players: this.actors.size, monsters: this.monsters.size }));
     this.rank = initRank((msg) => this.net.send(msg), this.registry.get("isAdmin") === true);
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
@@ -427,46 +416,19 @@ export class GameScene extends Phaser.Scene {
 
   private drawMap(): void {
     this.npcKey = JSON.stringify(npcsOf(this.map));
+    for (const f of this.npcFigures) {
+      f.view?.destroy();
+      f.wview?.destroy();
+    }
+    this.npcFigures = [];
     for (const obj of this.mapObjects) obj.destroy();
     this.mapObjects = [];
 
-    // The ground is one repeating pattern over the map's rectangle (the map is far too big for a texture of its own). Obstacles are every blocked
-    // collision cell inside the rectangle, drawn once into textures of CHUNK pixels, so trees, pillars, ponds and fences show their real shape.
-    const rect = playRectPixels(this.map);
-    const groundKey = ensureGroundTexture(this, this.map.palette);
-    const ground = this.add.tileSprite(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0, groundKey).setOrigin(0, 0).setDepth(0);
-    ground.tilePositionX = (((rect.x0 + TILE_W / 2) % TILE_W) + TILE_W) % TILE_W;
-    ground.tilePositionY = ((rect.y0 % TILE_H) + TILE_H) % TILE_H;
-    this.mapObjects.push(ground);
-
-    const cw = this.map.width * CELLS_PER_TILE;
-    const ch = this.map.height * CELLS_PER_TILE;
-    const half = TILE_W / (2 * CELLS_PER_TILE);
-    const buckets = new Map<string, Array<[number, number]>>();
-    for (let cy = 0; cy < ch; cy++) {
-      for (let cx = 0; cx < cw; cx++) {
-        if (isCellWalkable(this.map, cx, cy)) continue;
-        if (!inPlayRect(this.map, (cx + 0.5) / CELLS_PER_TILE, (cy + 0.5) / CELLS_PER_TILE)) continue; // void: never drawn
-        const p = toScreen(cx / CELLS_PER_TILE, cy / CELLS_PER_TILE);
-        const key = `${Math.floor((p.x - rect.x0) / CHUNK)},${Math.floor((p.y - rect.y0) / CHUNK)}`;
-        let list = buckets.get(key);
-        if (!list) buckets.set(key, (list = []));
-        list.push([p.x, p.y]);
-      }
-    }
-    for (const [key, cells] of buckets) {
-      const [kx, ky] = key.split(",").map(Number) as [number, number];
-      // The texture overlaps its neighbours by one cell so a diamond straddling the seam is whole.
-      const ox = rect.x0 + kx * CHUNK - half;
-      const oy = rect.y0 + ky * CHUNK;
-      const g = this.make.graphics({}, false);
-      g.fillStyle(this.map.palette.obstacle, 1);
-      for (const [x, y] of cells) g.fillPoints(this.diamond(x - ox, y - oy, 1 / CELLS_PER_TILE), true);
-      const tex = this.add.renderTexture(ox, oy, CHUNK + 2 * half, CHUNK + TILE_H / CELLS_PER_TILE).setOrigin(0, 0).setDepth(0.1);
-      tex.draw(g, 0, 0);
-      g.destroy();
-      this.mapObjects.push(tex);
-    }
+    // The ground, the obstacles and the walls are a MapLayer: the ground pattern, trees, rocks and walls drawn in chunks around the camera only (the map
+    // is far too big for textures of its own: docs/PHASE4.md, 4g and 4h).
+    const art = mapArtOf(this.map.id);
+    this.mapLayer?.destroy();
+    this.mapLayer = new MapLayer(this, this.map, art);
 
     for (const portal of this.map.portals) {
       const p = toScreen(portal.x, portal.y);
@@ -491,30 +453,73 @@ export class GameScene extends Phaser.Scene {
     for (const npc of npcsOf(this.map)) {
       const p = toScreen(npc.x, npc.y);
       if (npc.kind === "waygate") {
-        // A magic circle on the ground (nothing blocks it: characters arrive standing on it).
-        const g = this.add.graphics().setDepth(0.4);
+        // A formation circle on the ground (nothing blocks it: characters arrive standing on it): the trigram ring turns slowly, with a soft violet light under it.
         const rx = WAYGATE_RADIUS * TILE_W * 0.5;
         const ry = WAYGATE_RADIUS * TILE_H * 0.5;
-        g.lineStyle(3, 0x7b61ff, 0.95).strokeEllipse(p.x, p.y, rx * 2, ry * 2);
-        g.lineStyle(2, 0xd9ccff, 0.9).strokeEllipse(p.x, p.y, rx * 1.35, ry * 1.35);
-        g.fillStyle(0x7b61ff, 0.22).fillEllipse(p.x, p.y, rx * 1.9, ry * 1.9);
-        for (let i = 0; i < 6; i++) {
-          const a = (i / 6) * Math.PI * 2;
-          g.fillStyle(0xe8e0ff, 0.9).fillCircle(p.x + Math.cos(a) * rx * 0.67, p.y + Math.sin(a) * ry * 0.67, 2.5);
-        }
-        const label = this.add.text(p.x, p.y - ry - 4, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#e8e0ff", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(p.y + 2);
-        this.mapObjects.push(g, label);
+        const g = this.add.graphics().setDepth(0.4);
+        g.fillStyle(0x7b61ff, 0.2).fillEllipse(p.x, p.y, rx * 1.9, ry * 1.9);
+        const rune = this.add.image(0, 0, FX_TEX.rune).setBlendMode(Phaser.BlendModes.ADD).setTint(0xb9a4ff).setAlpha(0.95);
+        const ring = this.add.container(p.x, p.y, [rune]).setScale((rx * 2.1) / 256, (ry * 2.1) / 256).setDepth(0.41);
+        const spin = this.tweens.add({ targets: rune, rotation: Math.PI * 2, duration: 14_000, repeat: -1 });
+        const pulse = this.tweens.add({ targets: rune, alpha: 0.6, duration: 1600, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+        ring.once("destroy", () => {
+          spin.stop();
+          pulse.stop();
+        });
+        const label = this.add.text(p.x, p.y - ry - 4, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#e8e0ff", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(10 + npc.x + npc.y + 0.1);
+        this.mapObjects.push(g, ring, label);
         continue;
       }
-      // Placeholder figure (a robe and a head) standing on the NPC's spot, like the other placeholder art.
-      const body = this.add.graphics().setDepth(p.y + 1);
+      // Placeholder figure (a robe and a head) standing on the NPC's spot; a player body replaces it once the sprites are loaded (syncNpcViews).
+      const depth = 10 + npc.x + npc.y; // the same scale as players, monsters and trees (a tile sum), so they pass in front of and behind each other correctly
+      const body = this.add.graphics().setDepth(depth);
       body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : npc.kind === "alchemist" ? 0x5aa66a : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
       body.fillStyle(0xf2d6b0, 1).fillCircle(p.x, p.y - 36, 7);
       const label = this.add
         .text(p.x, p.y - 48, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#ffe08a", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1)
-        .setDepth(p.y + 2);
+        .setDepth(depth + 0.1);
       this.mapObjects.push(body, label);
+      this.npcFigures.push({ npc, x: p.x, y: p.y, depth, body, label });
+    }
+  }
+
+  /**
+   * NPCs are player bodies (male or female, an outfit, a weapon) chosen by the tuning `npcLooks`. The sprites may load after the map is drawn, so the views
+   * are made here, a frame at a time: the shape figure stays until its sprite exists, a changed outfit swaps the view, and the name rides at the head.
+   */
+  private syncNpcViews(): void {
+    if (this.npcFigures.length === 0 || !this.gfx.active) return;
+    for (const f of this.npcFigures) {
+      const look = npcLookOf(f.npc);
+      if (!look) continue;
+      const key = this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`);
+      if (f.view && (!f.view.alive || (key && f.view.key !== key))) {
+        f.wview?.destroy();
+        f.view.destroy();
+        f.view = f.wview = undefined;
+        f.body.setVisible(true);
+        f.label.setY(f.y - 48);
+      }
+      if (!f.view && key) {
+        const view = this.gfx.createView(key);
+        if (view) {
+          f.view = view;
+          f.body.setVisible(false);
+        }
+      }
+      if (!f.view?.alive) continue;
+      const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
+      if (f.wview && (!f.wview.alive || f.wview.key !== wkey)) {
+        f.wview.destroy();
+        f.wview = undefined;
+      }
+      if (!f.wview && wkey) f.wview = this.gfx.createView(wkey);
+      f.view.play("idle", 0);
+      f.view.place(f.x, f.y, f.depth);
+      f.wview?.followFrame(f.view);
+      f.wview?.place(f.x, f.y, f.depth + 0.02);
+      f.label.setY(f.y - f.view.rise() - 6);
     }
   }
 
@@ -1393,6 +1398,7 @@ export class GameScene extends Phaser.Scene {
   private removeMonster(id: string): void {
     const m = this.monsters.get(id);
     if (!m) return;
+    m.wview?.destroy();
     m.view?.destroy();
     m.body.destroy();
     m.label.destroy();
@@ -1422,7 +1428,7 @@ export class GameScene extends Phaser.Scene {
   private setActorMounted(actor: Actor, on: boolean): void {
     if (actor.mounted === on) return;
     actor.mounted = on;
-    if (on && !actor.cloud) actor.cloud = this.add.ellipse(0, 0, 40, 16, 0x9fe8ff, 0.75).setStrokeStyle(2, 0xffffff, 0.8);
+    if (on && !actor.cloud) actor.cloud = this.add.image(0, 0, FLIGHT_TEX[flightStyleOf()]).setAlpha(0.95);
     actor.cloud?.setVisible(on);
     if (actor.id === this.selfId && isMounted() !== on) this.applyMounted(on);
   }
@@ -1559,7 +1565,8 @@ export class GameScene extends Phaser.Scene {
       a.view = view;
       a.body.setVisible(false);
     }
-    const anim = moving ? "run" : "idle";
+    // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
+    const anim = moving && !a.mounted ? "run" : "idle";
     const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
     // The weapon is a second sprite over the body that shows the same frame as the body (frames line up by name); it follows what is in the hand.
     const wkey = a.weapon ? this.gfx.spriteKeyFor("weapon", a.weapon, a.female ? "female" : "male") : undefined;
@@ -1581,30 +1588,66 @@ export class GameScene extends Phaser.Scene {
 
   /** The same for a monster, a guard or a boss; the rank and boss sizes scale the sprite as they scale the square. */
   private syncMonsterView(m: MonsterActor, now: number, x: number, y: number, depth: number): void {
+    const look = m.guard ? guardLookOf() : undefined;
     if (m.view && !m.view.alive) {
+      m.wview?.destroy();
+      m.wview = undefined;
+      m.view = undefined;
+      m.body.setVisible(true);
+    }
+    const key = look ? this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`) : this.gfx.spriteKeyFor("monster", m.kind);
+    // The outfit atlas of a guard loads on demand: the plain body shows until it is here, then the view is swapped (as for players and NPCs).
+    if (look && m.view && key && m.view.key !== key) {
+      m.wview?.destroy();
+      m.wview = undefined;
+      m.view.destroy();
       m.view = undefined;
       m.body.setVisible(true);
     }
     if (!m.view) {
-      const key = m.guard ? this.gfx.spriteKeyFor("guard") : this.gfx.spriteKeyFor("monster", m.kind);
       const view = key ? this.gfx.createView(key) : undefined;
       if (!view) return;
       m.view = view;
       m.body.setVisible(false);
     }
-    m.view.setScale(m.boss ? 2 : m.rank === "rare2" ? 1.4 : m.rank === "rare1" ? 1.2 : 1);
+    const scale = (look?.scale ?? 1) * (m.boss ? 2 : m.rank === "rare2" ? 1.4 : m.rank === "rare1" ? 1.2 : 1);
+    m.view.setScale(scale);
+    if (!look) m.view.setTint(monsterTintOf(m.element)); // one model, a colour for each element
     m.view.play(positionAlongPath(m.path, now - m.startedAt, m.speed).moving ? "run" : "idle", headingAlongPath(m.path, now - m.startedAt, m.speed) ?? m.view.dir);
-    if (m.view.alive) m.view.place(x, y, depth);
+    if (!m.view.alive) return;
+    m.view.place(x, y, depth);
+    if (look) {
+      const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
+      if (m.wview && (!m.wview.alive || m.wview.key !== wkey)) {
+        m.wview.destroy();
+        m.wview = undefined;
+      }
+      if (!m.wview && wkey) m.wview = this.gfx.createView(wkey);
+      m.wview?.setScale(scale);
+      m.wview?.followFrame(m.view);
+      m.wview?.place(x, y, depth + 0.02);
+    }
   }
 
   update(): void {
     const now = performance.now();
     this.fx.update(now);
+    this.mapLayer?.update(this.cameras.main.worldView);
+    if (now - this.lastSweepAt > 5000) {
+      this.lastSweepAt = now;
+      this.gfx.sweepIdle(now);
+    }
+    this.syncNpcViews();
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
       actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
-      if (actor.cloud) actor.cloud.setPosition(s.x, s.y - 4).setDepth(10 + pos.x + pos.y - 0.1);
+      if (actor.cloud) {
+        // the flight pháp bảo hovers: a slow bob (out of step between riders), and a trail of spirit light while they move
+        const bob = Math.sin(now / 340 + actor.id.length * 1.7) * 2.2;
+        actor.cloud.setPosition(s.x, s.y - 4 + bob).setDepth(10 + pos.x + pos.y - 0.1);
+        if (pos.moving && Math.random() < 0.35) this.fx.puff("trail", s.x - 14, s.y - 2, 1, FLIGHT_GLOW[flightStyleOf()]);
+      }
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);

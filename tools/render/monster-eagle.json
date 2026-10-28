@@ -1,0 +1,53 @@
+{
+  "extends": "sprite-config.json",
+  "name": "m_eagle",
+  "spriteKey": "monster.eagle",
+  "source": {
+    "model": "downloads/animals2/x/Animal Pack Vol.2 by @Quaternius/FBX/Eagle.fbx"
+  },
+  "rigName": "EagleArmature",
+  "stripObjectCurves": true,
+  "bodyMesh": "Eagle",
+  "hipsBone": "Bone",
+  "forwardBones": [
+    "Bone",
+    "Bone.003_end"
+  ],
+  "autoColors": [
+    1.8,
+    1.8,
+    1.8
+  ],
+  "figureScale": 0.15,
+  "sourceFps": 30,
+  "actionPrefix": "EagleArmature|EagleArmature|",
+  "onlyAnims": [
+    "idle",
+    "run",
+    "attack",
+    "die"
+  ],
+  "anims": {
+    "idle": {
+      "action": "Idle",
+      "frames": 4,
+      "loop": true
+    },
+    "run": {
+      "action": "Flying",
+      "frames": 8,
+      "loop": true
+    },
+    "attack": {
+      "action": "Flying",
+      "frames": 6,
+      "loop": false
+    },
+    "die": {
+      "action": "Idle",
+      "frames": 3,
+      "loop": false
+    }
+  },
+  "animsNote": "the pack has only Idle and Flying: attack replays the move once, die holds the idle pose (no hit animation either)"
+}
