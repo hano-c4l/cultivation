@@ -803,8 +803,7 @@
   "maps": {
     "*": [
       "char_female",
-      "char_male",
-      "m_dragon"
+      "char_male"
     ]
   }
 }
