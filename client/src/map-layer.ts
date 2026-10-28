@@ -155,6 +155,9 @@ export function ensureObstacleTexture(scene: Phaser.Scene, style: ObstacleStyle,
   return key;
 }
 
+/** The scan of one map's collision grid, kept for as long as that map object lives (a changed recipe makes a new object). */
+const CACHE = new WeakMap<MapData, { sprites: boolean; obstacles: Obstacles; index: Map<string, { cells: number[]; blobs: number[] }> }>();
+
 interface Chunk {
   /** The ground of this part of the map: a tile sprite of the chunk's size, so only the ground near the camera takes memory (one sprite for the whole map would hold a texture as big as the map). */
   ground?: Phaser.GameObjects.TileSprite;
@@ -186,11 +189,23 @@ export class MapLayer {
   ) {
     this.rect = playRectPixels(map);
     this.cw = map.width * CELLS_PER_TILE;
-    this.obstacles = obstacleBlobs(map);
     this.sprites = art.obstacle !== "plain";
+    // The scan of the collision grid (about 460 000 cells on the big maps) is the same every time the same map is drawn again: keep it.
+    const cached = CACHE.get(map);
+    if (cached && cached.sprites === this.sprites) {
+      this.obstacles = cached.obstacles;
+      this.index = cached.index;
+    } else {
+      this.obstacles = obstacleBlobs(map);
+      this.buildIndex(map);
+      CACHE.set(map, { sprites: this.sprites, obstacles: this.obstacles, index: this.index });
+    }
     this.groundKey = ensureGroundTexture(scene, map.palette, art.ground);
     this.patW = art.ground === "plain" ? TILE_W : GROUND_W;
     this.patH = art.ground === "plain" ? TILE_H : GROUND_H;
+  }
+
+  private buildIndex(map: MapData): void {
     const ch = map.height * CELLS_PER_TILE;
     const keyOf = (px: number, py: number): string => `${Math.floor((px - this.rect.x0) / CHUNK)},${Math.floor((py - this.rect.y0) / CHUNK)}`;
     const bucket = (key: string): { cells: number[]; blobs: number[] } => {

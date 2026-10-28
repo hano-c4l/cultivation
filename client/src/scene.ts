@@ -216,7 +216,7 @@ export class GameScene extends Phaser.Scene {
   private mapLayer?: MapLayer;
   private lastSweepAt = 0;
   /** The NPCs of the current map: their shape figure, name, and the sprite views that replace the figure. */
-  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView }> = [];
+  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView }> = [];
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
   private targetId: string | null = null;
@@ -456,20 +456,21 @@ export class GameScene extends Phaser.Scene {
           const a = (i / 6) * Math.PI * 2;
           g.fillStyle(0xe8e0ff, 0.9).fillCircle(p.x + Math.cos(a) * rx * 0.67, p.y + Math.sin(a) * ry * 0.67, 2.5);
         }
-        const label = this.add.text(p.x, p.y - ry - 4, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#e8e0ff", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(p.y + 2);
+        const label = this.add.text(p.x, p.y - ry - 4, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#e8e0ff", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(10 + npc.x + npc.y + 0.1);
         this.mapObjects.push(g, label);
         continue;
       }
       // Placeholder figure (a robe and a head) standing on the NPC's spot; a player body replaces it once the sprites are loaded (syncNpcViews).
-      const body = this.add.graphics().setDepth(p.y + 1);
+      const depth = 10 + npc.x + npc.y; // the same scale as players, monsters and trees (a tile sum), so they pass in front of and behind each other correctly
+      const body = this.add.graphics().setDepth(depth);
       body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : npc.kind === "alchemist" ? 0x5aa66a : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
       body.fillStyle(0xf2d6b0, 1).fillCircle(p.x, p.y - 36, 7);
       const label = this.add
         .text(p.x, p.y - 48, npc.name ?? vi.npcs[npc.id] ?? npc.id, { fontFamily: FONT, fontSize: "12px", color: "#ffe08a", stroke: "#000000", strokeThickness: 3 })
         .setOrigin(0.5, 1)
-        .setDepth(p.y + 2);
+        .setDepth(depth + 0.1);
       this.mapObjects.push(body, label);
-      this.npcFigures.push({ npc, x: p.x, y: p.y, body, label });
+      this.npcFigures.push({ npc, x: p.x, y: p.y, depth, body, label });
     }
   }
 
@@ -505,9 +506,9 @@ export class GameScene extends Phaser.Scene {
       }
       if (!f.wview && wkey) f.wview = this.gfx.createView(wkey);
       f.view.play("idle", 0);
-      f.view.place(f.x, f.y, f.y + 1);
+      f.view.place(f.x, f.y, f.depth);
       f.wview?.followFrame(f.view);
-      f.wview?.place(f.x, f.y, f.y + 1.02);
+      f.wview?.place(f.x, f.y, f.depth + 0.02);
       f.label.setY(f.y - f.view.rise() - 6);
     }
   }
