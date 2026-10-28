@@ -28,16 +28,20 @@ type P = { x: number; y: number };
 export class Effects {
   private readonly scene: Phaser.Scene;
   private readonly posOf: PosOf;
+  private readonly selfId: () => string | undefined;
   private readonly channels = new Map<string, Channel>();
   private oneShots = 0;
+  /** Bumped by `clear`: delayed parts of an effect check it, so they do not fire on the next map. */
+  private epoch = 0;
   /** Particles, glows, rings and the formation circle (everything that is not a line or a shape). */
   private readonly layer: FxLayer;
   /** The one-shots running now, so a clear can stop them (a tween that outlives its scene would draw into a destroyed object). */
   private readonly running = new Set<{ g: Phaser.GameObjects.Graphics; tween: Phaser.Tweens.Tween }>();
 
-  constructor(scene: Phaser.Scene, posOf: PosOf) {
+  constructor(scene: Phaser.Scene, posOf: PosOf, selfId: () => string | undefined = () => undefined) {
     this.scene = scene;
     this.posOf = posOf;
+    this.selfId = selfId;
     this.layer = new FxLayer(scene, FX_DEPTH);
   }
 
@@ -55,12 +59,12 @@ export class Effects {
     switch (kind) {
       case "melee":
         if (target) {
-          if (tpl === "ngu_kiem_tram") this.swords(from ?? target, target, color, lvl);
+          if (tpl === "ngu_kiem_tram") this.swords(from ?? target, target, color, lvl, 4 + Math.round(3 * lvl));
           else this.melee(target, color, style, from ?? undefined, lvl, tpl);
         }
         break;
       case "ranged":
-        if (from && target) this.bolt(from, target, color, style, false, lvl);
+        if (from && target) this.spell(from, target, color, style, lvl);
         break;
       case "cone":
         if (from && target) this.cone(from, target, 5 * 32, 45, color);
@@ -169,6 +173,7 @@ export class Effects {
     for (const ch of this.channels.values()) ch.gfx.destroy();
     this.channels.clear();
     this.layer.clear();
+    this.epoch++;
     for (const r of this.running) {
       r.tween.stop();
       r.g.destroy();
@@ -330,17 +335,18 @@ export class Effects {
   }
 
   /** Flying swords: three blades leave the caster, arc and strike the target one after another. */
-  private swords(from: P, to: P, color: number, lvl: number): void {
-    for (let i = 0; i < 3; i++) {
-      this.scene.time.delayedCall(i * 110, () => {
-        const fx = from.x + (i - 1) * 16;
-        const fy = from.y - 46 - Math.abs(i - 1) * 8;
+  private swords(from: P, to: P, color: number, lvl: number, count = 3): void {
+    for (let i = 0; i < count; i++) {
+      this.later(i * 90, () => {
+        const mid = (count - 1) / 2;
+        const fx = from.x + (i - mid) * 14;
+        const fy = from.y - 46 - Math.abs(i - mid) * 7;
         const tx = to.x;
         const ty = to.y - 22;
         const dur = 260;
         this.shot(dur + 120, FX_DEPTH, (g, p) => {
           const t = Math.min(1, (p * (dur + 120)) / dur);
-          const arc = Math.sin(t * Math.PI) * (26 + 14 * i);
+          const arc = Math.sin(t * Math.PI) * (26 + 12 * (i % 3));
           const x = fx + (tx - fx) * t;
           const y = fy + (ty - fy) * t - arc;
           const ang = Math.atan2(ty - fy - arc * 0.2, tx - fx);
@@ -352,12 +358,278 @@ export class Effects {
             this.diamond(g, x, y, ang, 15, 3.2);
           } else if (!g.getData("hit")) {
             g.setData("hit", true);
-            this.layer.crescent(tx - 14, ty - 6, ang, 110 + 40 * lvl, color, 300);
+            this.layer.crescent(tx - 14, ty - 6, ang + i * 0.5, 110 + 40 * lvl, color, 300);
             this.impact(tx, ty, "kim", color, lvl * 0.6);
+            if (i === count - 1) {
+              this.layer.glow(tx, ty, 0xffffff, 0.6, 3, 360, 0.9);
+              this.layer.ring(tx, ty + 14, color, 0.3, 1.8 + lvl, 480, 0.9);
+              this.shake(lvl, { x: tx, y: ty });
+            }
           }
         });
       });
     }
+  }
+
+  /** Runs `fn` after `ms`, unless the effects were cleared meanwhile (a new map must not get the last map's blast). */
+  private later(ms: number, fn: () => void): void {
+    const epoch = this.epoch;
+    this.scene.time.delayedCall(ms, () => {
+      if (epoch === this.epoch) fn();
+    });
+  }
+
+  /** A small shake of the view for a heavy blow at `at`: only when the effect is strong and lands near you (a crowded map must not shake all the time). */
+  private shake(lvl: number, at: P): void {
+    if (lvl <= 0.45) return;
+    const me = this.selfId();
+    const p = me ? this.posOf(me) : null;
+    if (p && Math.hypot(p.x - at.x, p.y - at.y) < 170) this.scene.cameras.main.shake(130, 0.0015 + 0.003 * lvl);
+  }
+
+  /**
+   * The spell of an element thrown at a target: what lands is the sign of that element, not a plain bolt. Fire falls from the sky as a meteor and
+   * bursts, metal is a flight of swords, ice rises from the ground in spikes and shatters, lightning strikes again and again, wood is thorns erupting,
+   * water a geyser, earth a falling boulder, wind a tornado. `lvl` (0..1) is the strength of the skill: more swords, more spikes, a bigger blast.
+   */
+  private spell(from: P, to: P, color: number, style: ElementStyle, lvl: number): void {
+    switch (style) {
+      case "hoa":
+        return this.meteor(to, lvl);
+      case "kim":
+        return this.swords(from, to, color, lvl, 3 + Math.round(4 * lvl));
+      case "bang":
+        return this.iceSpikes(to, lvl);
+      case "loi":
+        return this.thunder(to, color, lvl);
+      case "moc":
+        return this.thorns(to, lvl);
+      case "thuy":
+        return this.geyser(to, lvl);
+      case "tho":
+        return this.boulder(to, lvl);
+      case "phong":
+        return this.tornado(to, lvl);
+      default:
+        return this.bolt(from, to, color, style, false, lvl);
+    }
+  }
+
+  /** The blast of a fire spell on the ground: a swelling fireball, a shock ring, flying embers and smoke, and a scorch mark that stays a while. */
+  private blast(x: number, y: number, lvl: number): void {
+    const L = this.layer;
+    L.glow(x, y - 8, 0xffd08a, 0.8, 3.2 + 2 * lvl, 420, 0.95);
+    L.glow(x, y - 8, 0xff6a2a, 0.6, 4.4 + 2.4 * lvl, 560, 0.7);
+    L.ring(x, y + 12, 0xffa04a, 0.3, 2 + 1.4 * lvl, 560, 0.95);
+    L.puff("ember", x, y - 4, 16 + Math.round(12 * lvl), 0xff7a2a);
+    L.puff("ember", x, y - 4, 6, 0xffe9a0);
+    L.puff("spark", x, y - 8, 8, 0xffffff);
+    L.puff("smoke", x, y - 10, 6, 0x4a3c38);
+    this.shot(1300, 0.62, (g, p) => {
+      g.fillStyle(0x1a120e, 0.5 * (1 - p)).fillEllipse(x, y + 10, 70 + 30 * lvl, 30 + 12 * lvl);
+    });
+    this.shot(480, FX_DEPTH, (g, p) => {
+      g.lineStyle(5 * (1 - p) + 1, 0xffd08a, 1 - p).strokeEllipse(x, y + 6, 30 + 190 * p * (0.7 + 0.5 * lvl), 15 + 90 * p * (0.7 + 0.5 * lvl));
+    });
+    this.shake(lvl, { x, y });
+  }
+
+  /** A fireball falls from the sky onto the target and bursts. */
+  private meteor(to: P, lvl: number): void {
+    const tx = to.x;
+    const ty = to.y - 6;
+    const sx = tx - 90;
+    const sy = ty - 330;
+    const dur = 460;
+    this.layer.ring(tx, ty + 12, 0xff7a2a, 0.15, 0.8, dur, 0.5); // the mark on the ground a moment before it lands
+    this.shot(dur, FX_DEPTH, (g, p) => {
+      const t = p * p * (0.35 + 0.65 * p);
+      const x = sx + (tx - sx) * t;
+      const y = sy + (ty - sy) * t;
+      g.fillStyle(0xff5a1a, 0.3).fillCircle(x, y, 30 + 10 * lvl);
+      g.fillStyle(0xff8a2a, 0.9).fillCircle(x, y, 17 + 6 * lvl);
+      g.fillStyle(0xffe9a0, 1).fillCircle(x, y, 9);
+      this.layer.puff("ember", x - 6, y - 6, 2, 0xff7a2a);
+      if (Math.random() < 0.5) this.layer.puff("smoke", x - 10, y - 12, 1, 0x4a3c38);
+    });
+    this.later(dur, () => {
+      this.blast(tx, ty, lvl);
+      this.impact(tx, ty - 16, "hoa", 0xff7a45, lvl * 0.4);
+    });
+  }
+
+  /** Spikes of ice grow out of the ground round the target, hold, and shatter. */
+  private iceSpikes(to: P, lvl: number): void {
+    const tx = to.x;
+    const ty = to.y + 6;
+    const n = 6 + Math.round(4 * lvl);
+    const spikes = Array.from({ length: n }, (_, i) => {
+      const a = (i / n) * Math.PI * 2 + 0.3;
+      const r = i % 2 ? 30 : 16;
+      return { x: tx + Math.cos(a) * r, y: ty + Math.sin(a) * r * 0.5, lean: Math.cos(a) * 9, h: (38 + 34 * lvl) * (i % 2 ? 0.75 : 1.1), wait: (i % 3) * 0.04 };
+    });
+    this.layer.sigil(tx, ty, 0x9ee7ff, 46 + 14 * lvl, 800, 0.5);
+    this.shot(950, FX_DEPTH, (g, p) => {
+      for (const s of spikes) {
+        const grow = Math.min(1, Math.max(0, (p - s.wait) / 0.18));
+        const out = p > 0.72 ? 1 - (p - 0.72) / 0.28 : 1;
+        if (grow <= 0 || out <= 0) continue;
+        const h = s.h * (1 - (1 - grow) * (1 - grow));
+        const w = 7 + 3 * lvl;
+        g.fillStyle(0x8fd8ff, 0.9 * out).fillTriangle(s.x - w, s.y, s.x + w, s.y, s.x + s.lean * grow, s.y - h);
+        g.fillStyle(0xe6fbff, 0.9 * out).fillTriangle(s.x - w * 0.2, s.y, s.x + w, s.y, s.x + s.lean * grow, s.y - h);
+        g.lineStyle(1.5, 0xffffff, 0.9 * out).lineBetween(s.x - w, s.y, s.x + s.lean * grow, s.y - h);
+      }
+      if (p > 0.72 && !g.getData("shatter")) {
+        g.setData("shatter", true);
+        this.layer.puff("shard", tx, ty - 16, 14 + Math.round(8 * lvl), 0xc8f4ff);
+        this.layer.puff("spark", tx, ty - 20, 8, 0xffffff);
+        this.layer.glow(tx, ty - 18, 0xbfeaff, 0.6, 2.2, 360, 0.8);
+      }
+    });
+    this.later(120, () => this.impact(tx, ty - 16, "bang", 0x9ee7ff, lvl * 0.4));
+    this.shake(lvl * 0.7, { x: tx, y: ty });
+  }
+
+  /** Lightning strikes the target again and again, one blow after another. */
+  private thunder(to: P, color: number, lvl: number): void {
+    const n = 2 + Math.round(3 * lvl);
+    for (let i = 0; i < n; i++) {
+      this.later(i * 110, () => {
+        const x = to.x + (i === 0 ? 0 : (Math.random() - 0.5) * 60);
+        const y = to.y - 8 + (i === 0 ? 0 : (Math.random() - 0.5) * 24);
+        this.strike(x, y, color);
+        this.layer.glow(x, y - 10, 0xf0e0ff, 0.5, 2 + lvl, 260, 0.9);
+        this.layer.puff("spark", x, y - 10, 8, 0xf0e0ff);
+        if (i === 0) this.layer.sigil(to.x, to.y + 6, color, 50 + 14 * lvl, 700, 0.5);
+      });
+    }
+    this.later(n * 110, () => this.layer.ring(to.x, to.y + 14, color, 0.3, 1.8 + lvl, 500, 0.9));
+    this.shake(lvl, to);
+  }
+
+  /** Thorned vines burst out of the ground round the target and lash up, throwing leaves. */
+  private thorns(to: P, lvl: number): void {
+    const tx = to.x;
+    const ty = to.y + 6;
+    const n = 6 + Math.round(3 * lvl);
+    const vines = Array.from({ length: n }, (_, i) => {
+      const a = (i / n) * Math.PI * 2;
+      return { x: tx + Math.cos(a) * 24, y: ty + Math.sin(a) * 12, h: 46 + 30 * lvl, sway: (i % 2 ? 1 : -1) * (12 + (i % 3) * 5), wait: (i % 3) * 0.05 };
+    });
+    this.layer.sigil(tx, ty, 0x6fcf6f, 46 + 12 * lvl, 800, 0.5);
+    this.shot(900, FX_DEPTH, (g, p) => {
+      const out = p > 0.75 ? 1 - (p - 0.75) / 0.25 : 1;
+      for (const v of vines) {
+        const grow = Math.min(1, Math.max(0, (p - v.wait) / 0.3));
+        if (grow <= 0 || out <= 0) continue;
+        const pts: P[] = [];
+        for (let k = 0; k <= 8; k++) {
+          const u = (k / 8) * grow;
+          pts.push({ x: v.x + Math.sin(u * 3 + p * 4) * v.sway * u + (tx - v.x) * u * 0.5, y: v.y - v.h * u });
+        }
+        for (const [w, c] of [[6, 0x2f7d38], [3, 0x6fcf6f]] as const) {
+          g.lineStyle(w * (1 - 0.4 * grow), c, out).beginPath().moveTo(pts[0]?.x ?? v.x, pts[0]?.y ?? v.y);
+          for (const q of pts) g.lineTo(q.x, q.y);
+          g.strokePath();
+        }
+        const tip = pts[pts.length - 1];
+        if (tip) {
+          g.fillStyle(0xd6ffcf, out);
+          this.diamond(g, tip.x, tip.y, -1.2, 7, 2.6);
+        }
+      }
+      if (p > 0.3 && !g.getData("leaves")) {
+        g.setData("leaves", true);
+        this.layer.puff("petal", tx, ty - 24, 12 + Math.round(6 * lvl), 0x8fe08f);
+        this.layer.puff("mote", tx, ty - 10, 6, 0xd6ffcf);
+      }
+    });
+    this.later(160, () => this.impact(tx, ty - 16, "moc", 0x6fcf6f, lvl * 0.4));
+  }
+
+  /** A geyser of water bursts up under the target and falls back in drops. */
+  private geyser(to: P, lvl: number): void {
+    const tx = to.x;
+    const ty = to.y + 8;
+    this.layer.sigil(tx, ty, 0x5aa9ff, 46 + 12 * lvl, 750, 0.5);
+    this.layer.ring(tx, ty, 0x9fd0ff, 0.2, 1.6 + lvl, 600, 0.9);
+    this.shot(820, FX_DEPTH, (g, p) => {
+      const up = Math.sin(Math.min(1, p / 0.75) * Math.PI * 0.5);
+      const fall = p > 0.6 ? 1 - (p - 0.6) / 0.4 : 1;
+      const h = (90 + 50 * lvl) * up * fall;
+      const w = 15 + 7 * lvl;
+      if (h > 1) {
+        g.fillStyle(0x5aa9ff, 0.55 * fall).fillRect(tx - w, ty - h, w * 2, h);
+        g.fillStyle(0xbfe3ff, 0.7 * fall).fillRect(tx - w * 0.45, ty - h, w * 0.9, h);
+        g.fillStyle(0xdff1ff, 0.9 * fall).fillEllipse(tx, ty - h, w * 2.6, w * 1.1);
+        g.fillStyle(0x5aa9ff, 0.5 * fall).fillEllipse(tx, ty, w * 3, w * 1.2);
+      }
+      if (p > 0.45 && !g.getData("splash")) {
+        g.setData("splash", true);
+        this.layer.puff("drop", tx, ty - 60, 16 + Math.round(8 * lvl), 0x8fd0ff);
+        this.layer.puff("spark", tx, ty - 50, 6, 0xe6f6ff);
+      }
+    });
+    this.later(140, () => this.impact(tx, ty - 22, "thuy", 0x5aa9ff, lvl * 0.4));
+  }
+
+  /** A boulder falls from the sky onto the target and breaks in a cloud of dust. */
+  private boulder(to: P, lvl: number): void {
+    const tx = to.x;
+    const ty = to.y - 4;
+    const sx = tx + 40;
+    const sy = ty - 300;
+    const dur = 430;
+    const r = 18 + 8 * lvl;
+    this.layer.ring(tx, ty + 14, 0xc49a5a, 0.15, 0.9, dur, 0.55);
+    this.shot(dur, FX_DEPTH, (g, p) => {
+      const t = p * p * (0.35 + 0.65 * p);
+      const x = sx + (tx - sx) * t;
+      const y = sy + (ty - sy) * t;
+      g.fillStyle(0x6b4a2a, 1).fillCircle(x, y, r);
+      g.fillStyle(0x8a6a3a, 1).fillCircle(x - r * 0.25, y - r * 0.25, r * 0.7);
+      g.fillStyle(0xb48a52, 1).fillCircle(x - r * 0.4, y - r * 0.4, r * 0.3);
+      g.lineStyle(2, 0x2a1c0e, 1).strokeCircle(x, y, r);
+      this.layer.puff("smoke", x, y - r, 1, 0x8a6a3a);
+    });
+    this.later(dur, () => {
+      const L = this.layer;
+      L.puff("shard", tx, ty - 6, 14 + Math.round(8 * lvl), 0xb48a52);
+      L.puff("smoke", tx, ty + 4, 8, 0x9a7a4a);
+      L.glow(tx, ty - 6, 0xe0c48a, 0.5, 2.4 + lvl, 320, 0.7);
+      L.ring(tx, ty + 12, 0xc49a5a, 0.3, 2 + lvl, 520, 0.95);
+      this.shot(1100, 0.62, (g, p) => {
+        g.fillStyle(0x2a1c0e, 0.45 * (1 - p)).fillEllipse(tx, ty + 12, 56 + 20 * lvl, 24 + 8 * lvl);
+      });
+      this.impact(tx, ty - 16, "tho", 0xc49a5a, lvl * 0.4);
+      this.shake(lvl, { x: tx, y: ty });
+    });
+  }
+
+  /** A tornado stands up on the target, whirling, then breaks into wisps. */
+  private tornado(to: P, lvl: number): void {
+    const tx = to.x;
+    const ty = to.y + 6;
+    this.layer.sigil(tx, ty, 0xb8f5c0, 46 + 12 * lvl, 800, 1, 0.8);
+    this.shot(900, FX_DEPTH, (g, p) => {
+      const grow = Math.min(1, p / 0.25);
+      const out = p > 0.75 ? 1 - (p - 0.75) / 0.25 : 1;
+      const rings = 9;
+      for (let i = 0; i < rings; i++) {
+        const u = i / (rings - 1);
+        const x = tx + Math.sin(p * 18 + u * 5) * (5 + 6 * u);
+        const y = ty - u * (100 + 40 * lvl) * grow;
+        const rx = (10 + 26 * u) * (0.6 + 0.4 * grow);
+        g.lineStyle(3, i % 2 ? 0xe8fff0 : 0xb8f5c0, (0.9 - 0.4 * u) * out).strokeEllipse(x, y, rx * 2, rx * 0.8);
+      }
+      if (Math.random() < 0.6) this.layer.puff("smoke", tx + (Math.random() - 0.5) * 40, ty - Math.random() * 80, 1, 0xcdf7dc);
+      if (p > 0.7 && !g.getData("end")) {
+        g.setData("end", true);
+        this.layer.puff("spark", tx, ty - 50, 10, 0xe8fff0);
+      }
+    });
+    this.later(160, () => this.impact(tx, ty - 22, "phong", 0xb8f5c0, lvl * 0.4));
   }
 
   /** A single target hit from afar: a glowing bolt with a trail of its element flies from the caster to the target and bursts. */

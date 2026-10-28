@@ -77,6 +77,9 @@ import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { Effects } from "./fx";
 import { FLIGHT_GLOW, FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
+
+/** `#rrggbb` as a number, or undefined (no tint) when there is none. */
+const hexOf = (hex: string | undefined): number | undefined => (hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? parseInt(hex.slice(1), 16) : undefined);
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
@@ -133,6 +136,8 @@ interface Actor {
   /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
   mounted: boolean;
   cloud?: Phaser.GameObjects.Image;
+  /** Where the rider was on screen last frame and the way they are heading (radians on screen), so a flying sword points where it flies. */
+  fly?: { x: number; y: number; a: number };
   /** The sprite that replaces the oval body when the manifest has one for it (phase 4); the body stays as the camera anchor, hidden. */
   view?: GfxView;
   /** Drawn with the female body (from the snapshot); picks the sprite. */
@@ -158,6 +163,8 @@ interface MonsterActor {
   view?: GfxView;
   /** The weapon sprite of a guard (a guard is drawn as a player body holding a weapon, from the tuning `npcLooks`). */
   wview?: GfxView;
+  /** The formation circle under a guard (from the tuning `npcLooks`). */
+  aura?: Phaser.GameObjects.Container;
   /** A vệ binh: own name and colour, and it is only clicked (attacked) with the PK state on. */
   guard: boolean;
   /** The map boss: red name, big body. */
@@ -222,7 +229,7 @@ export class GameScene extends Phaser.Scene {
   private mapLayer?: MapLayer;
   private lastSweepAt = 0;
   /** The NPCs of the current map: their shape figure, name, and the sprite views that replace the figure. */
-  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView }> = [];
+  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView; aura?: Phaser.GameObjects.Container }> = [];
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
   private targetId: string | null = null;
@@ -326,7 +333,7 @@ export class GameScene extends Phaser.Scene {
     this.waygate = initWaygate((msg) => this.net.send(msg));
     ensureFlightTextures(this);
     ensureFxTextures(this);
-    this.fx = new Effects(this, (id) => this.screenPosOf(id));
+    this.fx = new Effects(this, (id) => this.screenPosOf(id), () => this.selfId);
     this.gfx = new GfxKit(this);
     this.gfx.useMap(this.map.id);
     void this.gfx.init();
@@ -419,6 +426,7 @@ export class GameScene extends Phaser.Scene {
     for (const f of this.npcFigures) {
       f.view?.destroy();
       f.wview?.destroy();
+      f.aura?.destroy();
     }
     this.npcFigures = [];
     for (const obj of this.mapObjects) obj.destroy();
@@ -484,6 +492,15 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** A formation circle turning slowly on the ground at (x, y) in `color` (`#rrggbb`): the mark of a cultivator (an NPC, a guard). */
+  private makeAura(x: number, y: number, color: string, radius: number, depth: number): Phaser.GameObjects.Container {
+    const rune = this.add.image(0, 0, FX_TEX.rune).setBlendMode(Phaser.BlendModes.ADD).setTint(hexOf(color) ?? 0xffffff).setAlpha(0.6);
+    const box = this.add.container(x, y, [rune]).setScale((radius * 2) / 256, (radius * 2 * 0.5) / 256).setDepth(depth);
+    const spin = this.tweens.add({ targets: rune, rotation: Math.PI * 2, duration: 16_000, repeat: -1 });
+    box.once("destroy", () => spin.stop());
+    return box;
+  }
+
   /**
    * NPCs are player bodies (male or female, an outfit, a weapon) chosen by the tuning `npcLooks`. The sprites may load after the map is drawn, so the views
    * are made here, a frame at a time: the shape figure stays until its sprite exists, a changed outfit swaps the view, and the name rides at the head.
@@ -516,6 +533,8 @@ export class GameScene extends Phaser.Scene {
       }
       if (!f.wview && wkey) f.wview = this.gfx.createView(wkey);
       f.view.play("idle", 0);
+      f.view.setTint(hexOf(look.tint));
+      if (look.aura && !f.aura) f.aura = this.makeAura(f.x, f.y + 2, look.aura, 32, 0.45);
       f.view.place(f.x, f.y, f.depth);
       f.wview?.followFrame(f.view);
       f.wview?.place(f.x, f.y, f.depth + 0.02);
@@ -1400,6 +1419,7 @@ export class GameScene extends Phaser.Scene {
     if (!m) return;
     m.wview?.destroy();
     m.view?.destroy();
+    m.aura?.destroy();
     m.body.destroy();
     m.label.destroy();
     m.icon.destroy();
@@ -1612,10 +1632,12 @@ export class GameScene extends Phaser.Scene {
     }
     const scale = (look?.scale ?? 1) * (m.boss ? 2 : m.rank === "rare2" ? 1.4 : m.rank === "rare1" ? 1.2 : 1);
     m.view.setScale(scale);
-    if (!look) m.view.setTint(monsterTintOf(m.element)); // one model, a colour for each element
+    m.view.setTint(look ? hexOf(look.tint) : monsterTintOf(m.element)); // one model, a colour for each element; a guard wears its own robe colour
     m.view.play(positionAlongPath(m.path, now - m.startedAt, m.speed).moving ? "run" : "idle", headingAlongPath(m.path, now - m.startedAt, m.speed) ?? m.view.dir);
     if (!m.view.alive) return;
     m.view.place(x, y, depth);
+    if (look?.aura && !m.aura) m.aura = this.makeAura(x, y + 2, look.aura, 46, 0.45);
+    m.aura?.setPosition(x, y + 2);
     if (look) {
       const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
       if (m.wview && (!m.wview.alive || m.wview.key !== wkey)) {
@@ -1643,10 +1665,26 @@ export class GameScene extends Phaser.Scene {
       const s = toScreen(pos.x, pos.y);
       actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
       if (actor.cloud) {
-        // the flight pháp bảo hovers: a slow bob (out of step between riders), and a trail of spirit light while they move
+        // the flight pháp bảo hovers: a slow bob (out of step between riders); a sword turns to the way it flies and sheds spirit light from its tail
         const bob = Math.sin(now / 340 + actor.id.length * 1.7) * 2.2;
+        const fly = actor.fly ?? (actor.fly = { x: s.x, y: s.y, a: 0 });
+        const dx = s.x - fly.x;
+        const dy = s.y - fly.y;
+        if (dx * dx + dy * dy > 0.3) {
+          const diff = Math.atan2(Math.sin(Math.atan2(dy, dx) - fly.a), Math.cos(Math.atan2(dy, dx) - fly.a));
+          fly.a += diff * 0.22;
+        }
+        fly.x = s.x;
+        fly.y = s.y;
+        const sword = actor.cloud.texture.key === FLIGHT_TEX.sword;
+        const ca = Math.cos(fly.a);
+        const sa = Math.sin(fly.a);
+        // the sword lies on the ground, which is squashed 2:1 on screen: along a screen-vertical heading it is seen half as long
+        const ga = Math.atan2(2 * sa, ca);
+        const along = sword ? Math.hypot(Math.cos(ga), 0.5 * Math.sin(ga)) : 1;
         actor.cloud.setPosition(s.x, s.y - 4 + bob).setDepth(10 + pos.x + pos.y - 0.1);
-        if (pos.moving && Math.random() < 0.35) this.fx.puff("trail", s.x - 14, s.y - 2, 1, FLIGHT_GLOW[flightStyleOf()]);
+        actor.cloud.setRotation(sword ? fly.a : 0).setFlipY(sword && ca < 0).setScale(along, 1);
+        if (pos.moving && Math.random() < 0.4) this.fx.puff("trail", s.x - (sword ? ca * 50 * along : 14), s.y - 4 + bob - (sword ? sa * 50 * along : 0), 1, FLIGHT_GLOW[flightStyleOf()]);
       }
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);

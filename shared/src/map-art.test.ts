@@ -50,10 +50,10 @@ describe("map art and NPC looks", () => {
   });
 
   it("an NPC look follows id, then id without its number, then kind; a waygate has none", () => {
-    expect(npcLookOf({ id: "elder", kind: "quest" })).toEqual({ body: "male", outfit: "ranger" });
-    expect(npcLookOf({ id: "smith2", kind: "smith" })).toEqual({ body: "male", weapon: "riu" }); // by kind: smith has no entry of its own
+    expect(npcLookOf({ id: "elder", kind: "quest" })).toEqual(DEFAULT_TUNING.npcLooks.byId.elder);
+    expect(npcLookOf({ id: "smith2", kind: "smith" })).toEqual(DEFAULT_TUNING.npcLooks.byKind.smith); // by kind: smith has no entry of its own
     expect(npcLookOf({ id: "path_kiem", kind: "quest" })?.weapon).toBe("kiem");
-    expect(npcLookOf({ id: "stranger", kind: "merchant" })).toEqual({ body: "male" });
+    expect(npcLookOf({ id: "stranger", kind: "merchant" })).toEqual(DEFAULT_TUNING.npcLooks.byKind.merchant);
     expect(npcLookOf({ id: "waygate", kind: "waygate" })).toBeNull();
     setTuning({ npcLooks: { byKind: {}, byId: { smith: { body: "female" } } } });
     expect(npcLookOf({ id: "smith2", kind: "smith" })).toEqual({ body: "female" });
@@ -108,6 +108,16 @@ describe("map art and NPC looks", () => {
     expect(flightStyleOf()).toBe("lotus");
     expect(validTuningGroup("flightLooks", DEFAULT_TUNING.flightLooks)).toBe(true);
     expect(validTuningGroup("flightLooks", { default: "jetpack" })).toBe(false);
+  });
+
+  it("every NPC and the guard wear a xianxia robe with a colour and a formation circle", () => {
+    const looks = [...Object.values(DEFAULT_TUNING.npcLooks.byKind), ...Object.values(DEFAULT_TUNING.npcLooks.byId)];
+    for (const l of looks) {
+      expect(l.tint, JSON.stringify(l)).toMatch(/^#[0-9a-f]{6}$/);
+      expect(l.aura, JSON.stringify(l)).toMatch(/^#[0-9a-f]{6}$/);
+    }
+    expect(validTuningGroup("npcLooks", { byKind: { quest: { body: "male", tint: "green" } }, byId: {} })).toBe(false);
+    expect(validTuningGroup("npcLooks", { byKind: { quest: { body: "male", tint: "#aabbcc", aura: "#112233" } }, byId: {} })).toBe(true);
   });
 
   it("validates both groups", () => {

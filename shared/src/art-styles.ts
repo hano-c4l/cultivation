@@ -16,4 +16,8 @@ export interface NpcLook {
   weapon?: string;
   /** Drawn this many times its size (a guard is bigger than a villager). */
   scale?: number;
+  /** A colour (`#rrggbb`) the whole figure is multiplied by, so one white robe makes jade, gold, violet or steel-blue ones (WebGL only: Canvas draws it white). */
+  tint?: string;
+  /** A colour (`#rrggbb`) for the formation circle that turns slowly under the figure. */
+  aura?: string;
 }
