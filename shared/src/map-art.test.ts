@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { CELLS_PER_TILE, DEFAULT_TUNING, SMALL_BLOB_CELLS, getMap, hash2, isCellWalkable, mapArtOf, npcLookOf, obstacleBlobs, resetTuning, setTuning, validTuningGroup } from "./index";
+import { CELLS_PER_TILE, DEFAULT_TUNING, SMALL_BLOB_CELLS, getMap, guardLookOf, hash2, isCellWalkable, mapArtOf, npcLookOf, obstacleBlobs, obstacleStyleOf, resetTuning, setTuning, validTuningGroup } from "./index";
 
 afterEach(() => resetTuning());
 
@@ -43,10 +43,10 @@ describe("obstacle blobs", () => {
 
 describe("map art and NPC looks", () => {
   it("a map without an entry is drawn plain; the defaults style the maps the code builds", () => {
-    expect(mapArtOf("no_such_map")).toEqual({ ground: "plain", obstacle: "plain" });
-    expect(mapArtOf("forest")).toEqual({ ground: "grass", obstacle: "tree" });
+    expect(mapArtOf("no_such_map")).toEqual({ ground: "plain", obstacle: "plain", mix: ["plain"] });
+    expect(mapArtOf("forest")).toMatchObject({ ground: "grass", obstacle: "tree" });
     setTuning({ mapArt: { maps: { forest: { ground: "snow", obstacle: "crystal" } } } });
-    expect(mapArtOf("forest")).toEqual({ ground: "snow", obstacle: "crystal" });
+    expect(mapArtOf("forest")).toEqual({ ground: "snow", obstacle: "crystal", mix: ["crystal"] });
   });
 
   it("an NPC look follows id, then id without its number, then kind; a waygate has none", () => {
@@ -60,10 +60,41 @@ describe("map art and NPC looks", () => {
     expect(npcLookOf({ id: "nobody", kind: "quest" })).toEqual({ body: "male" });
   });
 
+  it("a map with a mix draws more than one look, always the same one for the same spot", () => {
+    const art = mapArtOf("forest");
+    expect(art.mix.length).toBeGreaterThan(1);
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const style = obstacleStyleOf(art, { x: i * 1.7, y: i * 0.9 });
+      expect(art.mix).toContain(style);
+      expect(obstacleStyleOf(art, { x: i * 1.7, y: i * 0.9 })).toBe(style);
+      seen.add(style);
+    }
+    expect(seen.size).toBeGreaterThan(2);
+  });
+
+  it("an entry stored before the mix existed gets the default mix of its map; an unknown or plain map stays plain", () => {
+    setTuning({ mapArt: { maps: { cave: { ground: "stone", obstacle: "pillar" }, x: { ground: "snow", obstacle: "rock" } } } });
+    expect(mapArtOf("cave").mix).toEqual(DEFAULT_TUNING.mapArt.maps.cave?.mix);
+    expect(mapArtOf("x").mix).toEqual(["rock"]);
+    expect(mapArtOf("nowhere").mix).toEqual(["plain"]);
+  });
+
+  it("a guard has a look, big and armed, even when the stored table has none", () => {
+    expect(guardLookOf().scale).toBeGreaterThan(1);
+    expect(guardLookOf().weapon).toBeTruthy();
+    setTuning({ npcLooks: { byKind: {}, byId: {} } });
+    expect(guardLookOf()).toEqual(DEFAULT_TUNING.npcLooks.byKind.guard);
+  });
+
   it("validates both groups", () => {
     expect(validTuningGroup("mapArt", DEFAULT_TUNING.mapArt)).toBe(true);
     expect(validTuningGroup("mapArt", { maps: { a: { ground: "lava", obstacle: "tree" } } })).toBe(true);
     expect(validTuningGroup("mapArt", { maps: { a: { ground: "nope", obstacle: "tree" } } })).toBe(false);
+    expect(validTuningGroup("mapArt", { maps: { a: { ground: "lava", obstacle: "tree", mix: ["tree", "bush"] } } })).toBe(true);
+    expect(validTuningGroup("mapArt", { maps: { a: { ground: "lava", obstacle: "tree", mix: [] } } })).toBe(false);
+    expect(validTuningGroup("mapArt", { maps: { a: { ground: "lava", obstacle: "tree", mix: ["nope"] } } })).toBe(false);
+    expect(validTuningGroup("npcLooks", { byKind: { guard: { body: "male", scale: 9 } }, byId: {} })).toBe(false);
     expect(validTuningGroup("mapArt", { maps: { "Bad Key": { ground: "lava", obstacle: "tree" } } })).toBe(false);
     expect(validTuningGroup("npcLooks", DEFAULT_TUNING.npcLooks)).toBe(true);
     expect(validTuningGroup("npcLooks", { byKind: { quest: { body: "alien" } }, byId: {} })).toBe(false);
