@@ -36,12 +36,11 @@ import {
   type CharacterSheet,
   type MonsterRank,
   type MonsterSnapshot,
-  CELLS_PER_TILE,
   findSmoothPath,
   getMap,
-  isCellWalkable,
-  inPlayRect,
   isMapId,
+  mapArtOf,
+  npcLookOf,
   playRectPixels,
   portalNear,
   positionAlongPath,
@@ -90,6 +89,8 @@ import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
 import { GfxKit, ONE_SHOT_MS, type GfxView } from "./gfx/kit";
 import { skillFxOf, weaponEquipped } from "./fx-kinds";
+import { initPerf } from "./perf-ui";
+import { MapLayer } from "./map-layer";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
 
@@ -207,36 +208,15 @@ function applyTrack(actor: Actor, path: Vec2[], startedAt: number, speed: number
 
 /** Radius (tiles) of the teleport array drawn on the ground and of the click that opens it. */
 const WAYGATE_RADIUS = 1.3;
-/** Pixel size of one texture of obstacles (kept under the 4096 limit of small GPUs, and not too many textures for a big map). */
-const CHUNK = 1024;
-
-
-/**
- * The repeating ground pattern: 64 x 32 px holding two tiles of the checker, so it lines up with the isometric grid when tiled (the tile whose top
- * vertex is at world (0, 0) is the even one; its pattern x is the world x plus half a tile).
- */
-function ensureGroundTexture(scene: Phaser.Scene, palette: MapData["palette"]): string {
-  const key = `ground-${palette.groundA.toString(16)}-${palette.groundB.toString(16)}`;
-  if (scene.textures.exists(key)) return key;
-  const g = scene.make.graphics({}, false);
-  const tile = (cx: number, cy: number, color: number) => {
-    const pts = [new Phaser.Math.Vector2(cx, cy - TILE_H / 2), new Phaser.Math.Vector2(cx + TILE_W / 2, cy), new Phaser.Math.Vector2(cx, cy + TILE_H / 2), new Phaser.Math.Vector2(cx - TILE_W / 2, cy)];
-    g.fillStyle(color, 1);
-    g.lineStyle(1, 0x000000, 0.18);
-    g.fillPoints(pts, true);
-    g.strokePoints(pts, true);
-  };
-  tile(TILE_W / 2, TILE_H / 2, palette.groundA);
-  for (const [cx, cy] of [[0, 0], [TILE_W, 0], [0, TILE_H], [TILE_W, TILE_H]] as const) tile(cx, cy, palette.groundB);
-  g.generateTexture(key, TILE_W, TILE_H);
-  g.destroy();
-  return key;
-}
-
 export class GameScene extends Phaser.Scene {
   private gfx!: GfxKit;
   private map: MapData = getMap("town");
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
+  /** The obstacles and walls around the camera (built and dropped as it moves). */
+  private mapLayer?: MapLayer;
+  private lastSweepAt = 0;
+  /** The NPCs of the current map: their shape figure, name, and the sprite views that replace the figure. */
+  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView }> = [];
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
   private targetId: string | null = null;
@@ -342,6 +322,7 @@ export class GameScene extends Phaser.Scene {
     this.gfx = new GfxKit(this);
     this.gfx.useMap(this.map.id);
     void this.gfx.init();
+    if (new URLSearchParams(location.search).get("perf") === "1") initPerf(this.game, this, () => ({ ...this.gfx.stats(), players: this.actors.size, monsters: this.monsters.size }));
     this.rank = initRank((msg) => this.net.send(msg), this.registry.get("isAdmin") === true);
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
@@ -427,46 +408,19 @@ export class GameScene extends Phaser.Scene {
 
   private drawMap(): void {
     this.npcKey = JSON.stringify(npcsOf(this.map));
+    for (const f of this.npcFigures) {
+      f.view?.destroy();
+      f.wview?.destroy();
+    }
+    this.npcFigures = [];
     for (const obj of this.mapObjects) obj.destroy();
     this.mapObjects = [];
 
-    // The ground is one repeating pattern over the map's rectangle (the map is far too big for a texture of its own). Obstacles are every blocked
-    // collision cell inside the rectangle, drawn once into textures of CHUNK pixels, so trees, pillars, ponds and fences show their real shape.
-    const rect = playRectPixels(this.map);
-    const groundKey = ensureGroundTexture(this, this.map.palette);
-    const ground = this.add.tileSprite(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0, groundKey).setOrigin(0, 0).setDepth(0);
-    ground.tilePositionX = (((rect.x0 + TILE_W / 2) % TILE_W) + TILE_W) % TILE_W;
-    ground.tilePositionY = ((rect.y0 % TILE_H) + TILE_H) % TILE_H;
-    this.mapObjects.push(ground);
-
-    const cw = this.map.width * CELLS_PER_TILE;
-    const ch = this.map.height * CELLS_PER_TILE;
-    const half = TILE_W / (2 * CELLS_PER_TILE);
-    const buckets = new Map<string, Array<[number, number]>>();
-    for (let cy = 0; cy < ch; cy++) {
-      for (let cx = 0; cx < cw; cx++) {
-        if (isCellWalkable(this.map, cx, cy)) continue;
-        if (!inPlayRect(this.map, (cx + 0.5) / CELLS_PER_TILE, (cy + 0.5) / CELLS_PER_TILE)) continue; // void: never drawn
-        const p = toScreen(cx / CELLS_PER_TILE, cy / CELLS_PER_TILE);
-        const key = `${Math.floor((p.x - rect.x0) / CHUNK)},${Math.floor((p.y - rect.y0) / CHUNK)}`;
-        let list = buckets.get(key);
-        if (!list) buckets.set(key, (list = []));
-        list.push([p.x, p.y]);
-      }
-    }
-    for (const [key, cells] of buckets) {
-      const [kx, ky] = key.split(",").map(Number) as [number, number];
-      // The texture overlaps its neighbours by one cell so a diamond straddling the seam is whole.
-      const ox = rect.x0 + kx * CHUNK - half;
-      const oy = rect.y0 + ky * CHUNK;
-      const g = this.make.graphics({}, false);
-      g.fillStyle(this.map.palette.obstacle, 1);
-      for (const [x, y] of cells) g.fillPoints(this.diamond(x - ox, y - oy, 1 / CELLS_PER_TILE), true);
-      const tex = this.add.renderTexture(ox, oy, CHUNK + 2 * half, CHUNK + TILE_H / CELLS_PER_TILE).setOrigin(0, 0).setDepth(0.1);
-      tex.draw(g, 0, 0);
-      g.destroy();
-      this.mapObjects.push(tex);
-    }
+    // The ground, the obstacles and the walls are a MapLayer: the ground pattern, trees, rocks and walls drawn in chunks around the camera only (the map
+    // is far too big for textures of its own: docs/PHASE4.md, 4g and 4h).
+    const art = mapArtOf(this.map.id);
+    this.mapLayer?.destroy();
+    this.mapLayer = new MapLayer(this, this.map, art);
 
     for (const portal of this.map.portals) {
       const p = toScreen(portal.x, portal.y);
@@ -506,7 +460,7 @@ export class GameScene extends Phaser.Scene {
         this.mapObjects.push(g, label);
         continue;
       }
-      // Placeholder figure (a robe and a head) standing on the NPC's spot, like the other placeholder art.
+      // Placeholder figure (a robe and a head) standing on the NPC's spot; a player body replaces it once the sprites are loaded (syncNpcViews).
       const body = this.add.graphics().setDepth(p.y + 1);
       body.fillStyle(npc.kind === "quest" ? 0x5a8ad6 : npc.kind === "alchemist" ? 0x5aa66a : 0xd6a94b, 1).fillEllipse(p.x, p.y, 22, 11).fillRoundedRect(p.x - 8, p.y - 30, 16, 28, 5);
       body.fillStyle(0xf2d6b0, 1).fillCircle(p.x, p.y - 36, 7);
@@ -515,6 +469,46 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5, 1)
         .setDepth(p.y + 2);
       this.mapObjects.push(body, label);
+      this.npcFigures.push({ npc, x: p.x, y: p.y, body, label });
+    }
+  }
+
+  /**
+   * NPCs are player bodies (male or female, an outfit, a weapon) chosen by the tuning `npcLooks`. The sprites may load after the map is drawn, so the views
+   * are made here, a frame at a time: the shape figure stays until its sprite exists, a changed outfit swaps the view, and the name rides at the head.
+   */
+  private syncNpcViews(): void {
+    if (this.npcFigures.length === 0 || !this.gfx.active) return;
+    for (const f of this.npcFigures) {
+      const look = npcLookOf(f.npc);
+      if (!look) continue;
+      const key = this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`);
+      if (f.view && (!f.view.alive || (key && f.view.key !== key))) {
+        f.wview?.destroy();
+        f.view.destroy();
+        f.view = f.wview = undefined;
+        f.body.setVisible(true);
+        f.label.setY(f.y - 48);
+      }
+      if (!f.view && key) {
+        const view = this.gfx.createView(key);
+        if (view) {
+          f.view = view;
+          f.body.setVisible(false);
+        }
+      }
+      if (!f.view?.alive) continue;
+      const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
+      if (f.wview && (!f.wview.alive || f.wview.key !== wkey)) {
+        f.wview.destroy();
+        f.wview = undefined;
+      }
+      if (!f.wview && wkey) f.wview = this.gfx.createView(wkey);
+      f.view.play("idle", 0);
+      f.view.place(f.x, f.y, f.y + 1);
+      f.wview?.followFrame(f.view);
+      f.wview?.place(f.x, f.y, f.y + 1.02);
+      f.label.setY(f.y - f.view.rise() - 6);
     }
   }
 
@@ -1600,6 +1594,12 @@ export class GameScene extends Phaser.Scene {
   update(): void {
     const now = performance.now();
     this.fx.update(now);
+    this.mapLayer?.update(this.cameras.main.worldView);
+    if (now - this.lastSweepAt > 5000) {
+      this.lastSweepAt = now;
+      this.gfx.sweepIdle(now);
+    }
+    this.syncNpcViews();
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);

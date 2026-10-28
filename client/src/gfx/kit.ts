@@ -6,6 +6,8 @@ const BASE = "/gfx/";
 const manifestUrl = () => `${BASE}manifest.json`;
 /** Prefix of the Phaser texture key of an atlas. */
 const TEX = "gfx:";
+/** How long an on-demand atlas stays loaded with no sprite using it (ms). */
+const IDLE_UNLOAD_MS = 120_000;
 
 /**
  * One sprite on screen, owned by the kit. `alive` turns false when its atlas is unloaded (a map change); the owner then drops it and draws its
@@ -115,6 +117,9 @@ export class GfxKit {
   /** Sprite keys whose frames turned out to be missing from the atlas. */
   private broken = new Set<string>();
   private views = new Map<string, Set<GfxView>>();
+  /** The atlases the current map lists (they stay while the map does), and when each other atlas last had a sprite on screen (they go after IDLE_UNLOAD_MS of none). */
+  private mapAtlases = new Set<string>();
+  private lastUsed = new Map<string, number>();
 
   constructor(private readonly scene: Phaser.Scene) {
     scene.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
@@ -125,6 +130,7 @@ export class GfxKit {
 
   /** Fetches the manifest, then loads the atlases of the current map. Never throws. */
   async init(): Promise<void> {
+    if (new URLSearchParams(location.search).get("gfx") === "off") return; // `?gfx=off`: everything stays code-drawn (the comparison for `?perf=1`)
     try {
       const res = await fetch(manifestUrl(), { cache: "no-cache" });
       if (!res.ok) return;
@@ -144,6 +150,13 @@ export class GfxKit {
     if (this.mapId) this.useMap(this.mapId);
   }
 
+  /** Counts for the performance overlay (`?perf=1`). */
+  stats(): { views: number; atlases: number } {
+    let views = 0;
+    for (const set of this.views.values()) views += set.size;
+    return { views, atlases: this.loaded.size };
+  }
+
   /** True when at least one sprite could ever show; lets the per-frame code skip all lookups in the common (empty) case. */
   get active(): boolean {
     return this.loaded.size > 0;
@@ -155,6 +168,8 @@ export class GfxKit {
     if (!this.ready) return;
     const want = new Set(atlasesForMap(this.manifest, mapId));
     this.wanted = want;
+    this.mapAtlases = new Set(want);
+    this.lastUsed.clear();
     for (const id of [...this.loaded]) if (!want.has(id)) this.unload(id);
     for (const id of want) {
       if (this.loaded.has(id) || this.failed.has(id) || this.pending.has(id)) continue;
@@ -215,6 +230,26 @@ export class GfxKit {
       return;
     }
     this.loaded.add(id);
+    this.lastUsed.set(id, performance.now());
+  }
+
+  /**
+   * Drops an on-demand atlas (a weapon, an outfit, a monster) that no sprite has used for IDLE_UNLOAD_MS: the memory comes back, and the atlas is
+   * fetched again the next time somebody needs it. The grace period keeps one that comes and goes (a monster that respawns) from reloading all the time.
+   * Atlases the map lists are never dropped here. Call now and then.
+   */
+  sweepIdle(now = performance.now()): void {
+    for (const id of [...this.loaded]) {
+      if (this.mapAtlases.has(id)) continue;
+      if ((this.views.get(id)?.size ?? 0) > 0) {
+        this.lastUsed.set(id, now);
+        continue;
+      }
+      if (now - (this.lastUsed.get(id) ?? now) < IDLE_UNLOAD_MS) continue;
+      this.unload(id);
+      this.wanted.delete(id);
+      this.lastUsed.delete(id);
+    }
   }
 
   /** Drops an atlas: its sprites first, then their animations, then the texture. */
