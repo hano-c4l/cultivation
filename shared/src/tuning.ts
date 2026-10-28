@@ -147,7 +147,7 @@ export interface Tuning {
   /** Which sprite model draws a species (`monster.<species>` is tried first): species id -> model key (`monster.<model>`). Several species can share one model; a species with neither is drawn as the square. */
   monsterModels: Record<string, string>;
   /** How each map is drawn: ground details and the shape of the small obstacles (trees, rocks...), by map id; a map without an entry is drawn plain. */
-  mapArt: { maps: Record<string, { ground: GroundStyle; obstacle: ObstacleStyle }> };
+  mapArt: { maps: Record<string, { ground: GroundStyle; obstacle: ObstacleStyle; mix?: ObstacleStyle[] }> };
   /** How the NPCs look: a player body with an optional outfit and weapon, by NPC id (a trailing number is ignored: `smith2` is `smith`) or else by kind. */
   npcLooks: { byKind: Record<string, NpcLook>; byId: Record<string, NpcLook> };
 }
@@ -420,16 +420,16 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   monsterModels: { doi_u_minh: "bat", thi_quy: "skeleton", xich_thi: "skeleton", han_thi_ma: "skeleton", hoa_long_vuong: "dragon" },
   mapArt: {
     maps: {
-      town: { ground: "grass", obstacle: "tree" },
-      forest: { ground: "grass", obstacle: "tree" },
-      cave: { ground: "stone", obstacle: "pillar" },
-      town2: { ground: "stone", obstacle: "rock" },
-      kimdan: { ground: "lava", obstacle: "rock" },
-      nguyenanh: { ground: "snow", obstacle: "crystal" },
+      town: { ground: "grass", obstacle: "tree", mix: ["tree", "tree", "tree", "bush", "bush", "stump", "rock"] },
+      forest: { ground: "grass", obstacle: "tree", mix: ["tree", "tree", "tree", "tree", "bush", "bush", "stump", "boulder"] },
+      cave: { ground: "stone", obstacle: "pillar", mix: ["pillar", "pillar", "boulder", "boulder", "rock", "rock"] },
+      town2: { ground: "stone", obstacle: "rock", mix: ["rock", "rock", "boulder", "pillar", "bush"] },
+      kimdan: { ground: "lava", obstacle: "rock", mix: ["ember", "ember", "rock", "boulder", "pillar"] },
+      nguyenanh: { ground: "snow", obstacle: "crystal", mix: ["crystal", "crystal", "boulder", "rock", "pillar"] },
     },
   },
   npcLooks: {
-    byKind: { merchant: { body: "male" }, quest: { body: "female" }, smith: { body: "male", weapon: "riu" }, alchemist: { body: "female", outfit: "ranger" } },
+    byKind: { merchant: { body: "male" }, quest: { body: "female" }, smith: { body: "male", weapon: "riu" }, alchemist: { body: "female", outfit: "ranger" }, guard: { body: "male", outfit: "ranger", weapon: "thuong", scale: 1.5 } },
     byId: { elder: { body: "male", outfit: "ranger" }, path_kiem: { body: "male", outfit: "ranger", weapon: "kiem" }, path_thuat: { body: "female", outfit: "ranger" }, path_dan: { body: "female" } },
   },
 };
@@ -737,9 +737,9 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "paths":
       return int(value.swapCostBase, 0, 1_000_000_000) && int(value.dropCostBase, 0, 1_000_000_000);
     case "mapArt":
-      return obj(value.maps) && Object.keys(value.maps).length <= 100 && Object.entries(value.maps).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && obj(v) && (GROUND_STYLES as readonly unknown[]).includes(v.ground) && (OBSTACLE_STYLES as readonly unknown[]).includes(v.obstacle));
+      return obj(value.maps) && Object.keys(value.maps).length <= 100 && Object.entries(value.maps).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && obj(v) && (GROUND_STYLES as readonly unknown[]).includes(v.ground) && (OBSTACLE_STYLES as readonly unknown[]).includes(v.obstacle) && (v.mix === undefined || (Array.isArray(v.mix) && v.mix.length >= 1 && v.mix.length <= 12 && v.mix.every((s) => (OBSTACLE_STYLES as readonly unknown[]).includes(s)))));
     case "npcLooks": {
-      const look = (v: unknown): boolean => obj(v) && (v.body === "male" || v.body === "female") && (v.outfit === undefined || (typeof v.outfit === "string" && /^[a-z]{1,16}$/.test(v.outfit))) && (v.weapon === undefined || (typeof v.weapon === "string" && /^[a-z]{1,16}$/.test(v.weapon)));
+      const look = (v: unknown): boolean => obj(v) && (v.body === "male" || v.body === "female") && (v.outfit === undefined || (typeof v.outfit === "string" && /^[a-z]{1,16}$/.test(v.outfit))) && (v.weapon === undefined || (typeof v.weapon === "string" && /^[a-z]{1,16}$/.test(v.weapon))) && (v.scale === undefined || num(v.scale, 0.5, 3));
       const table = (t: unknown): boolean => obj(t) && Object.keys(t).length <= 100 && Object.entries(t).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && look(v));
       return table(value.byKind) && table(value.byId);
     }

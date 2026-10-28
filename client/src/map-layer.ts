@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { CELLS_PER_TILE, TILE_H, TILE_W, hash2, obstacleBlobs, playRectPixels, type GroundStyle, type MapArt, type MapData, type ObstacleStyle, type Obstacles } from "@game/shared";
+import { CELLS_PER_TILE, TILE_H, TILE_W, hash2, obstacleBlobs, obstacleStyleOf, playRectPixels, type GroundStyle, type MapArt, type MapData, type ObstacleStyle, type Obstacles } from "@game/shared";
 
 /** Pixel size of one chunk of the map: obstacles are drawn into textures of this size around the camera only (the whole map would take tens of MB). */
 export const CHUNK = 512;
@@ -10,9 +10,9 @@ const DROP_PX = 640;
 const BUILDS_PER_FRAME = 4;
 /** Height (px) of the side faces of walls. */
 const FACE = 6;
-/** The ground pattern: 4 x 4 of the 64 x 32 unit, so the details repeat every four tiles rather than every two. */
-const GROUND_W = TILE_W * 4;
-const GROUND_H = TILE_H * 4;
+/** The ground pattern of a styled map: 8 x 8 tiles of the 64 x 32 unit, so the patches and details repeat every eight tiles. */
+const GROUND_W = TILE_W * 8;
+const GROUND_H = TILE_H * 8;
 
 export function toScreen(x: number, y: number): { x: number; y: number } {
   return { x: (x - y) * (TILE_W / 2), y: (x + y) * (TILE_H / 2) };
@@ -35,44 +35,54 @@ function rnd(a: number, b: number, c: number): number {
   return hash2(a * 31 + c * 7, b * 17 + c * 13) / 4294967296;
 }
 
-/** The repeating ground texture of a style (the bare checker for `plain`): its key, made once per palette. */
+/**
+ * The repeating ground texture of a style, made once per palette. `plain` is the bare checker (what a map without art gets). A styled ground has no
+ * tile grid: one base tone with soft patches of the two palette tones over it (drawn again one pattern over each way, so the repeat has no seam) and
+ * small marks of the style scattered on top.
+ */
 export function ensureGroundTexture(scene: Phaser.Scene, palette: MapData["palette"], style: GroundStyle): string {
   const key = `ground-${style}-${palette.groundA.toString(16)}-${palette.groundB.toString(16)}`;
   if (scene.textures.exists(key)) return key;
   const g = scene.make.graphics({}, false);
-  const tile = (cx: number, cy: number, color: number): void => {
-    const pts = [new Phaser.Math.Vector2(cx, cy - TILE_H / 2), new Phaser.Math.Vector2(cx + TILE_W / 2, cy), new Phaser.Math.Vector2(cx, cy + TILE_H / 2), new Phaser.Math.Vector2(cx - TILE_W / 2, cy)];
-    g.fillStyle(color, 1);
-    g.lineStyle(1, 0x000000, 0.18);
-    g.fillPoints(pts, true);
-    g.strokePoints(pts, true);
-  };
-  const reps = style === "plain" ? 1 : 4;
-  for (let j = 0; j < reps; j++) {
-    for (let i = 0; i < reps; i++) {
-      const ox = i * TILE_W;
-      const oy = j * TILE_H;
-      tile(ox + TILE_W / 2, oy + TILE_H / 2, palette.groundA);
-      for (const [cx, cy] of [[0, 0], [TILE_W, 0], [0, TILE_H], [TILE_W, TILE_H]] as const) tile(ox + cx, oy + cy, palette.groundB);
-    }
+  if (style === "plain") {
+    const tile = (cx: number, cy: number, color: number): void => {
+      const pts = [new Phaser.Math.Vector2(cx, cy - TILE_H / 2), new Phaser.Math.Vector2(cx + TILE_W / 2, cy), new Phaser.Math.Vector2(cx, cy + TILE_H / 2), new Phaser.Math.Vector2(cx - TILE_W / 2, cy)];
+      g.fillStyle(color, 1);
+      g.lineStyle(1, 0x000000, 0.18);
+      g.fillPoints(pts, true);
+      g.strokePoints(pts, true);
+    };
+    tile(TILE_W / 2, TILE_H / 2, palette.groundA);
+    for (const [cx, cy] of [[0, 0], [TILE_W, 0], [0, TILE_H], [TILE_W, TILE_H]] as const) tile(cx, cy, palette.groundB);
+    g.generateTexture(key, TILE_W, TILE_H);
+    g.destroy();
+    return key;
   }
-  if (style !== "plain") {
-    // Details sit inside the diamonds: two per tile, at fixed pseudo-random spots. The A diamonds are whole inside the texture; of the B ones only the
-    // inner ones are (the others straddle the seam and would be cut in half when the texture repeats).
-    const centres: Array<[number, number]> = [];
-    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) centres.push([TILE_W / 2 + i * TILE_W, TILE_H / 2 + j * TILE_H]);
-    for (let j = 1; j < 4; j++) for (let i = 1; i < 4; i++) centres.push([i * TILE_W, j * TILE_H]);
-    centres.forEach(([cx, cy], n) => {
-      for (let k = 0; k < 2; k++) {
-        const a = rnd(n, 3, k) * Math.PI * 2;
-        const r = Math.sqrt(rnd(n, 5, k + 5)) * 0.5;
-        detail(g, style, cx + Math.cos(a) * r * (TILE_W / 2), cy + Math.sin(a) * r * (TILE_H / 2), palette, rnd(n, 7, k + 9));
-      }
-    });
+  const base = mixColor(palette.groundA, palette.groundB);
+  g.fillStyle(base, 1).fillRect(0, 0, GROUND_W, GROUND_H);
+  // soft patches, flattened like the iso view; each is also drawn shifted by one pattern so one crossing an edge continues on the other side
+  for (let n = 0; n < 70; n++) {
+    const x = rnd(n, 1, 21) * GROUND_W;
+    const y = rnd(n, 2, 22) * GROUND_H;
+    const w = 40 + rnd(n, 3, 23) * 90;
+    const color = shade(rnd(n, 4, 24) < 0.5 ? palette.groundA : palette.groundB, 0.92 + rnd(n, 5, 25) * 0.16);
+    for (const dx of [-GROUND_W, 0, GROUND_W]) for (const dy of [-GROUND_H, 0, GROUND_H]) g.fillStyle(color, 0.55).fillEllipse(x + dx, y + dy, w, w / 2);
   }
-  g.generateTexture(key, style === "plain" ? TILE_W : GROUND_W, style === "plain" ? TILE_H : GROUND_H);
+  // marks of the style: only fully inside, so none is cut at the seam
+  for (let n = 0; n < 150; n++) {
+    const x = 6 + rnd(n, 7, 31) * (GROUND_W - 12);
+    const y = 6 + rnd(n, 8, 32) * (GROUND_H - 12);
+    detail(g, style, x, y, palette, rnd(n, 9, 33));
+  }
+  g.generateTexture(key, GROUND_W, GROUND_H);
   g.destroy();
   return key;
+}
+
+/** The middle tone between two colours. */
+function mixColor(a: number, b: number): number {
+  const c = (shift: number): number => Math.round((((a >> shift) & 255) + ((b >> shift) & 255)) / 2);
+  return (c(16) << 16) | (c(8) << 8) | c(0);
 }
 
 /** One small mark on the ground of a style at (x, y); `v` in [0, 1) varies it. */
@@ -130,6 +140,39 @@ export function ensureObstacleTexture(scene: Phaser.Scene, style: ObstacleStyle,
       const pts = [[-17, 0], [-13, -17], [-3, -25], [10, -21], [17, -8], [14, 0]].map(([x, y]) => new Phaser.Math.Vector2(cx + (x as number), base + (y as number) * (0.85 + variant * 0.07)));
       g.fillStyle(col, 1).lineStyle(1.5, outline, 1).fillPoints(pts, true).strokePoints(pts, true);
       g.fillStyle(shade(col, 1.3), 0.9).fillPoints([pts[1] as Phaser.Math.Vector2, pts[2] as Phaser.Math.Vector2, new Phaser.Math.Vector2(cx, base - 12), new Phaser.Math.Vector2(cx - 9, base - 8)], true);
+      break;
+    }
+    case "bush": {
+      const col = CANOPY[variant % 4] as number;
+      for (const [dx, dy, r] of [[-9, -6, 8], [8, -6, 8], [0, -12, 9], [-3, -4, 8], [5, -3, 7]] as const) {
+        g.fillStyle(shade(col, 0.9), 1).lineStyle(1.5, outline, 1).fillCircle(cx + dx, base + dy, r).strokeCircle(cx + dx, base + dy, r);
+      }
+      g.fillStyle(shade(col, 1.3), 0.9).fillCircle(cx - 3, base - 16, 4);
+      if (variant % 2 === 0) g.fillStyle(0xe9577a, 1).fillCircle(cx + 6, base - 9, 1.8).fillCircle(cx - 8, base - 6, 1.8);
+      break;
+    }
+    case "stump": {
+      const w = 11;
+      g.fillStyle(0x5a4632, 1).lineStyle(1.5, outline, 1).fillRect(cx - w, base - 16, w * 2, 16).strokeRect(cx - w, base - 16, w * 2, 16);
+      g.fillStyle(0x5a4632, 1).fillEllipse(cx, base, w * 2, 8);
+      g.fillStyle(0xc9a26a, 1).lineStyle(1.5, outline, 1).fillEllipse(cx, base - 16, w * 2, 9).strokeEllipse(cx, base - 16, w * 2, 9);
+      g.lineStyle(1, 0x8a6a3a, 1).strokeEllipse(cx, base - 16, w, 4.5);
+      break;
+    }
+    case "boulder": {
+      const col = shade(obstacle, 1.7);
+      const pts = [[-26, 0], [-24, -14], [-14, -27], [2, -32], [16, -26], [25, -12], [24, 0]].map(([x, y]) => new Phaser.Math.Vector2(cx + (x as number), base + (y as number) * (0.8 + variant * 0.08)));
+      g.fillStyle(col, 1).lineStyle(1.5, outline, 1).fillPoints(pts, true).strokePoints(pts, true);
+      g.fillStyle(shade(col, 1.3), 0.9).fillPoints([pts[1] as Phaser.Math.Vector2, pts[2] as Phaser.Math.Vector2, pts[3] as Phaser.Math.Vector2, new Phaser.Math.Vector2(cx - 4, base - 14), new Phaser.Math.Vector2(cx - 14, base - 8)], true);
+      g.lineStyle(1, shade(col, 0.6), 0.9).lineBetween(cx + 4, base - 28, cx + 8, base - 12).lineBetween(cx + 8, base - 12, cx + 3, base - 2);
+      break;
+    }
+    case "ember": {
+      const col = shade(obstacle, 0.9);
+      const pts = [[-18, 0], [-14, -18], [-4, -28], [9, -23], [18, -9], [15, 0]].map(([x, y]) => new Phaser.Math.Vector2(cx + (x as number), base + (y as number) * (0.85 + variant * 0.07)));
+      g.fillStyle(col, 1).lineStyle(1.5, outline, 1).fillPoints(pts, true).strokePoints(pts, true);
+      g.lineStyle(2, 0xff7a2a, 0.95).lineBetween(cx - 8, base - 20, cx - 2, base - 11).lineBetween(cx - 2, base - 11, cx + 6, base - 14).lineBetween(cx - 2, base - 11, cx - 3, base - 2);
+      g.fillStyle(0xffd27a, 0.9).fillCircle(cx - 2, base - 11, 1.8);
       break;
     }
     case "pillar": {
@@ -321,7 +364,7 @@ export class MapLayer {
     for (const id of data.blobs) {
       const b = this.obstacles.blobs[id] as { x: number; y: number; radius: number; variant: number };
       const p = toScreen(b.x, b.y);
-      const key = ensureObstacleTexture(this.scene, this.art.obstacle, b.variant, this.map.palette.obstacle);
+      const key = ensureObstacleTexture(this.scene, obstacleStyleOf(this.art, b), b.variant, this.map.palette.obstacle);
       const img = this.scene.add.image(p.x, p.y + 4, key).setOrigin(0.5, 0.875).setScale(Math.max(0.75, Math.min(2, b.radius / 0.9))).setDepth(10 + b.x + b.y);
       chunk.sprites.push(img);
     }

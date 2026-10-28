@@ -268,7 +268,7 @@ export class GfxKit {
   /**
    * The sprite key to use for a kind of actor, or undefined to keep the shape. This is the one place that turns "what is it" into "which sprite":
    * for now it follows the naming convention below; the D1 mapping (admin-editable) will wrap it in 4c/4e.
-   *   player -> `player.<variant>` then `player`; monster -> `monster.<kind>`; guard -> `guard`.
+   *   player -> `player.<variant>` then `player`; monster -> `monster.<kind>`; guard -> the player body of `npcLooks.byKind.guard` (the scene asks for `player.*` and `weapon.*` itself).
    */
   spriteKeyFor(kind: "player" | "monster" | "guard" | "weapon", id?: string, variant?: string): string | undefined {
     if (!this.active) return undefined;

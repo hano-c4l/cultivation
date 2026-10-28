@@ -40,6 +40,7 @@ import {
   getMap,
   isMapId,
   mapArtOf,
+  guardLookOf,
   npcLookOf,
   playRectPixels,
   portalNear,
@@ -152,6 +153,8 @@ interface MonsterActor {
   kind: string;
   /** The sprite that replaces the square when the manifest has one (phase 4); the square stays, hidden. */
   view?: GfxView;
+  /** The weapon sprite of a guard (a guard is drawn as a player body holding a weapon, from the tuning `npcLooks`). */
+  wview?: GfxView;
   /** A vệ binh: own name and colour, and it is only clicked (attacked) with the PK state on. */
   guard: boolean;
   /** The map boss: red name, big body. */
@@ -1388,6 +1391,7 @@ export class GameScene extends Phaser.Scene {
   private removeMonster(id: string): void {
     const m = this.monsters.get(id);
     if (!m) return;
+    m.wview?.destroy();
     m.view?.destroy();
     m.body.destroy();
     m.label.destroy();
@@ -1554,7 +1558,8 @@ export class GameScene extends Phaser.Scene {
       a.view = view;
       a.body.setVisible(false);
     }
-    const anim = moving ? "run" : "idle";
+    // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
+    const anim = moving && !a.mounted ? "run" : "idle";
     const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
     // The weapon is a second sprite over the body that shows the same frame as the body (frames line up by name); it follows what is in the hand.
     const wkey = a.weapon ? this.gfx.spriteKeyFor("weapon", a.weapon, a.female ? "female" : "male") : undefined;
@@ -1576,20 +1581,44 @@ export class GameScene extends Phaser.Scene {
 
   /** The same for a monster, a guard or a boss; the rank and boss sizes scale the sprite as they scale the square. */
   private syncMonsterView(m: MonsterActor, now: number, x: number, y: number, depth: number): void {
+    const look = m.guard ? guardLookOf() : undefined;
     if (m.view && !m.view.alive) {
+      m.wview?.destroy();
+      m.wview = undefined;
+      m.view = undefined;
+      m.body.setVisible(true);
+    }
+    const key = look ? this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`) : this.gfx.spriteKeyFor("monster", m.kind);
+    // The outfit atlas of a guard loads on demand: the plain body shows until it is here, then the view is swapped (as for players and NPCs).
+    if (look && m.view && key && m.view.key !== key) {
+      m.wview?.destroy();
+      m.wview = undefined;
+      m.view.destroy();
       m.view = undefined;
       m.body.setVisible(true);
     }
     if (!m.view) {
-      const key = m.guard ? this.gfx.spriteKeyFor("guard") : this.gfx.spriteKeyFor("monster", m.kind);
       const view = key ? this.gfx.createView(key) : undefined;
       if (!view) return;
       m.view = view;
       m.body.setVisible(false);
     }
-    m.view.setScale(m.boss ? 2 : m.rank === "rare2" ? 1.4 : m.rank === "rare1" ? 1.2 : 1);
+    const scale = (look?.scale ?? 1) * (m.boss ? 2 : m.rank === "rare2" ? 1.4 : m.rank === "rare1" ? 1.2 : 1);
+    m.view.setScale(scale);
     m.view.play(positionAlongPath(m.path, now - m.startedAt, m.speed).moving ? "run" : "idle", headingAlongPath(m.path, now - m.startedAt, m.speed) ?? m.view.dir);
-    if (m.view.alive) m.view.place(x, y, depth);
+    if (!m.view.alive) return;
+    m.view.place(x, y, depth);
+    if (look) {
+      const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
+      if (m.wview && (!m.wview.alive || m.wview.key !== wkey)) {
+        m.wview.destroy();
+        m.wview = undefined;
+      }
+      if (!m.wview && wkey) m.wview = this.gfx.createView(wkey);
+      m.wview?.setScale(scale);
+      m.wview?.followFrame(m.view);
+      m.wview?.place(x, y, depth + 0.02);
+    }
   }
 
   update(): void {

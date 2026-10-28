@@ -1,17 +1,37 @@
 import { CELLS_PER_TILE, inPlayRect, isCellWalkable, type MapData } from "./map";
-import { tuning } from "./tuning";
+import { DEFAULT_TUNING, tuning } from "./tuning";
 
 import type { GroundStyle, ObstacleStyle } from "./art-styles";
 
 export interface MapArt {
   ground: GroundStyle;
   obstacle: ObstacleStyle;
+  /** The looks small spots are drawn as, each spot picking one by its position (a style listed twice is twice as common). Never empty. */
+  mix: ObstacleStyle[];
 }
 
-/** The art of a map, from the tuning `mapArt` (an id without an entry is drawn plain, like a map an admin just made). */
+/**
+ * The art of a map, from the tuning `mapArt` (an id without an entry is drawn plain, like a map an admin just made). A stored entry from before the mix
+ * existed has none: the default mix of that map stands in (if its style is unchanged), else the single style.
+ */
 export function mapArtOf(mapId: string): MapArt {
   const entry = tuning().mapArt.maps[mapId];
-  return { ground: entry?.ground ?? "plain", obstacle: entry?.obstacle ?? "plain" };
+  const obstacle = entry?.obstacle ?? "plain";
+  const stock = DEFAULT_TUNING.mapArt.maps[mapId];
+  const mix = entry?.mix ?? (stock?.obstacle === obstacle ? stock.mix : undefined); // only while the stored style is still the stock one
+  return { ground: entry?.ground ?? "plain", obstacle, mix: obstacle === "plain" ? ["plain"] : mix && mix.length > 0 ? mix : [obstacle] };
+}
+
+/** Looks that only make sense small: a big spot is never drawn as one of these (a giant bush or stump), when the mix has anything else. */
+const SMALL_LOOKS: readonly ObstacleStyle[] = ["bush", "stump"];
+/** A spot with a radius above this many tiles counts as big. */
+export const BIG_SPOT_RADIUS = 0.9;
+
+/** The look of one small spot: a fixed pick from the map's mix by position (and by size, see `SMALL_LOOKS`), the same on every device. */
+export function obstacleStyleOf(art: MapArt, blob: Pick<Blob, "x" | "y"> & { radius?: number }): ObstacleStyle {
+  const big = (blob.radius ?? 0) > BIG_SPOT_RADIUS;
+  const pool = big && art.mix.some((s) => !SMALL_LOOKS.includes(s)) ? art.mix.filter((s) => !SMALL_LOOKS.includes(s)) : art.mix;
+  return pool[hash2(blob.x + 11, blob.y + 5) % pool.length] as ObstacleStyle;
 }
 
 /** A blocked spot smaller than this many collision cells (about ten tiles) is a tree, a rock or a pillar; anything larger is a wall, a building or the rim of the map. */
