@@ -24,7 +24,7 @@ class Lab extends Phaser.Scene {
       this.add.image(x, 466, FLIGHT_TEX[k]).setDepth(0);
       this.add.text(x - 20, 488, k, { color: "#ddd", fontSize: "12px" });
     });
-    this.fx = new Effects(this, posOf);
+    this.fx = new Effects(this, posOf, () => "me");
     const bar = document.getElementById("bar") as HTMLElement;
     const add = (label: string, run: () => void): void => {
       const b = document.createElement("button");

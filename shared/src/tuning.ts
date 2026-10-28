@@ -452,9 +452,21 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       nguyenanh: { ground: "snow", obstacle: "crystal", mix: ["crystal", "crystal", "boulder", "rock", "pillar"] },
     },
   },
+  // Xianxia robes for everyone: the white robe `tien`, one colour each by tint, a formation circle in the same colour under the feet.
   npcLooks: {
-    byKind: { merchant: { body: "male" }, quest: { body: "female" }, smith: { body: "male", weapon: "riu" }, alchemist: { body: "female", outfit: "ranger" }, guard: { body: "male", outfit: "ranger", weapon: "thuong", scale: 1.5 } },
-    byId: { elder: { body: "male", outfit: "ranger" }, path_kiem: { body: "male", outfit: "ranger", weapon: "kiem" }, path_thuat: { body: "female", outfit: "ranger" }, path_dan: { body: "female" } },
+    byKind: {
+      merchant: { body: "male", outfit: "tien", tint: "#f0d890", aura: "#e6c35a" },
+      quest: { body: "female", outfit: "tien", tint: "#cfe0ff", aura: "#9fc4ff" },
+      smith: { body: "male", outfit: "tien", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a" },
+      alchemist: { body: "female", outfit: "tien", tint: "#bff0c8", aura: "#7dff9c" },
+      guard: { body: "male", outfit: "tien", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a" },
+    },
+    byId: {
+      elder: { body: "male", outfit: "tien", tint: "#fff0c0", aura: "#ffe58a" },
+      path_kiem: { body: "male", outfit: "tien", weapon: "kiem", tint: "#bfe4ff", aura: "#9fe0ff" },
+      path_thuat: { body: "female", outfit: "tien", tint: "#dccbff", aura: "#b99bff" },
+      path_dan: { body: "female", outfit: "tien", tint: "#c6f5c6", aura: "#7dff9c" },
+    },
   },
 };
 
@@ -765,7 +777,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "mapArt":
       return obj(value.maps) && Object.keys(value.maps).length <= 100 && Object.entries(value.maps).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && obj(v) && (GROUND_STYLES as readonly unknown[]).includes(v.ground) && (OBSTACLE_STYLES as readonly unknown[]).includes(v.obstacle) && (v.mix === undefined || (Array.isArray(v.mix) && v.mix.length >= 1 && v.mix.length <= 12 && v.mix.every((s) => (OBSTACLE_STYLES as readonly unknown[]).includes(s)))));
     case "npcLooks": {
-      const look = (v: unknown): boolean => obj(v) && (v.body === "male" || v.body === "female") && (v.outfit === undefined || (typeof v.outfit === "string" && /^[a-z]{1,16}$/.test(v.outfit))) && (v.weapon === undefined || (typeof v.weapon === "string" && /^[a-z]{1,16}$/.test(v.weapon))) && (v.scale === undefined || num(v.scale, 0.5, 3));
+      const look = (v: unknown): boolean => obj(v) && (v.body === "male" || v.body === "female") && (v.outfit === undefined || (typeof v.outfit === "string" && /^[a-z]{1,16}$/.test(v.outfit))) && (v.weapon === undefined || (typeof v.weapon === "string" && /^[a-z]{1,16}$/.test(v.weapon))) && (v.scale === undefined || num(v.scale, 0.5, 3)) && (v.tint === undefined || (typeof v.tint === "string" && /^#[0-9a-fA-F]{6}$/.test(v.tint))) && (v.aura === undefined || (typeof v.aura === "string" && /^#[0-9a-fA-F]{6}$/.test(v.aura)));
       const table = (t: unknown): boolean => obj(t) && Object.keys(t).length <= 100 && Object.entries(t).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && look(v));
       return table(value.byKind) && table(value.byId);
     }
