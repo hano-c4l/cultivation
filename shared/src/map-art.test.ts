@@ -73,6 +73,12 @@ describe("map art and NPC looks", () => {
     expect(seen.size).toBeGreaterThan(2);
   });
 
+  it("a big spot is never a bush or a stump while the mix has other looks", () => {
+    const art = mapArtOf("forest");
+    for (let i = 0; i < 200; i++) expect(["bush", "stump"]).not.toContain(obstacleStyleOf(art, { x: i * 1.3, y: i * 0.7, radius: 1.4 }));
+    expect(obstacleStyleOf({ ground: "grass", obstacle: "tree", mix: ["bush"] }, { x: 1, y: 2, radius: 2 })).toBe("bush");
+  });
+
   it("an entry stored before the mix existed gets the default mix of its map; an unknown or plain map stays plain", () => {
     setTuning({ mapArt: { maps: { cave: { ground: "stone", obstacle: "pillar" }, x: { ground: "snow", obstacle: "rock" } } } });
     expect(mapArtOf("cave").mix).toEqual(DEFAULT_TUNING.mapArt.maps.cave?.mix);

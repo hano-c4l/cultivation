@@ -1588,8 +1588,16 @@ export class GameScene extends Phaser.Scene {
       m.view = undefined;
       m.body.setVisible(true);
     }
+    const key = look ? this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`) : this.gfx.spriteKeyFor("monster", m.kind);
+    // The outfit atlas of a guard loads on demand: the plain body shows until it is here, then the view is swapped (as for players and NPCs).
+    if (look && m.view && key && m.view.key !== key) {
+      m.wview?.destroy();
+      m.wview = undefined;
+      m.view.destroy();
+      m.view = undefined;
+      m.body.setVisible(true);
+    }
     if (!m.view) {
-      const key = look ? this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`) : this.gfx.spriteKeyFor("monster", m.kind);
       const view = key ? this.gfx.createView(key) : undefined;
       if (!view) return;
       m.view = view;

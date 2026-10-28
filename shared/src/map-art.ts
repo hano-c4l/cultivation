@@ -22,9 +22,16 @@ export function mapArtOf(mapId: string): MapArt {
   return { ground: entry?.ground ?? "plain", obstacle, mix: obstacle === "plain" ? ["plain"] : mix && mix.length > 0 ? mix : [obstacle] };
 }
 
-/** The look of one small spot: a fixed pick from the map's mix by position, the same on every device. */
-export function obstacleStyleOf(art: MapArt, blob: Pick<Blob, "x" | "y">): ObstacleStyle {
-  return art.mix[hash2(blob.x + 11, blob.y + 5) % art.mix.length] as ObstacleStyle;
+/** Looks that only make sense small: a big spot is never drawn as one of these (a giant bush or stump), when the mix has anything else. */
+const SMALL_LOOKS: readonly ObstacleStyle[] = ["bush", "stump"];
+/** A spot with a radius above this many tiles counts as big. */
+export const BIG_SPOT_RADIUS = 0.9;
+
+/** The look of one small spot: a fixed pick from the map's mix by position (and by size, see `SMALL_LOOKS`), the same on every device. */
+export function obstacleStyleOf(art: MapArt, blob: Pick<Blob, "x" | "y"> & { radius?: number }): ObstacleStyle {
+  const big = (blob.radius ?? 0) > BIG_SPOT_RADIUS;
+  const pool = big && art.mix.some((s) => !SMALL_LOOKS.includes(s)) ? art.mix.filter((s) => !SMALL_LOOKS.includes(s)) : art.mix;
+  return pool[hash2(blob.x + 11, blob.y + 5) % pool.length] as ObstacleStyle;
 }
 
 /** A blocked spot smaller than this many collision cells (about ten tiles) is a tree, a rock or a pillar; anything larger is a wall, a building or the rim of the map. */
