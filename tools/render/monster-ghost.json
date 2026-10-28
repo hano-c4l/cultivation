@@ -9,7 +9,7 @@
   "hipsBone": "Root",
   "forwardBones": ["Head", "Head_end"],
   "autoColors": [1.0, 1.0, 1.0],
-  "figureScale": 0.22,
+  "figureScale": 0.3,
   "sourceFps": 24,
   "actionPrefix": "CharacterArmature|CharacterArmature|",
   "onlyAnims": ["idle", "run", "attack", "hit", "die"],
