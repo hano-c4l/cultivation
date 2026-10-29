@@ -1,4 +1,4 @@
-import { EQUIP_KINDS, GENDERED_KINDS, GEAR_ELEMENTS, WEAPON_TYPES, makeEquipmentId, type EquipKind } from "../../../shared/src/equipment-data";
+import { EQUIP_KINDS, GENDERED_KINDS, GEAR_ELEMENTS, WEAPON_TYPES, equipmentInfo, makeEquipmentId, type EquipKind } from "../../../shared/src/equipment-data";
 import { api, formatTime, h, navigate } from "./kit";
 
 /**
@@ -52,6 +52,9 @@ const ERRORS: Record<string, string> = {
   equipped: "Nhân vật đang mặc trang bị nên chưa đổi giới tính được (tháo hết đồ trước).",
   unknown_item: "Vật phẩm không có hoặc không thêm được (trang bị chưa thêm được).",
 };
+
+/** What the add forms had when the page was last built: the page is built again after every change, and the choices must not start over (several pieces of one kind are added in a row). */
+const pick = { kind: "weapon", realm: "0", tier: "1", grade: "1", element: "", weapon: "kiem", gearQty: "1", item: "", itemQty: "1" };
 
 export function characterPage(): HTMLElement {
   const root = h("div", { class: "detail wide" });
@@ -158,7 +161,10 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
 
   const dl = h("datalist", { id: "char-items" }, ...items.map((i) => h("option", { value: i.id }, i.nameVi)));
   const itemId = h("input", { type: "text", list: "char-items", placeholder: "mã vật phẩm" });
-  const qty = num(1, { min: "1", max: "9999" });
+  itemId.value = pick.item;
+  itemId.addEventListener("input", () => (pick.item = itemId.value));
+  const qty = num(Number(pick.itemQty) || 1, { min: "1", max: "9999" });
+  qty.addEventListener("input", () => (pick.itemQty = qty.value));
   const addItem = h("button", { type: "button" }, "Thêm vật phẩm");
   addItem.addEventListener("click", () => void act({ action: "addItem", item: itemId.value.trim(), qty: Number(qty.value) }));
   const nameOf = (t: string) => items.find((i) => i.id === t)?.nameVi ?? t;
@@ -170,13 +176,52 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
   const gGrade = sel(["1", "2", "3", "4"], (v) => `phẩm ${v}`);
   const gElement = sel(["", ...GEAR_ELEMENTS], (v) => v || "không hệ");
   const gWeapon = sel(WEAPON_TYPES);
-  const addGear = h("button", { type: "button" }, "Thêm trang bị");
-  addGear.addEventListener("click", () => {
+  const gQty = num(Number(pick.gearQty) || 1, { min: "1", max: "50" });
+  gQty.style.width = "4em";
+  const gCode = h("input", { type: "text", placeholder: "mã trang bị, ví dụ eq.charm.u.3.9.4.moc", size: "34" });
+  const gWeaponBox = h("span", null, gWeapon);
+  const gNote = h("span", { class: "muted" });
+  gKind.value = pick.kind;
+  gRealm.value = pick.realm;
+  gTier.value = pick.tier;
+  gGrade.value = pick.grade;
+  gElement.value = pick.element;
+  gWeapon.value = pick.weapon;
+  /** The code of what the selects say (the style follows the kind and the character's gender; a weapon type goes with an element, so a weapon always has one). */
+  const codeOfPick = (): string => {
     const kind = gKind.value as EquipKind;
-    const style = GENDERED_KINDS.has(kind) ? (c.gender === "female" ? "f" : "m") : "u"; // the style follows the kind and the character's gender
-    const type = makeEquipmentId(kind, style, Number(gRealm.value), Number(gTier.value), Number(gGrade.value), gElement.value || undefined, kind === "weapon" ? gWeapon.value : undefined);
-    void act({ action: "addEquipment", type });
+    const style = GENDERED_KINDS.has(kind) ? (c.gender === "female" ? "f" : "m") : "u";
+    const element = gElement.value || (kind === "weapon" ? "kim" : "");
+    return makeEquipmentId(kind, style, Number(gRealm.value), Number(gTier.value), Number(gGrade.value), element || undefined, kind === "weapon" ? gWeapon.value : undefined);
+  };
+  /** Keeps the memory, the weapon-type box (only a weapon has a type) and the code box in step with the selects. */
+  const refreshPick = (fromCode = false) => {
+    Object.assign(pick, { kind: gKind.value, realm: gRealm.value, tier: gTier.value, grade: gGrade.value, element: gElement.value, weapon: gWeapon.value, gearQty: gQty.value });
+    gWeaponBox.style.display = gKind.value === "weapon" ? "" : "none";
+    if (!fromCode) gCode.value = codeOfPick();
+  };
+  for (const el of [gKind, gRealm, gTier, gGrade, gElement, gWeapon]) el.addEventListener("change", () => refreshPick());
+  gQty.addEventListener("input", () => refreshPick(true));
+  /** A typed or pasted code picks the matching values (the code box keeps what was typed until it is valid). */
+  gCode.addEventListener("input", () => {
+    const info = equipmentInfo(gCode.value.trim());
+    if (!info) {
+      gNote.textContent = gCode.value.trim() ? "Mã chưa đúng." : "";
+      return;
+    }
+    gKind.value = info.kind;
+    gRealm.value = String(info.realm);
+    gTier.value = String(info.tier);
+    gGrade.value = String(info.grade);
+    gElement.value = info.element ?? "";
+    if (info.weaponType) gWeapon.value = info.weaponType;
+    refreshPick(true);
+    const mine = codeOfPick();
+    gNote.textContent = mine === gCode.value.trim() ? "Đã chọn theo mã." : `Đã chọn theo mã; mã sẽ thêm: ${mine} (kiểu dáng theo giới tính nhân vật).`;
   });
+  refreshPick();
+  const addGear = h("button", { type: "button" }, "Thêm trang bị");
+  addGear.addEventListener("click", () => void act({ action: "addEquipment", type: codeOfPick(), qty: Number(gQty.value) }));
   const sl = h("datalist", { id: "char-skills" }, ...skills.map((s) => h("option", { value: s.id }, s.nameVi)));
   const skillId = h("input", { type: "text", list: "char-skills", placeholder: "mã kỹ năng" });
   const addSkill = h("button", { type: "button" }, "Thêm kỹ năng");
@@ -215,7 +260,7 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
     return h("span", null, " cấp ", pick, " ", save);
   };
 
-  const editable = [...rootBoxes.map((x) => x.box), mainRoot, gradeSel, saveRoots, gKind, gRealm, gTier, gGrade, gElement, gWeapon, addGear, consti, tier, saveConsti, nameInput, gender, satKhi, satNhan, anhHung, saveProfile, del, stage, exp, points, realm, saveStats, currency, delta, money, itemId, qty, addItem, skillId, addSkill, ...Object.values(stats)];
+  const editable = [...rootBoxes.map((x) => x.box), mainRoot, gradeSel, saveRoots, gKind, gRealm, gTier, gGrade, gElement, gWeapon, gQty, gCode, addGear, consti, tier, saveConsti, nameInput, gender, satKhi, satNhan, anhHung, saveProfile, del, stage, exp, points, realm, saveStats, currency, delta, money, itemId, qty, addItem, skillId, addSkill, ...Object.values(stats)];
   for (const el of editable) el.disabled = !mine;
 
   return h(
@@ -264,8 +309,9 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
         ),
       ),
     ),
-    h("div", { class: "toolbar" }, h("span", null, "Trang bị"), gKind, gRealm, h("span", null, "bậc"), gTier, gGrade, gElement, gWeapon, addGear),
-    h("p", { class: "muted" }, "Trang bị vào túi với độ bền đầy và chỉ số tung từ bảng master, như mua ở thương nhân. Hệ và loại vũ khí chỉ dùng cho vũ khí; món đang mặc phải được tháo ra trước khi lấy."),
+    h("div", { class: "toolbar" }, h("span", null, "Mã"), gCode, gNote),
+    h("div", { class: "toolbar" }, h("span", null, "Trang bị"), gKind, gRealm, h("span", null, "bậc"), gTier, gGrade, gElement, gWeaponBox, h("span", null, "số lượng"), gQty, addGear),
+    h("p", { class: "muted" }, "Trang bị vào túi với độ bền đầy và chỉ số tung từ bảng master, như mua ở thương nhân; thêm nhiều món một lần thì mỗi món tung chỉ số riêng. Các lựa chọn được giữ sau mỗi lần thêm. Nhập mã trang bị để chọn nhanh. Loại vũ khí chỉ hiện với vũ khí (vũ khí luôn có hệ); món đang mặc phải được tháo ra trước khi lấy."),
     c.equipped.length ? h("p", { class: "muted" }, "Đang mặc (sửa được thuộc tính ngay tại đây, trang bị vẫn ở trên người):") : null,
     c.equipped.length ? h("ul", null, ...c.equipped.map((e) => h("li", null, `${e.slot}: ${nameOf(e.type)} (${e.type}) `, gearEditor(e)))) : null,
     h("h3", null, "Kỹ năng"),

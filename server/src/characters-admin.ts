@@ -1,4 +1,4 @@
-import { ALL_ROOTS, CURRENCIES, parseRoots, type SpiritualRoot, MUTANT_ROOTS, ROOT_GRADES, SPIRITUAL_ROOTS, equipmentInfo, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, maxSkillLevel, skillGrade, refineLevelOf, ENHANCE_MAX, REALMS, type BagItem, type EquippedItem } from "@game/shared";
+import { ALL_ROOTS, CURRENCIES, parseRoots, type SpiritualRoot, MUTANT_ROOTS, ROOT_GRADES, SPIRITUAL_ROOTS, equipmentInfo, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, applyOps, type BagOp, maxSkillLevel, skillGrade, refineLevelOf, ENHANCE_MAX, REALMS, type BagItem, type EquippedItem } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { applyCurrencyDelta } from "./economy";
 import { commitBagOps, loadBag } from "./inventory";
@@ -15,6 +15,8 @@ import { getItemOverlays } from "./items-live";
  */
 export const CHARACTER_LOG_SCREEN = "Nhân vật";
 export const REVIEW_MS = 30 * 60_000;
+/** The most pieces of gear one "add" puts in the bag. */
+export const MAX_GEAR_AT_ONCE = 50;
 
 interface Row {
   id: string;
@@ -236,19 +238,27 @@ export async function addItem(db: D1Database, admin: string, id: string, item: u
  * Adds a piece of gear to the bag the way the merchant sells it: full durability and the stats rolled from the master table (`rollGear`), one new instance. A piece
  * made for the other gender is refused (a gendered piece carries its style in the id), a piece that cannot exist (`equipmentInfo`) is refused.
  */
-export async function addEquipment(db: D1Database, admin: string, id: string, type: unknown, now = Date.now()): Promise<CharacterResult> {
+export async function addEquipment(db: D1Database, admin: string, id: string, type: unknown, now = Date.now(), qty: unknown = 1): Promise<CharacterResult> {
   const info = typeof type === "string" ? equipmentInfo(type) : undefined;
   if (typeof type !== "string" || !info) return { ok: false, error: "unknown_item" };
+  if (!intIn(qty, 1, MAX_GEAR_AT_ONCE)) return { ok: false, error: "invalid" };
   const c = await db.prepare("SELECT name, gender FROM characters WHERE id = ?").bind(id).first<{ name: string; gender: string }>();
   if (!c) return { ok: false, error: "not_found" };
   if ((info.style === "m" && c.gender !== "male") || (info.style === "f" && c.gender !== "female")) return { ok: false, error: "gender" };
   if (!(await reviewing(db, id, admin, now))) return { ok: false, error: "not_reviewing" };
   const bag = await loadBag(db, id);
   const max = info.maxDurability;
-  const rs = max != null ? await rollGear(db, type) : undefined;
-  const ops = planAdd(bag.items, bag.tabs, type, 1, () => crypto.randomUUID(), max != null ? { dur: max, max, ...(rs ? { rs } : {}) } : undefined);
-  if (!ops) return { ok: false, error: "full" };
-  const r = await commitBagOps(db, id, ops, { now, extra: [reviewGuard(db, id, admin, now), logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Thêm trang bị ${info.nameVi} (${type}) cho «${c.name}»` }, now)] });
+  // One new instance each, with its own roll; all in one batch, so either all of them are added or (a full bag) none.
+  let items = bag.items;
+  const ops: BagOp[] = [];
+  for (let n = 0; n < qty; n++) {
+    const rs = max != null ? await rollGear(db, type) : undefined;
+    const one = planAdd(items, bag.tabs, type, 1, () => crypto.randomUUID(), max != null ? { dur: max, max, ...(rs ? { rs } : {}) } : undefined);
+    if (!one) return { ok: false, error: "full" };
+    items = applyOps(items, one);
+    ops.push(...one);
+  }
+  const r = await commitBagOps(db, id, ops, { now, extra: [reviewGuard(db, id, admin, now), logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Thêm ${qty > 1 ? `${qty} ` : ""}trang bị ${info.nameVi} (${type}) cho «${c.name}»` }, now)] });
   return r === "ok" ? { ok: true } : { ok: false, error: "busy" };
 }
 

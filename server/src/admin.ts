@@ -675,7 +675,7 @@ export async function adminCharacterAction(request: Request, env: Env): Promise<
       result = await addItem(env.DB, admin, id, body.item, body.qty);
       break;
     case "addEquipment":
-      result = await addEquipment(env.DB, admin, id, body.type);
+      result = await addEquipment(env.DB, admin, id, body.type, Date.now(), body.qty ?? 1);
       break;
     case "removeItem":
       result = await removeItem(env.DB, admin, id, body.instance);

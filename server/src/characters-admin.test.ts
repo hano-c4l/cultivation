@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
-import { beforeEach, describe, expect, it } from "vitest";
-import { REALMS, SKILLS, setItemOverlays } from "@game/shared";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { ITEMS, REALMS, SKILLS, setItemOverlays } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
 import { REVIEW_MS, addItem, addEquipment, addSkill, adjustMoney, deleteCharacter, editConstitution, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, editItem, setSkillLevel, startReview } from "./characters-admin";
 import { getConstitutionCatalog } from "./constitution-catalog";
@@ -20,6 +20,12 @@ const kicker = async (_account: string, character: string) => {
 };
 const logs = async () => (await listAdminLog(db, parseLogQuery(new URLSearchParams()))).rows.map((r) => r.content);
 const skill = SKILLS[0]!;
+
+/** These tests exercise the stack mechanics at a small, fixed limit (99): the real limit of these items is bigger and tuned, so the tests set it themselves. */
+const SMALL_STACK = ["linh_thao", "thu_cot", "yeu_dan", "hoi_huyet_dan", "duong_huyet_dan", "dai_hoi_huyet_dan", "ngo_dao_dan"];
+beforeAll(() => {
+  for (const id of SMALL_STACK) if (ITEMS[id]) (ITEMS[id] as { maxStack: number }).maxStack = 99;
+});
 
 beforeEach(() => {
   ({ db, raw } = makeDb());
@@ -260,5 +266,26 @@ describe("editing the level of a skill and the properties of a piece of gear", (
     expect(await editItem(db, A, "c1", sword.id, { lv: 3 }, NOW + 3)).toEqual({ ok: false, error: "invalid" });
     expect(await editItem(db, A, "c1", sword.id, { en: 3 }, NOW + 3)).toEqual({ ok: true });
     expect(await editItem(db, B, "c1", sword.id, { en: 4 }, NOW + 4)).toEqual({ ok: false, error: "not_reviewing" });
+  });
+});
+
+describe("adding gear to a character", () => {
+  it("adds several pieces at once, each its own instance with its own durability, and refuses a bad number or a full bag", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 1, 5)).toEqual({ ok: true });
+    const pieces = (await getCharacterView(db, "c1", NOW + 2))!.items.filter((i) => i.type === "eq.charm.u.3.9.4.moc");
+    expect(pieces).toHaveLength(5);
+    expect(new Set(pieces.map((p) => p.id)).size).toBe(5);
+    expect(new Set(pieces.map((p) => `${p.tab}:${p.cell}`)).size).toBe(5);
+    expect(pieces.every((p) => p.max !== undefined && p.dur === p.max)).toBe(true);
+    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 3, 0)).toEqual({ ok: false, error: "invalid" });
+    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 3, 51)).toEqual({ ok: false, error: "invalid" });
+    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 3, 1.5)).toEqual({ ok: false, error: "invalid" });
+    expect((await logs()).some((l) => l.includes("Thêm 5 trang bị"))).toBe(true);
+    // a bag that cannot take them all takes none
+    const before = (await getCharacterView(db, "c1", NOW + 4))!.items.length;
+    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 5, 50)).toEqual({ ok: true });
+    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 6, 50)).toEqual({ ok: false, error: "full" });
+    expect((await getCharacterView(db, "c1", NOW + 7))!.items.length).toBe(before + 50);
   });
 });
