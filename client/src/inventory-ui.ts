@@ -1,5 +1,5 @@
 import { BAG_CELLS_PER_TAB, BAG_COLS, MAX_BAG_TABS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type SortMode, type WearerCtx } from "@game/shared";
-import { iconFor } from "./icons";
+import { iconButton, iconFor } from "./icons";
 import { describeItem, elementDot, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
 import { wearerOfSheet } from "./wearer";
@@ -58,7 +58,8 @@ function giftLine(g: NonNullable<MailView["gift"]>): string {
  * command only names cells; the screen changes when the server's delta comes back.
  */
 export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (value: string, label: string) => void = () => undefined): InventoryUi {
-  const toggle = el("button", undefined, vi.inventory.button);
+  const toggle = el("button", undefined, "");
+  iconButton(toggle, "bag", vi.inventory.button);
   toggle.id = "bag-btn";
   toggle.hidden = true;
   const panel = el("div");
@@ -481,7 +482,13 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
   }
 
   function refreshBadge(): void {
-    toggle.textContent = mail.length > 0 ? `${vi.inventory.button} (${mail.length})` : vi.inventory.button;
+    iconButton(toggle, "bag", mail.length > 0 ? `${vi.inventory.button} (${mail.length})` : vi.inventory.button);
+    if (mail.length > 0) {
+      const badge = document.createElement("b");
+      badge.className = "badge";
+      badge.textContent = String(mail.length);
+      toggle.append(badge);
+    }
     toggle.classList.toggle("alert", mail.length > 0);
   }
 

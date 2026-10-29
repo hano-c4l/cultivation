@@ -94,6 +94,7 @@ import { initSkills, type SkillsUi } from "./skills-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
+import { iconButton } from "./icons";
 import { mapLabel, vi } from "./locales/vi";
 import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
@@ -1523,8 +1524,7 @@ export class GameScene extends Phaser.Scene {
     const on = isMounted();
     // Always there once in the game, like the other buttons; grey and dead while no flight pháp bảo is worn.
     this.mountBtn.hidden = false;
-    this.mountBtn.textContent = on ? vi.mount.down : vi.mount.up;
-    this.mountBtn.title = this.flightWorn || on ? vi.mount.hint : vi.mount.needFlight;
+    iconButton(this.mountBtn, "flight", `${on ? vi.mount.down : vi.mount.up}: ${this.flightWorn || on ? vi.mount.hint : vi.mount.needFlight}`);
     this.mountBtn.disabled = !this.flightWorn && !on;
     this.mountBtn.classList.toggle("riding", on);
   }

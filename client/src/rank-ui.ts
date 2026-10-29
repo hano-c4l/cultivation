@@ -1,5 +1,6 @@
 import { LEADERBOARDS, REALMS, type ClientMessage, type Leaderboard } from "@game/shared";
 import { api } from "./api";
+import { iconButton } from "./icons";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -19,7 +20,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 
 /** The ranking window: the top characters by realm, stage and EXP, read from the server when opened (the server caches it for a minute). */
 export function initRank(send: (msg: ClientMessage) => void, isAdmin: boolean): RankUi {
-  const toggle = el("button", undefined, vi.rank.button);
+  const toggle = el("button", undefined, "");
+  iconButton(toggle, "trophy", vi.rank.button);
   toggle.id = "rank-btn";
   toggle.hidden = true;
   const panel = el("div");
