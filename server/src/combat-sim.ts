@@ -1,3 +1,4 @@
+import { areaTargets, firstAlongLine, skillAreaOf, weaponAreaOf, type AreaDef } from "@game/shared";
 import {
   PLAYER_ATTACK_COOLDOWN_MS,
   PLAYER_ATTACK_RANGE,
@@ -252,7 +253,7 @@ export type SimEvent =
   | { t: "guard_kill"; killerId: string }
   | { t: "mon"; monster: MonsterSnapshot }
   | { t: "mon_gone"; id: string }
-  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; /** A player answering the player who hit them first. */ ret?: true }
+  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; /** A player answering the player who hit them first. */ ret?: true; /** One of the extra targets of an area blow (the swing is drawn once, for the main target). */ aoe?: true }
   | { t: "hp"; playerId: string; hp: number; maxHp: number }
   /** EXP changed after a kill; `stagesGained > 0` means points changed and the room must persist right away. */
   | { t: "progress"; playerId: string; stagesGained: number }
@@ -907,6 +908,11 @@ export class CombatSim {
     if (now < (p.cooldowns.get(skillId) ?? 0)) return { ok: false, reason: "cooldown" };
     if (this.currentMp(p, now) < this.effectiveOf(p, skill).mpCost) return { ok: false, reason: "mp" };
     let target: string | null = null;
+    if (skill.kind === "attack" && !targetId && dest) {
+      // Cast at a point (no target named): no chase and no target is set; the blow falls where it is aimed.
+      p.pendingCast = { skill: skillId, target: null, dest, ...(skill.flex ? { element: element && (p.roots ?? [p.element]).includes(element) ? element : p.element } : {}) };
+      return { ok: true };
+    }
     if (skill.kind === "attack") {
       target = targetId ?? p.targetId;
       const m = target ? this.monsters.get(target) : undefined;
@@ -1305,7 +1311,7 @@ export class CombatSim {
       const mpos = this.position(m, now);
       const d = dist(pos, mpos);
       if (d <= PLAYER_ATTACK_RANGE) {
-        if (now >= p.nextAttackAt) this.playerAttack(p, m, mpos, now, events);
+        if (now >= p.nextAttackAt) this.playerAttack(p, m, mpos, now, events, undefined, 1, undefined, pos);
       } else if (now - p.lastRepathAt >= REPATH_MS) {
         p.lastRepathAt = now;
         // Stop about one tile short of the monster, on the line from the monster to the player.
@@ -1364,7 +1370,13 @@ export class CombatSim {
     let mpos: Vec2 | undefined;
     let q: PlayerProfile | undefined;
     let qpos: Vec2 | undefined;
-    if (skill.kind === "attack") {
+    let aimAt: Vec2 | undefined;
+    if (skill.kind === "attack" && !pending.target && pending.dest) {
+      // Cast at a point: it falls on the point if within reach, else on the farthest point the skill reaches along the way.
+      const d = dist(pos, pending.dest);
+      const k = d > skill.range ? skill.range / d : 1;
+      aimAt = [pos[0] + (pending.dest[0] - pos[0]) * k, pos[1] + (pending.dest[1] - pos[1]) * k];
+    } else if (skill.kind === "attack") {
       q = pending.target ? this.players.get(pending.target) : undefined;
       if (q) {
         qpos = positions.get(q.id);
@@ -1383,7 +1395,7 @@ export class CombatSim {
     p.cooldowns.set(skill.id, now + eff.cooldownMs);
     p.pendingCast = null;
     events.push(this.mpEvent(p, now), { t: "cast_ok", playerId: p.id, skill: skill.id, cdMs: eff.cooldownMs });
-    events.push({ t: "fx", playerId: p.id, skill: skill.id, ...(pending.target ? { target: pending.target } : {}), ...(pending.dest ? { dest: pending.dest } : {}), ...(pending.element ? { element: pending.element } : {}) });
+    events.push({ t: "fx", playerId: p.id, skill: skill.id, ...(pending.target ? { target: pending.target } : {}), ...(aimAt ? { dest: aimAt } : pending.dest ? { dest: pending.dest } : {}), ...(pending.element ? { element: pending.element } : {}) });
     if (skill.kind === "teleport" && pending.dest) {
       p.targetId = null;
       events.push({ t: "teleport", playerId: p.id, to: pending.dest });
@@ -1400,8 +1412,11 @@ export class CombatSim {
     } else if (q && qpos) {
       const done = this.pvpAttack(p, q, qpos, now, events, skill, eff.power, pending.element);
       if (done > 0) this.gainMastery(p, skill, events);
+    } else if (aimAt) {
+      const done = this.playerAttack(p, undefined, aimAt, now, events, skill, eff.power, pending.element, pos);
+      if (done > 0) this.gainMastery(p, skill, events);
     } else if (m && mpos) {
-      const done = this.playerAttack(p, m, mpos, now, events, skill, eff.power, pending.element);
+      const done = this.playerAttack(p, m, mpos, now, events, skill, eff.power, pending.element, pos);
       if (done > 0) this.gainMastery(p, skill, events);
     }
     return true;
@@ -1411,7 +1426,7 @@ export class CombatSim {
    * What a player hits with: the plain attack or one skill, in its element, with every damage share that applies (grade, constitution,
    * hướng tu) and the sát khí bonus. Used for monsters and for other players alike.
    */
-  private attackerFor(p: PlayerProfile, skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): Combatant {
+  private attackerFor(p: PlayerProfile, skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot, scale = 1): Combatant {
     // A skill hits as the caster's own stats scaled by its power, in its own element; one without an element uses the caster's
     // MAIN element. The plain attack goes by ALL the caster's elements against the target's (elementOutcome: every pair scores +1, -1 or 0 and the sum decides); a skill has one element, so only its pairs count.
     // An attack in one of the caster's own elements gets the damage share of the root's grade (phẩm cấp).
@@ -1424,18 +1439,54 @@ export class CombatSim {
     const mutantPct = skill && isMutantRoot(element) ? elementTuning().mutantSkillBonusPct : 0;
     const power = skill ? skillPower * (1 + mutantPct / 100) : 1;
     const skMult = 1 + satKhiDamagePct(p.satKhi ?? 0) / 100;
-    return { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100) * skMult)), element, roots: skill ? undefined : roots };
+    return { ...p.stats, attack: Math.max(1, Math.round(p.stats.attack * power * (1 + gradePct / 100) * (1 + bonusPct / 100) * skMult * scale)), element, roots: skill ? undefined : roots };
   }
 
 
-  private playerAttack(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): number {
+  /**
+   * A blow at a monster: the main target takes it in full, and the monsters inside the area of the blow (the weapon's sweep for a plain attack, the
+   * skill's own area) take `pct` of it. One swing costs one cooldown and, for a skill, earns its mastery once; the damage returned is the main
+   * target's. Players are never extra targets. `origin` is where the blow comes from (the attacker), `aim` the point it is aimed at when there is
+   * no target at all (a cast at a point): then the nearest monster in the area is the main target and a swing that finds none is wasted.
+   */
+  private playerAttack(p: PlayerProfile, m: Monster | undefined, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot, origin?: Vec2): number {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
-    const attacker = this.attackerFor(p, skill, skillPower, skillElement);
+    const from: Vec2 = origin ?? mpos;
+    const area: AreaDef = skill ? skillAreaOf(skill) : weaponAreaOf(p.weapon ?? undefined);
+    const candidates: Array<{ id: string; pos: Vec2; m: Monster }> = [];
+    // A single-target blow at a target (a bow, a fist) needs no scan of the other monsters.
+    if (m && area.shape === "single") return this.strikeMonster(p, m, mpos, now, events, skill, skillPower, skillElement, 1, false);
+    for (const other of this.monsters.values()) {
+      if (other.state === "dead" || (other.guard && !this.canAttackGuard(p))) continue;
+      candidates.push({ id: other.id, pos: this.position(other, now), m: other });
+    }
+    let main = m;
+    let mainPos = mpos;
+    if (!main) {
+      // A cast at a point: with an area, the nearest monster inside it; without, the first monster along the line.
+      const pick = area.shape === "single" ? firstAlongLine(from, mpos, skill?.range ?? 6, 0.9, candidates) : areaTargets({ ...area, maxTargets: 2 }, from, mpos, candidates)[0];
+      if (!pick) return 0;
+      main = pick.m;
+      mainPos = pick.pos;
+    }
+    // The extra targets are picked before anything is struck: a kill (or a boss, which leaves the map) must not change who is in the swing.
+    const extra = areaTargets(area, from, m ? mainPos : mpos, candidates, main.id);
+    const done = this.strikeMonster(p, main, mainPos, now, events, skill, skillPower, skillElement, 1, false);
+    for (const e of extra) {
+      if (e.m.state === "dead" || !this.monsters.has(e.id)) continue;
+      this.strikeMonster(p, e.m, e.pos, now, events, skill, skillPower, skillElement, area.pct / 100, true);
+    }
+    return done;
+  }
+
+  /** One monster takes the blow (damage, the pull onto the attacker, a kill and everything it pays); `scale` is the share of the damage an extra target takes. */
+  private strikeMonster(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill: SkillDef | undefined, skillPower: number, skillElement: SpiritualRoot | undefined, scale: number, aoe: boolean): number {
+    const attacker = this.attackerFor(p, skill, skillPower, skillElement, scale);
     const hit = computeDamage(attacker, m.combatant, this.rand);
     const applied = Math.min(m.hp, hit.damage);
     m.hp -= applied;
     m.damage.set(p.id, (m.damage.get(p.id) ?? 0) + applied);
-    events.push({ t: "hit", from: p.id, to: m.id, kind: hit.kind, damage: hit.damage, hp: m.hp, ...(skill ? { skill: skill.id } : {}) });
+    events.push({ t: "hit", from: p.id, to: m.id, kind: hit.kind, damage: hit.damage, hp: m.hp, ...(skill ? { skill: skill.id } : {}), ...(aoe ? { aoe: true as const } : {}) });
     if (m.hp > 0) {
       // Being hit pulls an idle or retreating monster onto the attacker.
       if (m.state === "idle" || m.state === "return") {

@@ -2,7 +2,7 @@
 export const GROUND_STYLES = ["plain", "grass", "dirt", "stone", "snow", "lava"] as const;
 export type GroundStyle = (typeof GROUND_STYLES)[number];
 /** What the small blocked spots of a map are drawn as. `plain` keeps them flat diamonds like the large ones. */
-export const OBSTACLE_STYLES = ["plain", "tree", "bush", "stump", "rock", "boulder", "pillar", "crystal", "ember"] as const;
+export const OBSTACLE_STYLES = ["plain", "tree", "bush", "stump", "rock", "boulder", "pillar", "crystal", "ember", "bamboo", "lantern", "jade"] as const;
 export type ObstacleStyle = (typeof OBSTACLE_STYLES)[number];
 
 /** What a rider of the flight pháp bảo stands on: a flying sword, a cloud, a lotus, or the bare cloud-disc of old (`plain`). */

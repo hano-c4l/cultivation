@@ -75,7 +75,27 @@ export class GfxView {
 
   /** Puts the feet at a screen point. */
   place(x: number, y: number, depth: number): void {
-    this.sprite.setPosition(x, y).setDepth(depth);
+    this.sprite.setPosition(x + this.ox, y + this.oy).setDepth(depth);
+  }
+
+  private ox = 0;
+  private oy = 0;
+  private flashing = false;
+  private tinted: number | undefined;
+
+  /** A small shove of the figure (a blow's recoil), in px, applied by `place`. */
+  setOffset(dx: number, dy: number): void {
+    this.ox = dx;
+    this.oy = dy;
+  }
+
+  /** Paints the whole figure white for an instant (a blow landing); `false` brings back its tint. WebGL only (Canvas ignores tints). */
+  setFlash(on: boolean): void {
+    if (on === this.flashing) return;
+    this.flashing = on;
+    if (on) this.sprite.setTintFill(0xffffff);
+    else if (this.tinted === undefined) this.sprite.clearTint();
+    else this.sprite.setTint(this.tinted);
   }
 
   setScale(k: number): void {
@@ -87,6 +107,8 @@ export class GfxView {
 
   /** Multiplies the sprite's colours by `color` (0xRRGGBB); undefined shows the model's own colours. */
   setTint(color: number | undefined): void {
+    this.tinted = color;
+    if (this.flashing) return;
     if (color === undefined) this.sprite.clearTint();
     else this.sprite.setTint(color);
   }

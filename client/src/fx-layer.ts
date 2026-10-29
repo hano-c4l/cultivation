@@ -98,6 +98,25 @@ export class FxLayer {
     return box;
   }
 
+  /** The formation standing upright (not on the ground) at (x, y): it turns, drifts up and fades (a talisman over someone's head). */
+  emblem(x: number, y: number, color: number, size: number, ms: number): void {
+    if (this.live.size >= MAX_SPRITES) return;
+    const img = this.scene.add.image(x, y, FX_TEX.rune).setBlendMode(ADD).setTint(color).setAlpha(0).setDepth(this.depth).setDisplaySize(size, size);
+    const state = { p: 0 };
+    const entry = { obj: img, tween: undefined as unknown as Phaser.Tweens.Tween };
+    entry.tween = this.scene.tweens.add({
+      targets: state,
+      p: 1,
+      duration: ms,
+      onUpdate: () => img.setAlpha(0.85 * Math.max(0, Math.min(1, state.p * 5, (1 - state.p) * 2.4))).setRotation(state.p * Math.PI * 1.5).setY(y - state.p * 14),
+      onComplete: () => {
+        img.destroy();
+        this.live.delete(entry);
+      },
+    });
+    this.live.add(entry);
+  }
+
   /** A formation circle that keeps turning until `drop` (a channel lasts as long as it lasts); the caller moves it with `setPosition`. */
   hold(x: number, y: number, color: number, radius: number, alpha = 0.8): Phaser.GameObjects.Container {
     const img = this.scene.add.image(0, 0, FX_TEX.rune).setBlendMode(ADD).setTint(color).setAlpha(alpha);
