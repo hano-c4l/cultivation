@@ -6,13 +6,13 @@ import { tuning } from "./tuning";
  * grows with the distance between the two towns on the world map, so more towns later need only a position here. The numbers (a base and a
  * price per unit of distance) are tuning (`waygate`). Placeholder values.
  */
-const CODE_TOWNS: readonly MapId[] = ["town", "town2"];
+const CODE_TOWNS: readonly MapId[] = ["town", "town2", "town3"];
 export type WaygateTown = MapId;
 /** The main towns in force: the code's two, plus every safe map whose recipe gives a `world` position (3l, a town an admin added). Changed in place by `onMapRecipe`. */
 export const WAYGATE_TOWNS: MapId[] = [...CODE_TOWNS];
 
-/** Where each main town lies on the world map (arbitrary units; the cave and the forest lie between them, about 100 apart). */
-export const TOWN_WORLD_POS: Record<string, readonly [number, number]> = { town: [0, 0], town2: [100, 0] };
+/** Where each main town lies on the world map (arbitrary units; the cave and the forest lie between the first two, Vạn Cổ Hàn Uyên between the last two, about 100 apart). */
+export const TOWN_WORLD_POS: Record<string, readonly [number, number]> = { town: [0, 0], town2: [100, 0], town3: [200, 0] };
 
 onMapRecipe((id, recipe) => {
   if ((CODE_TOWNS as readonly string[]).includes(id)) return;

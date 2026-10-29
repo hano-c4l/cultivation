@@ -17,7 +17,7 @@ export type IconShape =
   // the ways of delivering an attack skill: through a line, round the caster, a lane on the ground, a field on the ground
   | "pierce" | "nova" | "lane" | "field"
   // the interface: the currencies and the buttons of the windows
-  | "stone" | "merit" | "immortal" | "person" | "shield" | "bag" | "taiji" | "trophy" | "swap" | "door";
+  | "stone" | "merit" | "immortal" | "person" | "shield" | "bag" | "taiji" | "trophy" | "swap" | "door" | "meditate";
 
 export interface IconSpec {
   shape: IconShape;
@@ -108,6 +108,8 @@ const SHAPES: Readonly<Record<IconShape, readonly Part[]>> = {
   trophy: [["M9 4 H23 V13 Q23 20 16 21 Q9 20 9 13 Z", "m"], ["M9 7 H4 Q4 14 10 15 M23 7 H28 Q28 14 22 15", "g", 1.6], ["M14 21 H18 V25 H14 Z", "g"], ["M10 25 H22 V29 H10 Z", "g"]],
   swap: [["M5 11 H24 M24 11 l-5 -5 M24 11 l-5 5", "l", 2.4], ["M27 21 H8 M8 21 l5 -5 M8 21 l5 5", "a", 2.4]],
   door: [["M7 4 H20 V28 H7 Z", "w"], ["M17 16 m-1.4 0 a1.4 1.4 0 1 0 2.8 0 a1.4 1.4 0 1 0 -2.8 0", "g"], ["M22 16 H30 M30 16 l-4 -4 M30 16 l-4 4", "a", 2]],
+  // a figure sitting cross-legged with its hands in the lap, a halo behind the head
+  meditate: [["M16 9 m-7 0 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0", "l", 1], ["M16 10 m-3.2 0 a3.2 3.2 0 1 0 6.4 0 a3.2 3.2 0 1 0 -6.4 0", "m"], ["M16 14 Q10 15 10 22 L22 22 Q22 15 16 14 Z", "m"], ["M4 26 Q8 22 16 25 Q24 22 28 26 Q22 29 16 27 Q10 29 4 26 Z", "a"], ["M13 21 Q16 23 19 21", "d", 1.2]],
   passive: [["M16 3 L19.5 12 L29 12.5 L21.5 18.5 L24 28 L16 22.5 L8 28 L10.5 18.5 L3 12.5 L12.5 12 Z", "a"], ["M16 7 L18 13", "l", 1.2]],
 };
 

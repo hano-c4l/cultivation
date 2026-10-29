@@ -13,6 +13,13 @@ import {
   REGEN_PER_S,
   getItemDef,
   getSkill,
+  setBasicSkillRealm,
+  bootsTintOf,
+  hatShapeOf,
+  hatTintOf,
+  robeTintOf,
+  weaponTintOf,
+  type GearLook,
   type SkillDef,
   type SkillContext,
   skillContextFor,
@@ -78,11 +85,15 @@ import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { Effects } from "./fx";
-import { FLIGHT_GLOW, FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
+import { HAT_TEX, ensureHatTextures } from "./hat-art";
+import { FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
 /** The flight look an actor rides on: the one its worn pháp bảo gives, else the default. */
 const actorFlight = (a: { flight?: string }): FlightStyle => ((FLIGHT_STYLES as readonly string[]).includes(a.flight ?? "") ? (a.flight as FlightStyle) : flightStyleOf());
+
+/** Which side of the screen each of the 8 directions of a figure faces: -2 left, 0 toward the camera or away from it, +2 right (see DIRECTION_VECTORS). */
+const HEAD_SIDE: readonly number[] = [0, -1, -2, -1, 0, 1, 2, 1];
 
 /** `#rrggbb` as a number, or undefined (no tint) when there is none. */
 const hexOf = (hex: string | undefined): number | undefined => (hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? parseInt(hex.slice(1), 16) : undefined);
@@ -158,6 +169,13 @@ interface Actor {
   weapon?: string;
   /** The outfit worn (from the snapshot and the `look` messages): picks the body sprite variant. */
   outfit?: string;
+  /** What the worn weapon, robe, hat and boots add to the look (from the snapshot and the `look` messages); `hat` is the hat drawn on the head. */
+  lk?: GearLook;
+  hat?: Phaser.GameObjects.Image;
+  /** Meditating: drawn sitting, with a ring of light under it and motes of healing round it. `seat` is the ring, `moteAt` when the next mote rises. */
+  sitting?: boolean;
+  seat?: Phaser.GameObjects.Container;
+  moteAt?: number;
   /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
   flight?: string;
   /** The cultivation level (`realm * 10 + stage`): the colour and thickness of the qi haze round the figure. */
@@ -299,6 +317,8 @@ export class GameScene extends Phaser.Scene {
   private vitals!: VitalsUi;
   private hud!: HTMLElement;
   private mountBtn!: HTMLButtonElement;
+  private meditateBtn!: HTMLButtonElement;
+  private meditating = false;
   private flightWorn = false;
   private ping = 0;
   private pingSentAt = 0;
@@ -314,6 +334,8 @@ export class GameScene extends Phaser.Scene {
   private autoMem: AutoMemory = newAutoMemory();
   private autoAnchor = { x: 0, y: 0 };
   private autoNextAt = 0;
+  /** When the player last walked by hand while Auto ran (0: not walking by hand). */
+  private autoManualAt = 0;
   /** When each skill is ready again (performance.now) as the server last said, the hotbar as the server holds it, and your own HP, max MP and whether you are dead (for Auto). */
   private cdUntil = new Map<string, number>();
   private hotbarSlots: string[] = [];
@@ -342,6 +364,12 @@ export class GameScene extends Phaser.Scene {
     this.mountBtn.hidden = true;
     this.mountBtn.onclick = () => this.toggleMount();
     document.body.append(this.mountBtn);
+    this.meditateBtn = document.createElement("button");
+    this.meditateBtn.id = "meditate-btn";
+    this.meditateBtn.hidden = true;
+    this.meditateBtn.onclick = () => this.toggleMeditate();
+    document.body.append(this.meditateBtn);
+    this.setMeditating(false);
     this.drawMap();
     this.marker = this.add.graphics().setDepth(1);
     this.chat = initChat((channel, text, to) => {
@@ -404,6 +432,7 @@ export class GameScene extends Phaser.Scene {
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
     ensureFlightTextures(this);
+    ensureHatTextures(this);
     ensureFxTextures(this);
     this.fx = new Effects(this, (id) => this.screenPosOf(id), () => this.selfId);
     this.gfx = new GfxKit(this);
@@ -437,6 +466,9 @@ export class GameScene extends Phaser.Scene {
       const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
       if (!typing && (ev.key === "m" || ev.key === "M") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && this.selfId) {
         this.toggleMount();
+      }
+      if (!typing && (ev.key === "v" || ev.key === "V") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && this.selfId) {
+        this.toggleMeditate();
       }
     });
 
@@ -692,7 +724,6 @@ export class GameScene extends Phaser.Scene {
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.transferring) return;
     if (this.guardBreakthrough()) return;
-    this.stopAuto("manual"); // a click on the map is the player taking over
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
@@ -708,6 +739,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       this.endAim();
+      this.stopAuto("manual");
       this.net.send({ t: "cast", skill: skill.id, x: tx, y: ty });
       return;
     }
@@ -718,6 +750,7 @@ export class GameScene extends Phaser.Scene {
       return Math.hypot(tx - n.x, ty - n.y) <= 1 || (Math.abs(world.x - p.x) <= 18 && world.y >= p.y - 52 && world.y <= p.y + 10);
     });
     if (npc) {
+      this.stopAuto("manual"); // opening an NPC window is the player taking over
       this.talkTo(npc);
       return;
     }
@@ -726,6 +759,7 @@ export class GameScene extends Phaser.Scene {
     const player = !this.map.safe ? this.pickPlayer(world.x, world.y) : null;
     const picked = player ?? this.pickMonster(world.x, world.y);
     if (picked) {
+      this.stopAuto("manual"); // taking a target by hand is the player taking over
       const nowMs = performance.now();
       if (nowMs - this.lastAttackSentAt >= ATTACK_MIN_GAP_MS + 20) {
         this.lastAttackSentAt = nowMs;
@@ -735,6 +769,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.targetId = null;
+    if (this.meditating) this.setMeditating(false); // a click to walk stands the character up (the server does the same)
+    if (this.autoOn) this.autoManualAt = performance.now(); // a walk by hand: Auto keeps casting but stops steering until the character is still
     this.sendWalk(tx, ty);
   }
 
@@ -845,9 +881,10 @@ export class GameScene extends Phaser.Scene {
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
+        setBasicSkillRealm(msg.character.realm);
         this.primary = loadPrimary(msg.character.id, msg.character.roots);
         this.net.send({ t: "primary", skill: this.primary?.skill ?? "", ...(this.primary?.el ? { el: this.primary.el as SpiritualRoot } : {}) });
-        this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
+        this.vitals.set(msg.hp, msg.maxHp);
         this.selfHp = msg.hp;
         this.selfMaxHp = msg.maxHp;
         this.selfMaxMp = msg.maxMp;
@@ -877,7 +914,10 @@ export class GameScene extends Phaser.Scene {
         this.skillsUi.setSkills(msg.skills);
         this.hotbar.setSkills(msg.skills);
         this.hotbar.setSlots(msg.hotbar);
-        this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, mpRegenPerS());
+        this.vitals.setMp(msg.mp, msg.maxMp, 0, 0);
+        // A town has no simulation and sends no rates: the character heals by itself there, as it always did. A combat map sends its rates right after this.
+        this.vitals.setRates(msg.maxHp * REGEN_PER_S, msg.maxMp * mpRegenPerS());
+        this.setMeditating(false);
         this.hotbar.refresh(); // the slots were drawn before the MP was known (they dim what the MP cannot pay)
         this.buffs.set(msg.effects);
         for (const [skill, ms] of Object.entries(msg.cd)) this.noteCooldown(skill, ms);
@@ -903,6 +943,19 @@ export class GameScene extends Phaser.Scene {
       case "hit":
         this.showHit(msg);
         break;
+      case "regen":
+        this.vitals.setRates(msg.hp, msg.mp);
+        break;
+      case "sit": {
+        const sitter = this.actors.get(msg.id);
+        if (sitter) sitter.sitting = msg.on;
+        break;
+      }
+      case "meditating":
+        this.setMeditating(msg.on);
+        if (msg.reason && vi.meditate.reasons[msg.reason]) this.chat.system(vi.meditate.reasons[msg.reason]!, msg.reason === "hit" || msg.reason === "died" ? "error" : undefined);
+        else if (msg.on) this.chat.system(vi.meditate.on);
+        break;
       case "hp":
         this.vitals.set(msg.hp, msg.maxHp);
         this.selfHp = msg.hp;
@@ -910,6 +963,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "died":
         this.selfDead = true;
+        this.setMeditating(false);
         this.stopAuto("dead");
         this.playOnce(this.selfId, "die"); // stays on the last frame until the transfer to town replaces the view
         this.hitMeAt.clear(); // the quarrel with whoever killed us is over: their name goes back to its real colour
@@ -934,6 +988,7 @@ export class GameScene extends Phaser.Scene {
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
+        setBasicSkillRealm(msg.character.realm);
         const c = msg.character;
         // A hướng tu was taken (the sheet carries the paths): say which, and whether it is the chủ tu.
         if (before && JSON.stringify(before.paths) !== JSON.stringify(c.paths)) {
@@ -962,6 +1017,7 @@ export class GameScene extends Phaser.Scene {
           looker.weapon = msg.w;
           looker.outfit = msg.o;
           looker.flight = msg.fl;
+          looker.lk = msg.lk;
           if (msg.lv !== undefined) looker.lv = msg.lv;
         }
         break;
@@ -1367,6 +1423,8 @@ export class GameScene extends Phaser.Scene {
       actor.weapon = p.w;
       actor.outfit = p.o;
       actor.flight = p.fl;
+      actor.lk = p.lk;
+      actor.sitting = p.med === true;
       actor.lv = p.lv;
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
@@ -1396,6 +1454,8 @@ export class GameScene extends Phaser.Scene {
     actor.label.destroy();
     actor.tag.destroy();
     actor.cloud?.destroy();
+    actor.hat?.destroy();
+    actor.seat?.destroy();
     this.actors.delete(id);
   }
 
@@ -1591,6 +1651,21 @@ export class GameScene extends Phaser.Scene {
    * Gets on or off. A walk in progress goes on at the new speed from where the character is right now, predicted here just like a click
    * to walk is (and the position is sent along), so the change is smooth and the server's answer does not pull the character back.
    */
+  /** Sit down to meditate or stand up (V). The server decides; the button follows its answer. */
+  private toggleMeditate(): void {
+    if (this.transferring || this.selfDead) return;
+    if (!this.meditating && this.map.safe) return void this.chat.system(vi.meditate.reasons.safe!);
+    if (!this.meditating) this.stopAuto("manual"); // a hunt and a meditation do not go together
+    this.net.send({ t: "meditate", on: !this.meditating });
+  }
+
+  private setMeditating(on: boolean): void {
+    this.meditating = on;
+    this.meditateBtn.hidden = false;
+    iconButton(this.meditateBtn, "meditate", `${on ? vi.meditate.stand : vi.meditate.sit}: ${vi.meditate.hint}`);
+    this.meditateBtn.classList.toggle("sitting", on);
+  }
+
   private toggleMount(): void {
     const on = !isMounted();
     const self = this.actors.get(this.selfId);
@@ -1766,6 +1841,10 @@ export class GameScene extends Phaser.Scene {
       a.view = view;
       a.body.setVisible(false);
     }
+    // Meditating: the figure is lower and a little smaller (no sitting frames exist, so the stand-still frame is squashed), on a ring of light.
+    const sit = a.sitting === true && !a.mounted;
+    a.view.setScale(sit ? 0.86 : 1);
+    a.wview?.setScale(sit ? 0.86 : 1);
     // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
     const anim = moving && !a.mounted ? "run" : "idle";
     const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
@@ -1780,12 +1859,74 @@ export class GameScene extends Phaser.Scene {
     if (a.view.alive) {
       a.wview?.followFrame(a.view);
       this.applyReact(a.id, a.view, a.wview, now);
-      a.view.place(x, y - (a.mounted ? 8 : 0), depth);
-      a.wview?.place(x, y - (a.mounted ? 8 : 0), depth + 0.02);
+      const lift = a.mounted ? -8 : sit ? 5 : 0; // sitting: the feet are lower
+      a.view.place(x, y - (a.mounted ? 8 : 0) + (sit ? 5 : 0), depth);
+      a.wview?.place(x, y - (a.mounted ? 8 : 0) + (sit ? 5 : 0), depth + 0.02);
+      this.applyGearLook(a, x, y - (a.mounted ? 8 : 0) + (sit ? 5 : 0), depth, moving);
+      this.syncSeat(a, now, x, y, depth, sit, lift);
     } else {
       a.wview?.destroy();
       a.wview = undefined;
     }
+  }
+
+  /** The ring of light under a meditating figure and the motes of healing that rise round it (green for HP, blue for MP; the others see both). */
+  private syncSeat(a: Actor, now: number, x: number, y: number, depth: number, sit: boolean, _lift: number): void {
+    if (!sit) {
+      if (a.seat) {
+        a.seat.destroy();
+        a.seat = undefined;
+      }
+      return;
+    }
+    if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
+    a.seat.setPosition(x, y + 3).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
+    if ((a.moteAt ?? 0) > now) return;
+    a.moteAt = now + 260 + Math.random() * 200;
+    // For yourself the motes show what is coming back: green while HP is below the maximum, blue while MP is.
+    const mine = a.id === this.selfId;
+    const hp = !mine || this.selfHp < this.selfMaxHp;
+    const mp = !mine || this.vitals.getMp() < this.selfMaxMp;
+    const ang = Math.random() * Math.PI * 2;
+    const rx = 10 + Math.random() * 12;
+    const color = hp && (!mp || Math.random() < 0.5) ? 0x7dff9c : mp ? 0x7ab8ff : 0xfff0a0;
+    this.fx.puff("mote", x + Math.cos(ang) * rx, y - 4 + Math.sin(ang) * rx * 0.5, 1, color);
+  }
+
+  /**
+   * What the worn gear adds to a figure: the robe colours the body sprite, the weapon its sprite (by element and realm), the hat is a small shape on the head,
+   * the boots raise dust of their colour while the figure runs. The colours come from the tuning (`gearLooks`); a Canvas renderer ignores tints.
+   */
+  private applyGearLook(a: Actor, x: number, y: number, depth: number, moving: boolean): void {
+    const lk = a.lk;
+    a.view?.setTint(lk?.r !== undefined ? hexOf(robeTintOf(lk.r)) : undefined);
+    a.wview?.setTint(lk?.w !== undefined ? hexOf(weaponTintOf(lk.w)) : undefined);
+    if (lk?.h !== undefined && a.view) {
+      if (!a.hat) a.hat = this.add.image(0, 0, HAT_TEX(hatShapeOf(lk.h))).setOrigin(0.5, 0.85);
+      const key = HAT_TEX(hatShapeOf(lk.h));
+      if (a.hat.texture.key !== key) a.hat.setTexture(key);
+      // The top of the head is `rise` above the feet (the name stands a few px higher); the picture's bottom edge sits on it.
+      // The hat turns with the head: its side of the screen (-2 left .. +2 right, 0 facing the camera or away from it), and whether the face is hidden (facing away: a little darker and
+      // higher). The two shapes that are not the same on both sides (the bun with its pin, the headband with its ribbons) mirror, the ribbons trailing behind.
+      const dir = a.view.dir;
+      const sx = HEAD_SIDE[dir] ?? 0;
+      const away = dir === 3 || dir === 4 || dir === 5;
+      const shape = hatShapeOf(lk.h);
+      const base = hexOf(hatTintOf(lk.h)) ?? 0xffffff;
+      const dim = away ? 0.8 : 1;
+      const tint = (Math.round(((base >> 16) & 255) * dim) << 16) | (Math.round(((base >> 8) & 255) * dim) << 8) | Math.round((base & 255) * dim);
+      a.hat
+        .setPosition(x + sx * 1.5, y - a.view.rise() + 6 - (away ? 1 : 0))
+        .setDepth(depth + 0.03)
+        .setTint(tint)
+        .setFlipX((shape === 3 && sx < 0) || (shape === 5 && sx > 0))
+        .setScale(Math.abs(sx) === 2 ? 0.78 : 1, 1)
+        .setVisible(true);
+    } else if (a.hat) {
+      a.hat.destroy();
+      a.hat = undefined;
+    }
+    if (moving && !a.mounted && lk?.b !== undefined && Math.random() < 0.12) this.fx.puff("trail", x + (Math.random() - 0.5) * 10, y - 2, 1, hexOf(bootsTintOf(lk.b)) ?? 0xffffff);
   }
 
   /** The same for a monster, a guard or a boss; the rank and boss sizes scale the sprite as they scale the square. */
@@ -1858,6 +1999,7 @@ export class GameScene extends Phaser.Scene {
     this.autoSettings = settings;
     this.autoMem = newAutoMemory();
     this.autoNextAt = 0;
+    this.autoManualAt = 0;
     this.autoOn = true;
     this.autoUi.setRunning(true);
     this.chat.system(vi.auto.started(settings.radius));
@@ -1912,6 +2054,16 @@ export class GameScene extends Phaser.Scene {
     this.autoNextAt = now + tuning().auto.tickMs;
     const view = this.autoView(now);
     if (!view) return;
+    if (this.autoManualAt > 0) {
+      if (view.self.moving || now - this.autoManualAt < 400) view.manual = true;
+      else {
+        // the character has come to a stop: hunt around this new spot
+        this.autoManualAt = 0;
+        this.autoAnchor = { x: view.self.x, y: view.self.y };
+        view.anchor = this.autoAnchor;
+        this.autoMem.homeAt = now + 3000;
+      }
+    }
     const act: AutoAction | null = decide(view, this.autoSettings, this.autoMem, tuning().auto);
     if (!act) return;
     switch (act.t) {
@@ -1920,7 +2072,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "cast":
         if (act.target) this.targetId = act.target;
-        this.net.send({ t: "cast", skill: act.skill, ...(act.target ? { target: act.target } : {}), ...(act.element ? { el: act.element as SpiritualRoot } : {}) });
+        this.net.send({ t: "cast", skill: act.skill, ...(act.target ? { target: act.target } : {}), ...(act.at ? { x: Math.round(act.at.x * 100) / 100, y: Math.round(act.at.y * 100) / 100 } : {}), ...(act.element ? { el: act.element as SpiritualRoot } : {}) });
         break;
       case "attack":
         this.targetId = act.id;
@@ -2002,15 +2154,18 @@ export class GameScene extends Phaser.Scene {
         fly.y = s.y;
         const want = FLIGHT_TEX[actorFlight(actor)];
         if (actor.cloud.texture.key !== want) actor.cloud.setTexture(want); // another pháp bảo was put on
-        const sword = want === FLIGHT_TEX.sword;
+        const style = actorFlight(actor);
+        const turn = FLIGHT_TURNS[style]; // the sword, the phoenix and the dragon face where they fly
+        const sword = turn !== undefined;
         const ca = Math.cos(fly.a);
         const sa = Math.sin(fly.a);
-        // the sword lies on the ground, which is squashed 2:1 on screen: along a screen-vertical heading it is seen half as long
+        // what lies on the ground is squashed 2:1 on screen: along a screen-vertical heading it is seen half as long
         const ga = Math.atan2(2 * sa, ca);
         const along = sword ? Math.hypot(Math.cos(ga), 0.5 * Math.sin(ga)) : 1;
         actor.cloud.setPosition(s.x, s.y - 4 + bob).setDepth(10 + pos.x + pos.y - 0.1);
-        actor.cloud.setRotation(sword ? fly.a : 0).setFlipY(sword && ca < 0).setScale(along, 1);
-        if (pos.moving && Math.random() < 0.4) this.fx.puff("trail", s.x - (sword ? ca * 50 * along : 14), s.y - 4 + bob - (sword ? sa * 50 * along : 0), 1, FLIGHT_GLOW[actorFlight(actor)]);
+        const big = FLIGHT_SCALE[actorFlight(actor)];
+        actor.cloud.setRotation(turn ? fly.a - turn.points : 0).setFlipY(!!turn?.flip && ca < 0).setScale(turn && turn.points === 0 ? along * big : big, turn && turn.points !== 0 ? along * big : big); // the length lies along the picture's x for a picture that points right, along its y for one that points up
+        if (pos.moving && Math.random() < 0.4) this.fx.puff("trail", s.x - (turn ? ca * turn.tail * along : 14), s.y - 4 + bob - (turn ? sa * turn.tail * along : 0), 1, FLIGHT_GLOW[style]);
       }
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);

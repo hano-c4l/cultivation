@@ -113,6 +113,8 @@ describe("the ore and the scroll", () => {
     expect(rollOreDrop(0, "normal", rand)).toEqual({ item: "ren_lk", qty: 1 });
     expect(n).toBe(2);
     expect(rollOreDrop(1, "normal", () => 0)!.item).toBe("ren_tc");
+    expect(rollOreDrop(4, "normal", () => 0)!.item).toBe("ren_ht"); // the ores of the two top realms drop on their maps
+    expect(rollOreDrop(5, "normal", () => 0)!.item).toBe("ren_lh");
     expect(rollOreDrop(9, "normal", () => 0)).toBeNull();
     expect(rollOreDrop(0, "normal", () => 0.99)).toBeNull();
     expect(rollOreDrop(0, "rare2", () => 0.99)!.qty).toBe(5);

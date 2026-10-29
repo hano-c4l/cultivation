@@ -32,7 +32,7 @@ interface View {
   skills: Array<{ id: string; source: string; realm: number; level: number; maxLevel: number }>;
 }
 
-const REALMS = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"];
+const REALMS = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh", "Hóa Thần", "Luyện Hư"];
 const SKILL_LEVELS = ["Nhập môn", "Tiểu thành", "Đại thành", "Viên mãn", "Thần thông"];
 const ENHANCE_MAX = 10;
 const STAT_LABEL: Record<string, string> = { canCot: "Căn cốt", thanPhap: "Thân pháp", ngoTinh: "Ngộ tính", linhLuc: "Linh lực", thanThuc: "Thần thức", phucDuyen: "Phúc duyên" };
@@ -86,9 +86,10 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
     msg.className = `msg ${cls}`;
   };
   const act = async (body: Record<string, unknown>, done?: string) => {
-    const res = await api<{ error?: string }>("/api/admin/character/action", { method: "POST", body: { id: c.id, ...body } });
+    const res = await api<{ error?: string; count?: number }>("/api/admin/character/action", { method: "POST", body: { id: c.id, ...body } });
     if (res.status === 200) {
       await reload();
+      if (typeof res.data.count === "number") show(`Đã xử lý ${res.data.count} mục.`, "muted");
       return true;
     }
     show(ERRORS[res.data.error ?? ""] ?? `Lỗi ${res.status}.`, "err");
@@ -250,6 +251,23 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
     gearButtons.push(save);
     return h("span", { class: "toolbar" }, h("span", null, "cường hóa +"), en, lv ? h("span", null, "tinh luyện") : null, lv, dur ? h("span", null, `độ bền /${p.max}`) : null, dur, save);
   };
+  /** One button for a whole section (docs/PHASE2.md 2o): what it does, asked once, then done in a single guarded batch on the server. */
+  const bulk = (label: string, kind: string, ask: string): HTMLButtonElement => {
+    const b = h("button", { type: "button" }, label);
+    b.disabled = !mine;
+    b.addEventListener("click", () => window.confirm(ask) && void act({ action: "bulk", kind }));
+    return b;
+  };
+  const bulkSkills = h("div", { class: "toolbar" }, h("span", null, "Hàng loạt"), bulk("Học toàn bộ kỹ năng", "skills_learn", `Thêm mọi kỹ năng linh căn và bí tịch của các cảnh giới tới ${REALMS[c.realm] ?? ""} mà nhân vật chưa có?`), bulk("Tăng tối đa toàn bộ kỹ năng", "skills_max", "Đưa mọi kỹ năng đang có lên cấp thuần thục cao nhất (điểm tích lũy bắt đầu lại từ 0)?"));
+  const bulkGear = (where: "worn" | "bag", name: string) =>
+    h(
+      "div",
+      { class: "toolbar" },
+      h("span", null, "Hàng loạt"),
+      bulk(`Cường hóa +${ENHANCE_MAX} toàn bộ`, `${where}_enhance`, `Cường hóa +${ENHANCE_MAX} mọi trang bị ${name}?`),
+      bulk("Tinh luyện toàn bộ", `${where}_refine`, `Tinh luyện mọi trang bị ${name}: mọi chỉ số tung lên mức tối đa của bảng master, pháp bảo bản mệnh lên cấp của chủ?`),
+      bulk("Sửa đầy độ bền toàn bộ", `${where}_repair`, `Sửa đầy độ bền mọi trang bị ${name}?`),
+    );
   const levelEditor = (sk: View["skills"][number]): HTMLElement => {
     const pick = h("select", null, ...SKILL_LEVELS.slice(0, sk.maxLevel + 1).map((l, i) => h("option", { value: String(i) }, l)));
     pick.value = String(Math.min(sk.level, sk.maxLevel));
@@ -312,9 +330,12 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
     h("div", { class: "toolbar" }, h("span", null, "Mã"), gCode, gNote),
     h("div", { class: "toolbar" }, h("span", null, "Trang bị"), gKind, gRealm, h("span", null, "bậc"), gTier, gGrade, gElement, gWeaponBox, h("span", null, "số lượng"), gQty, addGear),
     h("p", { class: "muted" }, "Trang bị vào túi với độ bền đầy và chỉ số tung từ bảng master, như mua ở thương nhân; thêm nhiều món một lần thì mỗi món tung chỉ số riêng. Các lựa chọn được giữ sau mỗi lần thêm. Nhập mã trang bị để chọn nhanh. Loại vũ khí chỉ hiện với vũ khí (vũ khí luôn có hệ); món đang mặc phải được tháo ra trước khi lấy."),
+    bulkGear("bag", "trong túi"),
     c.equipped.length ? h("p", { class: "muted" }, "Đang mặc (sửa được thuộc tính ngay tại đây, trang bị vẫn ở trên người):") : null,
+    c.equipped.length ? bulkGear("worn", "đang mặc") : null,
     c.equipped.length ? h("ul", null, ...c.equipped.map((e) => h("li", null, `${e.slot}: ${nameOf(e.type)} (${e.type}) `, gearEditor(e)))) : null,
     h("h3", null, "Kỹ năng"),
+    bulkSkills,
     sl,
     h("div", { class: "toolbar" }, skillId, addSkill),
     h(

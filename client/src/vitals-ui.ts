@@ -6,10 +6,12 @@ import { vi } from "./locales/vi";
 const CURRENCY_ICON: Readonly<Record<Currency, IconShape>> = { linh_thach: "stone", cong_hien: "merit", tien_ngoc: "immortal" };
 
 export interface VitalsUi {
-  /** HP now. With `regen`, it keeps regenerating by itself (the server sends no HP updates while the character is in town). */
-  set(hp: number, maxHp: number, regen?: { inMs: number; perSec: number }): void;
-  /** MP now; it then regenerates by `perSec` (a fraction of max) per second once `regenInMs` has passed. */
+  /** HP now. It then goes on by the rate last given (`setRates`): the server sends HP once a second while it regenerates, but none while the character is in town. */
+  set(hp: number, maxHp: number): void;
+  /** MP now; it then regenerates by `perSec` (a fraction of max) per second (`regenInMs` is not used any more: nothing waits for a hit to be forgotten). */
   setMp(mp: number, maxMp: number, regenInMs: number, perSec: number): void;
+  /** HP and MP regenerated per second now (points): meditating or not, with the gear. */
+  setRates(hpPerS: number, mpPerS: number): void;
   /** MP at this moment (the stored value plus the regeneration since). */
   getMp(): number;
   /** Replaces all balances (welcome). */
@@ -31,12 +33,12 @@ export function initVitals(): VitalsUi {
   }
   const mpText = document.getElementById("vitals-mp-text")!;
   const mpFill = document.getElementById("vitals-mp-fill")!;
-  let mpState = { mp: 0, max: 0, regenAt: 0, perSec: 0.02 };
+  let mpState = { mp: 0, max: 0, regenAt: 0, rate: 0 };
   const mpNow = (): number => {
-    const { mp, max, regenAt, perSec } = mpState;
+    const { mp, max, regenAt, rate } = mpState;
     if (mp >= max) return max;
     const elapsed = Date.now() - regenAt;
-    return elapsed <= 0 ? mp : Math.min(max, mp + Math.floor((elapsed / 1000) * Math.max(1, max * perSec)));
+    return elapsed <= 0 || rate <= 0 ? mp : Math.min(max, mp + Math.floor((elapsed / 1000) * rate));
   };
   const drawMp = () => {
     const v = mpNow();
@@ -44,12 +46,17 @@ export function initVitals(): VitalsUi {
     mpFill.style.width = `${mpState.max > 0 ? Math.max(0, Math.min(100, (v / mpState.max) * 100)) : 0}%`;
   };
   setInterval(drawMp, 500);
-  let hpState: { hp: number; max: number; regenAt: number; perSec: number } | null = null;
+  let hpState: { hp: number; max: number; regenAt: number; rate: number } | null = null;
+  const hpNow = (): number => {
+    if (!hpState) return 0;
+    const { hp, max, regenAt, rate } = hpState;
+    const elapsed = Date.now() - regenAt;
+    return hp >= max || elapsed <= 0 || rate <= 0 ? hp : Math.min(max, hp + Math.floor((elapsed / 1000) * rate));
+  };
   const drawHp = () => {
     if (!hpState) return;
-    const { hp, max, regenAt, perSec } = hpState;
-    const elapsed = Date.now() - regenAt;
-    const v = hp >= max || elapsed <= 0 ? hp : Math.min(max, hp + Math.floor((elapsed / 1000) * Math.max(1, max * perSec)));
+    const { max } = hpState;
+    const v = hpNow();
     text.textContent = `${vi.combat.hp}: ${v} / ${max}`;
     fill.style.width = `${max > 0 ? Math.max(0, Math.min(100, (v / max) * 100)) : 0}%`;
   };
@@ -70,15 +77,21 @@ export function initVitals(): VitalsUi {
     );
   };
   return {
-    set(hp, maxHp, regen) {
+    set(hp, maxHp) {
       root.hidden = false;
-      // A later plain update (the server drives HP in a fight) turns the local regeneration off.
-      hpState = regen ? { hp, max: maxHp, regenAt: Date.now() + regen.inMs, perSec: regen.perSec } : null;
+      hpState = { hp, max: maxHp, regenAt: Date.now(), rate: hpState?.rate ?? 0 };
       text.textContent = `${vi.combat.hp}: ${hp} / ${maxHp}`;
       fill.style.width = `${maxHp > 0 ? Math.max(0, Math.min(100, (hp / maxHp) * 100)) : 0}%`;
     },
-    setMp(mp, maxMp, regenInMs, perSec) {
-      mpState = { mp, max: maxMp, regenAt: Date.now() + regenInMs, perSec };
+    setMp(mp, maxMp, _regenInMs, perSec) {
+      mpState = { mp, max: maxMp, regenAt: Date.now(), rate: maxMp * perSec };
+      drawMp();
+    },
+    setRates(hpPerS, mpPerS) {
+      // What has regenerated at the old rate stays; the new rate counts from now.
+      if (hpState) hpState = { hp: hpNow(), max: hpState.max, regenAt: Date.now(), rate: hpPerS };
+      mpState = { mp: mpNow(), max: mpState.max, regenAt: Date.now(), rate: mpPerS };
+      drawHp();
       drawMp();
     },
     getMp: mpNow,

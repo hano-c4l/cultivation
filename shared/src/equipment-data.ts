@@ -60,14 +60,17 @@ export function slotKind(slot: EquipSlot): EquipKind {
 
 /** Stats gear can add. Limited to what combat already uses (docs/PHASE2.md, 2b). Rates are percentage points. */
 /** moveSpeed is a percentage added to the walking speed (see effectiveSpeed). */
-export const EQUIP_STAT_KEYS = ["attack", "defense", "maxHp", "critRate", "dodgeRate", "moveSpeed"] as const;
-/** Stats given in percentage points, shown with one decimal. */
-export const EQUIP_RATE_KEYS: readonly EquipStatKey[] = ["critRate", "dodgeRate", "moveSpeed"];
+export const EQUIP_STAT_KEYS = ["attack", "defense", "maxHp", "critRate", "dodgeRate", "moveSpeed", "hpRegen", "mpRegen", "hpRegenPct", "mpRegenPct"] as const;
+/**
+ * Stats given in percentage points, shown with one decimal. `hpRegen`/`mpRegen` are points of HP/MP regenerated every second and `hpRegenPct`/`mpRegenPct` percent of the maximum regenerated every
+ * MINUTE; they work all the time (in a fight too, meditating or not, see gear-regen.ts).
+ */
+export const EQUIP_RATE_KEYS: readonly EquipStatKey[] = ["critRate", "dodgeRate", "moveSpeed", "hpRegenPct", "mpRegenPct"];
 export type EquipStatKey = (typeof EQUIP_STAT_KEYS)[number];
 export type EquipStats = Record<EquipStatKey, number>;
 
 export function emptyEquipStats(): EquipStats {
-  return { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0 };
+  return { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0, hpRegen: 0, mpRegen: 0, hpRegenPct: 0, mpRegenPct: 0 };
 }
 
 /** Vietnamese names per kind and style. Display data, like monster names. */
@@ -92,10 +95,10 @@ const KIND_WEIGHTS: Readonly<Record<EquipKind, Partial<EquipStats>>> = {
   hat: { defense: 1.2, maxHp: 4 },
   robe: { defense: 2, maxHp: 6 },
   bracer: { attack: 1, defense: 1 },
-  ring: { attack: 1, critRate: 0.15 },
-  jade: { maxHp: 5, dodgeRate: 0.1 },
-  necklace: { maxHp: 5, defense: 0.8 },
-  belt: { defense: 1.5, maxHp: 3 },
+  ring: { attack: 1, critRate: 0.15, mpRegen: 0.35 },
+  jade: { maxHp: 5, dodgeRate: 0.1, mpRegenPct: 0.6 },
+  necklace: { maxHp: 5, defense: 0.8, hpRegenPct: 0.6 },
+  belt: { defense: 1.5, maxHp: 3, hpRegen: 0.5 },
   boots: { defense: 0.8 },
   charm: { attack: 1.5, defense: 0.5 },
   bonded: { attack: 2, defense: 1, maxHp: 3 },
@@ -120,6 +123,8 @@ const KIND_REQ_STAT: Readonly<Record<EquipKind, StatKey>> = {
 
 export const MAX_EQUIP_GRADE = 4;
 /** Phẩm cấp multiplier of a piece's stats, grade 1 (Hạ) to 4 (Cực). */
+/** Bậc in a realm, as the look numbers count them (the same as STAGES_PER_REALM). */
+export const STAGES_PER_REALM_FOR_LOOK = 9;
 export const GRADE_MULT = [1, 1.25, 1.6, 2.2] as const;
 /** Linh Thạch to repair one lost durability point, per grade (doubling each grade). */
 export const REPAIR_COST_PER_POINT = [1, 2, 4, 8] as const;
@@ -181,8 +186,8 @@ function unitsOf(realm: number, tier: number, grade: number): number {
  * wearer's resonance changes it, so the range is what a player sees. The boots are a modest boost, the flight pháp bảo a large one.
  */
 export const SPEED_RANGES: Readonly<Partial<Record<EquipKind, readonly (readonly [number, number])[]>>> = {
-  boots: [[10, 20], [15, 25], [20, 30], [30, 40]],
-  flight: [[40, 60], [60, 80], [80, 100], [110, 150]],
+  boots: [[10, 20], [15, 25], [20, 30], [30, 40], [35, 45], [40, 50]],
+  flight: [[40, 60], [60, 80], [80, 100], [110, 150], [130, 170], [150, 200]],
 };
 
 /** The speed range of a kind at flat level `lv`, or undefined when the kind gives no speed. */
@@ -241,7 +246,7 @@ export const SPECIAL_EQUIPMENT: Readonly<Record<string, EquipInfo>> = {
     grade: 4,
     element: null,
     weaponType: null,
-    stats: { attack: 4, defense: 0, maxHp: 0, critRate: 1, dodgeRate: 0, moveSpeed: 0 },
+    stats: { ...emptyEquipStats(), attack: 4, critRate: 1 },
     maxDurability: null,
     req: { level: null, stat: null },
     nameVi: "Vạn Cổ Giới",

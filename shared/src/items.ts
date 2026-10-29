@@ -173,6 +173,47 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     healFraction: 1,
     healOverMs: 4000,
   },
+  than_huyet_dan: {
+    id: "than_huyet_dan",
+    nameVi: "Thần Huyết Đan",
+    descVi: "Đan dược cấp Hóa Thần, hồi 70% sinh lực khi dùng.",
+    category: "consumable",
+    maxStack: 999,
+    rarity: "epic",
+    grade: 4,
+    healFraction: 0.7,
+  },
+  hu_huyet_dan: {
+    id: "hu_huyet_dan",
+    nameVi: "Hư Huyết Đan",
+    descVi: "Đan dược cấp Luyện Hư, hồi đầy sinh lực, thấm dần trong 3 giây.",
+    category: "consumable",
+    maxStack: 999,
+    rarity: "epic",
+    grade: 4,
+    healFraction: 1,
+    healOverMs: 3000,
+  },
+  than_linh_dan: {
+    id: "than_linh_dan",
+    nameVi: "Thần Linh Đan",
+    descVi: "Đan dược cấp Hóa Thần, hồi 70% linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 999,
+    rarity: "epic",
+    grade: 4,
+    mpFraction: 0.7,
+  },
+  hu_linh_dan: {
+    id: "hu_linh_dan",
+    nameVi: "Hư Linh Đan",
+    descVi: "Đan dược cấp Luyện Hư, hồi đầy linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 999,
+    rarity: "epic",
+    grade: 4,
+    mpFraction: 1,
+  },
   hoi_linh_dan: {
     id: "hoi_linh_dan",
     nameVi: "Hồi Linh Đan",
@@ -232,6 +273,16 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     rarity: "rare",
     grade: 3,
     teleportTo: "town2",
+  },
+  ttp_town3: {
+    id: "ttp_town3",
+    nameVi: "Truyền Tống Phù · Huyền Thiên Thành",
+    descVi: "Dùng để lập tức trở về Huyền Thiên Thành. Chỉ bán ở thương nhân của thành, không rơi từ quái.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "epic",
+    grade: 4,
+    teleportTo: "town3",
   },
   ttp_town: {
     id: "ttp_town",
@@ -414,7 +465,7 @@ export const LOOT_TABLES: Readonly<Record<MonsterRank, readonly LootEntry[]>> = 
   ],
 };
 
-/** Extra lines for maps of the higher realms (Kim Đan and Nguyên Anh): the stronger pills, on top of the lines above. */
+/** Extra lines for maps of the higher realms (Kim Đan to Luyện Hư): the stronger pills, on top of the lines above. */
 export const REALM_LOOT: Readonly<Record<number, Readonly<Record<MonsterRank, readonly LootEntry[]>>>> = {
   2: {
     normal: [{ item: "linh_nguyen_dan", chance: 0.03, min: 1, max: 1 }],
@@ -425,6 +476,16 @@ export const REALM_LOOT: Readonly<Record<number, Readonly<Record<MonsterRank, re
     normal: [{ item: "linh_nguyen_dan", chance: 0.04, min: 1, max: 1 }, { item: "bao_nguyen_dan", chance: 0.01, min: 1, max: 1 }],
     rare1: [{ item: "linh_nguyen_dan", chance: 0.2, min: 1, max: 2 }, { item: "bao_nguyen_dan", chance: 0.08, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.06, min: 1, max: 1 }],
     rare2: [{ item: "linh_nguyen_dan", chance: 0.5, min: 1, max: 3 }, { item: "bao_nguyen_dan", chance: 0.25, min: 1, max: 2 }, { item: "thien_ngo_dan", chance: 0.25, min: 1, max: 1 }],
+  },
+  4: {
+    normal: [{ item: "than_huyet_dan", chance: 0.03, min: 1, max: 1 }, { item: "than_linh_dan", chance: 0.015, min: 1, max: 1 }],
+    rare1: [{ item: "than_huyet_dan", chance: 0.2, min: 1, max: 2 }, { item: "than_linh_dan", chance: 0.1, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.08, min: 1, max: 1 }],
+    rare2: [{ item: "than_huyet_dan", chance: 0.5, min: 1, max: 3 }, { item: "than_linh_dan", chance: 0.3, min: 1, max: 2 }, { item: "thien_ngo_dan", chance: 0.3, min: 1, max: 1 }],
+  },
+  5: {
+    normal: [{ item: "hu_huyet_dan", chance: 0.02, min: 1, max: 1 }, { item: "hu_linh_dan", chance: 0.01, min: 1, max: 1 }],
+    rare1: [{ item: "hu_huyet_dan", chance: 0.15, min: 1, max: 2 }, { item: "hu_linh_dan", chance: 0.08, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.1, min: 1, max: 1 }],
+    rare2: [{ item: "hu_huyet_dan", chance: 0.4, min: 1, max: 3 }, { item: "hu_linh_dan", chance: 0.25, min: 1, max: 2 }, { item: "thien_ngo_dan", chance: 0.35, min: 1, max: 1 }],
   },
 };
 

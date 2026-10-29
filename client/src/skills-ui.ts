@@ -213,6 +213,12 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
 
     const current = tabs.find((t) => t.id === tab);
     const shown = ids.map((id) => getSkill(id)).filter((s): s is SkillDef => !!s && !!current && current.match(s));
+    // The highest realm first, then the highest grade (the realm and grade a skill works at for this character), then the name.
+    shown.sort((a, b) => {
+      const ca = contextOf(a);
+      const cb = contextOf(b);
+      return cb.realm - ca.realm || cb.grade - ca.grade || skillDisplayName(a).localeCompare(skillDisplayName(b), "vi");
+    });
     if (shown.length === 0) panel.append(el("div", "muted", vi.skills.emptyTab[tab] ?? vi.skills.empty));
     for (const s of shown) panel.append(card(s));
     panel.append(el("div", "muted", vi.skills.hint));
@@ -225,7 +231,7 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
   document.addEventListener("keydown", (ev) => {
     const a = document.activeElement;
     const typing = a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement || a instanceof HTMLSelectElement;
-    if (!typing && (ev.key === "v" || ev.key === "V") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !toggle.hidden) {
+    if (!typing && (ev.key === "k" || ev.key === "K") && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !toggle.hidden) {
       panel.hidden = !panel.hidden;
       render();
     }

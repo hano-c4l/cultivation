@@ -18,7 +18,7 @@ describe("the gear master table", () => {
     const m = await getGearMaster(db);
     const count = (raw.prepare("SELECT COUNT(*) AS n FROM equipment_master").get() as { n: number }).n;
     expect(count).toBe(m.stats.size);
-    expect((raw.prepare("SELECT COUNT(*) AS n FROM equipment_sets").get() as { n: number }).n).toBe(36);
+    expect((raw.prepare("SELECT COUNT(*) AS n FROM equipment_sets").get() as { n: number }).n).toBe(54);
     expect(m.setNames[0]![0]).toBe("Lăng Y");
     raw.exec(`UPDATE equipment_master SET stats = '{"attack":[100,100]}' WHERE item_key = 'weapon.u.0.1'`);
     raw.exec(`UPDATE equipment_sets SET name_vi = 'Tuyết Ảnh' WHERE realm = 0 AND tier = 1`);

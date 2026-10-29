@@ -44,6 +44,9 @@ export interface Tuning {
   bossCone: { power: number; cdMs: number; below: number; range: number; halfAngleDeg: number };
   /** The boss heals this fraction of its maximum HP per second once it has walked home from a lost fight. */
   bossRegen: { perSecond: number };
+  /** The colours of the gear on a figure (see gear-look.ts): the tint of a weapon by its element (`none` for one without), and the palettes the robe, hat and boots of each set pick from (set number modulo the length). */
+  gearLooks: { weapon: Record<string, string>; robe: string[]; hat: string[]; boots: string[] };
+  basicSkill: { realms: Array<{ nameVi?: string; powerMult: number; range?: number; mpCost?: number; area?: AreaDef }> };
   /** The teleport array in the middle of a main town: Linh Thạch = base + perUnit x the distance between the two towns on the world map (see waygate.ts). */
   waygate: { base: number; perUnit: number };
   /** Area of interest: an entity comes into view inside `enter` and leaves it beyond `leave`, in screen units of 32 px (see aoi.ts). */
@@ -220,12 +223,28 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     rare2: { chance: 0.4, min: 1, max: 3 },
   },
   keepLevel: { priceTienNgoc: 50 },
-  enhanceCost: { linhBase: [100, 1_000, 10_000, 100_000], maxPityPct: 30 },
+  enhanceCost: { linhBase: [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000], maxPityPct: 30 },
   bossCone: { power: 2.2, cdMs: 25_000, below: 0.25, range: 4.5, halfAngleDeg: 45 },
   bossRegen: { perSecond: 0.02 },
+  gearLooks: {
+    weapon: { none: "#e6edf5", kim: "#f2f4f8", moc: "#9fe0a0", thuy: "#8cc4ff", hoa: "#ff8c6a", tho: "#e0b878", loi: "#c8a8ff", bang: "#b4f0ff", phong: "#a8f0d8" },
+    robe: ["#ffffff", "#ffe9d0", "#d8ecff", "#e2ffd8", "#f6d8ff", "#fff4b8", "#ffd0d8", "#cfeee8", "#e8e0ff", "#ffe0a8", "#cfe4ff", "#f0ffd0", "#ffd8f0", "#d0fff4", "#ffd6b0", "#dcdcff"],
+    hat: ["#e8d8b0", "#d0e0ff", "#f0c0c0", "#c8f0c8", "#e0c8f8", "#ffe8a0", "#c0e8f0", "#f8d0a0", "#d8d8e8", "#b8e0c0"],
+    boots: ["#c8d0dc", "#ffd890", "#a8d8ff", "#ffa8a8", "#b8f0b8", "#e0b8ff", "#fff0a0", "#a8f0e8"],
+  },
+  basicSkill: {
+    realms: [
+      { powerMult: 1 },
+      { nameVi: "Linh Khí Phá", powerMult: 1.3, mpCost: 4 },
+      { nameVi: "Kim Đan Chân Khí", powerMult: 1.7, mpCost: 6 },
+      { nameVi: "Nguyên Anh Khí Kình", powerMult: 2.2, mpCost: 9 },
+      { nameVi: "Thần Thức Xạ", powerMult: 2.2, range: 10, mpCost: 12 },
+      { nameVi: "Hư Không Chấn", powerMult: 2.4, range: 11, mpCost: 16, area: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 70 } },
+    ],
+  },
   waygate: { base: 500, perUnit: 40 },
   aoi: { enter: { x: 52, y: 32 }, leave: { x: 58, y: 36 }, everyTicks: 5 },
-  bossSpawn: { chance: 0.001, pityKills: [500, 1500, 2500, 4000], pityDefault: 1500, flushEvery: 25 },
+  bossSpawn: { chance: 0.001, pityKills: [500, 1500, 2500, 4000, 5500, 7000], pityDefault: 1500, flushEvery: 25 },
   bossStats: { statTier: 2, gearGrade: 4, hpMult: 25, pointsPerLevel: 2, realmBonus: 1 },
   bossReward: { minShare: 0.1, damageWeight: 0.7, lastHitWeight: 0.3, expMult: 4, linhMult: 25, itemRounds: 5, itemChanceMult: 3 },
   bossSkills: { mend: { fraction: 0.04, below: 0.5, cdMs: 20_000 }, burst: { power: 2.6, cdMs: 10_000 }, slash: { power: 1.7, cdMs: 5_000 } },
@@ -252,6 +271,8 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       "0": { normal: 0.004, rare1: 0.04, rare2: 0.12 },
       "1": { normal: 0.0015, rare1: 0.02, rare2: 0.06 },
       "2": { normal: 0.0005, rare1: 0.008, rare2: 0.03 },
+      "3": { normal: 0.0002, rare1: 0.004, rare2: 0.015 },
+      "4": { normal: 0.0001, rare1: 0.002, rare2: 0.008 },
     },
     equip: {
       normal: { chance: 0.03, grades: [70, 25, 5, 0], overLevel: 0 },
@@ -291,6 +312,16 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     rare1: [{ item: "linh_nguyen_dan", chance: 0.2, min: 1, max: 2 }, { item: "bao_nguyen_dan", chance: 0.08, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.06, min: 1, max: 1 }],
     rare2: [{ item: "linh_nguyen_dan", chance: 0.5, min: 1, max: 3 }, { item: "bao_nguyen_dan", chance: 0.25, min: 1, max: 2 }, { item: "thien_ngo_dan", chance: 0.25, min: 1, max: 1 }],
   },
+  4: {
+    normal: [{ item: "than_huyet_dan", chance: 0.03, min: 1, max: 1 }, { item: "than_linh_dan", chance: 0.015, min: 1, max: 1 }],
+    rare1: [{ item: "than_huyet_dan", chance: 0.2, min: 1, max: 2 }, { item: "than_linh_dan", chance: 0.1, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.08, min: 1, max: 1 }],
+    rare2: [{ item: "than_huyet_dan", chance: 0.5, min: 1, max: 3 }, { item: "than_linh_dan", chance: 0.3, min: 1, max: 2 }, { item: "thien_ngo_dan", chance: 0.3, min: 1, max: 1 }],
+  },
+  5: {
+    normal: [{ item: "hu_huyet_dan", chance: 0.02, min: 1, max: 1 }, { item: "hu_linh_dan", chance: 0.01, min: 1, max: 1 }],
+    rare1: [{ item: "hu_huyet_dan", chance: 0.15, min: 1, max: 2 }, { item: "hu_linh_dan", chance: 0.08, min: 1, max: 1 }, { item: "thien_ngo_dan", chance: 0.1, min: 1, max: 1 }],
+    rare2: [{ item: "hu_huyet_dan", chance: 0.4, min: 1, max: 3 }, { item: "hu_linh_dan", chance: 0.25, min: 1, max: 2 }, { item: "thien_ngo_dan", chance: 0.35, min: 1, max: 1 }],
+  },
 } },
   kills: { base: 30, growth: 1.13 },
   itemValue: {
@@ -308,9 +339,14 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       yeu_dan: 40,
       ttp_town: 2_000,
       ttp_town2: 20_000,
+      ttp_town3: 200_000,
       linh_nguyen_dan: 400,
       bao_nguyen_dan: 1_500,
       thien_ngo_dan: 7_500,
+      than_huyet_dan: 4_000,
+      than_linh_dan: 4_000,
+      hu_huyet_dan: 25_000,
+      hu_linh_dan: 25_000,
     },
     kinds: { weapon: 40, hat: 20, robe: 30, bracer: 20, ring: 25, jade: 25, necklace: 25, belt: 20, boots: 20, charm: 60, bonded: 150, flight: 150 },
     grades: [1, 2, 4, 8],
@@ -327,7 +363,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     subFactor: 0.5,
   },
   theme: {
-    realmColors: ["#8bc34a", "#4fc3f7", "#ffb300", "#e040fb"],
+    realmColors: ["#8bc34a", "#4fc3f7", "#ffb300", "#e040fb", "#ff5252", "#e8f4ff"],
     gradeColors: ["rgba(158, 158, 158, 0.28)", "rgba(76, 175, 80, 0.3)", "rgba(66, 165, 245, 0.32)", "rgba(171, 71, 188, 0.34)", "rgba(255, 179, 0, 0.36)"],
     ui: {
       "ui-text": "#e8e4d8",
@@ -359,6 +395,14 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     tuyet_yeu_hau: { hpMult: 1.4, attackMult: 1.6, defenseMult: 1.2, speed: 3.2, aggroRadius: 6, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1500, respawnMs: 25_000 },
     bang_hoang: { hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.8, attackCooldownMs: 1500, respawnMs: 0 },
     xich_thi: { hpMult: 1.4, attackMult: 1.5, defenseMult: 1.2, speed: 2.8, aggroRadius: 5, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1700, respawnMs: 25_000 },
+    loi_van_ho: { hpMult: 1.1, attackMult: 1.3, defenseMult: 1, speed: 3.4, aggroRadius: 6, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1300, respawnMs: 25_000 },
+    huyen_giap_quy: { hpMult: 2, attackMult: 1.2, defenseMult: 1.9, speed: 2.3, aggroRadius: 5, leashRadius: 8, attackRange: 1.5, attackCooldownMs: 2000, respawnMs: 25_000 },
+    phong_loi_ung: { hpMult: 1, attackMult: 1.6, defenseMult: 1, speed: 3.8, aggroRadius: 7, leashRadius: 10, attackRange: 1.5, attackCooldownMs: 1400, respawnMs: 25_000 },
+    loi_de_long: { hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.9, attackCooldownMs: 1400, respawnMs: 0 },
+    hu_anh_bao: { hpMult: 1.2, attackMult: 1.5, defenseMult: 1, speed: 3.8, aggroRadius: 7, leashRadius: 10, attackRange: 1.4, attackCooldownMs: 1200, respawnMs: 25_000 },
+    tinh_ha_cu_linh: { hpMult: 2.1, attackMult: 1.3, defenseMult: 2, speed: 2.2, aggroRadius: 5, leashRadius: 8, attackRange: 1.6, attackCooldownMs: 2000, respawnMs: 25_000 },
+    hu_thien_ma_dieu: { hpMult: 1.1, attackMult: 1.7, defenseMult: 1.1, speed: 3.6, aggroRadius: 7, leashRadius: 10, attackRange: 1.5, attackCooldownMs: 1400, respawnMs: 25_000 },
+    hon_don_ma_ton: { hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.9, attackCooldownMs: 1500, respawnMs: 0 },
     },
     ranks: {
       normal: { chance: 0, hpMult: 1, attackMult: 1, defenseMult: 1, expMult: 1 },
@@ -373,6 +417,8 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       { expBase: 20_000, pointsPerStage: 6 },
       { expBase: 400_000, pointsPerStage: 8 },
       { expBase: 8_000_000, pointsPerStage: 10 },
+      { expBase: 160_000_000, pointsPerStage: 12 },
+      { expBase: 3_200_000_000, pointsPerStage: 14 },
     ],
     stageGrowth: 1.35,
     lowMapMult: 1,
@@ -383,6 +429,8 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       { maxPills: 2, baseRatePct: 70, maxRatePct: 90, durationMs: 60_000, cost: 5_000, basePoints: 10 },
       { maxPills: 3, baseRatePct: 60, maxRatePct: 80, durationMs: 180_000, cost: 50_000, basePoints: 16 },
       { maxPills: 3, baseRatePct: 50, maxRatePct: 70, durationMs: 600_000, cost: 500_000, basePoints: 24 },
+      { maxPills: 3, baseRatePct: 45, maxRatePct: 65, durationMs: 600_000, cost: 5_000_000, basePoints: 32 },
+      { maxPills: 3, baseRatePct: 40, maxRatePct: 60, durationMs: 600_000, cost: 50_000_000, basePoints: 40 },
     ],
     failExpLoss: 0.3,
     gradePointsMult: 2,
@@ -436,7 +484,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   boss: {
     claimTtlMs: 24 * 60 * 60 * 1000,
     tier: 9,
-    species: { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang" },
+    species: { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang", town3: null, hoathan: "loi_de_long", luyenhu: "hon_don_ma_ton" },
   },
   alchemy: DEFAULT_ALCHEMY,
   outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 2, outfit: "tien" }] }, // Kim Đan robes and above: the white xianxia robe
@@ -458,8 +506,16 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     hoa_dien_lang: "wolf",
     nham_giap_thu: "orc",
     liet_hoa_xa: "snake",
+    loi_van_ho: "monkroose",
+    huyen_giap_quy: "cactoro",
+    phong_loi_ung: "birb",
+    loi_de_long: "dragon2",
+    hu_anh_bao: "ninja",
+    tinh_ha_cu_linh: "mushking",
+    hu_thien_ma_dieu: "alien",
+    hon_don_ma_ton: "bluedemon",
   },
-  flightLooks: { default: "sword", byElement: { moc: "lotus", thuy: "cloud", phong: "cloud", bang: "cloud", hoa: "sword", kim: "sword", loi: "sword", tho: "lotus" } },
+  flightLooks: { default: "sword", byElement: { moc: "lotus", thuy: "cloud", phong: "cloud", bang: "cloud", hoa: "sword", kim: "sword", loi: "sword", tho: "lotus" }, byRealm: { "4": "phoenix", "5": "dragon" } },
   auto: { radiusMin: 3, radiusMax: 40, radiusDefault: 20, tickMs: 350, giveUpMs: 6000, skipMs: 20_000, potionGapMs: 2500, castBackoffMs: 2500 },
   weaponReach: { kiem: 1.8, dao: 1.8, thuong: 3, riu: 1.7, cung: 7, quyen: 1.5, none: 1.6 },
   weaponArea: {
@@ -501,6 +557,22 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     phong_3: { shape: "line", range: 10, width: 1.2, maxTargets: 4, pct: 75 },
     phong_4: { shape: "circle", range: 4, at: "self", maxTargets: 6, pct: 80 },
     phong_5: { shape: "circle", range: 3.5, at: "aim", maxTargets: 7, pct: 30, zone: { ms: 8000, tickMs: 1000 } },
+    kim_6: { shape: "line", range: 12, width: 1.6, maxTargets: 6, pct: 85 },
+    kim_7: { shape: "circle", range: 4, at: "aim", maxTargets: 8, pct: 85 },
+    moc_6: { shape: "circle", range: 4, at: "aim", maxTargets: 7, pct: 30, zone: { ms: 8000, tickMs: 1000 } },
+    moc_7: { shape: "circle", range: 5.5, at: "self", maxTargets: 8, pct: 90 },
+    thuy_6: { shape: "circle", range: 5, at: "self", maxTargets: 7, pct: 85 },
+    thuy_7: { shape: "circle", range: 4.5, at: "aim", maxTargets: 8, pct: 30, zone: { ms: 9000, tickMs: 1000 } },
+    hoa_6: { shape: "circle", range: 4, at: "aim", maxTargets: 7, pct: 85 },
+    hoa_7: { shape: "line", range: 12, width: 2, maxTargets: 7, pct: 18, zone: { ms: 7000, tickMs: 600 } },
+    tho_6: { shape: "circle", range: 4.5, at: "aim", maxTargets: 8, pct: 30, zone: { ms: 9000, tickMs: 1000 } },
+    tho_7: { shape: "circle", range: 5.5, at: "self", maxTargets: 8, pct: 90 },
+    loi_6: { shape: "line", range: 12, width: 1.6, maxTargets: 6, pct: 85 },
+    loi_7: { shape: "circle", range: 5.5, at: "self", maxTargets: 8, pct: 90 },
+    bang_6: { shape: "circle", range: 4, at: "aim", maxTargets: 7, pct: 30, zone: { ms: 8000, tickMs: 1000 } },
+    bang_7: { shape: "circle", range: 5.5, at: "self", maxTargets: 8, pct: 90 },
+    phong_6: { shape: "circle", range: 5, at: "self", maxTargets: 7, pct: 85 },
+    phong_7: { shape: "line", range: 12, width: 2, maxTargets: 7, pct: 85 },
     kt_kiem_khi: { shape: "line", range: 9, width: 1.2, maxTargets: 4, pct: 70 },
     kt_kiem_y: { shape: "line", range: 10, width: 1.4, maxTargets: 5, pct: 75 },
     kt_than_kiem: { shape: "line", range: 12, width: 2, maxTargets: 6, pct: 85 },
@@ -514,6 +586,8 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     tt_linh_an: "seal", tt_linh_hai: "seal", kt_hop_nhat: "sword", dt_duong_nguyen: "furnace", dt_dan_khi: "furnace", dt_kim_than: "bell", pt_phong_than: "wind",
     kim_3: "lance", kim_4: "nova", moc_4: "field", moc_5: "nova", thuy_3: "lance", thuy_5: "field", hoa_3: "lane", hoa_4: "lance", tho_4: "nova", tho_5: "field", loi_3: "lance", loi_4: "nova", bang_3: "lance", bang_4: "field", bang_5: "nova", phong_3: "lance", phong_4: "nova", phong_5: "field", kt_kiem_khi: "lance", kt_kiem_y: "lance", kt_than_kiem: "lance", kt_lien_hoan: "nova", tt_phap_tran: "field", tt_dai_phap: "nova",
     khi_co_ban: "bolt",
+    kim_6: "lance", kim_7: "nova", moc_6: "field", moc_7: "nova", thuy_6: "nova", thuy_7: "field", hoa_6: "nova", hoa_7: "lane", tho_6: "field", tho_7: "nova", loi_6: "lance", loi_7: "nova", bang_6: "field", bang_7: "nova", phong_6: "nova", phong_7: "lance",
+    ho_the_ht: "bell", ho_the_lh: "bell", chien_y_ht: "flames", chien_y_lh: "flames", hoi_than_ht: "lotus", hoi_nguyen_lh: "lotus",
     hoi: "lotus", hoi_nguyen_kd: "lotus", tt_hoi_linh: "lotus", bm_hoi_sinh: "phoenix", dt_hoi_xuan: "furnace", dt_hoi_duong: "furnace", dt_dai_hoi: "furnace",
   },
   monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
@@ -525,6 +599,9 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       town2: { ground: "stone", obstacle: "rock", mix: ["rock", "lantern", "boulder", "pillar", "jade", "bamboo"] },
       kimdan: { ground: "lava", obstacle: "rock", mix: ["ember", "ember", "rock", "boulder", "pillar"] },
       nguyenanh: { ground: "snow", obstacle: "crystal", mix: ["crystal", "crystal", "jade", "boulder", "pillar"] },
+      town3: { ground: "stone", obstacle: "rock", mix: ["rock", "lantern", "jade", "pillar", "crystal", "bamboo"] },
+      hoathan: { ground: "stone", obstacle: "crystal", mix: ["crystal", "pillar", "boulder", "jade", "rock"] },
+      luyenhu: { ground: "stone", obstacle: "crystal", mix: ["crystal", "crystal", "pillar", "jade", "boulder"] },
     },
   },
   // Xianxia robes for everyone: the white robe `tien`, one colour each by tint, a formation circle in the same colour under the feet.
@@ -556,6 +633,8 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   enhanceCost: "Chi phí nâng cấp: Linh Thạch cơ bản theo cảnh giới, giới hạn cộng dồn thất bại",
   bossCone: "Kỹ năng nón của boss",
   bossRegen: "Tốc độ hồi máu của boss khi về chỗ cũ",
+  gearLooks: "Màu trang bị trên nhân vật: màu vũ khí theo hệ, bảng màu áo, mũ, giày theo từng bộ",
+  basicSkill: "Phóng Khí (kỹ năng thay đòn đánh thường) theo cảnh giới: tên, hệ số sát thương, tầm, linh lực, vùng sát thương",
   waygate: "Truyền tống trận: giá cơ bản và giá mỗi đơn vị khoảng cách giữa hai thành (Linh Thạch)",
   aoi: "Vùng nhìn: khoảng cách vào tầm và rời tầm (đơn vị màn hình 32 px)",
   bossSpawn: "Boss xuất hiện: xác suất mỗi lần quái hồi sinh, số lần giết chắc chắn theo cảnh giới bản đồ",
@@ -659,7 +738,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "enhanceCost":
       return (
         Array.isArray(value.linhBase) &&
-        value.linhBase.length === DEFAULT_TUNING.enhanceCost.linhBase.length &&
+        value.linhBase.length >= 4 &&
+        value.linhBase.length <= 20 &&
         value.linhBase.every((n) => int(n, 0, 1_000_000_000)) &&
         num(value.maxPityPct, 0, 100)
       );
@@ -667,6 +747,28 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return num(value.power, 0, 100) && int(value.cdMs, 0, 3_600_000) && num(value.below, 0, 1) && num(value.range, 0, 50) && num(value.halfAngleDeg, 0, 180);
     case "bossRegen":
       return num(value.perSecond, 0, 1);
+    case "gearLooks": {
+      const color = (c: unknown): boolean => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c);
+      const list = (a: unknown): boolean => Array.isArray(a) && a.length >= 1 && a.length <= 64 && a.every(color);
+      return obj(value.weapon) && Object.entries(value.weapon).every(([k, v]) => /^[a-z]{2,8}$/.test(k) && color(v)) && list(value.robe) && list(value.hat) && list(value.boots);
+    }
+    case "basicSkill": {
+      const r = value.realms;
+      return (
+        Array.isArray(r) &&
+        r.length >= 1 &&
+        r.length <= 20 &&
+        r.every(
+          (e) =>
+            obj(e) &&
+            num(e.powerMult, 0.1, 100) &&
+            (e.nameVi === undefined || (typeof e.nameVi === "string" && e.nameVi.length >= 1 && e.nameVi.length <= 40)) &&
+            (e.range === undefined || num(e.range, 1, 30)) &&
+            (e.mpCost === undefined || int(e.mpCost, 0, 10_000)) &&
+            (e.area === undefined || (obj(e.area) && (e.area.shape === "single" || e.area.shape === "arc" || e.area.shape === "line" || e.area.shape === "circle") && num(e.area.range, 0, 20) && (e.area.deg === undefined || num(e.area.deg, 1, 360)) && (e.area.width === undefined || num(e.area.width, 0.1, 10)) && (e.area.at === undefined || e.area.at === "self" || e.area.at === "aim") && int(e.area.maxTargets, 1, 20) && num(e.area.pct, 1, 300))),
+        )
+      );
+    }
     case "waygate":
       return int(value.base, 0, 100_000_000) && num(value.perUnit, 0, 1_000_000);
     case "aoi": {
@@ -783,7 +885,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       const realms = value.realms;
       return (
         Array.isArray(realms) &&
-        realms.length === 4 &&
+        realms.length >= 4 &&
+        realms.length <= 20 &&
         realms.every((r) => obj(r) && int(r.expBase, 1, 1_000_000_000_000) && int(r.pointsPerStage, 0, 10_000)) &&
         num(value.stageGrowth, 1, 10) &&
         num(value.lowMapMult, 0, 10) &&
@@ -794,7 +897,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       const steps = value.steps;
       return (
         Array.isArray(steps) &&
-        steps.length === 3 &&
+        steps.length >= 3 &&
+        steps.length <= 20 &&
         steps.every(
           (s) => obj(s) && int(s.maxPills, 1, 20) && num(s.baseRatePct, 0, 100) && num(s.maxRatePct, 0, 100) && (s.maxRatePct as number) >= (s.baseRatePct as number) && int(s.durationMs, 0, 86_400_000) && int(s.cost, 0, 1_000_000_000) && int(s.basePoints, 0, 10_000),
         ) &&
@@ -898,7 +1002,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "monsterTints":
       return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z]{1,16}$/.test(k) && typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v));
     case "monsterModels":
-      return Object.keys(value).length <= 100 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && /^[a-z]{1,16}$/.test(v));
+      return Object.keys(value).length <= 100 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && /^[a-z0-9]{1,16}$/.test(v));
     case "outfits":
       return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit));
     case "alchemy":
@@ -909,9 +1013,9 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     }
     case "theme": {
       const color = (c: unknown) => typeof c === "string" && /^(#[0-9a-fA-F]{3,8}|rgba?\([0-9 ,.%]+\)|hsla?\([0-9 ,.%deg]+\))$/.test(c.trim());
-      const colors = (a: unknown, n: number) => Array.isArray(a) && a.length === n && a.every(color);
+      const colors = (a: unknown, n: number, max = n) => Array.isArray(a) && a.length >= n && a.length <= max && a.every(color);
       const ui = value.ui;
-      return colors(value.realmColors, 4) && colors(value.gradeColors, 5) && obj(ui) && Object.entries(ui).every(([k, v]) => /^[a-z][a-z0-9-]{0,30}$/.test(k) && color(v));
+      return colors(value.realmColors, 4, 20) && colors(value.gradeColors, 5) && obj(ui) && Object.entries(ui).every(([k, v]) => /^[a-z][a-z0-9-]{0,30}$/.test(k) && color(v));
     }
     case "pvp": {
       const tiers = (a: unknown) => Array.isArray(a) && a.length === 4 && a.every((n) => num(n, 0, 1));
@@ -951,12 +1055,50 @@ export function tuning(): Readonly<Tuning> {
 }
 
 /** Installs live groups (`rows` maps a group name to its parsed JSON); a group not given, or given badly, keeps its default. */
+/**
+ * A group stored before a realm was added is short: the realm lists lack the new realms. The shape is still valid, so the tail of the list is taken from
+ * the defaults (what an admin has set is never touched). The keyed tables (boss species, drops, item values) are completed by migration 0055: a missing key there
+ * can mean "none", so the code does not fill it in.
+ */
+function padStale(next: Tuning): void {
+  const tail = <T>(live: T[], def: readonly T[]): void => {
+    for (let i = live.length; i < def.length; i++) live.push(clone(def[i]!));
+  };
+  tail(next.exp.realms, DEFAULT_TUNING.exp.realms);
+  tail(next.theme.realmColors, DEFAULT_TUNING.theme.realmColors);
+  tail(next.enhanceCost.linhBase, DEFAULT_TUNING.enhanceCost.linhBase);
+  tail(next.bossSpawn.pityKills, DEFAULT_TUNING.bossSpawn.pityKills);
+  tail(next.breakthrough.steps, DEFAULT_TUNING.breakthrough.steps);
+}
+
+/** Whether a stored group is shorter than the default in a realm list (it was saved before the last realms were added); `padStale` completes it in memory. */
+export function lacksRealms(group: string, value: unknown): boolean {
+  const len = (v: unknown): number => (Array.isArray(v) ? v.length : Infinity);
+  const v = value as Record<string, unknown> | null;
+  if (typeof v !== "object" || v === null) return false;
+  switch (group) {
+    case "exp":
+      return len(v.realms) < DEFAULT_TUNING.exp.realms.length;
+    case "theme":
+      return len(v.realmColors) < DEFAULT_TUNING.theme.realmColors.length;
+    case "breakthrough":
+      return len(v.steps) < DEFAULT_TUNING.breakthrough.steps.length;
+    case "enhanceCost":
+      return len(v.linhBase) < DEFAULT_TUNING.enhanceCost.linhBase.length;
+    case "bossSpawn":
+      return len(v.pityKills) < DEFAULT_TUNING.bossSpawn.pityKills.length;
+    default:
+      return false;
+  }
+}
+
 export function setTuning(rows: Readonly<Record<string, unknown>> | null | undefined): void {
   const next = clone(DEFAULT_TUNING);
   for (const group of TUNING_GROUPS) {
     const v = rows?.[group];
     if (v !== undefined && validTuningGroup(group, v)) (next as unknown as Record<string, unknown>)[group] = clone(v);
   }
+  padStale(next);
   live = next;
   liveGeneration++;
 }

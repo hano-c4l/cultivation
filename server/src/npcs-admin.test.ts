@@ -70,7 +70,9 @@ describe("the NPC screen", () => {
     const kiem = await find("town", "path_kiem"); // the same master stands in the second town too
     expect((await saveNpc(db, ADMIN, input(kiem, { enabled: false }), false, kiem.updatedAt)).ok).toBe(true);
     const other = await find("town2", "path_kiem");
-    expect(await saveNpc(db, ADMIN, input(other, { enabled: false }), false, other.updatedAt)).toMatchObject({ ok: false, error: "in_use" });
+    expect((await saveNpc(db, ADMIN, input(other, { enabled: false }), false, other.updatedAt)).ok).toBe(true);
+    const last = await find("town3", "path_kiem"); // the last one left: the quest giver cannot go
+    expect(await saveNpc(db, ADMIN, input(last, { enabled: false }), false, last.updatedAt)).toMatchObject({ ok: false, error: "in_use" });
   });
 
   it("adds an NPC of an addable kind (a merchant gets a stock record), deletes it, and never deletes one the game starts with", async () => {

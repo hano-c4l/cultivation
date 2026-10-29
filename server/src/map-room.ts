@@ -79,6 +79,8 @@ import {
   upgradeCost,
   equipBlock,
   equipmentBonus,
+  gearLookOf,
+  type GearLook,
   equipmentInfo,
   walkSpeed,
   levelIndex,
@@ -208,6 +210,8 @@ const MAIL_REFRESH_GAP_MS = 5000;
 interface PlayerState {
   /** Character id. */
   id: string;
+  /** Meditating (kept with the socket so a rebuilt simulation sits the character down again). */
+  med?: boolean;
   /** When the player's last `mail_refresh` was answered. */
   lastMailRefreshAt?: number;
   /** The account is an admin (set by the Worker when the socket opens; a role change counts from the next connection). */
@@ -217,6 +221,8 @@ interface PlayerState {
   female?: boolean;
   /** The weapon family in the hand, as the others see it (a broken weapon counts as none); `applyGear` keeps it current. */
   w?: string;
+  /** What the worn weapon, robe, hat and boots add to the look (see `gearLookOf`); `applyGear` keeps it current. */
+  lk?: GearLook;
   /** The outfit shown (see `outfitOf`); `applyGear` keeps it current. */
   o?: string;
   /** The look of the worn flight pháp bảo (see `flightStyleOf`); `applyGear` keeps it current. */
@@ -232,6 +238,7 @@ interface PlayerState {
   /** Riding the flight pháp bảo (kept per connection: a map change gets off). */
   mounted?: boolean;
   lastMountAt?: number;
+  lastMeditateAt?: number;
   lastMoveAt: number;
   /** Last bag command, to rate-limit them (each one is a D1 write). */
   lastInvAt?: number;
@@ -565,6 +572,7 @@ export class MapRoom extends DurableObject<Env> {
         ...(weaponFamily(bagNow.equipped) ? { w: weaponFamily(bagNow.equipped) as string } : {}),
         ...(outfitOf(bagNow.equipped) ? { o: outfitOf(bagNow.equipped) as string } : {}),
         ...(flightLookOf(bagNow.equipped) ? { fl: flightLookOf(bagNow.equipped) as string } : {}),
+        ...(gearLookOf(bagNow.equipped) ? { lk: gearLookOf(bagNow.equipped) as GearLook } : {}),
         lv: row.realm * 10 + row.stage,
         claimId,
         mapId,
@@ -618,12 +626,13 @@ export class MapRoom extends DurableObject<Env> {
         cd: profile && sim ? sim.cooldownsLeft(profile, Date.now()) : Object.fromEntries(Object.entries(away.cooldowns).map(([k, t]) => [k, t - Date.now()])),
         mp: profile && sim ? sim.currentMp(profile, Date.now()) : away.mp,
         maxMp: profile?.maxMp ?? derived.maxMp,
-        regenInMs: profile ? Math.max(0, profile.lastHurtAt + Math.max(regenDelayMs(), mpRegenDelayMs()) - Date.now()) : 0,
+        regenInMs: 0,
         effects: profile && sim ? sim.effectsOf(profile, Date.now()) : away.buffs.filter((b) => b.until > Date.now() && getSkill(b.skill) !== undefined).map((b) => ({ id: `s:${b.skill}`, ms: b.until - Date.now() })),
       });
       if (staleLoss !== null) this.send(server, { t: "bt_end", ok: false, reason: "left", expLost: staleLoss });
       void this.sendQuestActive(row.id).catch((err) => console.error("quest list failed", row.id, err));
       this.sendPk(server, state);
+      this.sendRegen(row.id, server); // a combat map: the regeneration of the character (a town without a simulation leaves the client on the old rule)
       if (removedAtJoin.length > 0) this.send(server, { t: "eq_removed", items: removedAtJoin.map((r) => ({ type: r.item.type, reason: r.reason, mailed: r.mailed })) });
       if (this.aoiActive()) this.refreshAoi(Date.now());
       else this.broadcast({ t: "joined", player: this.snapshot(state) }, server);
@@ -677,8 +686,12 @@ export class MapRoom extends DurableObject<Env> {
       case "move":
         // Starts the tick again if it was paused. Never awaited: a move must not wait for a rebuild.
         void this.wake(state.mapId).catch((err) => console.error("wake failed", err));
+        this.standUp(ws, "moved");
         return this.handleMove(ws, state, msg);
+      case "meditate":
+        return this.handleMeditate(ws, state, msg.on);
       case "portal":
+        this.standUp(ws, "moved");
         return this.handlePortal(ws, state);
       case "chat":
         // Only map chat belongs on this socket; a client that sends the others here is ignored.
@@ -686,6 +699,7 @@ export class MapRoom extends DurableObject<Env> {
       case "allocate":
         return this.handleAllocate(ws, state, msg.points).then(() => this.refreshSpeed(ws));
       case "attack":
+        this.standUp(ws, "moved");
         return this.handleAttack(ws, state, msg.id);
       case "pk_mode":
         return this.handlePkMode(ws, state, msg.mode);
@@ -700,6 +714,7 @@ export class MapRoom extends DurableObject<Env> {
       case "mail_refresh":
         return this.handleMailRefresh(ws, state);
       case "mount":
+        this.standUp(ws, "moved");
         return this.handleMount(ws, state, msg.on, msg.fx !== undefined && msg.fy !== undefined ? [msg.fx, msg.fy] : undefined);
       case "eq_equip":
       case "eq_unequip":
@@ -725,6 +740,7 @@ export class MapRoom extends DurableObject<Env> {
       case "quest_abandon":
         return this.handleQuestAbandon(ws, state, msg.quest);
       case "cast":
+        this.standUp(ws, "moved");
         return this.handleCast(ws, state, msg);
       case "primary":
         return void this.sim?.setPrimary(state.id, msg.skill, msg.el);
@@ -1223,7 +1239,7 @@ export class MapRoom extends DurableObject<Env> {
         const skills = await this.getSkillRows(row.id).catch(() => [] as SkillRow[]);
         const catalog = await getConstitutionCatalog(this.env.DB).catch(() => DEFAULT_CATALOG);
         const live = present.find((s) => s.id === row.id);
-        sim.addPlayer({ ...seedOf(row, bag, skills, catalog), satKhi: live?.sk ?? row.sat_khi, hero: live?.ah ?? row.anh_hung, satNhan: live?.sn ?? row.sat_nhan, satNhanAt: live?.snAt ?? Date.now() });
+        sim.addPlayer({ ...seedOf(row, bag, skills, catalog), ...(live?.med ? { meditating: true } : {}), satKhi: live?.sk ?? row.sat_khi, hero: live?.ah ?? row.anh_hung, satNhan: live?.sn ?? row.sat_nhan, satNhanAt: live?.snAt ?? Date.now() });
         if (live?.pk) sim.setPkMode(row.id, live.pk);
       }
     } catch (err) {
@@ -1499,7 +1515,21 @@ export class MapRoom extends DurableObject<Env> {
         return;
       case "mp": {
         const entry = sockets.get(ev.playerId);
-        if (entry) this.send(entry.ws, { t: "mp", mp: ev.mp, maxMp: ev.maxMp, regenInMs: ev.regenInMs, perSec: mpRegenPerS() });
+        if (entry) this.send(entry.ws, { t: "mp", mp: ev.mp, maxMp: ev.maxMp, regenInMs: ev.regenInMs, perSec: ev.perSec });
+        return;
+      }
+      case "med": {
+        // Hit (or dead) while sitting: the flag goes, the client stands up and learns the new rates.
+        const entry = sockets.get(ev.playerId);
+        if (!entry) return;
+        const st = entry.ws.deserializeAttachment() as PlayerState | null;
+        if (st?.med) {
+          delete st.med;
+          entry.ws.serializeAttachment(st);
+        }
+        this.send(entry.ws, { t: "meditating", on: false, reason: ev.reason });
+        this.broadcastAbout([ev.playerId], { t: "sit", id: ev.playerId, on: false });
+        this.sendRegen(ev.playerId, entry.ws);
         return;
       }
       case "cast_ok": {
@@ -1823,6 +1853,59 @@ export class MapRoom extends DurableObject<Env> {
     this.applyGear(id, await this.getBag(id), ws);
   }
 
+  /** Tells the client the regeneration per second it has now (meditating or not, with the gear). Nothing in a map without a simulation: the client then regenerates by the old rule. */
+  private sendRegen(id: string, direct?: WebSocket): void {
+    const r = this.sim?.regenOf(id);
+    if (r) this.sendToCharacter(id, { t: "regen", hp: Math.round(r.hp * 100) / 100, mp: Math.round(r.mp * 100) / 100 }, direct);
+  }
+
+  /** Sit down to meditate or stand up. Only in a map with a simulation that is not safe (a town heals by itself); not while a breakthrough or a talisman runs, nor while walking. */
+  private async handleMeditate(ws: WebSocket, state: PlayerState, on: boolean): Promise<void> {
+    const now = Date.now();
+    if (now - (state.lastMeditateAt ?? 0) < 400) return;
+    state.lastMeditateAt = now;
+    ws.serializeAttachment(state);
+    if (!on) return void this.standUp(ws, "moved", true);
+    if (this.mapOf(state.mapId).safe) return void this.send(ws, { t: "meditating", on: false, reason: "safe" });
+    if (state.bt || state.tp || this.isMoving(state)) return void this.send(ws, { t: "meditating", on: false, reason: state.bt || state.tp ? "busy" : "moved" });
+    try {
+      await this.wake(state.mapId);
+    } catch (err) {
+      console.error("wake failed", err);
+      return;
+    }
+    const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+    if (fresh.transferring || !this.sim?.setMeditating(fresh.id, true, Date.now())) return void this.send(ws, { t: "meditating", on: false, reason: "died" });
+    fresh.med = true;
+    ws.serializeAttachment(fresh);
+    this.send(ws, { t: "meditating", on: true });
+    this.broadcastAbout([fresh.id], { t: "sit", id: fresh.id, on: true });
+    this.sendRegen(fresh.id, ws);
+    const p = this.sim.getPlayer(fresh.id);
+    if (p) this.sendMp(ws, p, Date.now());
+  }
+
+  /** Stands the character up (a step, an attack, a skill, a hit): the flag, the simulation and the client. `tell` also answers a plain request to stand up. */
+  private standUp(ws: WebSocket, reason: "hit" | "moved" | "died", tell = false): void {
+    const state = ws.deserializeAttachment() as PlayerState | null;
+    if (!state) return;
+    const was = state.med === true;
+    if (was) {
+      delete state.med;
+      ws.serializeAttachment(state);
+    }
+    const stopped = this.sim?.stopMeditation(state.id, Date.now()) === true;
+    if (was || stopped || tell) {
+      this.send(ws, { t: "meditating", on: false, ...(was || stopped ? { reason } : {}) });
+      if (was || stopped) this.broadcastAbout([state.id], { t: "sit", id: state.id, on: false });
+      if (stopped) {
+        this.sendRegen(state.id, ws);
+        const p = this.sim?.getPlayer(state.id);
+        if (p) this.sendMp(ws, p, Date.now());
+      }
+    }
+  }
+
   /** Get on or off the flight pháp bảo. Stats and speed follow at once. */
   private async handleMount(ws: WebSocket, state: PlayerState, on: boolean, claim?: [number, number]): Promise<void> {
     const now = Date.now();
@@ -1867,7 +1950,10 @@ export class MapRoom extends DurableObject<Env> {
       const w = weaponFamily(bag.equipped) ?? undefined;
       const o = outfitOf(bag.equipped) ?? undefined;
       const fl = flightLookOf(bag.equipped);
-      if (w !== sock.state.w || o !== sock.state.o || fl !== sock.state.fl) {
+      const lk = gearLookOf(bag.equipped);
+      if (w !== sock.state.w || o !== sock.state.o || fl !== sock.state.fl || JSON.stringify(lk) !== JSON.stringify(sock.state.lk)) {
+        if (lk) sock.state.lk = lk;
+        else delete sock.state.lk;
         if (w) sock.state.w = w;
         else delete sock.state.w;
         if (o) sock.state.o = o;
@@ -1875,7 +1961,7 @@ export class MapRoom extends DurableObject<Env> {
         if (fl) sock.state.fl = fl;
         else delete sock.state.fl;
         sock.ws.serializeAttachment(sock.state);
-        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}), ...(o ? { o } : {}), ...(fl ? { fl } : {}), ...(sock.state.lv !== undefined ? { lv: sock.state.lv } : {}) });
+        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}), ...(o ? { o } : {}), ...(fl ? { fl } : {}), ...(lk ? { lk } : {}), ...(sock.state.lv !== undefined ? { lv: sock.state.lv } : {}) });
       }
     }
     void this.syncMount(id).catch((err) => console.error("mount sync failed", id, err));
@@ -1891,6 +1977,7 @@ export class MapRoom extends DurableObject<Env> {
     const before = this.sim.skillsOf(p).join(",");
     this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity, mounted: this.isMounted(id) }), weaponFamily(bag.equipped), gearSkillInfo(bag.equipped));
     this.sendToCharacter(id, { t: "hp", hp: p.hp, maxHp: p.maxHp }, direct);
+    this.sendRegen(id, direct);
     // Pháp bảo grant skills while worn: the list changes when one is put on, taken off or breaks.
     const skills = this.sim.skillsOf(p);
     if (skills.join(",") !== before) this.sendToCharacter(id, { t: "skills", ids: skills }, direct);
@@ -2792,7 +2879,7 @@ export class MapRoom extends DurableObject<Env> {
   /** Tells the client its MP (after a change of max MP the client's extrapolation would otherwise use the old maximum). */
   private sendMp(ws: WebSocket, profile: PlayerProfile, now: number): void {
     const e = this.sim?.mpEvent(profile, now);
-    if (e?.t === "mp") this.send(ws, { t: "mp", mp: e.mp, maxMp: e.maxMp, regenInMs: e.regenInMs, perSec: mpRegenPerS() });
+    if (e?.t === "mp") this.send(ws, { t: "mp", mp: e.mp, maxMp: e.maxMp, regenInMs: e.regenInMs, perSec: e.perSec });
   }
 
   /** Who is casting: the live profile in a combat map, otherwise the saved row. */
@@ -3003,7 +3090,7 @@ export class MapRoom extends DurableObject<Env> {
     this.sendBagDelta(id, res.before, res.after);
     if (needsMp && mpBack !== undefined) {
       const ev = this.sim?.restoreMp(id, mpBack, Date.now());
-      if (ev) this.sendToCharacter(id, { t: "mp", mp: ev.mp, maxMp: ev.maxMp, regenInMs: ev.regenInMs, perSec: mpRegenPerS() });
+      if (ev) this.sendToCharacter(id, { t: "mp", mp: ev.mp, maxMp: ev.maxMp, regenInMs: ev.regenInMs, perSec: ev.perSec });
     }
     if (!needsHp || heal === undefined) return;
     const over = getItemDef(item.type)?.healOverMs;
@@ -4078,7 +4165,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.lk ? { lk: p.lk } : {}), ...(p.med ? { med: true as const } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
   }
 
   /** A character sheet went out (a level, a breakthrough): when the realm or stage changed, everyone who sees the player gets the new look with it. */
@@ -4089,7 +4176,7 @@ export class MapRoom extends DurableObject<Env> {
     if (att.lv === lv) return;
     att.lv = lv;
     ws.serializeAttachment(att);
-    this.broadcastAbout([att.id], { t: "look", id: att.id, ...(att.w ? { w: att.w } : {}), ...(att.o ? { o: att.o } : {}), ...(att.fl ? { fl: att.fl } : {}), lv });
+    this.broadcastAbout([att.id], { t: "look", id: att.id, ...(att.w ? { w: att.w } : {}), ...(att.o ? { o: att.o } : {}), ...(att.fl ? { fl: att.fl } : {}), ...(att.lk ? { lk: att.lk } : {}), lv });
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {

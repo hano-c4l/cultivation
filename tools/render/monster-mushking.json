@@ -1,0 +1,58 @@
+{
+  "extends": "sprite-config.json",
+  "name": "m_mushking",
+  "spriteKey": "monster.mushking",
+  "source": {
+    "model": "downloads/ultimate-monsters/Ultimate Monsters/Big/FBX/MushroomKing.fbx"
+  },
+  "rigName": "CharacterArmature",
+  "stripObjectCurves": true,
+  "bodyMesh": "MushroomKing",
+  "hipsBone": "Hips",
+  "forwardBones": [
+    "Foot.L",
+    "Foot.L_end"
+  ],
+  "autoColors": [
+    1.5,
+    1.5,
+    1.5
+  ],
+  "figureScale": 0.34,
+  "sourceFps": 24,
+  "actionPrefix": "CharacterArmature|CharacterArmature|",
+  "onlyAnims": [
+    "idle",
+    "run",
+    "attack",
+    "hit",
+    "die"
+  ],
+  "anims": {
+    "idle": {
+      "action": "Idle",
+      "frames": 4,
+      "loop": true
+    },
+    "run": {
+      "action": "Run",
+      "frames": 8,
+      "loop": true
+    },
+    "attack": {
+      "action": "Punch",
+      "frames": 6,
+      "loop": false
+    },
+    "hit": {
+      "action": "HitReact",
+      "frames": 3,
+      "loop": false
+    },
+    "die": {
+      "action": "Death",
+      "frames": 6,
+      "loop": false
+    }
+  }
+}

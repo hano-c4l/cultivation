@@ -1,5 +1,5 @@
 {
-  "version": 72,
+  "version": 80,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -112,6 +112,38 @@
     "char_tien_male": {
       "image": "char_tien_male.webp",
       "data": "char_tien_male.json"
+    },
+    "m_monkroose": {
+      "image": "m_monkroose.webp",
+      "data": "m_monkroose.json"
+    },
+    "m_cactoro": {
+      "image": "m_cactoro.webp",
+      "data": "m_cactoro.json"
+    },
+    "m_birb": {
+      "image": "m_birb.webp",
+      "data": "m_birb.json"
+    },
+    "m_ninja": {
+      "image": "m_ninja.webp",
+      "data": "m_ninja.json"
+    },
+    "m_mushking": {
+      "image": "m_mushking.webp",
+      "data": "m_mushking.json"
+    },
+    "m_alien": {
+      "image": "m_alien.webp",
+      "data": "m_alien.json"
+    },
+    "m_bluedemon": {
+      "image": "m_bluedemon.webp",
+      "data": "m_bluedemon.json"
+    },
+    "m_dragon2": {
+      "image": "m_dragon2.webp",
+      "data": "m_dragon2.json"
     }
   },
   "sprites": {
@@ -1298,6 +1330,318 @@
         "die": {
           "frames": 6,
           "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "monster.monkroose": {
+      "atlas": "m_monkroose",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 46,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.cactoro": {
+      "atlas": "m_cactoro",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 58,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.birb": {
+      "atlas": "m_birb",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 51,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.ninja": {
+      "atlas": "m_ninja",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 51,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.mushking": {
+      "atlas": "m_mushking",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 54,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.alien": {
+      "atlas": "m_alien",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 56,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.bluedemon": {
+      "atlas": "m_bluedemon",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 46,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 11,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 3,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        }
+      }
+    },
+    "monster.dragon2": {
+      "atlas": "m_dragon2",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 54,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 8,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 3,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 2,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 6,
           "loop": false
         }
       }

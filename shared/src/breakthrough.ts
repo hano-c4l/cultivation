@@ -35,6 +35,8 @@ export const BREAKTHROUGHS: readonly BreakthroughDef[] = [
   { from: 0, to: 1, pill: breakthroughPillId(1), maxPills: 2, baseRatePct: 70, maxRatePct: 90, durationMs: 60_000, cost: 5_000, basePoints: 10 },
   { from: 1, to: 2, pill: breakthroughPillId(2), maxPills: 3, baseRatePct: 60, maxRatePct: 80, durationMs: 180_000, cost: 50_000, basePoints: 16 },
   { from: 2, to: 3, pill: breakthroughPillId(3), maxPills: 3, baseRatePct: 50, maxRatePct: 70, durationMs: 600_000, cost: 500_000, basePoints: 24 },
+  { from: 3, to: 4, pill: breakthroughPillId(4), maxPills: 3, baseRatePct: 45, maxRatePct: 65, durationMs: 600_000, cost: 5_000_000, basePoints: 32 },
+  { from: 4, to: 5, pill: breakthroughPillId(5), maxPills: 3, baseRatePct: 40, maxRatePct: 60, durationMs: 600_000, cost: 50_000_000, basePoints: 40 },
 ];
 
 

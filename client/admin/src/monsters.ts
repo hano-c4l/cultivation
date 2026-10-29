@@ -41,7 +41,7 @@ interface SpeciesList {
   limits: { name: number; minClusterRespawnMs: number; playerSpeed: number };
 }
 
-const MAP_VI: Record<string, string> = { town: "Thanh Vân Thành", forest: "Hắc Mộc Lâm", cave: "U Minh Động", town2: "Thiên Hà Thành", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên" };
+const MAP_VI: Record<string, string> = { town: "Thanh Vân Thành", forest: "Hắc Mộc Lâm", cave: "U Minh Động", town2: "Thiên Hà Thành", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên", town3: "Huyền Thiên Thành", hoathan: "Lôi Âm Tuyệt Cốc", luyenhu: "Hư Không Hải" };
 const ELEMENT_VI: Record<string, string> = { kim: "Kim", moc: "Mộc", thuy: "Thủy", hoa: "Hỏa", tho: "Thổ" };
 const ERRORS: Record<string, string> = {
   unchanged: "Không có gì thay đổi.",

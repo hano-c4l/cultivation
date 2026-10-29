@@ -30,7 +30,7 @@ const reload = async () => {
 describe("the species screen", () => {
   it("lists every species with its code numbers, where it appears and whether it is the guard", async () => {
     const list = await listSpecies(db);
-    expect(list.species.length).toBe(17);
+    expect(list.species.length).toBe(25);
     expect(await species("soi_rung")).toMatchObject({ changed: false, guard: false, maps: ["forest"], bossOf: [] });
     expect(await species("ve_binh")).toMatchObject({ guard: true });
     expect(await species("huyet_lang_vuong")).toMatchObject({ bossOf: ["forest"], maps: [] });
@@ -88,7 +88,7 @@ describe("the loot tables", () => {
   it("lists the default tables, the realms and the items to choose from", async () => {
     const list = await listLoot(db);
     expect(list.loot).toEqual(DEFAULT_TUNING.loot);
-    expect(list.realms.map((r) => r.key)).toEqual(["0", "1", "2", "3"]);
+    expect(list.realms.map((r) => r.key)).toEqual(["0", "1", "2", "3", "4", "5"]);
     expect(list.items.some((i) => i.id === "yeu_dan")).toBe(true);
   });
 

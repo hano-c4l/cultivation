@@ -1,6 +1,6 @@
 import { tuning, tuningGeneration } from "./tuning";
 import { SPIRITUAL_ROOTS, type SpiritualRoot } from "./character";
-import { CAVE_CHAMBERS, FOREST_GLADES, KIMDAN_GLADES, MAP_IDS, MAP_REALM, MAP_SIZE, NGUYENANH_GLADES, onMapRecipe, screenToTile, type MapId } from "./map";
+import { CAVE_CHAMBERS, FOREST_GLADES, HOATHAN_GLADES, KIMDAN_GLADES, LUYENHU_GLADES, MAP_IDS, MAP_REALM, MAP_SIZE, NGUYENANH_GLADES, onMapRecipe, screenToTile, type MapId } from "./map";
 import { levelIndex, monsterBaseExp } from "./progression";
 
 /**
@@ -44,6 +44,14 @@ export const MONSTERS: Readonly<Record<string, MonsterDef>> = {
   tuyet_yeu_hau: { id: "tuyet_yeu_hau", nameVi: "Tuyết Yêu Hầu", element: "kim", hpMult: 1.4, attackMult: 1.6, defenseMult: 1.2, speed: 3.2, aggroRadius: 6, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1500, respawnMs: 25_000 },
   bang_hoang: { id: "bang_hoang", nameVi: "Băng Hoàng", element: "thuy", hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.8, attackCooldownMs: 1500, respawnMs: 0 },
   xich_thi: { id: "xich_thi", nameVi: "Xích Thi", element: "hoa", hpMult: 1.4, attackMult: 1.5, defenseMult: 1.2, speed: 2.8, aggroRadius: 5, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1700, respawnMs: 25_000 },
+  loi_van_ho: { id: "loi_van_ho", nameVi: "Lôi Viên", element: "loi", hpMult: 1.1, attackMult: 1.3, defenseMult: 1, speed: 3.4, aggroRadius: 6, leashRadius: 9, attackRange: 1.4, attackCooldownMs: 1300, respawnMs: 25_000 },
+  huyen_giap_quy: { id: "huyen_giap_quy", nameVi: "Thạch Chưởng Yêu", element: "tho", hpMult: 2, attackMult: 1.2, defenseMult: 1.9, speed: 2.3, aggroRadius: 5, leashRadius: 8, attackRange: 1.5, attackCooldownMs: 2000, respawnMs: 25_000 },
+  phong_loi_ung: { id: "phong_loi_ung", nameVi: "Phong Lôi Điểu", element: "phong", hpMult: 1, attackMult: 1.6, defenseMult: 1, speed: 3.8, aggroRadius: 7, leashRadius: 10, attackRange: 1.5, attackCooldownMs: 1400, respawnMs: 25_000 },
+  loi_de_long: { id: "loi_de_long", nameVi: "Tử Lôi Chân Long", element: "loi", hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.9, attackCooldownMs: 1400, respawnMs: 0 },
+  hu_anh_bao: { id: "hu_anh_bao", nameVi: "Hư Ảnh Nhẫn", element: "thuy", hpMult: 1.2, attackMult: 1.5, defenseMult: 1, speed: 3.8, aggroRadius: 7, leashRadius: 10, attackRange: 1.4, attackCooldownMs: 1200, respawnMs: 25_000 },
+  tinh_ha_cu_linh: { id: "tinh_ha_cu_linh", nameVi: "Tinh Hà Linh Chi Vương", element: "kim", hpMult: 2.1, attackMult: 1.3, defenseMult: 2, speed: 2.2, aggroRadius: 5, leashRadius: 8, attackRange: 1.6, attackCooldownMs: 2000, respawnMs: 25_000 },
+  hu_thien_ma_dieu: { id: "hu_thien_ma_dieu", nameVi: "Hư Không Dị Nhân", element: "phong", hpMult: 1.1, attackMult: 1.7, defenseMult: 1.1, speed: 3.6, aggroRadius: 7, leashRadius: 10, attackRange: 1.5, attackCooldownMs: 1400, respawnMs: 25_000 },
+  hon_don_ma_ton: { id: "hon_don_ma_ton", nameVi: "Hỗn Độn Ma Tôn", element: "thuy", hpMult: 1, attackMult: 1, defenseMult: 1, speed: 3, aggroRadius: 7, leashRadius: 12, attackRange: 1.9, attackCooldownMs: 1500, respawnMs: 0 },
 };
 
 /**
@@ -70,7 +78,10 @@ export const GUARDS: Record<MapId, readonly (readonly [number, number])[]> = {
   cave: guardSpots("cave", [[-82, -4], [-82, 4], [82, -4], [82, 4]]),
   town2: guardSpots("town2", [[-38, -3], [-38, 3], [38, -11], [38, -5], [38, 5], [38, 11]]),
   kimdan: guardSpots("kimdan", [[-72, -4], [-72, 4]]),
-  nguyenanh: guardSpots("nguyenanh", [[-77, -4], [-77, 4]]),
+  nguyenanh: guardSpots("nguyenanh", [[-77, -4], [-77, 4], [77, -4], [77, 4]]),
+  town3: guardSpots("town3", [[-38, -3], [-38, 3], [38, -11], [38, -5], [38, 5], [38, 11]]),
+  hoathan: guardSpots("hoathan", [[-82, -4], [-82, 4]]),
+  luyenhu: guardSpots("luyenhu", [[-87, -4], [-87, 4]]),
 };
 
 const defCache = new Map<string, MonsterDef>();
@@ -197,6 +208,8 @@ const FOREST_TIERS = tiersByDistance(FOREST_GLADES, [0, -34]);
 const CAVE_TIERS = tiersByDistance(CAVE_CHAMBERS, [-84, 0]);
 const KIMDAN_TIERS = tiersByDistance(KIMDAN_GLADES, [-74, 0]);
 const NGUYENANH_TIERS = tiersByDistance(NGUYENANH_GLADES, [-79, 0]);
+const HOATHAN_TIERS = tiersByDistance(HOATHAN_GLADES, [-84, 0]);
+const LUYENHU_TIERS = tiersByDistance(LUYENHU_GLADES, [-89, 0]);
 
 /** Forest groups stay off the east-west road and the lane from the north gate (the only way to the cave) so low-level players can still walk through. */
 export const CLUSTERS: Record<MapId, readonly Cluster[]> = {
@@ -206,6 +219,9 @@ export const CLUSTERS: Record<MapId, readonly Cluster[]> = {
   town2: [],
   kimdan: groupsOf("kimdan", KIMDAN_GLADES, KIMDAN_TIERS, speciesByTier(KIMDAN_TIERS, ["hoa_dien_lang", "nham_giap_thu", "liet_hoa_xa"]), 2, 4),
   nguyenanh: groupsOf("nguyenanh", NGUYENANH_GLADES, NGUYENANH_TIERS, speciesByTier(NGUYENANH_TIERS, ["bang_phong_hac", "han_thi_ma", "tuyet_yeu_hau"]), 2, 4),
+  town3: [],
+  hoathan: groupsOf("hoathan", HOATHAN_GLADES, HOATHAN_TIERS, speciesByTier(HOATHAN_TIERS, ["loi_van_ho", "huyen_giap_quy", "phong_loi_ung"]), 2, 4),
+  luyenhu: groupsOf("luyenhu", LUYENHU_GLADES, LUYENHU_TIERS, speciesByTier(LUYENHU_TIERS, ["hu_anh_bao", "tinh_ha_cu_linh", "hu_thien_ma_dieu"]), 2, 4),
 };
 
 const CODE_CLUSTERS: Readonly<Record<MapId, readonly Cluster[]>> = { ...CLUSTERS };

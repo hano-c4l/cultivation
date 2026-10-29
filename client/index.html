@@ -107,6 +107,8 @@
       #mount-btn { position: fixed; right: 12px; top: 292px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #mount-btn[hidden] { display: none; } #mount-btn:disabled { opacity: 0.45; cursor: default; } #mount-btn.riding { background: rgba(40, 110, 150, 0.85); color: #e8faff; }
+      #meditate-btn { position: fixed; right: 12px; top: 332px; width: 38px; height: 34px; padding: 0; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); cursor: pointer; }
+      #meditate-btn[hidden] { display: none; } #meditate-btn.sitting { background: rgba(110, 70, 150, 0.9); color: #f4e8ff; box-shadow: 0 0 10px rgba(190, 150, 255, 0.7); }
       #rank-btn { position: fixed; right: 12px; top: 252px; min-width: 84px; padding: 6px 12px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55);
         color: var(--ui-text); font: 14px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #rank-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px);
@@ -267,8 +269,8 @@
       #bag-panel .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; line-height: 1; text-shadow: 0 0 2px #000; pointer-events: none; }
       #bag-panel .bag-mark.x { color: #ff5252; } #bag-panel .bag-mark.plus { color: var(--ui-highlight); }
       #bag-panel .bag-actions button.active { background: #6fcf97; }
-      /* Realm tags (LK, TC1...) are coloured by realm everywhere: Luyện Khí green, Trúc Cơ blue, Kim Đan orange, Nguyên Anh purple. */
-      .realm-0 { --realm: var(--realm-0, #8bc34a); } .realm-1 { --realm: var(--realm-1, #4fc3f7); } .realm-2 { --realm: var(--realm-2, #ffb300); } .realm-3 { --realm: var(--realm-3, #e040fb); }
+      /* Realm tags (LK, TC1...) are coloured by realm everywhere: Luyện Khí green, Trúc Cơ blue, Kim Đan orange, Nguyên Anh purple, Hóa Thần red, Luyện Hư pale blue-white. */
+      .realm-0 { --realm: var(--realm-0, #8bc34a); } .realm-1 { --realm: var(--realm-1, #4fc3f7); } .realm-2 { --realm: var(--realm-2, #ffb300); } .realm-3 { --realm: var(--realm-3, #e040fb); } .realm-4 { --realm: var(--realm-4, #ff5252); } .realm-5 { --realm: var(--realm-5, #e8f4ff); }
       .bag-tag[class*="realm-"], .eq-tag[class*="realm-"], .eq-tier[class*="realm-"], .hb-tag[class*="realm-"], .cp-realm[class*="realm-"] { color: var(--realm) !important; }
       .sk-tag[class*="realm-"] { background: var(--realm) !important; }
       /* The dragged copy of a cell lives outside the panel, so it carries its own styling. */
@@ -296,7 +298,7 @@
       #loading-fill { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--ui-accent), #fff0b0); transition: width 0.25s ease; }
       #loading-text { margin-top: 12px; font-size: 13px; opacity: 0.8; min-height: 18px; }
       /* The Auto hunt: its button under the others and its window. */
-      #auto-btn { position: fixed; right: 12px; top: 332px; width: 38px; height: 34px; padding: 0; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); font: 600 12px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+      #auto-btn { position: fixed; right: 12px; top: 372px; width: 38px; height: 34px; padding: 0; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); font: 600 12px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
       #auto-btn[hidden], #auto-panel[hidden] { display: none; } #auto-btn.running { background: rgba(190, 50, 50, 0.9); color: #fff; }
       #auto-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(380px, calc(100vw - 16px)); max-height: calc(100dvh - 72px); overflow-y: auto; padding: 10px 12px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
       #auto-panel .au-head { display: flex; align-items: center; margin-bottom: 8px; } #auto-panel .au-head b { flex: 1; font-size: 15px; }
@@ -397,7 +399,7 @@
       @media (max-width: 1200px) {
         #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout, #switch-char { padding: 4px 8px; font-size: 12px; }
         #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
-        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; } #auto-btn { top: 368px !important; }
+        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; } #meditate-btn { top: 368px !important; } #auto-btn { top: 408px !important; }
       }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;

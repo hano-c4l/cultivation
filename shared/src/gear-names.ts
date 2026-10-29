@@ -12,6 +12,10 @@ export const DEFAULT_GEAR_SET_NAMES: readonly (readonly string[])[] = [
   ["Cửu Thiên", "Hỗn Nguyên", "Tử Kim", "Lưu Ly", "Bát Hoang", "Thái Hư", "Vạn Cổ", "Thần Hoàng", "Chí Tôn"],
   // Nguyên Anh 1..9
   ["Đạo Tâm", "Huyền Thiên", "Vô Cực", "Thái Cực", "Hồng Mông", "Âm Dương", "Tạo Hóa", "Bất Diệt", "Thiên Đạo"],
+  // Hóa Thần 1..9
+  ["Thần Du", "Linh Đài", "Thái Sơ", "Tinh Thần", "Vân Hà", "Lôi Đình", "Phi Thăng", "Thiên Uy", "Chân Quân"],
+  // Luyện Hư 1..9
+  ["Hư Linh", "Vô Tướng", "Không Minh", "Tịch Diệt", "Hỗn Độn", "Đại La", "Vô Thượng", "Hư Không", "Chí Hư"],
 ];
 
 let names: readonly (readonly string[])[] = DEFAULT_GEAR_SET_NAMES;

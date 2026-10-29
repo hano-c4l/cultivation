@@ -2,6 +2,9 @@ import { api, h } from "./kit";
 
 /** "Chỉ số khác" (PHASE3 3c): the `game_tuning` groups listed by the server, one editable block each, and the `game_settings` numbers. */
 
+/** The boss fields of the towns of the code (a town has no boss). */
+const TOWN_SPECIES: ReadonlySet<string> = new Set(["species.town", "species.town2", "species.town3"]);
+
 interface Field {
   path: string;
   label: string;
@@ -122,7 +125,7 @@ function groupBlock(g: Group, page: Page, refresh: (notice?: string, isError?: b
     lastTop = top;
     const input: HTMLInputElement | HTMLSelectElement =
       f.kind === "species"
-        ? h("select", { disabled: f.path === "species.town" || f.path === "species.town2" }, h("option", { value: "" }, f.path === "species.town" || f.path === "species.town2" ? "(thành không có boss)" : "(không có boss)"), ...speciesChoices.map(([v, l]) => h("option", { value: v }, l)))
+        ? h("select", { disabled: TOWN_SPECIES.has(f.path) }, h("option", { value: "" }, TOWN_SPECIES.has(f.path) ? "(thành không có boss)" : "(không có boss)"), ...speciesChoices.map(([v, l]) => h("option", { value: v }, l)))
         : h("input", f.kind === "color" ? { type: "text", maxlength: "60" } : { type: "number", step: f.kind === "int" ? "1" : "any" });
     input.value = f.kind === "species" ? String((getPath(g.value, f.path) as unknown as string | null) ?? "") : String(getPath(g.value, f.path));
     inputs.set(f.path, input);

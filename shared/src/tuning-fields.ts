@@ -112,12 +112,24 @@ const BASE_SCREENS: readonly TuningScreenGroup[] = [
     ],
   },
   {
+    group: "gearLooks",
+    page: "misc",
+    title: "Màu trang bị trên nhân vật",
+    note: "Vũ khí nhuộm theo hệ của món (cảnh giới cao thì sáng hơn một chút), áo, mũ và giày lấy màu trong bảng theo bộ (số bộ chia dư cho số màu). Chỉ đổi cách hiển thị; người chơi nhận màu mới khi vào lại game. Nhập màu dạng #rrggbb.",
+    fields: [
+      ...Object.keys(DEFAULT_TUNING.gearLooks.weapon).map((k): TuningField => ({ path: `weapon.${k}`, label: `Màu vũ khí: ${k === "none" ? "không hệ" : k}`, kind: "color" })),
+      ...DEFAULT_TUNING.gearLooks.robe.map((_, i): TuningField => ({ path: `robe.${i}`, label: `Màu áo, bảng ${i + 1}`, kind: "color" })),
+      ...DEFAULT_TUNING.gearLooks.hat.map((_, i): TuningField => ({ path: `hat.${i}`, label: `Màu mũ, bảng ${i + 1}`, kind: "color" })),
+      ...DEFAULT_TUNING.gearLooks.boots.map((_, i): TuningField => ({ path: `boots.${i}`, label: `Màu bụi của giày, bảng ${i + 1}`, kind: "color" })),
+    ],
+  },
+  {
     group: "theme",
     page: "misc",
     title: "Màu giao diện",
     note: "Chỉ đổi cách hiển thị, không đổi cách chơi. Nhập màu CSS (#rrggbb, rgb(...), rgba(...)); ô vuông bên cạnh là bản xem trước. Người chơi nhận màu mới khi vào lại game hoặc đổi bản đồ.",
     fields: [
-      ...["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"].map((n, i): TuningField => ({ path: `realmColors.${i}`, label: `Màu thẻ cảnh giới: ${n}`, kind: "color" })),
+      ...REALMS.map((r) => r.nameVi).map((n, i): TuningField => ({ path: `realmColors.${i}`, label: `Màu thẻ cảnh giới: ${n}`, kind: "color" })),
       ...["Hạ phẩm (phẩm 1)", "Trung phẩm (phẩm 2)", "Thượng phẩm (phẩm 3)", "Cực phẩm (phẩm 4)", "Phẩm 5"].map((n, i): TuningField => ({ path: `gradeColors.${i}`, label: `Màu nền phẩm cấp vật phẩm: ${n}`, kind: "color" })),
       { path: "ui.ui-text", label: "Trang: màu chữ", kind: "color" },
       { path: "ui.ui-muted", label: "Trang: màu chữ phụ", kind: "color" },
@@ -240,6 +252,9 @@ const MAP_NAMES: ReadonlyArray<readonly [string, string]> = [
   ["town2", "Thiên Hà Thành"],
   ["kimdan", "Xích Diễm Sơn"],
   ["nguyenanh", "Vạn Cổ Hàn Uyên"],
+  ["town3", "Huyền Thiên Thành"],
+  ["hoathan", "Lôi Âm Tuyệt Cốc"],
+  ["luyenhu", "Hư Không Hải"],
 ];
 
 export const MONSTER_SCREENS: readonly TuningScreenGroup[] = [
@@ -268,7 +283,7 @@ export const MONSTER_SCREENS: readonly TuningScreenGroup[] = [
       { path: "linh.base", label: "Linh Thạch: số lượng gốc", kind: "num" },
       { path: "linh.growth", label: "Linh Thạch: hệ số tăng mỗi cấp", kind: "num" },
       ...perRank((r) => `book.${r}`, (n) => `Bí tịch: xác suất rơi, ${n}`, "frac"),
-      ...REALMS.slice(0, 3).flatMap((realm, i) => perRank((r) => `pill.${i}.${r}`, (n) => `Đan đột phá của bản đồ ${realm.nameVi}: xác suất rơi, ${n}`, "frac")),
+      ...REALMS.slice(0, -1).flatMap((realm, i) => perRank((r) => `pill.${i}.${r}`, (n) => `Đan đột phá của bản đồ ${realm.nameVi}: xác suất rơi, ${n}`, "frac")),
       ...RANKS.flatMap(([rank, name]): TuningField[] => [
         { path: `equip.${rank}.chance`, label: `Trang bị: xác suất rơi, ${name}`, kind: "frac" },
         { path: `equip.${rank}.overLevel`, label: `Trang bị: phần món vượt cấp, ${name}`, kind: "frac" },

@@ -330,6 +330,35 @@ export const EXTRA_QUESTS: readonly QuestDef[] = [
     objective: { kind: "collect", item: "yeu_dan", qty: 40, also: [{ item: "ren_kd", qty: 25 }, { item: "tl_kd", qty: 10 }] },
     rewards: { items: [{ item: BREAKTHROUGHS[2]?.pill ?? "", qty: 1 }] },
   },
+  // The third town's elder (Hóa Thần and Luyện Hư): the one-time breakthrough pills for the last two steps.
+  {
+    id: "breakthrough_4",
+    chain: "breakthrough",
+    seq: 4,
+    giver: "elder3",
+    titleVi: "Đan Đột Phá Hóa Thần",
+    descVi: "Nguyên Anh xuất khiếu, hóa thành thần thức bao trùm thiên địa. Cần đã đạt Nguyên Anh tầng 9. Mang đến 60 Yêu Đan, 30 Tinh Thiết Nguyên Anh và 12 Tinh Hoa Nguyên Anh, ta sẽ luyện cho con một viên Đan Đột Phá Hóa Thần. Chỉ làm được một lần.",
+    enabled: true,
+    requires: null,
+    minRealm: 3,
+    minStage: 9,
+    objective: { kind: "collect", item: "yeu_dan", qty: 60, also: [{ item: "ren_na", qty: 30 }, { item: "tl_na", qty: 12 }] },
+    rewards: { items: [{ item: BREAKTHROUGHS[3]?.pill ?? "", qty: 1 }] },
+  },
+  {
+    id: "breakthrough_5",
+    chain: "breakthrough",
+    seq: 5,
+    giver: "elder3",
+    titleVi: "Đan Đột Phá Luyện Hư",
+    descVi: "Luyện thần phản hư, bước tới ranh giới của hư không. Cần đã đạt Hóa Thần tầng 9. Mang đến 80 Yêu Đan, 30 Tinh Thiết Hóa Thần và 12 Tinh Hoa Hóa Thần, ta sẽ luyện cho con một viên Đan Đột Phá Luyện Hư. Chỉ làm được một lần.",
+    enabled: true,
+    requires: null,
+    minRealm: 4,
+    minStage: 9,
+    objective: { kind: "collect", item: "yeu_dan", qty: 80, also: [{ item: "ren_ht", qty: 30 }, { item: "tl_ht", qty: 12 }] },
+    rewards: { items: [{ item: BREAKTHROUGHS[4]?.pill ?? "", qty: 1 }] },
+  },
 ];
 
 /**
@@ -364,6 +393,8 @@ export const DAILY_QUESTS: readonly QuestDef[] = [
 export const HIGH_DAILY_QUESTS: readonly QuestDef[] = [
   daily("daily_kimdan", 4, "Trấn thủ Xích Diễm Sơn", "Từ Kim Đan trở đi, mỗi ngày hạ 25 con quái ở Xích Diễm Sơn để giữ yên vùng đất quanh thành.", null, 2, { kind: "kill", count: 25, map: "kimdan" }, { linhThach: 3_000, congHien: 40 }, "elder2"),
   daily("daily_nguyenanh", 5, "Trấn thủ Vạn Cổ Hàn Uyên", "Từ Nguyên Anh trở đi, mỗi ngày hạ 25 con quái ở Vạn Cổ Hàn Uyên.", null, 3, { kind: "kill", count: 25, map: "nguyenanh" }, { linhThach: 30_000, congHien: 80 }, "elder2"),
+  daily("daily_hoathan", 6, "Trấn thủ Lôi Âm Tuyệt Cốc", "Từ Hóa Thần trở đi, mỗi ngày hạ 25 con quái ở Lôi Âm Tuyệt Cốc để giữ yên vùng biên giới của thành.", null, 4, { kind: "kill", count: 25, map: "hoathan" }, { linhThach: 300_000, congHien: 120 }, "elder3"),
+  daily("daily_luyenhu", 7, "Trấn thủ Hư Không Hải", "Từ Luyện Hư trở đi, mỗi ngày hạ 25 con quái ở Hư Không Hải.", null, 5, { kind: "kill", count: 25, map: "luyenhu" }, { linhThach: 3_000_000, congHien: 160 }, "elder3"),
 ];
 
 /** Everything the server seeds into an empty catalogue, in order. */

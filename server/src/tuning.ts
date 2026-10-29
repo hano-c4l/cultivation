@@ -1,4 +1,4 @@
-import { DEFAULT_TUNING, setTuning, TUNING_GROUPS, tuning, validTuningGroup, type Tuning } from "@game/shared";
+import { DEFAULT_TUNING, lacksRealms, setTuning, TUNING_GROUPS, tuning, validTuningGroup, type Tuning } from "@game/shared";
 
 /**
  * The 2j balance numbers in D1 (table `game_tuning`, migration 0030): seeded from the code defaults the first time they are read
@@ -37,7 +37,7 @@ async function load(db: D1Database): Promise<{ value: Tuning; version: number }>
       console.error(`tuning group ${r.name} is not JSON`);
     }
     // A row nobody has edited (no `updated_by`) that no longer fits the group's shape (the shape changed in a later release) is the old default: put the new one in.
-    if ((TUNING_GROUPS as string[]).includes(r.name) && r.updated_by === null && !validTuningGroup(r.name, parsed[r.name])) stale.push(r.name);
+    if ((TUNING_GROUPS as string[]).includes(r.name) && r.updated_by === null && (!validTuningGroup(r.name, parsed[r.name]) || lacksRealms(r.name, parsed[r.name]))) stale.push(r.name); // (a realm list from before the last realms were added is the old default too)
   }
   if (stale.length > 0) {
     await db.batch(stale.map((name) => db.prepare("UPDATE game_tuning SET value = ?, updated_at = ? WHERE name = ? AND updated_by IS NULL").bind(JSON.stringify(DEFAULT_TUNING[name as keyof Tuning]), Date.now(), name)));

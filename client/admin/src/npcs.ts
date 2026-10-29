@@ -241,7 +241,7 @@ function ruleRow(rule: Rule, items: MerchantView["meta"]["items"], elements: str
   const tienNgoc = h("input", { type: "checkbox" });
   tienNgoc.checked = rule.kind === "item" && rule.currency === "tien_ngoc";
   const daily = num(rule.kind === "item" ? rule.dailyLimit : undefined, { min: "1", step: "1", placeholder: "giới hạn/ngày" });
-  const realms = text(rule.kind === "gear" ? rule.realms.join(",") : "0", { size: "8", title: "Cảnh giới (0 Luyện Khí, 1 Trúc Cơ, 2 Kim Đan, 3 Nguyên Anh), cách nhau dấu phẩy" });
+  const realms = text(rule.kind === "gear" ? rule.realms.join(",") : "0", { size: "8", title: "Cảnh giới (0 Luyện Khí, 1 Trúc Cơ, 2 Kim Đan, 3 Nguyên Anh, 4 Hóa Thần, 5 Luyện Hư), cách nhau dấu phẩy" });
   const tiers = text(rule.kind === "gear" ? rule.tiers.join(",") : "1", { size: "8", title: "Bậc 1-9, cách nhau dấu phẩy" });
   const grade = num(rule.kind === "gear" ? rule.grade : 1, { min: "1", max: "4", step: "1" });
   const els = text(rule.kind === "gear" && rule.elements ? rule.elements.join(",") : "", { size: "14", placeholder: `hệ (trống: ngũ hành); ${elements.join(",")}` });

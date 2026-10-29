@@ -28,9 +28,9 @@ import { REALMS, ROOT_COUNTS, ROOT_GRADES, STAGES_PER_REALM, STAT_KEYS, STARTING
 const fresh = { realm: 0, stage: 1, exp: 0, potentialPoints: 0 };
 
 describe("realm tables", () => {
-  it("has four realms with nine stages each, in order", () => {
-    expect(REALMS.map((r) => r.nameVi)).toEqual(["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"]);
-    expect(REALMS.map((r) => r.id)).toEqual([0, 1, 2, 3]);
+  it("has six realms with nine stages each, in order", () => {
+    expect(REALMS.map((r) => r.nameVi)).toEqual(["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh", "Hóa Thần", "Luyện Hư"]);
+    expect(REALMS.map((r) => r.id)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(STAGES_PER_REALM).toBe(9);
   });
 

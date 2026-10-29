@@ -10,9 +10,9 @@ export const TILE_H = 32;
 export const CELLS_PER_TILE = 4;
 
 /** The maps the code builds. */
-export const CODE_MAP_IDS = ["town", "forest", "cave", "town2", "kimdan", "nguyenanh"] as const;
+export const CODE_MAP_IDS = ["town", "forest", "cave", "town2", "kimdan", "nguyenanh", "town3", "hoathan", "luyenhu"] as const;
 export type CodeMapId = (typeof CODE_MAP_IDS)[number];
-/** A map id: the six of the code and the ones an admin added (their recipes are installed with setMapRecipe, which keeps MAP_IDS, MAP_SIZE and MAP_REALM current). */
+/** A map id: the nine of the code and the ones an admin added (their recipes are installed with setMapRecipe, which keeps MAP_IDS, MAP_SIZE and MAP_REALM current). */
 export type MapId = string;
 
 /** Every map in play, in order: the code's, then the ones added later. The array is changed in place, so a module that holds it always sees the current list. */
@@ -61,6 +61,11 @@ export const NPC_NAMES_VI: Readonly<Record<string, string>> = {
   elder2: "Trưởng Lão",
   waygate: "Truyền Tống Trận",
   waygate2: "Truyền Tống Trận",
+  merchant3: "Thương nhân",
+  smith3: "Thợ Rèn",
+  alchemist3: "Đan Sư",
+  elder3: "Trưởng Lão",
+  waygate3: "Truyền Tống Trận",
   path_kiem: "Kiếm Đạo Sư",
   path_thuat: "Thuật Đạo Sư",
   path_dan: "Đan Đạo Sư",
@@ -427,6 +432,8 @@ function latticeGlades(cols: readonly number[], inner: number, outer: number, sh
 export const FOREST_GLADES: readonly (readonly [number, number])[] = latticeGlades([-52, -26, 0, 26, 52], 13, 27, 13, 62, (px, py) => py === -13 && px === 0); // the lane from the north gate runs through the middle
 export const KIMDAN_GLADES: readonly (readonly [number, number])[] = latticeGlades([-52, -26, 0, 26, 52], 13, 27, 13, 62);
 export const NGUYENANH_GLADES: readonly (readonly [number, number])[] = latticeGlades([-54, -27, 0, 27, 54], 14, 29, 13, 66);
+export const HOATHAN_GLADES: readonly (readonly [number, number])[] = latticeGlades([-57, -29, 0, 29, 57], 15, 31, 14, 70);
+export const LUYENHU_GLADES: readonly (readonly [number, number])[] = latticeGlades([-60, -30, 0, 30, 60], 16, 33, 15, 74);
 export const CAVE_CHAMBERS: readonly (readonly [number, number])[] = [-70, -50, -30, -10, 10, 30, 50, 70].flatMap((px) => [[px, -13], [px, 13]] as const);
 
 const TOWN_RECT: PlayRect = { halfW: 45, halfH: 22.5 };
@@ -439,6 +446,10 @@ const KIMDAN_RECT: PlayRect = { halfW: 80, halfH: 40 };
 const KIMDAN_SIZE = KIMDAN_RECT.halfW + 2 * KIMDAN_RECT.halfH;
 const NGUYENANH_RECT: PlayRect = { halfW: 85, halfH: 42.5 };
 const NGUYENANH_SIZE = NGUYENANH_RECT.halfW + 2 * NGUYENANH_RECT.halfH;
+const HOATHAN_RECT: PlayRect = { halfW: 90, halfH: 45 };
+const HOATHAN_SIZE = HOATHAN_RECT.halfW + 2 * HOATHAN_RECT.halfH;
+const LUYENHU_RECT: PlayRect = { halfW: 95, halfH: 47.5 };
+const LUYENHU_SIZE = LUYENHU_RECT.halfW + 2 * LUYENHU_RECT.halfH;
 
 /** Placeholder maps. Later maps will be authored in Tiled and baked into this same shape. */
 
@@ -549,6 +560,55 @@ function buildTown2(): MapData {
   };
 }
 
+/** The third town, beside the Hóa Thần and Luyện Hư maps: a west gate to the end of Vạn Cổ Hàn Uyên and two east gates, like the second town. */
+function buildTown3(): MapData {
+  const { halfW, halfH } = TOWN_RECT;
+  const g = new Grid(TOWN_SIZE, TOWN_SIZE);
+  townGround(g);
+  const o = TOWN_OFFSET;
+  g.frame(halfW, halfH);
+  g.srect(-halfW, -3, -14, 3, true); // lane to the west gate (Vạn Cổ Hàn Uyên)
+  g.srect(14, -11, halfW, -5, true); // lane to the Hóa Thần gate
+  g.srect(14, 5, halfW, 11, true); // lane to the Luyện Hư gate
+  g.clipToRect(halfW, halfH);
+  const west = portalTile(TOWN_SIZE, -43, 0);
+  const hoa = portalTile(TOWN_SIZE, 43, -8);
+  const luyen = portalTile(TOWN_SIZE, 43, 8);
+  const toHoa = spot(HOATHAN_SIZE, -86, 0);
+  const toLuyen = spot(LUYENHU_SIZE, -91, 0);
+  const toNguyen = spot(NGUYENANH_SIZE, 79, 0);
+  return {
+    id: "town3",
+    width: TOWN_SIZE,
+    height: TOWN_SIZE,
+    rect: TOWN_RECT,
+    home: "town3",
+    palette: { groundA: 0x4d5a6e, groundB: 0x475365, obstacle: 0x5a5066 },
+    collision: g.cells,
+    ops: g.ops,
+    spawn: [20 + o, 20 + o],
+    safe: true,
+    realm: null,
+    guardRealm: 4,
+    portals: [
+      { ...west, toMap: "nguyenanh", toX: toNguyen[0], toY: toNguyen[1] },
+      { ...hoa, toMap: "hoathan", toX: toHoa[0], toY: toHoa[1] },
+      { ...luyen, toMap: "luyenhu", toX: toLuyen[0], toY: toLuyen[1] },
+    ],
+    npcs: [
+      { id: "merchant3", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
+      { id: "elder3", kind: "quest", x: 16.5 + o, y: 17.5 + o },
+      { id: "smith3", kind: "smith", x: 15.5 + o, y: 20.5 + o },
+      { id: "alchemist3", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
+      { id: "waygate3", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
+      // The same three masters as the other towns, with the same ids.
+      { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
+      { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
+      { id: "path_dan", kind: "quest", x: 28.5 + o, y: 24.5 + o },
+    ],
+  };
+}
+
 function buildForest(): MapData {
   const { halfW, halfH } = FOREST_RECT;
   const g = new Grid(FOREST_SIZE, FOREST_SIZE);
@@ -624,30 +684,33 @@ function buildCave(): MapData {
 }
 
 /** A big open combat map: a gate on the west edge, a road east along the middle and a glade under each monster group. */
-function buildOpenMap(id: "kimdan" | "nguyenanh", rect: PlayRect, size: number, seed: number, obstacles: number, rMin: number, rMax: number, glades: readonly (readonly [number, number])[], realm: number, palette: MapData["palette"]): MapData {
+function buildOpenMap(id: string, rect: PlayRect, size: number, seed: number, obstacles: number, rMin: number, rMax: number, glades: readonly (readonly [number, number])[], realm: number, palette: MapData["palette"], home: string, townGateY: number, eastGate?: { toMap: string; toX: number; toY: number }): MapData {
   const { halfW, halfH } = rect;
   const g = new Grid(size, size);
   g.scatterDiscs(seed, obstacles, rMin, rMax, halfW, halfH);
   g.frame(halfW, halfH);
   g.srect(-halfW, -6, -halfW + 14, 6, true); // clearing at the gate (arrival from the town)
+  if (eastGate) g.srect(halfW - 14, -6, halfW, 6, true); // clearing at the east gate (the way on to the next town)
   g.srect(-halfW + 3, -2, halfW - 3, 2, true); // the road east along the middle
   for (const [px, py] of glades) g.srect(px - 8, py - 5, px + 8, py + 5, true); // a glade under each monster group
   g.clipToRect(halfW, halfH);
   const gate = portalTile(size, -halfW + 2, 0);
-  const toTown = spot(TOWN_SIZE, 40, id === "kimdan" ? -8 : 8);
+  const toTown = spot(TOWN_SIZE, 40, townGateY);
+  const portals: Portal[] = [{ ...gate, toMap: home, toX: toTown[0], toY: toTown[1] }];
+  if (eastGate) portals.push({ ...portalTile(size, halfW - 2, 0), ...eastGate });
   return {
     id,
     width: size,
     height: size,
     rect,
-    home: "town2",
+    home,
     palette,
     collision: g.cells,
     ops: g.ops,
     spawn: spot(size, -halfW + 6, 0),
     safe: false,
     realm,
-    portals: [{ ...gate, toMap: "town2", toX: toTown[0], toY: toTown[1] }],
+    portals,
     npcs: [],
   };
 }
@@ -656,22 +719,28 @@ function buildOpenMap(id: "kimdan" | "nguyenanh", rect: PlayRect, size: number, 
  * What is known about a map without building it (building one fills hundreds of thousands of collision cells, so a map is built the first time
  * it is asked for, not when the module loads: every Worker isolate and every page load imports this file).
  */
-export const MAP_SIZE: Record<string, number> = { town: TOWN_SIZE, forest: FOREST_SIZE, cave: CAVE_SIZE, town2: TOWN_SIZE, kimdan: KIMDAN_SIZE, nguyenanh: NGUYENANH_SIZE };
+export const MAP_SIZE: Record<string, number> = { town: TOWN_SIZE, forest: FOREST_SIZE, cave: CAVE_SIZE, town2: TOWN_SIZE, kimdan: KIMDAN_SIZE, nguyenanh: NGUYENANH_SIZE, town3: TOWN_SIZE, hoathan: HOATHAN_SIZE, luyenhu: LUYENHU_SIZE };
 /** The realm of each map (null for a town), the same as MapData.realm. */
-export const MAP_REALM: Record<string, number | null> = { town: null, forest: 0, cave: 1, town2: null, kimdan: 2, nguyenanh: 3 };
+export const MAP_REALM: Record<string, number | null> = { town: null, forest: 0, cave: 1, town2: null, kimdan: 2, nguyenanh: 3, town3: null, hoathan: 4, luyenhu: 5 };
+
+/** Where the east gate of Vạn Cổ Hàn Uyên lands in the third town (beside its west gate). */
+const TO_TOWN3 = spot(TOWN_SIZE, -40, 0);
 
 const BUILDERS: Readonly<Record<string, () => MapData>> = {
   town: buildTown,
   forest: buildForest,
   cave: buildCave,
   town2: buildTown2,
-  kimdan: () => buildOpenMap("kimdan", KIMDAN_RECT, KIMDAN_SIZE, 7001, 1300, 0.35, 0.8, KIMDAN_GLADES, 2, { groundA: 0x5b3a30, groundB: 0x553529, obstacle: 0x2a1a16 }),
-  nguyenanh: () => buildOpenMap("nguyenanh", NGUYENANH_RECT, NGUYENANH_SIZE, 9001, 1400, 0.35, 0.8, NGUYENANH_GLADES, 3, { groundA: 0x3a4f63, groundB: 0x35495c, obstacle: 0x1d2b38 }),
+  kimdan: () => buildOpenMap("kimdan", KIMDAN_RECT, KIMDAN_SIZE, 7001, 1300, 0.35, 0.8, KIMDAN_GLADES, 2, { groundA: 0x5b3a30, groundB: 0x553529, obstacle: 0x2a1a16 }, "town2", -8),
+  nguyenanh: () => buildOpenMap("nguyenanh", NGUYENANH_RECT, NGUYENANH_SIZE, 9001, 1400, 0.35, 0.8, NGUYENANH_GLADES, 3, { groundA: 0x3a4f63, groundB: 0x35495c, obstacle: 0x1d2b38 }, "town2", 8, { toMap: "town3", toX: TO_TOWN3[0], toY: TO_TOWN3[1] }),
+  town3: buildTown3,
+  hoathan: () => buildOpenMap("hoathan", HOATHAN_RECT, HOATHAN_SIZE, 11001, 1500, 0.35, 0.8, HOATHAN_GLADES, 4, { groundA: 0x4a3f6b, groundB: 0x44395f, obstacle: 0x231c38 }, "town3", -8),
+  luyenhu: () => buildOpenMap("luyenhu", LUYENHU_RECT, LUYENHU_SIZE, 13001, 1600, 0.35, 0.8, LUYENHU_GLADES, 5, { groundA: 0x27293f, groundB: 0x232538, obstacle: 0x10111d }, "town3", 8),
 };
 const built = new Map<MapId, MapData>();
 
 /** Every NPC id on any map (quests name their giver and talk targets from this set; a test checks it against the maps). */
-export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "alchemist", "alchemist2", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2"]);
+export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "alchemist", "alchemist2", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2", "merchant3", "elder3", "smith3", "alchemist3", "waygate3"]);
 
 /**
  * A map as data (what D1 keeps and the admin edits): everything about a map except its NPCs (their own table) and its monster groups (monsters.ts). Building one

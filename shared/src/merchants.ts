@@ -83,6 +83,25 @@ const BOOKS_HIGH: StockRule[] = [
   ...SPIRITUAL_ROOTS.map((el) => book(`${el}_4`, 300_000)),
   ...SPIRITUAL_ROOTS.map((el) => book(`${el}_5`, 3_000_000)),
 ];
+/** The third town's books: a guard, a heal and a battle cry for Hóa Thần and for Luyện Hư, and the strongest skill of each element for both. */
+const BOOKS_TOP: StockRule[] = [
+  book("ho_the_ht", 15_000_000),
+  book("hoi_than_ht", 20_000_000),
+  book("chien_y_ht", 30_000_000),
+  book("ho_the_lh", 150_000_000),
+  book("hoi_nguyen_lh", 200_000_000),
+  book("chien_y_lh", 300_000_000),
+  ...SPIRITUAL_ROOTS.map((el) => book(`${el}_6`, 30_000_000)),
+  ...SPIRITUAL_ROOTS.map((el) => book(`${el}_7`, 300_000_000)),
+];
+/** The third town's alchemist: the plain pills with big daily limits and the Hóa Thần pills; the Luyện Hư pills are brewed (alchemy.ts). */
+const PLAIN_TOP: StockRule[] = [
+  { id: "dai_hoi_huyet_dan", kind: "item", item: "dai_hoi_huyet_dan", dailyLimit: 60 },
+  { id: "ngo_dao_dan", kind: "item", item: "ngo_dao_dan", dailyLimit: 10 },
+  { id: "dai_hoi_linh_dan", kind: "item", item: "dai_hoi_linh_dan", dailyLimit: 60 },
+  { id: "than_huyet_dan", kind: "item", item: "than_huyet_dan", dailyLimit: 30 },
+  { id: "than_linh_dan", kind: "item", item: "than_linh_dan", dailyLimit: 30 },
+];
 
 /** The merchants the game starts with: the seeds of the D1 rows, and the fallback when D1 cannot be read. */
 export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
@@ -129,6 +148,33 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
     stock: [
       { id: "gear_low", kind: "gear", realms: [0, 1], tiers: [1, 2], grade: 1 },
       { id: "gear_low_mutant", kind: "gear", realms: [0, 1], tiers: [1, 2], grade: 1, elements: [...MUTANT_ROOTS], priceMult: 1.5 },
+    ],
+  },
+  merchant3: {
+    id: "merchant3",
+    mapId: "town3",
+    nameVi: "Thương nhân",
+    sellRate: SELL_RATE,
+    buys: null,
+    stock: [
+      { id: "than_huyet_dan", kind: "item", item: "than_huyet_dan", dailyLimit: 30 },
+      ...BOOKS_TOP,
+      { id: "gear_top", kind: "gear", realms: [4, 5], tiers: [1], grade: 1 },
+      { id: "ttp_town3", kind: "item", item: "ttp_town3" },
+      { id: "keep_level", kind: "keep_level" },
+      { id: "than_linh_dan", kind: "item", item: "than_linh_dan", dailyLimit: 30 },
+    ],
+  },
+  alchemist3: { id: "alchemist3", mapId: "town3", nameVi: "Đan Sư", sellRate: SELL_RATE, buys: ["pill", "material"], stock: [...PLAIN_TOP] },
+  smith3: {
+    id: "smith3",
+    mapId: "town3",
+    nameVi: "Thợ Rèn",
+    sellRate: SELL_RATE,
+    buys: ["gear", "artifact"],
+    stock: [
+      { id: "gear_top", kind: "gear", realms: [4, 5], tiers: [1, 2], grade: 1 },
+      { id: "gear_top_mutant", kind: "gear", realms: [4, 5], tiers: [1, 2], grade: 1, elements: [...MUTANT_ROOTS], priceMult: 1.5 },
     ],
   },
   smith2: {

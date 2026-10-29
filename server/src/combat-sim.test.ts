@@ -1,4 +1,4 @@
-import { masteryNeeded, CLUSTERS, GUARDS, rankDef, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
+import { emptyEquipStats, basicSkillAt, castReachOf, skillAreaOf, masteryNeeded, CLUSTERS, GUARDS, rankDef, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, skillContextOf, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -358,10 +358,12 @@ describe("CombatSim.isIdle (the room may stop ticking)", () => {
     expect(sim.isIdle(new Map())).toBe(false);
   });
 
-  it("is busy while a player is below max HP (regeneration is driven by ticks)", () => {
+  it("is busy while a player below max HP regenerates (meditating), and idle when nothing regenerates (regeneration is driven by ticks)", () => {
     const sim = forestSim();
     const p = sim.addPlayer(seed());
     p.hp = p.maxHp - 1;
+    expect(sim.isIdle(new Map())).toBe(true); // not meditating, no gear that heals: nothing to tick for
+    expect(sim.setMeditating("p1", true, 0)).toBe(true);
     expect(sim.isIdle(new Map())).toBe(false);
   });
 
@@ -601,18 +603,69 @@ describe("skills", () => {
     expect(p.buffs).toHaveLength(0);
   });
 
-  it("MP regenerates with time but not for a while after a hit, and is worked out on demand", () => {
-    const sim = townSim();
+  it("MP regenerates only while meditating (or with gear that gives it), and is worked out on demand", () => {
+    const sim = forestSim();
     const p = sim.addPlayer(seed("p1"));
     p.mp = 10;
     p.mpAt = 0;
-    p.lastHurtAt = -1_000_000; // never hit recently
+    expect(sim.currentMp(p, 5000)).toBe(10); // standing: nothing
+    sim.setMeditating("p1", true, 0);
     expect(sim.currentMp(p, 0)).toBe(10);
-    expect(sim.currentMp(p, 5000)).toBe(10 + Math.floor(5 * Math.max(1, p.maxMp * 0.02)));
+    expect(sim.currentMp(p, 5000)).toBe(10 + Math.floor(5 * p.maxMp * 0.02));
     expect(sim.currentMp(p, 1_000_000)).toBe(p.maxMp);
-    p.lastHurtAt = 4000; // hit at 4 s: regeneration waits until 9 s
-    expect(sim.currentMp(p, 8000)).toBe(10);
-    expect(sim.currentMp(p, 11_000)).toBe(10 + Math.floor(2 * Math.max(1, p.maxMp * 0.02)));
+    // Stood up at 6 s: what was regenerated stays, nothing after.
+    expect(sim.stopMeditation("p1", 6000)).toBe(true);
+    const kept = p.mp;
+    expect(kept).toBe(10 + Math.floor(6 * p.maxMp * 0.02));
+    expect(sim.currentMp(p, 60_000)).toBe(kept);
+    // Gear that gives MP works standing, and adds to the meditation.
+    sim.tick(60_000, at([1, 1])); // the room clock moves on
+    sim.updateGear("p1", { ...emptyEquipStats(), mpRegen: 3, mpRegenPct: 60 }); // 3 points a second and 60% of the maximum a minute
+    const standing = 3 + p.maxMp * 0.01;
+    expect(sim.currentMp(p, 62_000)).toBe(kept + Math.floor(2 * standing));
+    sim.setMeditating("p1", true, 62_000);
+    const base = sim.currentMp(p, 62_000);
+    expect(sim.currentMp(p, 64_000)).toBe(base + Math.floor(2 * (standing + p.maxMp * 0.02)));
+  });
+
+  it("being hit stands a meditating character up, keeps the regeneration so far and tells the room", () => {
+    const sim = forestSim();
+    const m = near(sim);
+    const p = sim.addPlayer(seed("p1"));
+    sim.setMeditating("p1", true, 0);
+    p.hp = Math.floor(p.maxHp / 2);
+    const events = run(sim, 0, 8000, at([m.at[0] + 2, m.at[1]]));
+    expect(events.some((e) => e.t === "hit" && e.to === "p1")).toBe(true);
+    expect(events).toContainEqual({ t: "med", playerId: "p1", reason: "hit" });
+    expect(p.meditating).toBe(false);
+  });
+
+  it("HP regenerates in whole points each second only while meditating or with gear, carrying the fractions over", () => {
+    const sim = forestSim();
+    const p = sim.addPlayer(seed("p1"));
+    p.hp = 1;
+    const quiet = sim.tick(1000, at([1, 1]));
+    expect(quiet.some((e) => e.t === "hp")).toBe(false);
+    sim.updateGear("p1", { ...emptyEquipStats(), hpRegenPct: 30 }); // 30% of the maximum a minute: half a percent a second
+    const rate = p.maxHp * 0.005;
+    let t = 1000;
+    for (let i = 0; i < 10; i++) {
+      t += 1000;
+      sim.tick(t, at([1, 1]));
+    }
+    expect(p.hp).toBe(1 + Math.floor(10 * rate));
+  });
+
+  it("the basic qi blast grows with the realm: more power, a longer reach at Hóa Thần, an area at Luyện Hư", () => {
+    const a = basicSkillAt(0);
+    const b = basicSkillAt(2);
+    const c = basicSkillAt(4);
+    const d = basicSkillAt(5);
+    expect(b.power).toBeGreaterThan(a.power);
+    expect(c.range).toBeGreaterThan(b.range);
+    expect(skillAreaOf(c).shape).toBe("single");
+    expect(skillAreaOf(d).maxTargets).toBeGreaterThan(1);
+    expect(castReachOf(d)).toBeGreaterThanOrEqual(castReachOf(c));
   });
 
   it("being hit stores the MP regenerated so far and tells the client", () => {
@@ -635,7 +688,7 @@ describe("skills", () => {
 });
 
 describe("vitals kept across a reload", () => {
-  const townSim = () => new CombatSim(getMap("town"), "town", noCrit, 0);
+  const townSim = () => new CombatSim(getMap("forest"), "forest", noCrit, 0); // a combat map: nothing regenerates by itself there
 
   it("a profile created from stored vitals starts where the character left (with the regeneration of the time away)", () => {
     const sim = townSim();
@@ -647,10 +700,15 @@ describe("vitals kept across a reload", () => {
     expect(p.cooldowns.get("chuong_0")).toBe(now + 20_000);
     expect(p.buffs).toHaveLength(1);
     expect(p.stats.defense).toBeGreaterThan(base.stats.defense); // the buff still counts
-    // Away a long time: back to full.
+    // Away a long time: no free healing in a combat map (nobody meditates while away), only what the gear gives.
     const q = sim.addPlayer(seed("p2", { vitals: { hp: 40, mp: 5, at: now - 3_600_000, cd: {}, buffs: [] } }));
-    expect(q.hp).toBe(q.maxHp);
-    expect(q.mp).toBe(q.maxMp);
+    expect(q.hp).toBe(40);
+    expect(q.mp).toBe(5);
+    const g = sim.addPlayer(seed("p3", { gear: { ...emptyEquipStats(), hpRegen: 1 }, vitals: { hp: 40, mp: 5, at: now - 10_000, cd: {}, buffs: [] } }));
+    expect(g.hp).toBe(50); // a point a second for the ten seconds away
+    const safe = new CombatSim(getMap("town"), "town", noCrit, 0); // a safe map heals as it always did
+    const r = safe.addPlayer(seed("p4", { vitals: { hp: 40, mp: 5, at: now - 3_600_000, cd: {}, buffs: [] } }));
+    expect(r.hp).toBe(r.maxHp);
   });
 
   it("a fresh character (or one whose stored copy was cleared) starts full", () => {
@@ -809,7 +867,7 @@ describe("effects on the buff bar and potions that work over time", () => {
   });
 
   it("a timed potion heals in equal steps over its duration and then leaves the list", () => {
-    const sim = townSim();
+    const sim = new CombatSim(getMap("forest"), "forest", noCrit, 0);
     const p = sim.addPlayer(seed("p1"));
     p.hp = 1;
     p.lastHurtAt = 1e9; // no natural regeneration muddies the count
@@ -826,7 +884,7 @@ describe("effects on the buff bar and potions that work over time", () => {
   });
 
   it("drinking again while one still works keeps what was left, and the stored copy counts the rest", () => {
-    const sim = townSim();
+    const sim = new CombatSim(getMap("forest"), "forest", noCrit, 0);
     const p = sim.addPlayer(seed("p1"));
     p.hp = 1;
     p.lastHurtAt = 1e9; // no natural regeneration muddies the count
@@ -867,7 +925,7 @@ describe("skills from worn pháp bảo and teleport", () => {
     const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_phong_than", realm: 0, tier: 1, grade: 0 }] }));
     expect(s.skillsOf(p)).toContain("pt_phong_than");
     expect(s.queueCast("p1", "pt_phong_than", null, 0)).toEqual({ ok: true });
-    s.updateGear("p1", p.gear ?? { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0 }, undefined, []);
+    s.updateGear("p1", p.gear ?? emptyEquipStats(), undefined, []);
     expect(s.skillsOf(p)).not.toContain("pt_phong_than");
     expect(s.queueCast("p1", "pt_phong_than", null, 100)).toEqual({ ok: false, reason: "unknown" });
   });

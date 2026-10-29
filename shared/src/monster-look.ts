@@ -21,8 +21,9 @@ export function flightStyleOf(item?: string): FlightStyle {
     const element = parts[6];
     const realm = parts[3];
     const byElement = (element ? (t.byElement ?? DEFAULT_TUNING.flightLooks.byElement)?.[element] : undefined);
-    const byRealm = realm ? t.byRealm?.[realm] : undefined;
-    return byElement ?? byRealm ?? t.default;
+    // The realm decides first when the tuning names one for it (Hóa Thần rides a phoenix, Luyện Hư a dragon, whatever the element); then the element.
+    const byRealm = realm ? (t.byRealm?.[realm] ?? DEFAULT_TUNING.flightLooks.byRealm?.[realm]) : undefined;
+    return byRealm ?? byElement ?? t.default;
   }
   return t.default ?? DEFAULT_TUNING.flightLooks.default;
 }
