@@ -30,7 +30,7 @@ interface EnhanceRow {
   linhMult: number;
 }
 
-const REALMS = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"];
+const REALMS = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh", "Hóa Thần", "Luyện Hư"];
 const KIND_LABEL: Record<string, string> = { weapon: "Vũ khí", hat: "Mũ", robe: "Áo", bracer: "Hộ uyển", ring: "Nhẫn", jade: "Ngọc bội", necklace: "Dây chuyền", belt: "Đai", boots: "Giày", charm: "Pháp bảo", flight: "Pháp bảo phi hành" };
 const STAT_LABEL: Record<string, string> = { attack: "Công", defense: "Thủ", maxHp: "Sinh lực", critRate: "Chí mạng %", dodgeRate: "Né %", moveSpeed: "Tốc độ %" };
 const STYLE_LABEL: Record<string, string> = { m: "Nam", f: "Nữ", u: "Chung" };

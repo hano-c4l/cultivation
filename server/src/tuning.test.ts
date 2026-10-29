@@ -17,7 +17,7 @@ describe("the 2j tuning table", () => {
     expect(await getTuning(db)).toEqual(DEFAULT_TUNING);
     expect((raw.prepare("SELECT COUNT(*) AS n FROM game_tuning").get() as { n: number }).n).toBe(Object.keys(DEFAULT_TUNING).length);
     raw.prepare("UPDATE game_tuning SET value = ? WHERE name = 'keepLevel'").run(JSON.stringify({ priceTienNgoc: 80 }));
-    raw.prepare("UPDATE game_tuning SET value = ? WHERE name = 'enhanceCost'").run(JSON.stringify({ linhBase: [1, 2, 3, 4], maxPityPct: 10 }));
+    raw.prepare("UPDATE game_tuning SET value = ? WHERE name = 'enhanceCost'").run(JSON.stringify({ linhBase: [1, 2, 3, 4, 5, 6], maxPityPct: 10 }));
     raw.exec("UPDATE config_versions SET version = version + 1 WHERE name = 'tuning'");
     const later = await getTuning(db, Date.now() + 60_000);
     expect(later.keepLevel.priceTienNgoc).toBe(80);

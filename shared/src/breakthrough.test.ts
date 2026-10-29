@@ -36,7 +36,7 @@ describe("breakthrough chance", () => {
     for (let i = 1; i < BREAKTHROUGHS.length; i++) {
       expect(BREAKTHROUGHS[i]!.baseRatePct).toBeLessThan(BREAKTHROUGHS[i - 1]!.baseRatePct);
       expect(BREAKTHROUGHS[i]!.maxRatePct).toBeLessThan(BREAKTHROUGHS[i - 1]!.maxRatePct);
-      expect(BREAKTHROUGHS[i]!.durationMs).toBeGreaterThan(BREAKTHROUGHS[i - 1]!.durationMs);
+      expect(BREAKTHROUGHS[i]!.durationMs).toBeGreaterThanOrEqual(BREAKTHROUGHS[i - 1]!.durationMs); // the last steps share the longest wait (10 minutes: a disconnect fails the attempt)
     }
   });
 
@@ -146,7 +146,7 @@ describe("pills", () => {
     expect(rollPillDrop(0, "normal", low)).toBe("bt_pill_1");
     expect(draws).toBe(1);
     expect(rollPillDrop(0, "normal", () => 0.9)).toBeNull();
-    expect(rollPillDrop(3, "rare2", () => 0)).toBeNull(); // no step from the last realm
+    expect(rollPillDrop(5, "rare2", () => 0)).toBeNull(); // no step from the last realm
     // a roll that passes at Luyện Khí fails at Kim Đan
     expect(rollPillDrop(0, "normal", () => 0.003)).toBe("bt_pill_1");
     expect(rollPillDrop(2, "normal", () => 0.003)).toBeNull();

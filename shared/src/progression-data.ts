@@ -41,6 +41,8 @@ export const REALMS: readonly RealmDef[] = [
   { id: 1, key: "truc_co", nameVi: "Trúc Cơ", shortVi: "TC", expBase: 20_000, pointsPerStage: 6 },
   { id: 2, key: "kim_dan", nameVi: "Kim Đan", shortVi: "KĐ", expBase: 400_000, pointsPerStage: 8 },
   { id: 3, key: "nguyen_anh", nameVi: "Nguyên Anh", shortVi: "NA", expBase: 8_000_000, pointsPerStage: 10 },
+  { id: 4, key: "hoa_than", nameVi: "Hóa Thần", shortVi: "HT", expBase: 160_000_000, pointsPerStage: 12 },
+  { id: 5, key: "luyen_hu", nameVi: "Luyện Hư", shortVi: "LH", expBase: 3_200_000_000, pointsPerStage: 14 },
 ];
 
 export interface RootGradeDef {

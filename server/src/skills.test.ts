@@ -109,7 +109,7 @@ describe("root skills and mastery", () => {
     expect(rows.filter((r) => r.realm === 0).map((r) => r.skill_id).sort()).toEqual(["chuong_0", "khi_co_ban", "tram_0"]);
     // A realm that does not exist is ignored.
     const capped = await ensureRootSkills(db, A, 99, rows, seq(0, 0));
-    expect(Math.max(...capped.map((r) => r.realm))).toBe(3);
+    expect(Math.max(...capped.map((r) => r.realm))).toBe(5);
   });
 
   it("a learned skill is kept apart from root skills and keeps its own row", async () => {

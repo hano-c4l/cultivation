@@ -21,8 +21,8 @@ const logs = async () => (await listAdminLog(db, parseLogQuery(new URLSearchPara
 describe("the master table", () => {
   it("lists a kind with both styles, every realm and bậc", async () => {
     const v = (await getMasterView(db, "hat"))!;
-    expect(v.rows.length).toBe(2 * 4 * 9);
-    expect((await getMasterView(db, "weapon"))!.rows.length).toBe(4 * 9);
+    expect(v.rows.length).toBe(2 * 6 * 9);
+    expect((await getMasterView(db, "weapon"))!.rows.length).toBe(6 * 9);
     expect(await getMasterView(db, "bonded")).toBeNull();
     expect(Object.keys(v.rows[0]!.stats).length).toBeGreaterThan(0);
   });
@@ -52,7 +52,7 @@ describe("the master table", () => {
 describe("the set names", () => {
   it("renames sets, and the game serves the new names", async () => {
     const v = await getSetsView(db);
-    expect(v.realms.length).toBe(4);
+    expect(v.realms.length).toBe(6);
     const names = v.realms.map((r) => [...r.names]);
     names[0]![0] = "Tân Y";
     expect(await saveSets(db, ADMIN, names, v.token, Date.now() + 5)).toMatchObject({ ok: true });

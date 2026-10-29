@@ -138,12 +138,22 @@ function elementBookSkill(root: SpiritualRoot): SkillDef {
   return { id: `${root}_3`, nameVi: `Vạn ${n} Diệt Thế`, descVi: `Tuyệt kỹ hệ ${n}, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 1, grade: 3, mpCost: 24, cooldownMs: 10_000, range: 9, power: 2.6, learn: { realm: 1, stage: 1 } };
 }
 
-/** The strongest skill of each element for Kim Đan (`${root}_4`) and Nguyên Anh (`${root}_5`), learned from a bí tịch sold in the second town. */
-function elementBookSkillHigh(root: SpiritualRoot, realm: 2 | 3): SkillDef {
+/**
+ * The strongest skill of each element for Kim Đan (`${root}_4`), Nguyên Anh (`${root}_5`), Hóa Thần (`${root}_6`) and Luyện Hư (`${root}_7`), learned from a bí tịch sold
+ * in the second town (the first two) and the third (the last two).
+ */
+function elementBookSkillHigh(root: SpiritualRoot, realm: 2 | 3 | 4 | 5): SkillDef {
   const n = ELEMENT_NAMES[root];
-  return realm === 2
-    ? { id: `${root}_4`, nameVi: `Cửu Thiên ${n} Chấn`, descVi: `Tuyệt kỹ hệ ${n} của Kim Đan, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 2, grade: 3, mpCost: 42, cooldownMs: 11_000, range: 9, power: 3.4, learn: { realm: 2, stage: 1 } }
-    : { id: `${root}_5`, nameVi: `Thái Cổ ${n} Diệt`, descVi: `Tuyệt kỹ hệ ${n} của Nguyên Anh, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 3, grade: 4, mpCost: 64, cooldownMs: 12_000, range: 10, power: 4.6, learn: { realm: 3, stage: 1 } };
+  switch (realm) {
+    case 2:
+      return { id: `${root}_4`, nameVi: `Cửu Thiên ${n} Chấn`, descVi: `Tuyệt kỹ hệ ${n} của Kim Đan, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 2, grade: 3, mpCost: 42, cooldownMs: 11_000, range: 9, power: 3.4, learn: { realm: 2, stage: 1 } };
+    case 3:
+      return { id: `${root}_5`, nameVi: `Thái Cổ ${n} Diệt`, descVi: `Tuyệt kỹ hệ ${n} của Nguyên Anh, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 3, grade: 4, mpCost: 64, cooldownMs: 12_000, range: 10, power: 4.6, learn: { realm: 3, stage: 1 } };
+    case 4:
+      return { id: `${root}_6`, nameVi: `Phá Thiên ${n} Ấn`, descVi: `Tuyệt kỹ hệ ${n} của Hóa Thần, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 4, grade: 4, mpCost: 96, cooldownMs: 13_000, range: 10, power: 6.2, learn: { realm: 4, stage: 1 } };
+    default:
+      return { id: `${root}_7`, nameVi: `Hư Không ${n} Tuyệt`, descVi: `Tuyệt kỹ hệ ${n} của Luyện Hư, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 5, grade: 4, mpCost: 140, cooldownMs: 14_000, range: 11, power: 8.4, learn: { realm: 5, stage: 1 } };
+  }
 }
 
 /**
@@ -250,6 +260,15 @@ export const SKILLS: readonly SkillDef[] = [
   // Kim Đan and Nguyên Anh (bí tịch of the second town): the strongest skill of each element, and a guard, a heal and a battle cry.
   ...SPIRITUAL_ROOTS.map((r) => elementBookSkillHigh(r, 2)),
   ...SPIRITUAL_ROOTS.map((r) => elementBookSkillHigh(r, 3)),
+  // Hóa Thần and Luyện Hư (bí tịch of the third town): the strongest skill of each element, and a guard, a heal and a battle cry for each realm.
+  ...SPIRITUAL_ROOTS.map((r) => elementBookSkillHigh(r, 4)),
+  ...SPIRITUAL_ROOTS.map((r) => elementBookSkillHigh(r, 5)),
+  { id: "ho_the_ht", nameVi: "Thần Thức Hộ Thể", descVi: "Hóa Thần: thần thức bao bọc thân thể, tăng mạnh phòng thủ trong 22 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 4, grade: 4, mpCost: 110, cooldownMs: 45_000, range: 0, power: 0.6, buff: { stat: "defense", durationMs: 22_000 }, learn: { realm: 4, stage: 3 } },
+  { id: "hoi_than_ht", nameVi: "Hóa Thần Hồi Xuân", descVi: "Hóa Thần: thần lực chữa thương, hồi rất nhiều sinh lực. Học từ bí tịch.", kind: "heal", source: "learned", element: null, realm: 4, grade: 4, mpCost: 120, cooldownMs: 30_000, range: 0, power: 0.6, learn: { realm: 4, stage: 5 } },
+  { id: "chien_y_ht", nameVi: "Hóa Thần Chiến Ý", descVi: "Hóa Thần: chiến ý bùng nổ, tăng mạnh công kích trong 22 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 4, grade: 4, mpCost: 130, cooldownMs: 40_000, range: 0, power: 0.6, buff: { stat: "attack", durationMs: 22_000 }, learn: { realm: 4, stage: 7 } },
+  { id: "ho_the_lh", nameVi: "Hư Không Hộ Thể", descVi: "Luyện Hư: mượn sức hư không, tăng vọt phòng thủ trong 25 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 5, grade: 4, mpCost: 160, cooldownMs: 45_000, range: 0, power: 0.7, buff: { stat: "defense", durationMs: 25_000 }, learn: { realm: 5, stage: 3 } },
+  { id: "hoi_nguyen_lh", nameVi: "Luyện Hư Hồi Nguyên", descVi: "Luyện Hư: hút hư không khí chữa thương, hồi gần đầy sinh lực. Học từ bí tịch.", kind: "heal", source: "learned", element: null, realm: 5, grade: 4, mpCost: 180, cooldownMs: 30_000, range: 0, power: 0.7, learn: { realm: 5, stage: 5 } },
+  { id: "chien_y_lh", nameVi: "Hư Không Chiến Hống", descVi: "Luyện Hư: tiếng gầm xé hư không, tăng vọt công kích trong 25 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 5, grade: 4, mpCost: 190, cooldownMs: 40_000, range: 0, power: 0.7, buff: { stat: "attack", durationMs: 25_000 }, learn: { realm: 5, stage: 7 } },
   { id: "ho_the_kd", nameVi: "Kim Chung Hộ Thể", descVi: "Kim Đan: dựng chuông vàng quanh thân, tăng mạnh phòng thủ trong 20 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 2, grade: 3, mpCost: 50, cooldownMs: 45_000, range: 0, power: 0.5, buff: { stat: "defense", durationMs: 20_000 }, learn: { realm: 2, stage: 3 } },
   { id: "hoi_nguyen_kd", nameVi: "Hồi Nguyên Quyết", descVi: "Kim Đan: vận kim đan chữa thương, hồi nhiều sinh lực. Học từ bí tịch.", kind: "heal", source: "learned", element: null, realm: 2, grade: 3, mpCost: 60, cooldownMs: 30_000, range: 0, power: 0.55, learn: { realm: 2, stage: 5 } },
   { id: "cuong_than_na", nameVi: "Nguyên Anh Chiến Hống", descVi: "Nguyên Anh: gầm vang chiến ý, tăng mạnh công kích trong 20 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 3, grade: 4, mpCost: 80, cooldownMs: 40_000, range: 0, power: 0.5, buff: { stat: "attack", durationMs: 20_000 }, learn: { realm: 3, stage: 3 } },

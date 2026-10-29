@@ -94,7 +94,7 @@ export function smithRealmOf(info: { kind: string; realm: number }, trainedLevel
 }
 
 /** The ore the smith needs for a piece of this realm, one kind for each realm (they only drop from monsters of that realm). */
-export const SMITH_ORES: readonly string[] = ["ren_lk", "ren_tc", "ren_kd", "ren_na"];
+export const SMITH_ORES: readonly string[] = ["ren_lk", "ren_tc", "ren_kd", "ren_na", "ren_ht", "ren_lh"];
 export function smithOreFor(realm: number): string | undefined {
   return SMITH_ORES[realm];
 }
@@ -173,7 +173,7 @@ export function rollOreDrop(mapRealm: number, rank: MonsterRank, rand: () => num
 // ---- Tinh luyện (refining): raises some stats of a piece towards the top of their range, never lowering any ----
 
 /** The refining ore, one kind per realm; like the smith's ore it only drops from monsters and bosses of that realm, but much less often. */
-export const REFINE_ORES: readonly string[] = ["tl_lk", "tl_tc", "tl_kd", "tl_na"];
+export const REFINE_ORES: readonly string[] = ["tl_lk", "tl_tc", "tl_kd", "tl_na", "tl_ht", "tl_lh"];
 export function refineOreFor(realm: number): string | undefined {
   return REFINE_ORES[realm];
 }

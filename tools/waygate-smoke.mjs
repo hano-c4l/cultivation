@@ -101,7 +101,7 @@ let c = await connect(p.cookie);
 const cw = await connect(w.cookie);
 let r = await after(c, { t: "npc_open", npc: "waygate" });
 const list = r.find((m) => m.t === "waygate");
-check("the array lists the other main town with its price", list?.dests.length === 1 && list.dests[0].map === "town2" && list.dests[0].price === 4500, JSON.stringify(list));
+check("the array lists the other main towns with their price", list?.dests.find((d) => d.map === "town2")?.price === 4500 && !list.dests.some((d) => d.map === "town"), JSON.stringify(list));
 
 r = await after(c, { t: "waygate_go", npc: "waygate", to: "town2" }, 700);
 check("without the Linh Thạch the trip does not start", r.some((m) => m.t === "tp_end" && m.reason === "money") && !r.some((m) => m.t === "tp"), JSON.stringify(r.map((m) => m.t)));

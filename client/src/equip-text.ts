@@ -64,7 +64,7 @@ export function itemTierRealm(type: string, lv?: number): number | null {
 
 /** CSS class that colours a realm tag ("LK", "TC1"...) by its realm. */
 export function realmClass(realm: number | null | undefined): string {
-  return realm === null || realm === undefined ? "" : `realm-${Math.min(Math.max(Math.trunc(realm), 0), 3)}`;
+  return realm === null || realm === undefined ? "" : `realm-${Math.min(Math.max(Math.trunc(realm), 0), 5)}`;
 }
 
 /** Durability as "63/100 (63%)", or the never-wears-out note. */

@@ -314,6 +314,8 @@ export class GameScene extends Phaser.Scene {
   private autoMem: AutoMemory = newAutoMemory();
   private autoAnchor = { x: 0, y: 0 };
   private autoNextAt = 0;
+  /** When the player last walked by hand while Auto ran (0: not walking by hand). */
+  private autoManualAt = 0;
   /** When each skill is ready again (performance.now) as the server last said, the hotbar as the server holds it, and your own HP, max MP and whether you are dead (for Auto). */
   private cdUntil = new Map<string, number>();
   private hotbarSlots: string[] = [];
@@ -692,7 +694,6 @@ export class GameScene extends Phaser.Scene {
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.transferring) return;
     if (this.guardBreakthrough()) return;
-    this.stopAuto("manual"); // a click on the map is the player taking over
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
@@ -708,6 +709,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       this.endAim();
+      this.stopAuto("manual");
       this.net.send({ t: "cast", skill: skill.id, x: tx, y: ty });
       return;
     }
@@ -718,6 +720,7 @@ export class GameScene extends Phaser.Scene {
       return Math.hypot(tx - n.x, ty - n.y) <= 1 || (Math.abs(world.x - p.x) <= 18 && world.y >= p.y - 52 && world.y <= p.y + 10);
     });
     if (npc) {
+      this.stopAuto("manual"); // opening an NPC window is the player taking over
       this.talkTo(npc);
       return;
     }
@@ -726,6 +729,7 @@ export class GameScene extends Phaser.Scene {
     const player = !this.map.safe ? this.pickPlayer(world.x, world.y) : null;
     const picked = player ?? this.pickMonster(world.x, world.y);
     if (picked) {
+      this.stopAuto("manual"); // taking a target by hand is the player taking over
       const nowMs = performance.now();
       if (nowMs - this.lastAttackSentAt >= ATTACK_MIN_GAP_MS + 20) {
         this.lastAttackSentAt = nowMs;
@@ -735,6 +739,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.targetId = null;
+    if (this.autoOn) this.autoManualAt = performance.now(); // a walk by hand: Auto keeps casting but stops steering until the character is still
     this.sendWalk(tx, ty);
   }
 
@@ -1858,6 +1863,7 @@ export class GameScene extends Phaser.Scene {
     this.autoSettings = settings;
     this.autoMem = newAutoMemory();
     this.autoNextAt = 0;
+    this.autoManualAt = 0;
     this.autoOn = true;
     this.autoUi.setRunning(true);
     this.chat.system(vi.auto.started(settings.radius));
@@ -1912,6 +1918,16 @@ export class GameScene extends Phaser.Scene {
     this.autoNextAt = now + tuning().auto.tickMs;
     const view = this.autoView(now);
     if (!view) return;
+    if (this.autoManualAt > 0) {
+      if (view.self.moving || now - this.autoManualAt < 400) view.manual = true;
+      else {
+        // the character has come to a stop: hunt around this new spot
+        this.autoManualAt = 0;
+        this.autoAnchor = { x: view.self.x, y: view.self.y };
+        view.anchor = this.autoAnchor;
+        this.autoMem.homeAt = now + 3000;
+      }
+    }
     const act: AutoAction | null = decide(view, this.autoSettings, this.autoMem, tuning().auto);
     if (!act) return;
     switch (act.t) {
@@ -1920,7 +1936,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "cast":
         if (act.target) this.targetId = act.target;
-        this.net.send({ t: "cast", skill: act.skill, ...(act.target ? { target: act.target } : {}), ...(act.element ? { el: act.element as SpiritualRoot } : {}) });
+        this.net.send({ t: "cast", skill: act.skill, ...(act.target ? { target: act.target } : {}), ...(act.at ? { x: Math.round(act.at.x * 100) / 100, y: Math.round(act.at.y * 100) / 100 } : {}), ...(act.element ? { el: act.element as SpiritualRoot } : {}) });
         break;
       case "attack":
         this.targetId = act.id;
