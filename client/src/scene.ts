@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import {
   headingAlongPath,
   tuning,
+  parseSkillSlot,
   directionOf,
   type GfxAnimName,
   bossKinds,
@@ -95,6 +96,8 @@ import { initSkills, type SkillsUi } from "./skills-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
+import { decide, newAutoMemory, type AutoAction, type AutoMemory, type AutoSettings, type AutoView } from "./auto-brain";
+import { initAuto, type AutoUi } from "./auto-ui";
 import { iconButton } from "./icons";
 import { loading } from "./loading-ui";
 import { qiSpawnPoint, qiStyleOf } from "./qi-aura";
@@ -302,6 +305,20 @@ export class GameScene extends Phaser.Scene {
   private colo = "…";
   private portalSentAt = 0;
   private transferring = false;
+  /** The Auto hunt: the window and button, whether it runs, what it was started with, what it remembers, where it started and when it thinks next. */
+  private autoUi!: AutoUi;
+  private autoOn = false;
+  private autoSettings: AutoSettings | null = null;
+  private autoMem: AutoMemory = newAutoMemory();
+  private autoAnchor = { x: 0, y: 0 };
+  private autoNextAt = 0;
+  /** When each skill is ready again (performance.now) as the server last said, the hotbar as the server holds it, and your own HP, max MP and whether you are dead (for Auto). */
+  private cdUntil = new Map<string, number>();
+  private hotbarSlots: string[] = [];
+  private selfHp = 0;
+  private selfMaxHp = 0;
+  private selfMaxMp = 0;
+  private selfDead = false;
   /** The loading screen: the welcome is in, and for how many frames in a row nothing has been left to load; when it was put up. */
   private welcomed = false;
   private settledFrames = 0;
@@ -358,6 +375,17 @@ export class GameScene extends Phaser.Scene {
     this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }), (npc, view) => this.switchNpcView(npc, view));
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
+    this.autoUi = initAuto({
+      charId: () => this.selfSheet?.id ?? null,
+      hotbarSkills: () => this.hotbarSlots.flatMap((v, i) => (parseSkillSlot(v) && getSkill(parseSkillSlot(v)!.id) ? [{ value: v, key: i + 1 }] : [])),
+      potions: () => {
+        const by = new Map<string, number>();
+        for (const it of this.inventory.list()) if (getItemDef(it.type)?.healFraction !== undefined) by.set(it.type, (by.get(it.type) ?? 0) + it.qty);
+        return [...by].map(([type, qty]) => ({ type, name: getItemDef(type)?.nameVi ?? type, qty }));
+      },
+      onStart: (settings) => this.startAuto(settings),
+      onStop: () => this.stopAuto("stopped"),
+    });
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
     ensureFlightTextures(this);
@@ -413,6 +441,7 @@ export class GameScene extends Phaser.Scene {
         if (!connected) {
           this.hud.textContent = this.transferring ? vi.transferring : vi.disconnected;
           this.clearActors();
+          this.stopAuto("moved");
           this.beginLoading(this.transferring ? vi.loadingScreen.transferring : vi.loadingScreen.reconnecting);
         }
       },
@@ -648,6 +677,7 @@ export class GameScene extends Phaser.Scene {
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.transferring) return;
     if (this.guardBreakthrough()) return;
+    this.stopAuto("manual"); // a click on the map is the player taking over
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
@@ -801,6 +831,13 @@ export class GameScene extends Phaser.Scene {
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
         this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
+        this.selfHp = msg.hp;
+        this.selfMaxHp = msg.maxHp;
+        this.selfMaxMp = msg.maxMp;
+        this.selfDead = false;
+        this.hotbarSlots = msg.hotbar;
+        this.stopAuto("moved"); // a new room: the spot it started from means nothing now
+        this.autoUi.show(true);
         this.vitals.setWallet(msg.wallet);
         this.linhThach = msg.wallet.linh_thach;
         this.waygate.setBalance(this.linhThach);
@@ -826,7 +863,7 @@ export class GameScene extends Phaser.Scene {
         this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, mpRegenPerS());
         this.hotbar.refresh(); // the slots were drawn before the MP was known (they dim what the MP cannot pay)
         this.buffs.set(msg.effects);
-        for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
+        for (const [skill, ms] of Object.entries(msg.cd)) this.noteCooldown(skill, ms);
         this.refreshHud();
         this.welcomed = true;
         this.snapCamera = true;
@@ -851,8 +888,12 @@ export class GameScene extends Phaser.Scene {
         break;
       case "hp":
         this.vitals.set(msg.hp, msg.maxHp);
+        this.selfHp = msg.hp;
+        this.selfMaxHp = msg.maxHp;
         break;
       case "died":
+        this.selfDead = true;
+        this.stopAuto("dead");
         this.playOnce(this.selfId, "die"); // stays on the last frame until the transfer to town replaces the view
         this.hitMeAt.clear(); // the quarrel with whoever killed us is over: their name goes back to its real colour
         this.channel.stop();
@@ -937,6 +978,7 @@ export class GameScene extends Phaser.Scene {
       case "transfer":
         // The server closes the socket right after; Net reconnects and the welcome brings the new map.
         this.transferring = true;
+        this.stopAuto("moved");
         this.beginLoading(vi.loadingScreen.transferring);
         this.hotbar.setAimNote(null); // a talisman channel that completed ends here
         this.hud.textContent = vi.transferring;
@@ -987,6 +1029,7 @@ export class GameScene extends Phaser.Scene {
       }
       case "hotbar":
         this.hotbar.setSlots(msg.slots);
+        this.hotbarSlots = msg.slots;
         break;
       case "skill_state": {
         this.skillStates[msg.id] = { lv: msg.lv, xp: msg.xp };
@@ -999,12 +1042,15 @@ export class GameScene extends Phaser.Scene {
       }
       case "mp":
         this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, msg.perSec);
+        this.selfMaxMp = msg.maxMp;
         break;
       case "cast_ok":
-        this.hotbar.setCooldown(msg.skill, msg.cdMs);
+        this.noteCooldown(msg.skill, msg.cdMs);
         break;
       case "cast_error":
-        this.chat.system(vi.skills.errors[msg.reason] ?? vi.skills.errors.unknown!, "error");
+        // Auto asks for skills a little before they are ready: its refusals stay out of the chat and the skill is left alone for a moment.
+        if (this.autoOn) this.autoMem.backoffUntil.set(msg.skill, performance.now() + tuning().auto.castBackoffMs);
+        else this.chat.system(vi.skills.errors[msg.reason] ?? vi.skills.errors.unknown!, "error");
         break;
       case "effects":
         this.buffs.set(msg.list);
@@ -1776,6 +1822,100 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** A skill's cooldown as the server said it: the bar shows it, and Auto waits for it. */
+  private noteCooldown(skill: string, ms: number): void {
+    this.cdUntil.set(skill, performance.now() + ms);
+    this.hotbar.setCooldown(skill, ms);
+  }
+
+  /** Start was pressed in the Auto window. False (and a line in the chat) when it cannot run here. */
+  private startAuto(settings: AutoSettings): boolean {
+    const self = this.actors.get(this.selfId);
+    if (!self || this.selfDead || this.transferring) return false;
+    if (this.map.safe) {
+      this.chat.system(vi.auto.safeMap, "error");
+      return false;
+    }
+    const here = currentPos(self, performance.now());
+    this.autoAnchor = { x: here.x, y: here.y };
+    this.autoSettings = settings;
+    this.autoMem = newAutoMemory();
+    this.autoNextAt = 0;
+    this.autoOn = true;
+    this.autoUi.setRunning(true);
+    this.chat.system(vi.auto.started(settings.radius));
+    return true;
+  }
+
+  /** Ends the hunt (the button reads Auto again) and says why. Does nothing when it is not running. */
+  private stopAuto(reason: "stopped" | "manual" | "dead" | "moved"): void {
+    if (!this.autoOn) return;
+    this.autoOn = false;
+    this.autoSettings = null;
+    this.autoUi.setRunning(false);
+    this.chat.system(vi.auto.ended[reason]);
+  }
+
+  /** What the hunt sees now: the character, the monsters around, the skills' readiness and the bag. */
+  private autoView(now: number): AutoView | null {
+    const self = this.actors.get(this.selfId);
+    if (!self || !this.selfSheet) return null;
+    const here = currentPos(self, now);
+    const monsters = [...this.monsters.values()].flatMap((m) => {
+      if (m.dyingUntil !== undefined || m.hp <= 0) return [];
+      const p = positionAlongPath(m.path, now - m.startedAt, m.speed);
+      return [{ id: m.id, x: p.x, y: p.y, guard: m.guard, boss: m.boss, rare: m.rank !== "normal", hp: m.hp }];
+    });
+    const bag = this.inventory.list();
+    return {
+      now,
+      self: { x: here.x, y: here.y, moving: here.moving },
+      hp: this.selfHp,
+      maxHp: this.selfMaxHp,
+      mp: this.vitals.getMp(),
+      maxMp: this.selfMaxMp,
+      busy: this.selfDead || this.transferring || this.charPanel.isBreaking(),
+      anchor: this.autoAnchor,
+      targetId: this.targetId,
+      monsters,
+      readyAt: (id) => this.cdUntil.get(id) ?? 0,
+      buffUntil: (id) => this.buffGlows.get(this.selfId)?.get(id) ?? 0,
+      mpCost: (id) => {
+        const def = getSkill(id);
+        return def ? effectiveSkill(def, this.skillContext(def)).mpCost : 0;
+      },
+      bagCount: (type) => bag.reduce((n, it) => (it.type === type ? n + it.qty : n), 0),
+      healMsOf: (type) => getItemDef(type)?.healOverMs ?? 0,
+    };
+  }
+
+  /** The hunt thinks a few times a second and carries out at most one command each time, through the same messages as the player's own taps. */
+  private tickAuto(now: number): void {
+    if (!this.autoOn || !this.autoSettings || now < this.autoNextAt) return;
+    this.autoNextAt = now + tuning().auto.tickMs;
+    const view = this.autoView(now);
+    if (!view) return;
+    const act: AutoAction | null = decide(view, this.autoSettings, this.autoMem, tuning().auto);
+    if (!act) return;
+    switch (act.t) {
+      case "potion":
+        this.net.send({ t: "use_type", type: act.type });
+        break;
+      case "cast":
+        if (act.target) this.targetId = act.target;
+        this.net.send({ t: "cast", skill: act.skill, ...(act.target ? { target: act.target } : {}), ...(act.element ? { el: act.element as SpiritualRoot } : {}) });
+        break;
+      case "attack":
+        this.targetId = act.id;
+        this.net.send({ t: "attack", id: act.id });
+        break;
+      case "walk":
+        this.targetId = null;
+        this.sendWalk(act.x, act.y);
+        break;
+    }
+  }
+
   /** Puts the loading screen up for a (re)entry: the welcome has to come again and everything in it has to be loaded before the screen goes. */
   private beginLoading(label: string): void {
     this.welcomed = false;
@@ -1821,6 +1961,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.syncNpcViews();
     this.watchLoading(now);
+    this.tickAuto(now);
     this.tickBuffGlows(now);
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);

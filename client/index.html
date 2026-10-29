@@ -286,6 +286,19 @@
       #loading .ld-bar { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
       #loading-fill { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--ui-accent), #fff0b0); transition: width 0.25s ease; }
       #loading-text { margin-top: 12px; font-size: 13px; opacity: 0.8; min-height: 18px; }
+      /* The Auto hunt: its button under the others and its window. */
+      #auto-btn { position: fixed; right: 12px; top: 332px; width: 38px; height: 34px; padding: 0; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); font: 600 12px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+      #auto-btn[hidden], #auto-panel[hidden] { display: none; } #auto-btn.running { background: rgba(190, 50, 50, 0.9); color: #fff; }
+      #auto-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(380px, calc(100vw - 16px)); max-height: calc(100dvh - 72px); overflow-y: auto; padding: 10px 12px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
+      #auto-panel .au-head { display: flex; align-items: center; margin-bottom: 8px; } #auto-panel .au-head b { flex: 1; font-size: 15px; }
+      #auto-panel .au-x { border: 0; background: transparent; color: var(--ui-muted); font-size: 16px; cursor: pointer; }
+      #auto-panel .au-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; } #auto-panel .au-label { flex: 1; }
+      #auto-panel .au-slide { display: flex; align-items: center; gap: 6px; width: 150px; } #auto-panel .au-slide input { flex: 1; min-width: 0; } #auto-panel .au-slide b { min-width: 44px; text-align: right; }
+      #auto-panel .au-check, #auto-panel .au-skill { display: flex; align-items: center; gap: 6px; margin: 4px 0; cursor: pointer; }
+      #auto-panel .au-skill .ic { width: 22px; height: 22px; } #auto-panel .au-key { min-width: 14px; color: var(--ui-muted); }
+      #auto-panel .au-sub { margin: 10px 0 2px; color: var(--ui-muted); font-size: 12px; } #auto-panel .au-hint { margin: 8px 0; color: var(--ui-muted); font-size: 12px; }
+      #auto-panel select { max-width: 170px; background: var(--ui-page); color: inherit; border: 1px solid var(--ui-border); border-radius: 6px; padding: 4px; font: inherit; }
+      #auto-panel .au-start { width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; }
       /* A window's button or a currency shown as a picture: the words are the tooltip. */
       .icon-btn { min-width: 0 !important; width: 38px; height: 34px; padding: 5px !important; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; }
       .icon-btn .ic { width: 22px; height: 22px; }
@@ -375,7 +388,7 @@
       @media (max-width: 1200px) {
         #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout, #switch-char { padding: 4px 8px; font-size: 12px; }
         #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
-        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; }
+        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; } #auto-btn { top: 368px !important; }
       }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;
