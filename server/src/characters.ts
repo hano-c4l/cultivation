@@ -1,4 +1,5 @@
 import {
+  BASIC_SKILL_ID,
   REALMS,
   STAT_DEFS,
   getSkill,
@@ -113,6 +114,8 @@ export async function loadSkillRows(db: D1Database, characterId: string): Promis
 export async function ensureRootSkills(db: D1Database, characterId: string, realm: number, rows: SkillRow[], rand: () => number = Math.random): Promise<SkillRow[]> {
   const inserts: D1PreparedStatement[] = [];
   const now = Date.now();
+  // Everyone has the basic qi blast: its row has its own source, so it never counts as one of a realm's two root skills.
+  if (!rows.some((x) => x.skill_id === BASIC_SKILL_ID)) inserts.push(db.prepare("INSERT OR IGNORE INTO character_skills (character_id, skill_id, learned_at, source, realm) VALUES (?, ?, ?, 'basic', 0)").bind(characterId, BASIC_SKILL_ID, now));
   for (let r = 0; r <= Math.min(realm, REALMS.length - 1); r++) {
     if (rows.filter((x) => x.source === "root" && x.realm === r).length >= 2) continue;
     const have = new Set(rows.map((x) => x.skill_id));

@@ -270,12 +270,12 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
       wear.onclick = () => send({ t: "eq_equip", tab: sel.tab, cell: sel.cell });
       actions.append(wear);
     }
-    if (def?.healFraction !== undefined || def?.teaches || def?.teleportTo) {
+    if (def?.healFraction !== undefined || def?.mpFraction !== undefined || def?.teaches || def?.teleportTo) {
       const use = el("button", undefined, def.teaches ? vi.inventory.learn : vi.inventory.use);
       use.onclick = () => send({ t: "inv_use", tab: sel.tab, cell: sel.cell });
       actions.append(use);
     }
-    if (def?.healFraction !== undefined || def?.teleportTo) {
+    if (def?.healFraction !== undefined || def?.mpFraction !== undefined || def?.teleportTo) {
       const quick = el("button", undefined, vi.inventory.toHotbar);
       quick.onclick = () => toHotbar(`i:${item.type}`, itemName(item.type));
       actions.append(quick);

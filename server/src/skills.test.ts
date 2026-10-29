@@ -93,19 +93,20 @@ describe("root skills and mastery", () => {
 
   it("a character gets the two skills of each realm it has reached, once, and the picks never change", async () => {
     const first = await ensureRootSkills(db, A, 0, await loadSkillRows(db, A), seq(0, 0));
-    expect(first.map((r) => r.skill_id).sort()).toEqual(["chuong_0", "tram_0"]);
-    expect(first.every((r) => r.source === "root" && r.realm === 0 && r.level === 0 && r.mastery === 0)).toBe(true);
+    expect(first.map((r) => r.skill_id).sort()).toEqual(["chuong_0", "khi_co_ban", "tram_0"]); // the basic qi blast comes with them, under its own source
+    expect(first.every((r) => (r.source === "root" || r.skill_id === "khi_co_ban") && r.realm === 0 && r.level === 0 && r.mastery === 0)).toBe(true);
+    expect(first.find((r) => r.skill_id === "khi_co_ban")?.source).toBe("basic");
     // Asking again with a different roll adds nothing: the realm is done.
     const again = await ensureRootSkills(db, A, 0, await loadSkillRows(db, A), seq(0.9, 0.9));
-    expect(again.map((r) => r.skill_id).sort()).toEqual(["chuong_0", "tram_0"]);
-    expect(raw.prepare("SELECT COUNT(*) AS n FROM character_skills").get()).toEqual({ n: 2 });
+    expect(again.map((r) => r.skill_id).sort()).toEqual(["chuong_0", "khi_co_ban", "tram_0"]);
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM character_skills").get()).toEqual({ n: 3 });
   });
 
   it("reaching a higher realm adds only that realm's two skills (the breakthrough calls the same function)", async () => {
     await ensureRootSkills(db, A, 0, await loadSkillRows(db, A), seq(0, 0));
     const rows = await ensureRootSkills(db, A, 1, await loadSkillRows(db, A), seq(0.4, 0.9));
     expect(rows.filter((r) => r.realm === 1)).toHaveLength(2);
-    expect(rows.filter((r) => r.realm === 0).map((r) => r.skill_id).sort()).toEqual(["chuong_0", "tram_0"]);
+    expect(rows.filter((r) => r.realm === 0).map((r) => r.skill_id).sort()).toEqual(["chuong_0", "khi_co_ban", "tram_0"]);
     // A realm that does not exist is ignored.
     const capped = await ensureRootSkills(db, A, 99, rows, seq(0, 0));
     expect(Math.max(...capped.map((r) => r.realm))).toBe(3);

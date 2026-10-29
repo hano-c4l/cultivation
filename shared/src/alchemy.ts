@@ -29,6 +29,8 @@ export const DEFAULT_ALCHEMY: AlchemyCfg = {
   recipes: [
     { id: "linh_nguyen_dan", nameVi: "Luyện Linh Nguyên Đan", output: "linh_nguyen_dan", qty: 1, inputs: [{ item: "linh_thao", qty: 10 }, { item: "yeu_dan", qty: 2 }], linhThach: 5_000, seconds: 60, enabled: true },
     { id: "bao_nguyen_dan", nameVi: "Luyện Bảo Nguyên Đan", output: "bao_nguyen_dan", qty: 1, inputs: [{ item: "linh_thao", qty: 20 }, { item: "yeu_dan", qty: 5 }], linhThach: 20_000, seconds: 300, enabled: true },
+    { id: "linh_tuyen_dan", nameVi: "Luyện Linh Tuyền Đan", output: "linh_tuyen_dan", qty: 1, inputs: [{ item: "linh_thao", qty: 10 }, { item: "yeu_dan", qty: 2 }], linhThach: 5_000, seconds: 60, enabled: true },
+    { id: "bao_linh_dan", nameVi: "Luyện Bảo Linh Đan", output: "bao_linh_dan", qty: 1, inputs: [{ item: "linh_thao", qty: 20 }, { item: "yeu_dan", qty: 5 }], linhThach: 20_000, seconds: 300, enabled: true },
     { id: "thien_ngo_dan", nameVi: "Luyện Thiên Ngộ Đan", output: "thien_ngo_dan", qty: 1, inputs: [{ item: "linh_thao", qty: 20 }, { item: "yeu_dan", qty: 10 }, { item: "thu_cot", qty: 10 }], linhThach: 50_000, seconds: 600, enabled: true },
   ],
 };

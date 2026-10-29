@@ -10,8 +10,12 @@ export interface AutoUiDeps {
   charId(): string | null;
   /** The skills on the hotbar, as the bar holds them (the element comes with the value), with the key they sit on. */
   hotbarSkills(): Array<{ value: string; key: number }>;
-  /** The potions in the bag that heal. */
-  potions(): Array<{ type: string; name: string; qty: number }>;
+  /** The potions in the bag that heal (`hp`) and those that restore linh lực (`mp`; a pill that does both is in both lists). */
+  potions(): Array<{ type: string; name: string; qty: number; hp: boolean; mp: boolean }>;
+  /** The elements the character has (the basic qi blast may be thrown in any of them). */
+  roots(): string[];
+  /** Whether the character has the basic qi blast. */
+  hasBasic(): boolean;
   /** Start was pressed: false when it is refused (the scene says why), so the window stays. */
   onStart(settings: AutoSettings): boolean;
   onStop(): void;
@@ -119,15 +123,37 @@ export function initAuto(deps: AutoUiDeps): AutoUi {
     }
 
     const potions = deps.potions();
-    const select = el("select");
-    select.append(new Option(vi.auto.noPotion, ""));
-    for (const p of potions) select.append(new Option(`${p.name} (${p.qty})`, p.type));
-    if (current.potion && !potions.some((p) => p.type === current.potion)) select.append(new Option(current.potion, current.potion)); // not in the bag now: still the choice
-    select.value = current.potion;
-    select.onchange = () => {
-      current.potion = select.value;
-      commit();
+    /** A drop-down of the pills of one kind; a choice that is not in the bag now stays the choice. */
+    const potionSelect = (kind: "hp" | "mp", chosen: string, set: (v: string) => void): HTMLSelectElement => {
+      const select = el("select");
+      select.append(new Option(vi.auto.noPotion, ""));
+      for (const p of potions) if (p[kind]) select.append(new Option(`${p.name} (${p.qty})`, p.type));
+      if (chosen && !potions.some((p) => p.type === chosen && p[kind])) select.append(new Option(chosen, chosen));
+      select.value = chosen;
+      select.onchange = () => {
+        set(select.value);
+        commit();
+      };
+      return select;
     };
+
+    // the basic qi blast: a tick, and the element when the character has more than one
+    const roots = deps.roots();
+    const basicRow = el("div");
+    if (deps.hasBasic()) {
+      basicRow.append(check(vi.auto.basic, current.basic, (v) => (current.basic = v)));
+      if (roots.length > 1) {
+        const pick = el("select");
+        pick.append(new Option(vi.auto.basicMain, ""));
+        for (const r of roots) pick.append(new Option(vi.skills.elementNames[r] ?? r, r));
+        pick.value = roots.includes(current.basicElement) ? current.basicElement : "";
+        pick.onchange = () => {
+          current.basicElement = pick.value;
+          commit();
+        };
+        basicRow.append(row(vi.auto.basicElement, pick));
+      } else current.basicElement = "";
+    }
 
     const start = el("button", "au-start", vi.auto.start);
     start.onclick = () => {
@@ -143,11 +169,14 @@ export function initAuto(deps: AutoUiDeps): AutoUi {
       check(vi.auto.huntBoss, current.huntBoss, (v) => (current.huntBoss = v)),
       el("div", "au-sub", vi.auto.skills),
       list,
+      basicRow,
       row(vi.auto.mpMin, slider(0, 100, current.mpMin, "%", (v) => (current.mpMin = v))),
       row(vi.auto.healBelow, slider(0, 100, current.healBelow, "%", (v) => (current.healBelow = v))),
       el("div", "au-sub", vi.auto.potion),
-      row(vi.auto.potionKind, select),
+      row(vi.auto.potionKind, potionSelect("hp", current.potion, (v) => (current.potion = v))),
       row(vi.auto.potionBelow, slider(0, 100, current.potionBelow, "%", (v) => (current.potionBelow = v))),
+      row(vi.auto.mpPotionKind, potionSelect("mp", current.mpPotion, (v) => (current.mpPotion = v))),
+      row(vi.auto.mpPotionBelow, slider(0, 100, current.mpPotionBelow, "%", (v) => (current.mpPotionBelow = v))),
       el("div", "au-hint", vi.auto.note),
       start,
     );

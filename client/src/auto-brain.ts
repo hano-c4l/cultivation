@@ -3,7 +3,7 @@
  * only gathers the view and carries the command out through the same messages a player's clicks send, so the server's rules (reach, cooldowns, MP,
  * rate limits) apply unchanged. Nothing here knows about Phaser, the network or the page.
  */
-import { castReachOf, getSkill, parseSkillSlot, type AutoLimits } from "@game/shared";
+import { BASIC_SKILL_ID, castReachOf, getSkill, parseSkillSlot, type AutoLimits } from "@game/shared";
 
 /** What the player chose in the Auto window (kept in the browser, per character). */
 export interface AutoSettings {
@@ -24,9 +24,15 @@ export interface AutoSettings {
   /** The potion (an item type) to drink below `potionBelow` percent of HP; empty: none. */
   potion: string;
   potionBelow: number;
+  /** The same for MP (a pill that restores linh lực). */
+  mpPotion: string;
+  mpPotionBelow: number;
+  /** Use the basic qi blast in place of the plain attack while MP lasts, in this element (empty: the character's main one). */
+  basic: boolean;
+  basicElement: string;
 }
 
-export const AUTO_DEFAULTS: AutoSettings = { v: 1, radius: 8, returnHome: true, huntRare: true, huntBoss: false, skills: [], mpMin: 20, healBelow: 50, potion: "", potionBelow: 40 };
+export const AUTO_DEFAULTS: AutoSettings = { v: 1, radius: 8, returnHome: true, huntRare: true, huntBoss: false, skills: [], mpMin: 20, healBelow: 50, potion: "", potionBelow: 40, mpPotion: "", mpPotionBelow: 30, basic: false, basicElement: "" };
 
 export interface AutoMonster {
   id: string;
@@ -58,6 +64,8 @@ export interface AutoView {
   readyAt(skillId: string): number;
   buffUntil(skillId: string): number;
   mpCost(skillId: string): number;
+  /** The character has the basic qi blast. */
+  hasBasic: boolean;
   /** How many of an item type are in the bag, and how long the heal of a potion takes to land in full (0: at once). */
   bagCount(type: string): number;
   healMsOf(type: string): number;
@@ -72,12 +80,13 @@ export interface AutoMemory {
   /** Monsters given up on, until when. */
   skipUntil: Map<string, number>;
   potionAt: number;
+  mpPotionAt: number;
   homeAt: number;
   /** A skill that was refused is left alone until this time. */
   backoffUntil: Map<string, number>;
 }
 
-export const newAutoMemory = (): AutoMemory => ({ watchId: null, watchHp: 0, watchSince: 0, skipUntil: new Map(), potionAt: 0, homeAt: 0, backoffUntil: new Map() });
+export const newAutoMemory = (): AutoMemory => ({ watchId: null, watchHp: 0, watchSince: 0, skipUntil: new Map(), potionAt: 0, mpPotionAt: 0, homeAt: 0, backoffUntil: new Map() });
 
 export type AutoAction =
   | { t: "potion"; type: string }
@@ -98,6 +107,12 @@ export function decide(view: AutoView, s: AutoSettings, mem: AutoMemory, lim: Au
   if (s.potion && hpPct < s.potionBelow && view.bagCount(s.potion) > 0 && now >= mem.potionAt) {
     mem.potionAt = now + Math.max(lim.potionGapMs, view.healMsOf(s.potion) + 300);
     return { t: "potion", type: s.potion };
+  }
+
+  // 1b. a pill for linh lực when MP is low
+  if (s.mpPotion && mpPct < s.mpPotionBelow && view.bagCount(s.mpPotion) > 0 && now >= mem.mpPotionAt) {
+    mem.mpPotionAt = now + Math.max(lim.potionGapMs, view.healMsOf(s.mpPotion) + 300);
+    return { t: "potion", type: s.mpPotion };
   }
 
   const picks = s.skills.flatMap((value) => {
@@ -161,6 +176,12 @@ export function decide(view: AutoView, s: AutoSettings, mem: AutoMemory, lim: Au
     const d = dist(view.self.x, view.self.y, target.x, target.y);
     const atk = picks.find((p) => p.def.kind === "attack" && usable(p.slot.id) && d <= castReachOf(p.def));
     if (atk) return cast(atk, target.id);
+  }
+  // 6. the basic qi blast instead of the plain attack, while there is MP for it
+  const basic = getSkill(BASIC_SKILL_ID);
+  if (s.basic && view.hasBasic && basic && usable(BASIC_SKILL_ID) && dist(view.self.x, view.self.y, target.x, target.y) <= castReachOf(basic)) {
+    const element = s.basicElement || null;
+    return { t: "cast", value: `s:${BASIC_SKILL_ID}${element ? `:${element}` : ""}`, skill: BASIC_SKILL_ID, element, target: target.id };
   }
   return null;
 }

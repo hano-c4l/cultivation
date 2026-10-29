@@ -218,7 +218,29 @@ function pathSkills(): SkillDef[] {
   ];
 }
 
+/**
+ * The basic qi blast: every character has it (the server gives the row at login, `ensureBasicSkill`), as a root skill of realm 0 whose element is picked on the
+ * hotbar like the other root attacks. It reaches far like a spell, hits for about a plain blow, costs little and cools down in a second, so it can stand in
+ * for the plain attack. The numbers are placeholders ("giá trị tạm"), adjustable per skill from the admin Skills screen.
+ */
+export const BASIC_SKILL_ID = "khi_co_ban";
+const BASIC_SKILL: SkillDef = {
+  id: BASIC_SKILL_ID,
+  nameVi: "Phóng Khí",
+  descVi: "Phóng một luồng khí vào mục tiêu từ xa, sát thương cỡ đòn đánh thường, tốn ít linh lực và hồi chiêu nhanh. Hệ tùy chọn khi gán phím tắt. Nhân vật nào cũng có.",
+  kind: "attack",
+  source: "root",
+  element: null,
+  flex: true,
+  realm: 0,
+  mpCost: 3,
+  cooldownMs: 1000,
+  range: 7,
+  power: 1,
+};
+
 export const SKILLS: readonly SkillDef[] = [
+  BASIC_SKILL,
   ...REALMS.flatMap((r) => rootSkillsOfRealm(r.id)),
   ...gearSkills(),
   ...pathSkills(),

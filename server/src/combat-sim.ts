@@ -178,8 +178,9 @@ export interface PlayerProfile extends ProfileSeed {
   hitBy: Map<string, number>;
   /** The player that last hit this one while it stood still (it fights back at it even with the PK switch off). */
   retaliateId: string | null;
-  /** Earliest time the next potion may be used. */
+  /** Earliest time the next potion may be used (healing ones and MP ones have a cooldown each). */
   potionReadyAt: number;
+  mpPotionReadyAt: number;
   /**
    * MP is stored as `mp` at time `mpAt` and worked out for any later time (currentMp), so regeneration never needs a tick:
    * a room that is otherwise idle can pause. It regenerates from mpRegenDelayMs() after the last hit taken.
@@ -708,6 +709,7 @@ export class CombatSim {
       hitBy: new Map(),
       retaliateId: null,
       potionReadyAt: 0,
+      mpPotionReadyAt: 0,
       mp: d.maxMp,
       mpAt: 0,
       cooldowns: new Map(),
@@ -912,6 +914,15 @@ export class CombatSim {
   private settleMp(p: PlayerProfile, now: number): void {
     p.mp = this.currentMp(p, now);
     p.mpAt = now;
+  }
+
+  /** Restores `fraction` of max MP (a pill) and returns the MP as it stands, or null for a missing or dead player. */
+  restoreMp(id: string, fraction: number, now: number): Extract<SimEvent, { t: "mp" }> | null {
+    const p = this.players.get(id);
+    if (!p || p.dead) return null;
+    this.settleMp(p, now);
+    p.mp = Math.min(p.maxMp, p.mp + Math.max(1, Math.round(p.maxMp * fraction)));
+    return this.mpEvent(p, now) as Extract<SimEvent, { t: "mp" }>;
   }
 
   mpEvent(p: PlayerProfile, now: number): SimEvent {

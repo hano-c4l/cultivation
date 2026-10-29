@@ -621,6 +621,9 @@ export class Effects {
       case "phoenix":
         if (from) this.phoenix(from, id);
         return !!from;
+      case "bolt":
+        if (from && target) this.bolt(from, target, color, style, false, lvl);
+        return !!(from && target);
       case "lance":
         if (from && target) this.lance(from, target, color, style, lvl, range);
         return !!(from && target);

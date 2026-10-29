@@ -34,6 +34,8 @@ export interface ItemDef {
   healFraction?: number;
   /** With `healFraction`: the heal is spread evenly over this many ms instead of landing at once (shown as an effect on the buff bar). */
   healOverMs?: number;
+  /** Consumables that restore MP (linh lực): fraction of max MP restored on use, all at once. A pill may restore both. */
+  mpFraction?: number;
   /** Equipment only: the template behind the item (slot kind, stats, requirements, durability). */
   equip?: EquipInfo;
   /** Pills that raise the mastery of a skill: how many mastery points one gives (used from the skills window). */
@@ -171,6 +173,46 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     healFraction: 1,
     healOverMs: 4000,
   },
+  hoi_linh_dan: {
+    id: "hoi_linh_dan",
+    nameVi: "Hồi Linh Đan",
+    descVi: "Đan dược cơ bản, hồi 40% linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "common",
+    grade: 1,
+    mpFraction: 0.4,
+  },
+  dai_hoi_linh_dan: {
+    id: "dai_hoi_linh_dan",
+    nameVi: "Đại Hồi Linh Đan",
+    descVi: "Đan dược hồi 80% linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "uncommon",
+    grade: 2,
+    mpFraction: 0.8,
+  },
+  linh_tuyen_dan: {
+    id: "linh_tuyen_dan",
+    nameVi: "Linh Tuyền Đan",
+    descVi: "Đan dược cấp Kim Đan, hồi 60% linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "rare",
+    grade: 3,
+    mpFraction: 0.6,
+  },
+  bao_linh_dan: {
+    id: "bao_linh_dan",
+    nameVi: "Bảo Linh Đan",
+    descVi: "Đan dược cấp Nguyên Anh, hồi đầy linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 99,
+    rarity: "epic",
+    grade: 4,
+    mpFraction: 1,
+  },
   thien_ngo_dan: {
     id: "thien_ngo_dan",
     nameVi: "Thiên Ngộ Đan",
@@ -278,9 +320,10 @@ export function itemOverlayProblem(o: ItemOverlay): string | null {
   if (!isInt(d.maxStack, 1, 9999)) return "bad stack size";
   if (d.healFraction !== undefined && !(typeof d.healFraction === "number" && d.healFraction > 0 && d.healFraction <= 1)) return "bad heal";
   if (d.healOverMs !== undefined && (d.healFraction === undefined || !isInt(d.healOverMs, 1, 600_000))) return "bad heal time";
+  if (d.mpFraction !== undefined && !(typeof d.mpFraction === "number" && d.mpFraction > 0 && d.mpFraction <= 1)) return "bad MP restore";
   if (d.masteryPills !== undefined && !isInt(d.masteryPills, 1, 1_000_000)) return "bad mastery points";
-  if (d.category !== "consumable" && (d.healFraction !== undefined || d.masteryPills !== undefined)) return "only consumables heal or teach";
-  if (d.healFraction !== undefined && d.masteryPills !== undefined) return "a consumable heals or raises mastery, not both";
+  if (d.category !== "consumable" && (d.healFraction !== undefined || d.mpFraction !== undefined || d.masteryPills !== undefined)) return "only consumables heal or teach";
+  if ((d.healFraction !== undefined || d.mpFraction !== undefined) && d.masteryPills !== undefined) return "a consumable heals or raises mastery, not both";
   return null;
 }
 

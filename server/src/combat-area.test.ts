@@ -5,7 +5,7 @@ import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
 const noCrit = () => 0.99;
 const seed = (over: Partial<ProfileSeed> = {}): ProfileSeed => ({
   id: "p1",
-  granted: ["chuong_0", "tram_0", "kim_3", "kim_4", "moc_3", "hoa_3", "moc_4"],
+  granted: ["chuong_0", "tram_0", "kim_3", "kim_4", "moc_3", "hoa_3", "moc_4", "khi_co_ban"],
   name: "p1",
   potentialPoints: 5,
   element: "kim",
@@ -340,5 +340,34 @@ describe("ways of delivering a skill", () => {
     expect(dotHits(b.sim.tick(0, pos)).some((h) => h.to === "p2")).toBe(false);
     b.sim.setPkMode("p2", 1);
     expect(dotHits(b.sim.tick(1000, pos)).some((h) => h.to === "p2")).toBe(true);
+  });
+});
+
+describe("the basic qi blast and MP pills", () => {
+  it("hits from afar for about a plain blow, costs little, and is ready again in a second", () => {
+    const { sim, place } = bare();
+    const p = player(sim);
+    p.mp = 50;
+    p.mpAt = 0;
+    const m = place(0, [26, 20]);
+    expect(sim.queueCast("p1", "khi_co_ban", m.id, 0, undefined, "kim")).toEqual({ ok: true });
+    const events = sim.tick(0, new Map([["p1", [20, 20]]])); // 6 tiles: out of any weapon's reach, in the blast's
+    expect(hitsOf(events).map((h) => h.to)).toEqual([m.id]);
+    expect(p.mp).toBeLessThan(50);
+    expect(50 - p.mp).toBeLessThanOrEqual(5);
+    expect(events.find((e) => e.t === "cast_ok")).toMatchObject({ skill: "khi_co_ban", cdMs: 1000 });
+    expect(sim.queueCast("p1", "khi_co_ban", m.id, 500)).toEqual({ ok: false, reason: "cooldown" });
+    expect(sim.queueCast("p1", "khi_co_ban", m.id, 1100)).toEqual({ ok: true });
+  });
+
+  it("an MP pill gives MP back, never past the maximum", () => {
+    const { sim } = bare();
+    const p = player(sim);
+    p.mp = 10;
+    p.mpAt = 0;
+    const ev = sim.restoreMp("p1", 0.4, 0)!;
+    expect(ev.mp).toBe(Math.min(p.maxMp, 10 + Math.round(p.maxMp * 0.4)));
+    expect(sim.restoreMp("p1", 1, 0)!.mp).toBe(p.maxMp);
+    expect(sim.restoreMp("nobody", 1, 0)).toBeNull();
   });
 });
