@@ -1,7 +1,6 @@
-import { areaTargets, firstAlongLine, skillAreaOf, weaponAreaOf, type AreaDef } from "@game/shared";
+import { areaTargets, castReachOf, firstAlongLine, skillAreaOf, weaponAreaOf, weaponReachOf, type AreaDef } from "@game/shared";
 import {
   PLAYER_ATTACK_COOLDOWN_MS,
-  PLAYER_ATTACK_RANGE,
   regenDelayMs,
   REGEN_PER_S,
   CLUSTERS,
@@ -191,7 +190,7 @@ export interface PlayerProfile extends ProfileSeed {
   /** Skill ready times (ms), by skill id. Memory only: leaving the room resets them (known gap). */
   cooldowns: Map<string, number>;
   /** A skill to use as soon as it can (walking into range first); cleared by moving, targeting or a failure. */
-  pendingCast: { skill: string; target: string | null; dest?: Vec2; element?: SpiritualRoot } | null;
+  pendingCast: { skill: string; target: string | null; dest?: Vec2; element?: SpiritualRoot; /** Walks started towards a cast point out of reach (given up after a few that went nowhere). */ tries?: number } | null;
   buffs: ActiveBuff[];
   /** Potions that heal over time (memory only; what is left is paid out when the player leaves). */
   hots: ActiveHot[];
@@ -271,6 +270,7 @@ export type SimEvent =
   /** A skill went off, for everyone who can see it: who cast it, at what (a monster or player id) or where (a teleport's destination), in which element. */
   | { t: "fx"; playerId: string; skill: string; target?: string; dest?: Vec2; element?: string }
   /** The boss struck in a cone: where it stands, the point it faced, the reach (tiles) and half the opening (degrees). */
+  | { t: "guard_skill"; monsterId: string; skill: "mend" | "ward" | "burst" | "slash" }
   | { t: "cone"; monsterId: string; at: Vec2; aim: Vec2; range: number; halfAngleDeg: number }
   | { t: "cast_fail"; playerId: string; skill: string; reason: "mp" | "cooldown" | "no_target" | "weapon" | "unknown" | "range" | "blocked" }
   /** A teleport went off: the room moves the player to `to` (it owns the player's position). */
@@ -292,6 +292,9 @@ export type SimEvent =
 
 /** Re-plan a chase at most this often, and only when the target moved more than REPATH_DISTANCE. */
 const REPATH_MS = 500;
+
+/** Something a blow can fall on: a monster or a player, where it stands. */
+type Cand = { id: string; pos: Vec2; m?: Monster; q?: PlayerProfile };
 const REPATH_DISTANCE = 0.5;
 
 function dist(a: Vec2, b: Vec2): number {
@@ -910,6 +913,8 @@ export class CombatSim {
     let target: string | null = null;
     if (skill.kind === "attack" && !targetId && dest) {
       // Cast at a point (no target named): no chase and no target is set; the blow falls where it is aimed.
+      p.targetId = null; // the old target is not chased while the caster walks to the point
+      p.lastRepathAt = Number.NEGATIVE_INFINITY;
       p.pendingCast = { skill: skillId, target: null, dest, ...(skill.flex ? { element: element && (p.roots ?? [p.element]).includes(element) ? element : p.element } : {}) };
       return { ok: true };
     }
@@ -1199,15 +1204,23 @@ export class CombatSim {
     if (m.hp < m.maxHp * sk.mend.below && left("mend") && ready("mend", sk.mend.cdMs)) {
       m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * sk.mend.fraction));
       events.push({ t: "mon", monster: this.snapshot(m, now) });
+      if (m.guard) events.push({ t: "guard_skill", monsterId: m.id, skill: "mend" });
       return null;
     }
     if (!m.boss && now >= (m.buffUntil ?? 0) && left("ward") && ready("ward", guardSk.ward.cdMs)) {
       m.buffUntil = now + guardSk.ward.durationMs;
+      events.push({ t: "guard_skill", monsterId: m.id, skill: "ward" });
       return null;
     }
     const buff = now < (m.buffUntil ?? 0) ? 1 + guardSk.ward.attackPct / 100 : 1;
-    if (left("burst") && ready("burst", sk.burst.cdMs)) return sk.burst.power * buff;
-    if (left("slash") && ready("slash", sk.slash.cdMs)) return sk.slash.power * buff;
+    if (left("burst") && ready("burst", sk.burst.cdMs)) {
+      if (m.guard) events.push({ t: "guard_skill", monsterId: m.id, skill: "burst" });
+      return sk.burst.power * buff;
+    }
+    if (left("slash") && ready("slash", sk.slash.cdMs)) {
+      if (m.guard) events.push({ t: "guard_skill", monsterId: m.id, skill: "slash" });
+      return sk.slash.power * buff;
+    }
     return buff;
   }
 
@@ -1310,15 +1323,27 @@ export class CombatSim {
       }
       const mpos = this.position(m, now);
       const d = dist(pos, mpos);
-      if (d <= PLAYER_ATTACK_RANGE) {
-        if (now >= p.nextAttackAt) this.playerAttack(p, m, mpos, now, events, undefined, 1, undefined, pos);
+      const reach = this.reachOf(p);
+      if (d <= reach) {
+        if (now >= p.nextAttackAt && !p.pendingCast) this.playerAttack(p, m, mpos, now, events, undefined, 1, undefined, pos, positions);
       } else if (now - p.lastRepathAt >= REPATH_MS) {
         p.lastRepathAt = now;
-        // Stop about one tile short of the monster, on the line from the monster to the player.
-        const k = d > 0 ? 1 / d : 0;
-        events.push({ t: "path_request", playerId: p.id, to: [mpos[0] + (pos[0] - mpos[0]) * k, mpos[1] + (pos[1] - mpos[1]) * k] });
+        events.push({ t: "path_request", playerId: p.id, to: this.standOff(pos, mpos, reach) });
       }
     }
+  }
+
+  /** How far the player's next blow reaches: the waiting skill's range, else the wielded weapon's. */
+  private reachOf(p: PlayerProfile): number {
+    const skill = p.pendingCast ? getSkill(p.pendingCast.skill) : undefined;
+    return skill && skill.kind === "attack" ? castReachOf(skill) : weaponReachOf(p.weapon);
+  }
+
+  /** Where to stand to hit `to` from `pos`: on the line between them, a little inside `reach` (about one tile short for a short weapon). */
+  private standOff(pos: Vec2, to: Vec2, reach: number): Vec2 {
+    const d = dist(pos, to);
+    const k = d > 0 ? Math.max(0.8, reach - 0.6) / d : 0;
+    return [to[0] + (pos[0] - to[0]) * k, to[1] + (pos[1] - to[1]) * k];
   }
 
   /** The player's target is another player: swing when in reach, walk towards them when not, drop the target when the rules no longer allow it. */
@@ -1329,12 +1354,12 @@ export class CombatSim {
       return;
     }
     const d = dist(pos, qpos);
-    if (d <= PLAYER_ATTACK_RANGE) {
-      if (now >= p.nextAttackAt) this.pvpAttack(p, q, qpos, now, events);
+    const reach = this.reachOf(p);
+    if (d <= reach) {
+      if (now >= p.nextAttackAt && !p.pendingCast) this.pvpAttack(p, q, qpos, now, events, undefined, 1, undefined, pos, positions);
     } else if (now - p.lastRepathAt >= REPATH_MS) {
       p.lastRepathAt = now;
-      const k = d > 0 ? 1 / d : 0;
-      events.push({ t: "path_request", playerId: p.id, to: [qpos[0] + (pos[0] - qpos[0]) * k, qpos[1] + (pos[1] - qpos[1]) * k] });
+      events.push({ t: "path_request", playerId: p.id, to: this.standOff(pos, qpos, reach) });
     }
   }
 
@@ -1372,21 +1397,28 @@ export class CombatSim {
     let qpos: Vec2 | undefined;
     let aimAt: Vec2 | undefined;
     if (skill.kind === "attack" && !pending.target && pending.dest) {
-      // Cast at a point: it falls on the point if within reach, else on the farthest point the skill reaches along the way.
-      const d = dist(pos, pending.dest);
-      const k = d > skill.range ? skill.range / d : 1;
-      aimAt = [pos[0] + (pending.dest[0] - pos[0]) * k, pos[1] + (pending.dest[1] - pos[1]) * k];
+      // Cast at a point: out of reach, the caster first walks to the spot just in reach of the point (the blow falls on the point itself).
+      const reach = castReachOf(skill);
+      if (dist(pos, pending.dest) > reach) {
+        if (now - p.lastRepathAt < REPATH_MS) return false;
+        if ((pending.tries ?? 0) >= 4 && !this.moving.has(p.id)) return fail("range"); // the walks went nowhere (no way there)
+        p.lastRepathAt = now;
+        pending.tries = (pending.tries ?? 0) + 1;
+        events.push({ t: "path_request", playerId: p.id, to: this.standOff(pos, pending.dest, reach) });
+        return false;
+      }
+      aimAt = pending.dest;
     } else if (skill.kind === "attack") {
       q = pending.target ? this.players.get(pending.target) : undefined;
       if (q) {
         qpos = positions.get(q.id);
         if (!qpos || !this.pvpAllowed(p, q)) return fail("no_target");
-        if (dist(pos, qpos) > skill.range) return false;
+        if (dist(pos, qpos) > castReachOf(skill)) return false;
       } else {
         m = pending.target ? this.monsters.get(pending.target) : undefined;
         if (!m || m.state === "dead") return fail("no_target");
         mpos = this.position(m, now);
-        if (dist(pos, mpos) > skill.range) return false; // still walking: the chase below brings the player closer
+        if (dist(pos, mpos) > castReachOf(skill)) return false; // still walking: the chase below brings the player closer
       }
     }
     // The skill goes off: pay, start the cooldown, then its effect.
@@ -1410,13 +1442,13 @@ export class CombatSim {
       this.recompute(p, false);
       events.push({ t: "buff", playerId: p.id, skill: skill.id, ms: skill.buff.durationMs }, { t: "effects", playerId: p.id, list: this.effectsOf(p, now) });
     } else if (q && qpos) {
-      const done = this.pvpAttack(p, q, qpos, now, events, skill, eff.power, pending.element);
+      const done = this.pvpAttack(p, q, qpos, now, events, skill, eff.power, pending.element, pos, positions);
       if (done > 0) this.gainMastery(p, skill, events);
     } else if (aimAt) {
-      const done = this.playerAttack(p, undefined, aimAt, now, events, skill, eff.power, pending.element, pos);
+      const done = this.playerAttack(p, undefined, aimAt, now, events, skill, eff.power, pending.element, pos, positions);
       if (done > 0) this.gainMastery(p, skill, events);
     } else if (m && mpos) {
-      const done = this.playerAttack(p, m, mpos, now, events, skill, eff.power, pending.element, pos);
+      const done = this.playerAttack(p, m, mpos, now, events, skill, eff.power, pending.element, pos, positions);
       if (done > 0) this.gainMastery(p, skill, events);
     }
     return true;
@@ -1444,38 +1476,58 @@ export class CombatSim {
 
 
   /**
-   * A blow at a monster: the main target takes it in full, and the monsters inside the area of the blow (the weapon's sweep for a plain attack, the
-   * skill's own area) take `pct` of it. One swing costs one cooldown and, for a skill, earns its mastery once; the damage returned is the main
-   * target's. Players are never extra targets. `origin` is where the blow comes from (the attacker), `aim` the point it is aimed at when there is
-   * no target at all (a cast at a point): then the nearest monster in the area is the main target and a swing that finds none is wasted.
+   * Whoever a blow can fall on besides its main target: the monsters (a guard only for a player in the slaughter state) and the players the PK rules
+   * allow (the slaughter state: anyone; the normal state: players in it too; self-defence: whoever is being answered).
    */
-  private playerAttack(p: PlayerProfile, m: Monster | undefined, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot, origin?: Vec2): number {
+  private blowCandidates(p: PlayerProfile, now: number, positions: ReadonlyMap<string, Vec2> | undefined): Cand[] {
+    const out: Cand[] = [];
+    const slaughter = !this.map.safe && p.pkMode === 2 && !isPkProtected(p.realm, p.stage);
+    for (const other of this.monsters.values()) {
+      if (other.state === "dead" || (other.guard && !slaughter)) continue;
+      out.push({ id: other.id, pos: this.position(other, now), m: other });
+    }
+    for (const q of this.players.values()) {
+      const qpos = positions?.get(q.id);
+      if (qpos && this.pvpAllowed(p, q)) out.push({ id: q.id, pos: qpos, q });
+    }
+    return out;
+  }
+
+  /** The extra targets take the blow (monsters and players alike) at `pct` of its damage; one that died or left the map before its turn is skipped. */
+  private strikeExtras(p: PlayerProfile, extra: readonly Cand[], area: AreaDef, now: number, events: SimEvent[], skill: SkillDef | undefined, skillPower: number, skillElement: SpiritualRoot | undefined): void {
+    for (const e of extra) {
+      if (e.m) {
+        if (e.m.state === "dead" || !this.monsters.has(e.id)) continue;
+        this.strikeMonster(p, e.m, e.pos, now, events, skill, skillPower, skillElement, area.pct / 100, true);
+      } else if (e.q && !e.q.dead && this.pvpAllowed(p, e.q)) {
+        this.strikePlayer(p, e.q, e.pos, now, events, skill, skillPower, skillElement, area.pct / 100, true);
+      }
+    }
+  }
+
+  /**
+   * A blow at a monster: the main target takes it in full, and the monsters and players inside the area of the blow (the weapon's sweep for a plain
+   * attack, the skill's own area) take `pct` of it. One swing costs one cooldown and, for a skill, earns its mastery once; the damage returned is the main
+   * target's. `origin` is where the blow comes from (the attacker), `aim` the point it is aimed at when there is no target at all (a cast at a point):
+   * then the nearest target in the area is the main one and a swing that finds none is wasted.
+   */
+  private playerAttack(p: PlayerProfile, m: Monster | undefined, mpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot, origin?: Vec2, positions?: ReadonlyMap<string, Vec2>): number {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
     const from: Vec2 = origin ?? mpos;
     const area: AreaDef = skill ? skillAreaOf(skill) : weaponAreaOf(p.weapon ?? undefined);
-    const candidates: Array<{ id: string; pos: Vec2; m: Monster }> = [];
-    // A single-target blow at a target (a bow, a fist) needs no scan of the other monsters.
+    // A single-target blow at a target (a bow, a fist) needs no scan of the others.
     if (m && area.shape === "single") return this.strikeMonster(p, m, mpos, now, events, skill, skillPower, skillElement, 1, false);
-    for (const other of this.monsters.values()) {
-      if (other.state === "dead" || (other.guard && !this.canAttackGuard(p))) continue;
-      candidates.push({ id: other.id, pos: this.position(other, now), m: other });
-    }
-    let main = m;
-    let mainPos = mpos;
+    const candidates = this.blowCandidates(p, now, positions);
+    let main: Cand | undefined = m ? { id: m.id, pos: mpos, m } : undefined;
     if (!main) {
-      // A cast at a point: with an area, the nearest monster inside it; without, the first monster along the line.
-      const pick = area.shape === "single" ? firstAlongLine(from, mpos, skill?.range ?? 6, 0.9, candidates) : areaTargets({ ...area, maxTargets: 2 }, from, mpos, candidates)[0];
-      if (!pick) return 0;
-      main = pick.m;
-      mainPos = pick.pos;
+      // A cast at a point: with an area, the nearest target inside it; without, the first along the line.
+      main = area.shape === "single" ? firstAlongLine(from, mpos, skill?.range ?? 6, 0.9, candidates) : areaTargets({ ...area, maxTargets: 2 }, from, mpos, candidates)[0];
+      if (!main) return 0;
     }
     // The extra targets are picked before anything is struck: a kill (or a boss, which leaves the map) must not change who is in the swing.
-    const extra = areaTargets(area, from, m ? mainPos : mpos, candidates, main.id);
-    const done = this.strikeMonster(p, main, mainPos, now, events, skill, skillPower, skillElement, 1, false);
-    for (const e of extra) {
-      if (e.m.state === "dead" || !this.monsters.has(e.id)) continue;
-      this.strikeMonster(p, e.m, e.pos, now, events, skill, skillPower, skillElement, area.pct / 100, true);
-    }
+    const extra = areaTargets(area, from, m ? main.pos : mpos, candidates, main.id);
+    const done = main.m ? this.strikeMonster(p, main.m, main.pos, now, events, skill, skillPower, skillElement, 1, false) : this.strikePlayer(p, main.q!, main.pos, now, events, skill, skillPower, skillElement, 1, false);
+    this.strikeExtras(p, extra, area, now, events, skill, skillPower, skillElement);
     return done;
   }
 
@@ -1553,9 +1605,19 @@ export class CombatSim {
    * back even with the PK switch off. Returns the damage dealt (for the mastery of a skill). A kill ends the target and tells the room
    * (pvp_kill) so it settles the scores; the death itself goes through player_dead like a death to a monster.
    */
-  private pvpAttack(p: PlayerProfile, q: PlayerProfile, qpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot): number {
+  private pvpAttack(p: PlayerProfile, q: PlayerProfile, qpos: Vec2, now: number, events: SimEvent[], skill?: SkillDef, skillPower = 1, skillElement?: SpiritualRoot, origin?: Vec2, positions?: ReadonlyMap<string, Vec2>): number {
     p.nextAttackAt = now + PLAYER_ATTACK_COOLDOWN_MS;
-    const attacker = this.attackerFor(p, skill, skillPower, skillElement);
+    const area: AreaDef = skill ? skillAreaOf(skill) : weaponAreaOf(p.weapon ?? undefined);
+    if (area.shape === "single") return this.strikePlayer(p, q, qpos, now, events, skill, skillPower, skillElement, 1, false);
+    const extra = areaTargets(area, origin ?? qpos, qpos, this.blowCandidates(p, now, positions), q.id);
+    const done = this.strikePlayer(p, q, qpos, now, events, skill, skillPower, skillElement, 1, false);
+    this.strikeExtras(p, extra, area, now, events, skill, skillPower, skillElement);
+    return done;
+  }
+
+  /** One player takes the blow (`scale`: the share of the damage an extra target takes; `aoe`: it is not the one aimed at). */
+  private strikePlayer(p: PlayerProfile, q: PlayerProfile, qpos: Vec2, now: number, events: SimEvent[], skill: SkillDef | undefined, skillPower: number, skillElement: SpiritualRoot | undefined, scale: number, aoe: boolean): number {
+    const attacker = this.attackerFor(p, skill, skillPower, skillElement, scale);
     const hit = computeDamage(attacker, q.stats, this.rand);
     // A blow that answers someone who hit first (the automatic retaliation, or a click back by hand) is a defence: it is marked `ret`, it
     // does not make the answerer "grey" to the attacker and it is not counted as striking first when a kill is scored.
@@ -1565,7 +1627,7 @@ export class CombatSim {
     q.hp = Math.max(0, q.hp - hit.damage);
     this.settleMp(q, now); // regeneration up to this hit is kept; it pauses from here
     q.lastHurtAt = now;
-    events.push({ t: "hit", from: p.id, to: q.id, kind: hit.kind, damage: hit.damage, hp: q.hp, ...(skill ? { skill: skill.id } : {}), ...(answering ? { ret: true as const } : {}) });
+    events.push({ t: "hit", from: p.id, to: q.id, kind: hit.kind, damage: hit.damage, hp: q.hp, ...(skill ? { skill: skill.id } : {}), ...(answering ? { ret: true as const } : {}), ...(aoe ? { aoe: true as const } : {}) });
     events.push({ t: "hp", playerId: q.id, hp: q.hp, maxHp: q.maxHp });
     if (q.mp < q.maxMp) events.push(this.mpEvent(q, now));
     if (q.hp > 0) {
@@ -1580,7 +1642,7 @@ export class CombatSim {
     this.forgetBossDamage(q.id);
     q.targetId = null;
     q.pendingCast = null;
-    p.targetId = null;
+    if (p.targetId === q.id) p.targetId = null;
     for (const other of this.players.values()) if (other.targetId === q.id) other.targetId = null;
     events.push({ t: "player_dead", playerId: q.id, by: p.id });
     events.push({ t: "pvp_kill", killerId: p.id, victimId: q.id });
