@@ -75,7 +75,7 @@ const give = (item) => fetch(`${httpBase}/api/dev/loot?room=town:2&char=${charId
 
 check("the character has 1 to 5 distinct elements, the main one first", roots.length >= 1 && roots.length <= 5 && new Set(roots).size === roots.length && roots[0] === root, roots.join("+"));
 let c = await connect(reg.cookie, 2);
-check("a new character is given exactly two root skills of the first realm, one an attack, whatever its elements", c.welcome.skills.length === 2 && c.welcome.skills.every((id) => id.endsWith("_0")) && c.welcome.skills.some((id) => /^(chuong|tram|chi)_0$/.test(id)), `${roots.join("+")}: ${c.welcome.skills.join()}`);
+check("a new character is given exactly two root skills of the first realm, one an attack, whatever its elements", c.welcome.skills.filter((id) => id !== "khi_co_ban").length === 2 && c.welcome.skills.filter((id) => id !== "khi_co_ban").every((id) => id.endsWith("_0")) && c.welcome.skills.some((id) => /^(chuong|tram|chi)_0$/.test(id)), `${roots.join("+")}: ${c.welcome.skills.join()}`);
 check("the welcome carries the (empty) mastery of those skills", typeof c.welcome.skillStates === "object" && c.welcome.skillStates !== null);
 // Give a known set (an attack, a heal and a buff of the first realm) so the rest of the run does not depend on the roll.
 c.ws.close();

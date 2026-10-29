@@ -19,6 +19,7 @@ import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
 import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
 import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
 import { getEnhanceView, getMasterView, getSetsView, saveEnhance, saveMaster, saveSets } from "./gear-admin";
+import { bulkAction } from "./characters-bulk";
 import { addItem, addSkill, adjustMoney, addEquipment, deleteCharacter, editConstitution, editItem, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, setSkillLevel, startReview, type ItemEditInput, type ProfileInput, type StatsInput } from "./characters-admin";
 import { getConstitutionCatalog } from "./constitution-catalog";
 import { banAccount, getAccountDetail, listAccounts, parseAccountQuery, setTempPassword, unbanAccount } from "./accounts-admin";
@@ -692,12 +693,15 @@ export async function adminCharacterAction(request: Request, env: Env): Promise<
     case "editItem":
       result = await editItem(env.DB, admin, id, body.instance, body.input as ItemEditInput);
       break;
+    case "bulk":
+      result = await bulkAction(env.DB, admin, id, body.kind);
+      break;
     default:
       return errorResponse("invalid_body", 400);
   }
   if (!result.ok) return json({ error: result.error }, CHARACTER_ERROR_STATUS[result.error] ?? 400);
   console.log("character action", session.accountId, body.action, id);
-  return json({ ok: true, kicked: result.kicked === true });
+  return json({ ok: true, kicked: result.kicked === true, ...("count" in result && typeof result.count === "number" ? { count: result.count } : {}) });
 }
 
 const GEAR_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, version_conflict: 409, busy: 409, not_found: 404 };
