@@ -242,7 +242,7 @@ export function walkSpeed(base: BaseStats, gearPct: number, speedMods: readonly 
  * Combat stats from base stats and cultivation level, plus the stats of worn gear (`gear`, see equipmentBonus).
  * Formulas live here so client and server always agree.
  */
-export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number, gear?: EquipStats, rootCount = 1, speedMods: readonly number[] = []): DerivedStats {
+export function deriveStats(base: BaseStats, realm: number, stage: number, rootGrade: number, gear?: Partial<EquipStats>, rootCount = 1, speedMods: readonly number[] = []): DerivedStats {
   const lv = levelIndex(realm, stage);
   const t = tuning().stats; // the coefficients are tuning numbers (docs/PHASE3.md 3f); the caps of the percent stats stay as written
   const cap = rateCap();

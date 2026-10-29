@@ -86,11 +86,14 @@ import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { Effects } from "./fx";
 import { HAT_TEX, ensureHatTextures } from "./hat-art";
-import { FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
+import { FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
 /** The flight look an actor rides on: the one its worn pháp bảo gives, else the default. */
 const actorFlight = (a: { flight?: string }): FlightStyle => ((FLIGHT_STYLES as readonly string[]).includes(a.flight ?? "") ? (a.flight as FlightStyle) : flightStyleOf());
+
+/** Which side of the screen each of the 8 directions of a figure faces: -2 left, 0 toward the camera or away from it, +2 right (see DIRECTION_VECTORS). */
+const HEAD_SIDE: readonly number[] = [0, -1, -2, -1, 0, 1, 2, 1];
 
 /** `#rrggbb` as a number, or undefined (no tint) when there is none. */
 const hexOf = (hex: string | undefined): number | undefined => (hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? parseInt(hex.slice(1), 16) : undefined);
@@ -169,6 +172,10 @@ interface Actor {
   /** What the worn weapon, robe, hat and boots add to the look (from the snapshot and the `look` messages); `hat` is the hat drawn on the head. */
   lk?: GearLook;
   hat?: Phaser.GameObjects.Image;
+  /** Meditating: drawn sitting, with a ring of light under it and motes of healing round it. `seat` is the ring, `moteAt` when the next mote rises. */
+  sitting?: boolean;
+  seat?: Phaser.GameObjects.Container;
+  moteAt?: number;
   /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
   flight?: string;
   /** The cultivation level (`realm * 10 + stage`): the colour and thickness of the qi haze round the figure. */
@@ -939,6 +946,11 @@ export class GameScene extends Phaser.Scene {
       case "regen":
         this.vitals.setRates(msg.hp, msg.mp);
         break;
+      case "sit": {
+        const sitter = this.actors.get(msg.id);
+        if (sitter) sitter.sitting = msg.on;
+        break;
+      }
       case "meditating":
         this.setMeditating(msg.on);
         if (msg.reason && vi.meditate.reasons[msg.reason]) this.chat.system(vi.meditate.reasons[msg.reason]!, msg.reason === "hit" || msg.reason === "died" ? "error" : undefined);
@@ -1412,6 +1424,7 @@ export class GameScene extends Phaser.Scene {
       actor.outfit = p.o;
       actor.flight = p.fl;
       actor.lk = p.lk;
+      actor.sitting = p.med === true;
       actor.lv = p.lv;
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
@@ -1442,6 +1455,7 @@ export class GameScene extends Phaser.Scene {
     actor.tag.destroy();
     actor.cloud?.destroy();
     actor.hat?.destroy();
+    actor.seat?.destroy();
     this.actors.delete(id);
   }
 
@@ -1648,8 +1662,7 @@ export class GameScene extends Phaser.Scene {
   private setMeditating(on: boolean): void {
     this.meditating = on;
     this.meditateBtn.hidden = false;
-    this.meditateBtn.textContent = on ? vi.meditate.stand : vi.meditate.sit;
-    this.meditateBtn.title = vi.meditate.hint;
+    iconButton(this.meditateBtn, "meditate", `${on ? vi.meditate.stand : vi.meditate.sit}: ${vi.meditate.hint}`);
     this.meditateBtn.classList.toggle("sitting", on);
   }
 
@@ -1828,6 +1841,10 @@ export class GameScene extends Phaser.Scene {
       a.view = view;
       a.body.setVisible(false);
     }
+    // Meditating: the figure is lower and a little smaller (no sitting frames exist, so the stand-still frame is squashed), on a ring of light.
+    const sit = a.sitting === true && !a.mounted;
+    a.view.setScale(sit ? 0.86 : 1);
+    a.wview?.setScale(sit ? 0.86 : 1);
     // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
     const anim = moving && !a.mounted ? "run" : "idle";
     const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
@@ -1842,13 +1859,38 @@ export class GameScene extends Phaser.Scene {
     if (a.view.alive) {
       a.wview?.followFrame(a.view);
       this.applyReact(a.id, a.view, a.wview, now);
-      a.view.place(x, y - (a.mounted ? 8 : 0), depth);
-      a.wview?.place(x, y - (a.mounted ? 8 : 0), depth + 0.02);
-      this.applyGearLook(a, x, y - (a.mounted ? 8 : 0), depth, moving);
+      const lift = a.mounted ? -8 : sit ? 5 : 0; // sitting: the feet are lower
+      a.view.place(x, y - (a.mounted ? 8 : 0) + (sit ? 5 : 0), depth);
+      a.wview?.place(x, y - (a.mounted ? 8 : 0) + (sit ? 5 : 0), depth + 0.02);
+      this.applyGearLook(a, x, y - (a.mounted ? 8 : 0) + (sit ? 5 : 0), depth, moving);
+      this.syncSeat(a, now, x, y, depth, sit, lift);
     } else {
       a.wview?.destroy();
       a.wview = undefined;
     }
+  }
+
+  /** The ring of light under a meditating figure and the motes of healing that rise round it (green for HP, blue for MP; the others see both). */
+  private syncSeat(a: Actor, now: number, x: number, y: number, depth: number, sit: boolean, _lift: number): void {
+    if (!sit) {
+      if (a.seat) {
+        a.seat.destroy();
+        a.seat = undefined;
+      }
+      return;
+    }
+    if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
+    a.seat.setPosition(x, y + 3).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
+    if ((a.moteAt ?? 0) > now) return;
+    a.moteAt = now + 260 + Math.random() * 200;
+    // For yourself the motes show what is coming back: green while HP is below the maximum, blue while MP is.
+    const mine = a.id === this.selfId;
+    const hp = !mine || this.selfHp < this.selfMaxHp;
+    const mp = !mine || this.vitals.getMp() < this.selfMaxMp;
+    const ang = Math.random() * Math.PI * 2;
+    const rx = 10 + Math.random() * 12;
+    const color = hp && (!mp || Math.random() < 0.5) ? 0x7dff9c : mp ? 0x7ab8ff : 0xfff0a0;
+    this.fx.puff("mote", x + Math.cos(ang) * rx, y - 4 + Math.sin(ang) * rx * 0.5, 1, color);
   }
 
   /**
@@ -1864,7 +1906,22 @@ export class GameScene extends Phaser.Scene {
       const key = HAT_TEX(hatShapeOf(lk.h));
       if (a.hat.texture.key !== key) a.hat.setTexture(key);
       // The top of the head is `rise` above the feet (the name stands a few px higher); the picture's bottom edge sits on it.
-      a.hat.setPosition(x, y - a.view.rise() + 6).setDepth(depth + 0.03).setTint(hexOf(hatTintOf(lk.h)) ?? 0xffffff).setVisible(true);
+      // The hat turns with the head: its side of the screen (-2 left .. +2 right, 0 facing the camera or away from it), and whether the face is hidden (facing away: a little darker and
+      // higher). The two shapes that are not the same on both sides (the bun with its pin, the headband with its ribbons) mirror, the ribbons trailing behind.
+      const dir = a.view.dir;
+      const sx = HEAD_SIDE[dir] ?? 0;
+      const away = dir === 3 || dir === 4 || dir === 5;
+      const shape = hatShapeOf(lk.h);
+      const base = hexOf(hatTintOf(lk.h)) ?? 0xffffff;
+      const dim = away ? 0.8 : 1;
+      const tint = (Math.round(((base >> 16) & 255) * dim) << 16) | (Math.round(((base >> 8) & 255) * dim) << 8) | Math.round((base & 255) * dim);
+      a.hat
+        .setPosition(x + sx * 1.5, y - a.view.rise() + 6 - (away ? 1 : 0))
+        .setDepth(depth + 0.03)
+        .setTint(tint)
+        .setFlipX((shape === 3 && sx < 0) || (shape === 5 && sx > 0))
+        .setScale(Math.abs(sx) === 2 ? 0.78 : 1, 1)
+        .setVisible(true);
     } else if (a.hat) {
       a.hat.destroy();
       a.hat = undefined;
@@ -2097,16 +2154,18 @@ export class GameScene extends Phaser.Scene {
         fly.y = s.y;
         const want = FLIGHT_TEX[actorFlight(actor)];
         if (actor.cloud.texture.key !== want) actor.cloud.setTexture(want); // another pháp bảo was put on
-        const sword = want === FLIGHT_TEX.sword;
+        const style = actorFlight(actor);
+        const turn = FLIGHT_TURNS[style]; // the sword, the phoenix and the dragon face where they fly
+        const sword = turn !== undefined;
         const ca = Math.cos(fly.a);
         const sa = Math.sin(fly.a);
-        // the sword lies on the ground, which is squashed 2:1 on screen: along a screen-vertical heading it is seen half as long
+        // what lies on the ground is squashed 2:1 on screen: along a screen-vertical heading it is seen half as long
         const ga = Math.atan2(2 * sa, ca);
         const along = sword ? Math.hypot(Math.cos(ga), 0.5 * Math.sin(ga)) : 1;
         actor.cloud.setPosition(s.x, s.y - 4 + bob).setDepth(10 + pos.x + pos.y - 0.1);
         const big = FLIGHT_SCALE[actorFlight(actor)];
-        actor.cloud.setRotation(sword ? fly.a : 0).setFlipY(sword && ca < 0).setScale(along * big, big);
-        if (pos.moving && Math.random() < 0.4) this.fx.puff("trail", s.x - (sword ? ca * 50 * along : 14), s.y - 4 + bob - (sword ? sa * 50 * along : 0), 1, FLIGHT_GLOW[actorFlight(actor)]);
+        actor.cloud.setRotation(turn ? fly.a - turn.points : 0).setFlipY(!!turn?.flip && ca < 0).setScale(turn && turn.points === 0 ? along * big : big, turn && turn.points !== 0 ? along * big : big); // the length lies along the picture's x for a picture that points right, along its y for one that points up
+        if (pos.moving && Math.random() < 0.4) this.fx.puff("trail", s.x - (turn ? ca * turn.tail * along : 14), s.y - 4 + bob - (turn ? sa * turn.tail * along : 0), 1, FLIGHT_GLOW[style]);
       }
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);

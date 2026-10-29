@@ -71,6 +71,7 @@ check("standing: no HP comes back and no rate is sent but zero", !r.some((m) => 
 r = await after(c, { t: "meditate", on: true }, 3500);
 const rates = r.find((m) => m.t === "regen");
 check("sitting is accepted and the rates are sent", r.some((m) => m.t === "meditating" && m.on === true) && !!rates && rates.hp > 0 && rates.mp > 0, JSON.stringify(rates));
+check("the room is told that the character sat down", r.some((m) => m.t === "sit" && m.on === true && m.id === id), JSON.stringify(r.filter((m) => m.t === "sit")));
 const hpUp = r.filter((m) => m.t === "hp").map((m) => m.hp);
 check("HP comes back by the second", hpUp.length >= 2 && hpUp[hpUp.length - 1] > 50, JSON.stringify(hpUp));
 const mp = r.filter((m) => m.t === "mp").pop();
@@ -78,6 +79,7 @@ check("MP regenerates (the rate is a share of the maximum)", !!mp && mp.perSec >
 
 // --- a step stands it up ---------------------------------------------------------------------------------------------------------------------------
 r = await after(c, { t: "move", x: FOREST_ARRIVAL[0] + 1.2, y: FOREST_ARRIVAL[1] + 1.2, fx: FOREST_ARRIVAL[0], fy: FOREST_ARRIVAL[1], seq: 1 }, 700);
+check("the room is told that it stood up", r.some((m) => m.t === "sit" && m.on === false), JSON.stringify(r.filter((m) => m.t === "sit")));
 check("a step stands it up", r.some((m) => m.t === "meditating" && m.on === false && m.reason === "moved"), JSON.stringify(r.map((m) => m.t)));
 const stopRates = c.log.filter((m) => m.t === "regen").pop();
 check("and the rates drop to zero again", stopRates?.hp === 0 && stopRates?.mp === 0, JSON.stringify(stopRates));

@@ -1,4 +1,4 @@
-import { BASIC_SKILL_ID, basicSkillAt, NO_GEAR_REGEN, regenPerSecond, type GearRegen, areaTargets, castReachOf, firstAlongLine, skillAreaOf, weaponAreaOf, weaponReachOf, type AreaDef } from "@game/shared";
+import { BASIC_SKILL_ID, basicSkillAt, gearRegenFrom, regenPerSecond, areaTargets, castReachOf, firstAlongLine, skillAreaOf, weaponAreaOf, weaponReachOf, type AreaDef } from "@game/shared";
 import {
   PLAYER_ATTACK_COOLDOWN_MS,
   regenDelayMs,
@@ -127,8 +127,7 @@ export interface ProfileSeed {
   gender: Gender;
   /** Stats of the gear worn right now (equipmentBonus); recomputed by the room whenever gear or requirements change. */
   gear?: EquipStats;
-  /** Regeneration the worn gear gives all the time (equipmentRegen), and whether the character is meditating when the profile is made. */
-  regen?: GearRegen;
+  /** Whether the character is meditating when the profile is made (the regeneration the gear gives is in `gear`). */
   meditating?: boolean;
   /** Weapon family of the worn weapon (a skill may need one); null: no weapon or a weapon without a family. */
   weapon?: string | null;
@@ -170,8 +169,6 @@ export interface PlayerProfile extends ProfileSeed {
   lastRegenAt: number;
   /** Sitting in meditation: the ordinary regeneration of HP and MP works only then (plus what the gear gives all the time). A hit, a step, an attack or a skill ends it. */
   meditating: boolean;
-  /** Regeneration that worn gear gives all the time. */
-  gearRegen: GearRegen;
   /** HP and MP regenerated per second now (points; `setRates` keeps them current), and the fraction of a point of HP carried over between the one-second steps. */
   hpRate: number;
   mpRate: number;
@@ -715,7 +712,6 @@ export class CombatSim {
       lastHurtAt: 0,
       lastRegenAt: 0,
       meditating: seed.meditating === true,
-      gearRegen: seed.regen ?? NO_GEAR_REGEN,
       hpRate: 0,
       mpRate: 0,
       hpFrac: 0,
@@ -742,7 +738,7 @@ export class CombatSim {
       // Back from a reload or another map: pick up where they left, with the regeneration of the time away.
       const now = Date.now();
       // The time away regenerates only what the gear gives (and, in a safe map, the ordinary regeneration): nobody meditates while away.
-      const away = regenPerSecond(d.maxHp, d.maxMp, this.map.safe, seed.regen ?? NO_GEAR_REGEN);
+      const away = regenPerSecond(d.maxHp, d.maxMp, this.map.safe, gearRegenFrom(seed.gear));
       const r = restoreVitals(seed.vitals, now, d.maxHp, d.maxMp, away);
       profile.hp = r.hp;
       profile.mp = r.mp;
@@ -848,6 +844,7 @@ export class CombatSim {
   updateGear(id: string, gear: EquipStats, weapon?: string | null, gearSkills?: readonly GearSkillInfo[]): void {
     const p = this.players.get(id);
     if (!p) return;
+    this.settleMp(p, Math.max(this.clock, p.mpAt)); // what regenerated at the old rate stays; the gear may change the rate
     p.gear = gear;
     if (gearSkills !== undefined) p.gearSkills = gearSkills;
     if (weapon !== undefined) p.weapon = weapon;
@@ -934,7 +931,7 @@ export class CombatSim {
 
   /** The regeneration per second now: the ordinary one while meditating (always in a safe map, where there is nothing to fear), and what the gear gives. Call after anything that changes it, having settled the MP first. */
   private setRates(p: PlayerProfile): void {
-    const r = regenPerSecond(p.maxHp, p.maxMp, p.meditating || this.map.safe, p.gearRegen);
+    const r = regenPerSecond(p.maxHp, p.maxMp, p.meditating || this.map.safe, gearRegenFrom(p.gear));
     p.hpRate = r.hp;
     p.mpRate = r.mp;
   }
@@ -964,15 +961,6 @@ export class CombatSim {
     p.meditating = false;
     this.setRates(p);
     return true;
-  }
-
-  /** The regeneration the worn gear gives changed. */
-  updateRegen(id: string, regen: GearRegen, now: number): void {
-    const p = this.players.get(id);
-    if (!p) return;
-    this.settleMp(p, now);
-    p.gearRegen = regen;
-    this.setRates(p);
   }
 
   /** Stores the MP worked out for `now` (call before changing it or before `lastHurtAt` moves). */

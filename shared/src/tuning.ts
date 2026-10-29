@@ -44,15 +44,6 @@ export interface Tuning {
   bossCone: { power: number; cdMs: number; below: number; range: number; halfAngleDeg: number };
   /** The boss heals this fraction of its maximum HP per second once it has walked home from a lost fight. */
   bossRegen: { perSecond: number };
-  /**
-   * HP and MP that worn gear gives all the time, even in a fight (the meditation adds the ordinary regeneration on top). Per kind of piece, the weight of each stat:
-   * a piece gives `weight x units` (units: the piece's level and grade, as for its other stats). `hp`/`mp` are points per second, `hpPct`/`mpPct` percent of the maximum per second.
-   */
-  gearRegen: { weights: Record<string, { hp: number; mp: number; hpPct: number; mpPct: number }> };
-  /**
-   * The basic qi blast (Phóng Khí) that stands in for the plain attack grows with the realm: one entry per realm (index = realm; a missing one repeats the last). Absent
-   * fields keep the skill's own value: the power is multiplied, the name, range, MP cost and area replace.
-   */
   /** The colours of the gear on a figure (see gear-look.ts): the tint of a weapon by its element (`none` for one without), and the palettes the robe, hat and boots of each set pick from (set number modulo the length). */
   gearLooks: { weapon: Record<string, string>; robe: string[]; hat: string[]; boots: string[] };
   basicSkill: { realms: Array<{ nameVi?: string; powerMult: number; range?: number; mpCost?: number; area?: AreaDef }> };
@@ -235,14 +226,6 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   enhanceCost: { linhBase: [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000], maxPityPct: 30 },
   bossCone: { power: 2.2, cdMs: 25_000, below: 0.25, range: 4.5, halfAngleDeg: 45 },
   bossRegen: { perSecond: 0.02 },
-  gearRegen: {
-    weights: {
-      necklace: { hp: 0, mp: 0, hpPct: 0.01, mpPct: 0 },
-      belt: { hp: 0.5, mp: 0, hpPct: 0, mpPct: 0 },
-      ring: { hp: 0, mp: 0.35, hpPct: 0, mpPct: 0 },
-      jade: { hp: 0, mp: 0, hpPct: 0, mpPct: 0.01 },
-    },
-  },
   gearLooks: {
     weapon: { none: "#e6edf5", kim: "#f2f4f8", moc: "#9fe0a0", thuy: "#8cc4ff", hoa: "#ff8c6a", tho: "#e0b878", loi: "#c8a8ff", bang: "#b4f0ff", phong: "#a8f0d8" },
     robe: ["#ffffff", "#ffe9d0", "#d8ecff", "#e2ffd8", "#f6d8ff", "#fff4b8", "#ffd0d8", "#cfeee8", "#e8e0ff", "#ffe0a8", "#cfe4ff", "#f0ffd0", "#ffd8f0", "#d0fff4", "#ffd6b0", "#dcdcff"],
@@ -523,14 +506,14 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     hoa_dien_lang: "wolf",
     nham_giap_thu: "orc",
     liet_hoa_xa: "snake",
-    loi_van_ho: "cat",
-    huyen_giap_quy: "dino",
-    phong_loi_ung: "eagle",
-    loi_de_long: "dragon",
-    hu_anh_bao: "ghost",
-    tinh_ha_cu_linh: "orc",
-    hu_thien_ma_dieu: "bat",
-    hon_don_ma_ton: "demon",
+    loi_van_ho: "monkroose",
+    huyen_giap_quy: "cactoro",
+    phong_loi_ung: "birb",
+    loi_de_long: "dragon2",
+    hu_anh_bao: "ninja",
+    tinh_ha_cu_linh: "mushking",
+    hu_thien_ma_dieu: "alien",
+    hon_don_ma_ton: "bluedemon",
   },
   flightLooks: { default: "sword", byElement: { moc: "lotus", thuy: "cloud", phong: "cloud", bang: "cloud", hoa: "sword", kim: "sword", loi: "sword", tho: "lotus" }, byRealm: { "4": "phoenix", "5": "dragon" } },
   auto: { radiusMin: 3, radiusMax: 40, radiusDefault: 20, tickMs: 350, giveUpMs: 6000, skipMs: 20_000, potionGapMs: 2500, castBackoffMs: 2500 },
@@ -650,7 +633,6 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   enhanceCost: "Chi phí nâng cấp: Linh Thạch cơ bản theo cảnh giới, giới hạn cộng dồn thất bại",
   bossCone: "Kỹ năng nón của boss",
   bossRegen: "Tốc độ hồi máu của boss khi về chỗ cũ",
-  gearRegen: "Hồi sinh lực và linh lực của trang bị: trọng số theo loại món (hồi theo điểm hoặc theo phần trăm tối đa mỗi giây)",
   gearLooks: "Màu trang bị trên nhân vật: màu vũ khí theo hệ, bảng màu áo, mũ, giày theo từng bộ",
   basicSkill: "Phóng Khí (kỹ năng thay đòn đánh thường) theo cảnh giới: tên, hệ số sát thương, tầm, linh lực, vùng sát thương",
   waygate: "Truyền tống trận: giá cơ bản và giá mỗi đơn vị khoảng cách giữa hai thành (Linh Thạch)",
@@ -769,10 +751,6 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       const color = (c: unknown): boolean => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c);
       const list = (a: unknown): boolean => Array.isArray(a) && a.length >= 1 && a.length <= 64 && a.every(color);
       return obj(value.weapon) && Object.entries(value.weapon).every(([k, v]) => /^[a-z]{2,8}$/.test(k) && color(v)) && list(value.robe) && list(value.hat) && list(value.boots);
-    }
-    case "gearRegen": {
-      const w = value.weights;
-      return obj(w) && Object.entries(w).every(([k, v]) => /^[a-z]{1,16}$/.test(k) && obj(v) && num(v.hp, 0, 1000) && num(v.mp, 0, 1000) && num(v.hpPct, 0, 100) && num(v.mpPct, 0, 100));
     }
     case "basicSkill": {
       const r = value.realms;
@@ -1024,7 +1002,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "monsterTints":
       return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z]{1,16}$/.test(k) && typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v));
     case "monsterModels":
-      return Object.keys(value).length <= 100 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && /^[a-z]{1,16}$/.test(v));
+      return Object.keys(value).length <= 100 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && /^[a-z0-9]{1,16}$/.test(v));
     case "outfits":
       return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit));
     case "alchemy":

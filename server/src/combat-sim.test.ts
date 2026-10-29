@@ -1,4 +1,4 @@
-import { basicSkillAt, castReachOf, skillAreaOf, masteryNeeded, CLUSTERS, GUARDS, rankDef, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
+import { emptyEquipStats, basicSkillAt, castReachOf, skillAreaOf, masteryNeeded, CLUSTERS, GUARDS, rankDef, expToNext, getMap, effectiveSkill, getMonsterDef, getSkill, killExp, monsterBaseExp, nearestStandablePoint, startingStats, type Vec2 } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { CombatSim, skillContextOf, type ProfileSeed, type SimEvent } from "./combat-sim";
 
@@ -619,7 +619,8 @@ describe("skills", () => {
     expect(kept).toBe(10 + Math.floor(6 * p.maxMp * 0.02));
     expect(sim.currentMp(p, 60_000)).toBe(kept);
     // Gear that gives MP works standing, and adds to the meditation.
-    sim.updateRegen("p1", { hp: 0, mp: 3, hpPct: 0, mpPct: 1 }, 60_000);
+    sim.tick(60_000, at([1, 1])); // the room clock moves on
+    sim.updateGear("p1", { ...emptyEquipStats(), mpRegen: 3, mpRegenPct: 60 }); // 3 points a second and 60% of the maximum a minute
     const standing = 3 + p.maxMp * 0.01;
     expect(sim.currentMp(p, 62_000)).toBe(kept + Math.floor(2 * standing));
     sim.setMeditating("p1", true, 62_000);
@@ -645,7 +646,7 @@ describe("skills", () => {
     p.hp = 1;
     const quiet = sim.tick(1000, at([1, 1]));
     expect(quiet.some((e) => e.t === "hp")).toBe(false);
-    sim.updateRegen("p1", { hp: 0, mp: 0, hpPct: 0.5, mpPct: 0 }, 1000); // half a percent of the maximum a second
+    sim.updateGear("p1", { ...emptyEquipStats(), hpRegenPct: 30 }); // 30% of the maximum a minute: half a percent a second
     const rate = p.maxHp * 0.005;
     let t = 1000;
     for (let i = 0; i < 10; i++) {
@@ -703,7 +704,7 @@ describe("vitals kept across a reload", () => {
     const q = sim.addPlayer(seed("p2", { vitals: { hp: 40, mp: 5, at: now - 3_600_000, cd: {}, buffs: [] } }));
     expect(q.hp).toBe(40);
     expect(q.mp).toBe(5);
-    const g = sim.addPlayer(seed("p3", { regen: { hp: 1, mp: 0, hpPct: 0, mpPct: 0 }, vitals: { hp: 40, mp: 5, at: now - 10_000, cd: {}, buffs: [] } }));
+    const g = sim.addPlayer(seed("p3", { gear: { ...emptyEquipStats(), hpRegen: 1 }, vitals: { hp: 40, mp: 5, at: now - 10_000, cd: {}, buffs: [] } }));
     expect(g.hp).toBe(50); // a point a second for the ten seconds away
     const safe = new CombatSim(getMap("town"), "town", noCrit, 0); // a safe map heals as it always did
     const r = safe.addPlayer(seed("p4", { vitals: { hp: 40, mp: 5, at: now - 3_600_000, cd: {}, buffs: [] } }));
@@ -924,7 +925,7 @@ describe("skills from worn pháp bảo and teleport", () => {
     const p = s.addPlayer(seed("p1", { gearSkills: [{ id: "pt_phong_than", realm: 0, tier: 1, grade: 0 }] }));
     expect(s.skillsOf(p)).toContain("pt_phong_than");
     expect(s.queueCast("p1", "pt_phong_than", null, 0)).toEqual({ ok: true });
-    s.updateGear("p1", p.gear ?? { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0 }, undefined, []);
+    s.updateGear("p1", p.gear ?? emptyEquipStats(), undefined, []);
     expect(s.skillsOf(p)).not.toContain("pt_phong_than");
     expect(s.queueCast("p1", "pt_phong_than", null, 100)).toEqual({ ok: false, reason: "unknown" });
   });

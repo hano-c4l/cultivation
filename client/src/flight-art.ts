@@ -8,6 +8,15 @@ import type { FlightStyle } from "@game/shared";
 export const FLIGHT_TEX: Readonly<Record<FlightStyle, string>> = { plain: "fly_plain", sword: "fly_sword", cloud: "fly_cloud", lotus: "fly_lotus", phoenix: "fly_phoenix", dragon: "fly_dragon" };
 /** The colour of the spirit light that trails behind each. */
 export const FLIGHT_GLOW: Readonly<Record<FlightStyle, number>> = { plain: 0x9fe8ff, sword: 0xbfe9ff, cloud: 0xe8f6ff, lotus: 0xffc6e6, phoenix: 0xff9a4a, dragon: 0xffe27a };
+/**
+ * Whether a style turns to face where it flies (the others are round, or drawn the same from every side), and the way the picture points before it is turned (radians on the
+ * picture: 0 is to the right, -PI/2 is up). `flip` mirrors a picture that would be upside down when it points left (it has a top and a bottom).
+ */
+export const FLIGHT_TURNS: Readonly<Partial<Record<FlightStyle, { points: number; flip: boolean; tail: number }>>> = {
+  sword: { points: 0, flip: true, tail: 50 },
+  dragon: { points: 0, flip: true, tail: 70 },
+  phoenix: { points: -Math.PI / 2, flip: false, tail: 34 },
+};
 /** How much bigger than the others each is drawn: the two highest realms ride something grand. */
 export const FLIGHT_SCALE: Readonly<Record<FlightStyle, number>> = { plain: 1, sword: 1, cloud: 1, lotus: 1, phoenix: 1.3, dragon: 1.55 };
 

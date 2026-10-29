@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { makeEquipmentId } from "./equipment-data";
-import { equipmentRegen, gearRegenOf, regenPerSecond, NO_GEAR_REGEN } from "./gear-regen";
-import { equipmentInfo } from "./equipment-data";
+import { equipmentBonus, equipmentInfo, makeEquipmentId, scaledStats } from "./equipment-data";
+import { defaultMasterEntry, rollForType } from "./gear-master";
+import { gearRegenFrom, regenPerSecond, NO_GEAR_REGEN } from "./gear-regen";
 import { bootsTintOf, gearLookOf, hatShapeOf, HAT_SHAPES, robeTintOf, weaponLookParts, weaponTintOf } from "./gear-look";
 import { startingStats } from "./progression";
 import { basicSkillAt, getSkill, setBasicSkillRealm, BASIC_SKILL_ID } from "./skills";
@@ -11,26 +11,41 @@ const w = { gender: "male" as const, realm: 5, stage: 9, base: { ...startingStat
 describe("gear that regenerates", () => {
   const id = (kind: "necklace" | "belt" | "ring" | "jade" | "hat", realm: number, tier: number, grade: number) => makeEquipmentId(kind, kind === "necklace" || kind === "jade" || kind === "hat" ? "m" : "u", realm, tier, grade);
 
-  it("is given by some kinds only, more by a higher level and grade", () => {
-    expect(gearRegenOf(equipmentInfo(id("hat", 0, 1, 1))!)).toEqual(NO_GEAR_REGEN);
-    const low = gearRegenOf(equipmentInfo(id("belt", 0, 1, 1))!);
-    const high = gearRegenOf(equipmentInfo(id("belt", 4, 5, 4))!);
-    expect(low.hp).toBeGreaterThanOrEqual(1);
-    expect(high.hp).toBeGreaterThan(low.hp);
-    expect(low.mp).toBe(0);
-    expect(gearRegenOf(equipmentInfo(id("necklace", 3, 3, 2))!).hpPct).toBeGreaterThan(0);
-    expect(gearRegenOf(equipmentInfo(id("ring", 1, 1, 1))!).mp).toBeGreaterThanOrEqual(1);
-    expect(gearRegenOf(equipmentInfo(id("jade", 1, 1, 1))!).mpPct).toBeGreaterThan(0);
+  it("is a stat of some kinds only (necklace, belt, ring, jade), more at a higher level and grade, and it is in the master table", () => {
+    expect(equipmentInfo(id("hat", 0, 1, 1))!.stats.hpRegen).toBe(0);
+    const low = equipmentInfo(id("belt", 0, 1, 1))!.stats;
+    const high = equipmentInfo(id("belt", 4, 5, 4))!.stats;
+    expect(low.hpRegen).toBeGreaterThanOrEqual(1);
+    expect(high.hpRegen).toBeGreaterThan(low.hpRegen);
+    expect(low.mpRegen).toBe(0);
+    expect(equipmentInfo(id("necklace", 3, 3, 2))!.stats.hpRegenPct).toBeGreaterThan(0);
+    expect(equipmentInfo(id("ring", 1, 1, 1))!.stats.mpRegen).toBeGreaterThanOrEqual(1);
+    expect(equipmentInfo(id("jade", 1, 1, 1))!.stats.mpRegenPct).toBeGreaterThan(0);
+    for (const kind of ["belt", "necklace", "ring", "jade"] as const) {
+      const style = kind === "necklace" || kind === "jade" ? "m" : "u";
+      const e = defaultMasterEntry(kind, style, 3, 4)!;
+      expect(Object.keys(e.stats).some((k) => /Regen/.test(k)), kind).toBe(true);
+    }
+    expect(Object.keys(defaultMasterEntry("hat", "m", 3, 4)!.stats).some((k) => /Regen/.test(k))).toBe(false);
   });
 
-  it("adds up over the worn pieces and skips a broken one", () => {
+  it("adds up over the worn pieces (equipmentBonus) and becomes per-second rates", () => {
     const a = id("belt", 2, 1, 1);
     const b = id("necklace", 2, 1, 1);
-    const both = equipmentRegen([{ slot: "belt", type: a }, { slot: "necklace", type: b }] as never, w as never);
-    expect(both.hp).toBe(gearRegenOf(equipmentInfo(a)!).hp);
-    expect(both.hpPct).toBe(gearRegenOf(equipmentInfo(b)!).hpPct);
-    const broken = equipmentRegen([{ slot: "belt", type: a, dur: 0, max: 10 }] as never, w as never);
-    expect(broken).toEqual(NO_GEAR_REGEN);
+    const bonus = equipmentBonus([{ slot: "belt", type: a }, { slot: "necklace", type: b }] as never, w as never);
+    expect(bonus.hpRegen).toBe(equipmentInfo(a)!.stats.hpRegen);
+    expect(bonus.hpRegenPct).toBe(equipmentInfo(b)!.stats.hpRegenPct);
+    expect(gearRegenFrom(bonus)).toEqual({ hp: bonus.hpRegen, mp: 0, hpPct: bonus.hpRegenPct / 60, mpPct: 0 });
+    expect(gearRegenFrom(undefined)).toEqual(NO_GEAR_REGEN);
+    expect(equipmentBonus([{ slot: "belt", type: a, dur: 0, max: 10 }] as never, w as never).hpRegen).toBe(0); // broken: nothing
+  });
+
+  it("a rolled piece keeps the regeneration it was rolled with, inside the master range", () => {
+    const t = id("belt", 3, 4, 3);
+    const rs = rollForType(t, () => 0.5)!;
+    expect(rs.hpRegen).toBeGreaterThanOrEqual(1);
+    const info = equipmentInfo(t)!;
+    expect(scaledStats(info, undefined, undefined, undefined, 1, rs).hpRegen).toBe(rs.hpRegen);
   });
 
   it("the ordinary regeneration needs meditation, the gear's does not, and they add up", () => {
