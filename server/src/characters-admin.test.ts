@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { REALMS, SKILLS, setItemOverlays } from "@game/shared";
 import { listAdminLog, parseLogQuery } from "./admin-log";
-import { REVIEW_MS, addItem, addEquipment, addSkill, adjustMoney, deleteCharacter, editConstitution, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview } from "./characters-admin";
+import { REVIEW_MS, addItem, addEquipment, addSkill, adjustMoney, deleteCharacter, editConstitution, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, editItem, setSkillLevel, startReview } from "./characters-admin";
 import { getConstitutionCatalog } from "./constitution-catalog";
 import { realmBoard } from "./leaderboard";
 import { resetItemsCache } from "./items-live";
@@ -35,14 +35,14 @@ beforeEach(() => {
 const stats = { canCot: 5, thanPhap: 5, ngoTinh: 5, linhLuc: 5, thanThuc: 5, phucDuyen: 5 };
 
 describe("a character under review", () => {
-  it("refuses every change until the admin starts a review, and starting it ends the sessions and kicks", async () => {
+  it("refuses every change until the admin starts a review, and starting it kicks that character and keeps the sessions", async () => {
     expect(await editStats(db, A, "c1", { realm: 1, stage: 2, exp: 0, potentialPoints: 0, stats }, REALMS.length, NOW)).toEqual({ ok: false, error: "not_reviewing" });
     expect(await adjustMoney(db, A, "c1", "linh_thach", 5, NOW)).toEqual({ ok: false, error: "not_reviewing" });
     expect(await addItem(db, A, "c1", "linh_thao", 1, NOW)).toEqual({ ok: false, error: "not_reviewing" });
     expect(await addSkill(db, A, "c1", skill.id, NOW)).toEqual({ ok: false, error: "not_reviewing" });
     expect(await startReview(db, A, "c1", kicker, NOW)).toEqual({ ok: true, kicked: true });
     expect(kicks).toEqual(["c1"]);
-    expect(raw.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 0 });
+    expect(raw.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 1 }); // the account stays logged in: an admin editing a character of their own account keeps their session
     const v = (await getCharacterView(db, "c1", NOW + 1))!;
     expect(v.review).toEqual({ by: A, until: NOW + REVIEW_MS });
   });
@@ -213,5 +213,52 @@ describe("the spiritual root", () => {
     const v = (await getCharacterView(db, "c1", NOW + 4))!;
     expect(v.roots).toEqual(["phong"]); // read back through the real element
     expect((await logs()).some((l) => l.includes("Sửa linh căn") && l.includes("phong"))).toBe(true);
+  });
+});
+
+describe("editing the level of a skill and the properties of a piece of gear", () => {
+  const gear = "eq.bonded.u.0.1.1.kim";
+
+  it("sets the mastery level of a skill the character has, within what its grade allows, and logs it", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await addSkill(db, A, "c1", skill.id, NOW + 1)).toEqual({ ok: true });
+    const before = (await getCharacterView(db, "c1", NOW + 2))!.skills.find((x) => x.id === skill.id)!;
+    expect(before.level).toBe(0);
+    expect(before.maxLevel).toBeGreaterThan(0);
+    expect(await setSkillLevel(db, A, "c1", skill.id, 2, NOW + 3)).toEqual({ ok: true });
+    expect((await getCharacterView(db, "c1", NOW + 4))!.skills.find((x) => x.id === skill.id)!.level).toBe(2);
+    expect(await setSkillLevel(db, A, "c1", skill.id, 2, NOW + 5)).toEqual({ ok: false, error: "unchanged" });
+    expect(await setSkillLevel(db, A, "c1", skill.id, before.maxLevel + 1, NOW + 5)).toEqual({ ok: false, error: "invalid" });
+    expect(await setSkillLevel(db, A, "c1", skill.id, -1, NOW + 5)).toEqual({ ok: false, error: "invalid" });
+    expect(await setSkillLevel(db, A, "c1", "khong_co", 1, NOW + 5)).toEqual({ ok: false, error: "invalid" });
+    expect(await setSkillLevel(db, A, "c1", "cuong_than", 1, NOW + 5)).toEqual({ ok: false, error: "not_found" }); // a real skill the character does not have
+    expect((await logs()).some((l) => l.includes("Đổi cấp kỹ năng") && l.includes("0 → 2"))).toBe(true);
+    expect(await setSkillLevel(db, B, "c1", skill.id, 1, NOW + 6)).toEqual({ ok: false, error: "not_reviewing" });
+  });
+
+  it("sets the upgrade level, the trained level of a bonded pháp bảo and the durability of a piece, in the bag", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    expect(await addEquipment(db, A, "c1", gear, NOW + 1)).toEqual({ ok: true });
+    const piece = (await getCharacterView(db, "c1", NOW + 2))!.items.find((i) => i.type === gear)!;
+    expect(piece.max).toBeGreaterThan(1);
+    expect(await editItem(db, A, "c1", piece.id, { en: 7, lv: 12, dur: 1 }, NOW + 3)).toEqual({ ok: true });
+    const after = (await getCharacterView(db, "c1", NOW + 4))!.items.find((i) => i.id === piece.id)!;
+    expect(after).toMatchObject({ en: 7, lv: 12, dur: 1 });
+    expect(await editItem(db, A, "c1", piece.id, { en: 7 }, NOW + 5)).toEqual({ ok: false, error: "unchanged" });
+    expect(await editItem(db, A, "c1", piece.id, { en: 11 }, NOW + 5)).toEqual({ ok: false, error: "invalid" });
+    expect(await editItem(db, A, "c1", piece.id, { dur: piece.max! + 1 }, NOW + 5)).toEqual({ ok: false, error: "invalid" });
+    expect(await editItem(db, A, "c1", piece.id, { lv: 999 }, NOW + 5)).toEqual({ ok: false, error: "invalid" });
+    expect(await editItem(db, A, "c1", "nope", { en: 1 }, NOW + 5)).toEqual({ ok: false, error: "not_found" });
+    expect(await editItem(db, A, "c1", piece.id, { en: 0 }, NOW + 6)).toEqual({ ok: true });
+    expect((await logs()).some((l) => l.includes("cường hóa +7 → +0"))).toBe(true);
+  });
+
+  it("refuses a trained level for gear that is not a bonded pháp bảo, and every edit without a review", async () => {
+    await startReview(db, A, "c1", kicker, NOW);
+    await addEquipment(db, A, "c1", "eq.weapon.u.0.1.1.kim.kiem", NOW + 1);
+    const sword = (await getCharacterView(db, "c1", NOW + 2))!.items.find((i) => i.type.startsWith("eq.weapon"))!;
+    expect(await editItem(db, A, "c1", sword.id, { lv: 3 }, NOW + 3)).toEqual({ ok: false, error: "invalid" });
+    expect(await editItem(db, A, "c1", sword.id, { en: 3 }, NOW + 3)).toEqual({ ok: true });
+    expect(await editItem(db, B, "c1", sword.id, { en: 4 }, NOW + 4)).toEqual({ ok: false, error: "not_reviewing" });
   });
 });

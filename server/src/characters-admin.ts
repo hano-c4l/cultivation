@@ -1,4 +1,4 @@
-import { ALL_ROOTS, CURRENCIES, parseRoots, type SpiritualRoot, MUTANT_ROOTS, ROOT_GRADES, SPIRITUAL_ROOTS, equipmentInfo, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, type BagItem, type EquippedItem } from "@game/shared";
+import { ALL_ROOTS, CURRENCIES, parseRoots, type SpiritualRoot, MUTANT_ROOTS, ROOT_GRADES, SPIRITUAL_ROOTS, equipmentInfo, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, maxSkillLevel, skillGrade, refineLevelOf, ENHANCE_MAX, REALMS, type BagItem, type EquippedItem } from "@game/shared";
 import { logStatement } from "./admin-log";
 import { applyCurrencyDelta } from "./economy";
 import { commitBagOps, loadBag } from "./inventory";
@@ -69,9 +69,10 @@ export interface CharacterView {
   rootGrade: number;
   review: { by: string; until: number } | null;
   wallet: Record<string, number>;
-  items: Array<Pick<BagItem, "id" | "type" | "qty" | "tab" | "cell">>;
-  equipped: Array<Pick<EquippedItem, "id" | "type" | "slot">>;
-  skills: Array<{ id: string; source: string; realm: number; level: number }>;
+  items: Array<Pick<BagItem, "id" | "type" | "qty" | "tab" | "cell" | "dur" | "max" | "lv" | "en">>;
+  equipped: Array<Pick<EquippedItem, "id" | "type" | "slot" | "dur" | "max" | "lv" | "en">>;
+  /** `maxLevel`: the highest mastery level this skill can reach for this character (the grade decides whether thần thông is open). */
+  skills: Array<{ id: string; source: string; realm: number; level: number; maxLevel: number }>;
 }
 
 export async function getCharacterView(db: D1Database, id: string, now = Date.now()): Promise<CharacterView | null> {
@@ -108,10 +109,16 @@ export async function getCharacterView(db: D1Database, id: string, now = Date.no
     rootGrade: r.root_grade,
     review: r.review_until !== null && r.review_until > now && r.review_by ? { by: r.review_by, until: r.review_until } : null,
     wallet: Object.fromEntries(wallet.results.map((w) => [w.currency, w.balance])),
-    items: bag.items.map((i) => ({ id: i.id, type: i.type, qty: i.qty, tab: i.tab, cell: i.cell })),
-    equipped: bag.equipped.map((e) => ({ id: e.id, type: e.type, slot: e.slot })),
-    skills: skills.results.map((s) => ({ id: s.skill_id, source: s.source, realm: s.realm, level: s.level })),
+    items: bag.items.map((i) => ({ id: i.id, type: i.type, qty: i.qty, tab: i.tab, cell: i.cell, ...(i.dur !== undefined ? { dur: i.dur, max: i.max } : {}), ...(i.lv !== undefined ? { lv: i.lv } : {}), ...(i.en ? { en: i.en } : {}) })),
+    equipped: bag.equipped.map((e) => ({ id: e.id, type: e.type, slot: e.slot, ...(e.dur !== undefined ? { dur: e.dur, max: e.max } : {}), ...(e.lv !== undefined ? { lv: e.lv } : {}), ...(e.en ? { en: e.en } : {}) })),
+    skills: skills.results.map((s) => ({ id: s.skill_id, source: s.source, realm: s.realm, level: s.level, maxLevel: maxLevelOf(s.skill_id, r.root_grade) })),
   };
+}
+
+/** The highest mastery level a skill can reach for a character of this root grade (a skill the code no longer knows: the lowest cap). */
+function maxLevelOf(skillId: string, rootGrade: number): number {
+  const def = getSkill(skillId);
+  return def ? maxSkillLevel(skillGrade(def, rootGrade)) : 0;
 }
 
 export type CharacterResult = { ok: true; kicked?: boolean } | { ok: false; error: "invalid" | "not_found" | "not_reviewing" | "reviewed_by_other" | "unchanged" | "full" | "funds" | "busy" | "unknown_item" | "name_taken" | "equipped" | "gender" | "mutant_alone" };
@@ -124,14 +131,15 @@ async function reviewing(db: D1Database, id: string, admin: string, now: number)
   return !!(await db.prepare("SELECT 1 AS x FROM characters WHERE id = ? AND review_by = ? AND review_until > ?").bind(id, admin, now).first());
 }
 
-/** Puts the character under review. `onStart` ends its sessions and kicks it out of the game (accounts-admin); it runs after the review is set so nobody can slip back in. */
+/** Puts the character under review. `onStart` kicks that character (and no other) out of the game (accounts-admin); it runs after the review is set so nobody can slip back in. */
 export async function startReview(db: D1Database, admin: string, id: string, onStart: (accountId: string, characterId: string) => Promise<boolean>, now = Date.now()): Promise<CharacterResult> {
   const c = await db.prepare("SELECT id, account_id, name, review_until, review_by FROM characters WHERE id = ?").bind(id).first<{ id: string; account_id: string; name: string; review_until: number | null; review_by: string | null }>();
   if (!c) return { ok: false, error: "not_found" };
   if (c.review_until !== null && c.review_until > now && c.review_by && c.review_by !== admin) return { ok: false, error: "reviewed_by_other" };
   await db.batch([
+    // Only the character is shut out (login and the game both refuse a character under review): the account's sessions stay, so an admin who edits a character of
+    // their own account, or whose own session is playing another one, is not logged out.
     db.prepare("UPDATE characters SET review_until = ?, review_by = ? WHERE id = ?").bind(now + REVIEW_MS, admin, id),
-    db.prepare("DELETE FROM sessions WHERE account_id = ?").bind(c.account_id),
     logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Bắt đầu sửa nhân vật «${c.name}»` }, now),
   ]);
   return { ok: true, kicked: await onStart(c.account_id, id) };
@@ -298,6 +306,88 @@ export async function removeSkill(db: D1Database, admin: string, id: string, ski
       db.prepare("DELETE FROM character_skills WHERE character_id = ? AND skill_id = ?").bind(id, skillId),
       db.prepare("UPDATE characters SET hotbar = ? WHERE id = ?").bind(hotbar, id),
       logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Lấy kỹ năng ${skillId} của «${c.name}»` }, now),
+    ]);
+  } catch (err) {
+    return mapGuard(err);
+  }
+  return { ok: true };
+}
+
+/** Sets the mastery level of a skill the character has (its points toward the next level start again from 0). */
+export async function setSkillLevel(db: D1Database, admin: string, id: string, skillId: unknown, level: unknown, now = Date.now()): Promise<CharacterResult> {
+  const def = typeof skillId === "string" ? getSkill(skillId) : undefined;
+  if (!def || typeof level !== "number" || !Number.isInteger(level) || level < 0) return { ok: false, error: "invalid" };
+  const c = await db.prepare("SELECT name, root_grade FROM characters WHERE id = ?").bind(id).first<{ name: string; root_grade: number }>();
+  if (!c) return { ok: false, error: "not_found" };
+  if (level > maxSkillLevel(skillGrade(def, c.root_grade))) return { ok: false, error: "invalid" };
+  if (!(await reviewing(db, id, admin, now))) return { ok: false, error: "not_reviewing" };
+  const row = await db.prepare("SELECT level FROM character_skills WHERE character_id = ? AND skill_id = ?").bind(id, def.id).first<{ level: number }>();
+  if (!row) return { ok: false, error: "not_found" };
+  if (row.level === level) return { ok: false, error: "unchanged" };
+  try {
+    await db.batch([
+      reviewGuard(db, id, admin, now),
+      db.prepare("UPDATE character_skills SET level = ?, mastery = 0 WHERE character_id = ? AND skill_id = ?").bind(level, id, def.id),
+      logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Đổi cấp kỹ năng ${def.nameVi} (${def.id}) của «${c.name}»: ${row.level} → ${level}` }, now),
+    ]);
+  } catch (err) {
+    return mapGuard(err);
+  }
+  return { ok: true };
+}
+
+export interface ItemEditInput {
+  /** The upgrade level from the blacksmith, 0..ENHANCE_MAX. */
+  en?: number;
+  /** The trained level of a pháp bảo bản mệnh (a flat level index); its EXP towards the next one starts again from 0. */
+  lv?: number;
+  /** The durability now, 0..its maximum. */
+  dur?: number;
+}
+
+/** Edits one piece of gear of the character, in the bag or worn: the upgrade level, the trained level of a bonded pháp bảo, the durability. */
+export async function editItem(db: D1Database, admin: string, id: string, instanceId: unknown, input: ItemEditInput, now = Date.now()): Promise<CharacterResult> {
+  if (typeof instanceId !== "string" || !input || typeof input !== "object") return { ok: false, error: "invalid" };
+  const c = await db.prepare("SELECT name FROM characters WHERE id = ?").bind(id).first<{ name: string }>();
+  if (!c) return { ok: false, error: "not_found" };
+  if (!(await reviewing(db, id, admin, now))) return { ok: false, error: "not_reviewing" };
+  const bag = await loadBag(db, id);
+  const it = bag.items.find((i) => i.id === instanceId) ?? bag.equipped.find((e) => e.id === instanceId);
+  const info = it ? equipmentInfo(it.type) : undefined;
+  if (!it || !info) return { ok: false, error: "not_found" };
+  const sets: string[] = [];
+  const binds: unknown[] = [];
+  const said: string[] = [];
+  if (input.en !== undefined) {
+    if (!intIn(input.en, 0, ENHANCE_MAX)) return { ok: false, error: "invalid" };
+    if (input.en !== (it.en ?? 0)) {
+      sets.push("enhance_level = ?");
+      binds.push(input.en);
+      said.push(`cường hóa +${it.en ?? 0} → +${input.en}`);
+    }
+  }
+  if (input.lv !== undefined) {
+    if (info.kind !== "bonded" || !intIn(input.lv, 0, REALMS.length * 9 - 1)) return { ok: false, error: "invalid" };
+    if (input.lv !== refineLevelOf(info, it.lv)) {
+      sets.push("refine_level = ?", "refine_exp = 0");
+      binds.push(input.lv);
+      said.push(`tinh luyện ${refineLevelOf(info, it.lv)} → ${input.lv}`);
+    }
+  }
+  if (input.dur !== undefined) {
+    if (it.max === undefined || !intIn(input.dur, 0, it.max)) return { ok: false, error: "invalid" };
+    if (input.dur !== it.dur) {
+      sets.push("durability = ?");
+      binds.push(input.dur);
+      said.push(`độ bền ${it.dur} → ${input.dur}`);
+    }
+  }
+  if (sets.length === 0) return { ok: false, error: "unchanged" };
+  try {
+    await db.batch([
+      reviewGuard(db, id, admin, now),
+      db.prepare(`UPDATE item_instances SET ${sets.join(", ")} WHERE id = ? AND owner_character_id = ?`).bind(...binds, instanceId, id),
+      logStatement(db, { adminEmail: admin, screen: CHARACTER_LOG_SCREEN, content: `Sửa ${getItemDef(it.type)?.nameVi ?? it.type} (${it.type}) của «${c.name}»: ${said.join(", ")}` }, now),
     ]);
   } catch (err) {
     return mapGuard(err);

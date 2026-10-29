@@ -27,12 +27,14 @@ interface View {
   rootGrade: number;
   review: { by: string; until: number } | null;
   wallet: Record<string, number>;
-  items: Array<{ id: string; type: string; qty: number; tab: number; cell: number }>;
-  equipped: Array<{ id: string; type: string; slot: string }>;
-  skills: Array<{ id: string; source: string; realm: number; level: number }>;
+  items: Array<{ id: string; type: string; qty: number; tab: number; cell: number; dur?: number; max?: number; lv?: number; en?: number }>;
+  equipped: Array<{ id: string; type: string; slot: string; dur?: number; max?: number; lv?: number; en?: number }>;
+  skills: Array<{ id: string; source: string; realm: number; level: number; maxLevel: number }>;
 }
 
 const REALMS = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"];
+const SKILL_LEVELS = ["Nhập môn", "Tiểu thành", "Đại thành", "Viên mãn", "Thần thông"];
+const ENHANCE_MAX = 10;
 const STAT_LABEL: Record<string, string> = { canCot: "Căn cốt", thanPhap: "Thân pháp", ngoTinh: "Ngộ tính", linhLuc: "Linh lực", thanThuc: "Thần thức", phucDuyen: "Phúc duyên" };
 const CURRENCY_LABEL: Record<string, string> = { linh_thach: "Linh Thạch", cong_hien: "Cống Hiến", tien_ngoc: "Tiên Ngọc" };
 const ERRORS: Record<string, string> = {
@@ -180,6 +182,39 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
   const addSkill = h("button", { type: "button" }, "Thêm kỹ năng");
   addSkill.addEventListener("click", () => void act({ action: "addSkill", skill: skillId.value.trim() }));
 
+  /** The properties of a piece of gear in the bag or worn: upgrade level (+0..+10), trained level of a bonded pháp bảo, durability; one Lưu button for the three. */
+  type Piece = { id: string; type: string; dur?: number; max?: number; lv?: number; en?: number };
+  const gearButtons: HTMLButtonElement[] = [];
+  const gearEditor = (p: Piece): HTMLElement | null => {
+    if (!p.type.startsWith("eq.")) return null;
+    const en = num(p.en ?? 0, { min: "0", max: String(ENHANCE_MAX) });
+    en.style.width = "4em";
+    const bonded = p.type.includes(".bonded.");
+    const lv = bonded ? num(p.lv ?? 0, { min: "0", max: String(REALMS.length * 9 - 1) }) : null;
+    if (lv) lv.style.width = "4em";
+    const dur = p.max !== undefined ? num(p.dur ?? p.max, { min: "0", max: String(p.max) }) : null;
+    if (dur) dur.style.width = "5em";
+    const save = h("button", { type: "button" }, "Lưu");
+    save.addEventListener("click", () => {
+      const input: Record<string, number> = { en: Number(en.value) };
+      if (lv) input.lv = Number(lv.value);
+      if (dur) input.dur = Number(dur.value);
+      void act({ action: "editItem", instance: p.id, input });
+    });
+    for (const el of [en, lv, dur, save]) if (el) el.disabled = !mine;
+    gearButtons.push(save);
+    return h("span", { class: "toolbar" }, h("span", null, "cường hóa +"), en, lv ? h("span", null, "tinh luyện") : null, lv, dur ? h("span", null, `độ bền /${p.max}`) : null, dur, save);
+  };
+  const levelEditor = (sk: View["skills"][number]): HTMLElement => {
+    const pick = h("select", null, ...SKILL_LEVELS.slice(0, sk.maxLevel + 1).map((l, i) => h("option", { value: String(i) }, l)));
+    pick.value = String(Math.min(sk.level, sk.maxLevel));
+    const save = h("button", { type: "button" }, "Lưu cấp");
+    save.addEventListener("click", () => void act({ action: "skillLevel", skill: sk.id, level: Number(pick.value) }));
+    pick.disabled = !mine;
+    save.disabled = !mine;
+    return h("span", null, " cấp ", pick, " ", save);
+  };
+
   const editable = [...rootBoxes.map((x) => x.box), mainRoot, gradeSel, saveRoots, gKind, gRealm, gTier, gGrade, gElement, gWeapon, addGear, consti, tier, saveConsti, nameInput, gender, satKhi, satNhan, anhHung, saveProfile, del, stage, exp, points, realm, saveStats, currency, delta, money, itemId, qty, addItem, skillId, addSkill, ...Object.values(stats)];
   for (const el of editable) el.disabled = !mine;
 
@@ -216,7 +251,7 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
       h(
         "table",
         null,
-        h("thead", null, h("tr", null, h("th", null, "Vật phẩm"), h("th", null, "Số lượng"), h("th", null, "Ô"), h("th"))),
+        h("thead", null, h("tr", null, h("th", null, "Vật phẩm"), h("th", null, "Số lượng"), h("th", null, "Ô"), h("th", null, "Thuộc tính"), h("th"))),
         h(
           "tbody",
           null,
@@ -224,14 +259,15 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
             const rm = h("button", { type: "button" }, "Lấy ra");
             rm.disabled = !mine;
             rm.addEventListener("click", () => window.confirm(`Lấy ${i.qty} ${nameOf(i.type)} khỏi túi?`) && void act({ action: "removeItem", instance: i.id }));
-            return h("tr", null, h("td", null, `${nameOf(i.type)} (${i.type})`), h("td", null, String(i.qty)), h("td", null, `${i.tab + 1}/${i.cell + 1}`), h("td", null, rm));
+            return h("tr", null, h("td", null, `${nameOf(i.type)} (${i.type})`), h("td", null, String(i.qty)), h("td", null, `${i.tab + 1}/${i.cell + 1}`), h("td", null, gearEditor(i)), h("td", null, rm));
           }),
         ),
       ),
     ),
     h("div", { class: "toolbar" }, h("span", null, "Trang bị"), gKind, gRealm, h("span", null, "bậc"), gTier, gGrade, gElement, gWeapon, addGear),
     h("p", { class: "muted" }, "Trang bị vào túi với độ bền đầy và chỉ số tung từ bảng master, như mua ở thương nhân. Hệ và loại vũ khí chỉ dùng cho vũ khí; món đang mặc phải được tháo ra trước khi lấy."),
-    c.equipped.length ? h("p", { class: "muted" }, `Đang mặc: ${c.equipped.map((e) => `${e.slot}: ${e.type}`).join(", ")}.`) : null,
+    c.equipped.length ? h("p", { class: "muted" }, "Đang mặc (sửa được thuộc tính ngay tại đây, trang bị vẫn ở trên người):") : null,
+    c.equipped.length ? h("ul", null, ...c.equipped.map((e) => h("li", null, `${e.slot}: ${nameOf(e.type)} (${e.type}) `, gearEditor(e)))) : null,
     h("h3", null, "Kỹ năng"),
     sl,
     h("div", { class: "toolbar" }, skillId, addSkill),
@@ -242,9 +278,9 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
         const rm = h("button", { type: "button" }, "Lấy ra");
         rm.disabled = !mine;
         rm.addEventListener("click", () => window.confirm(`Lấy kỹ năng ${s.id}?`) && void act({ action: "removeSkill", skill: s.id }));
-        return h("li", null, `${s.id} · nguồn ${s.source} · cấp ${s.level} `, rm);
+        return h("li", null, `${s.id} · nguồn ${s.source} · cấp hiện tại ${SKILL_LEVELS[s.level] ?? s.level}`, levelEditor(s), " ", rm);
       }),
     ),
-    c.skills.length === 0 ? h("p", { class: "muted" }, "Chưa có kỹ năng học thêm (kỹ năng linh căn theo cảnh giới không lưu ở đây).") : null,
+    h("p", { class: "muted" }, c.skills.length === 0 ? "Chưa có kỹ năng nào. " : "Đổi cấp thuần thục: điểm tích lũy trong cấp đó bắt đầu lại từ 0; cấp Thần thông chỉ mở cho kỹ năng phẩm cao."),
   );
 }
