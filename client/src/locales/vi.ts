@@ -159,6 +159,7 @@ export const vi = {
     mp: (n: number) => `Linh lực: ${n}`,
     cooldown: (s: number) => `Hồi chiêu: ${s} giây`,
     range: (r: number) => `Tầm đánh: ${r}`,
+    shapes: { pierce: "xuyên thấu", nova: "tỏa quanh người", arc: "quét hình quạt", burst: "nổ vùng", lane: (s: number) => `vệt cháy ${s} giây`, field: (s: number) => `vùng tồn tại ${s} giây` },
     weapon: (w: string) => `Cần cầm ${w}`,
     fromBook: "Học từ bí tịch",
     fromGear: "Từ pháp bảo đang đeo",

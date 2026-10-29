@@ -248,7 +248,7 @@ export type ServerMessage =
   | { t: "mon_gone"; id: string; dead?: true }
   /** One attack landed (or missed). `hp` is the target's HP afterwards; `to` is a monster id or a character id. */
   /** `ret`: a player answering a blow (not an attack of their own: it does not make them grey to the one they hit back). */
-  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; ret?: true; aoe?: true }
+  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; ret?: true; aoe?: true; /** One tick of a lasting zone: a light reaction, no swing. */ dot?: true }
   /** The receiving character's own HP changed (regeneration or damage). */
   | { t: "hp"; hp: number; maxHp: number }
   /** One of the receiving character's balances changed; `gained` is the amount just added, when it is a gain. */
@@ -301,6 +301,9 @@ export type ServerMessage =
   /** The boss struck in a cone from (x, y) towards (ax, ay): reach in tiles and half the opening in degrees. */
   /** A guard used one of its skills (`mend`, `ward`, `burst`, `slash`): its robe shows the light of it for a moment. */
   | { t: "fx_guard"; id: string; skill: string }
+  /** A lasting area went down (`id`: its number): `owner` cast `skill` from (x, y) towards (ax, ay), and it stays for `ms` unless `fx_zone_end` comes first. */
+  | { t: "fx_zone"; id: string; owner: string; skill: string; x: number; y: number; ax: number; ay: number; ms: number; el?: string }
+  | { t: "fx_zone_end"; id: string }
   | { t: "fx_cone"; id: string; x: number; y: number; ax: number; ay: number; range: number; half: number }
   /** A player started (`on`) or ended a long channel: a breakthrough ("bt") or a teleport ("tp": talisman or array). `ok` says how it ended. */
   | { t: "fx_channel"; id: string; what: "bt" | "tp"; on: boolean; ok?: boolean }

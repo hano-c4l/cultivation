@@ -1035,6 +1035,12 @@ export class GameScene extends Phaser.Scene {
         this.fx.guardSkill(msg.id, msg.skill);
         break;
       }
+      case "fx_zone":
+        this.fx.zone(msg.id, msg.skill, toScreen(msg.x, msg.y), toScreen(msg.ax, msg.ay), msg.ms, msg.el);
+        break;
+      case "fx_zone_end":
+        this.fx.zoneEnd(msg.id);
+        break;
       case "fx_cone": {
         const from = toScreen(msg.x, msg.y);
         const aim = toScreen(msg.ax, msg.ay);
@@ -1580,7 +1586,10 @@ export class GameScene extends Phaser.Scene {
       this.fx.basic(msg.from, msg.to, !!attacker, weapon);
       this.playOnce(msg.from, attackAnimOf(weapon), msg.to);
     }
-    if (msg.kind !== "miss") {
+    if (msg.dot) {
+      // one tick of a lasting zone: a spark and a small number, no recoil (ten ticks on five monsters must not be fifty shoves)
+      if (msg.kind !== "miss") this.fx.hit(msg.to, msg.from, "hit", msg.skill, true);
+    } else if (msg.kind !== "miss") {
       this.playOnce(msg.to, "hit", msg.from);
       this.shove(msg.from, msg.to, msg.kind === "crit");
       this.fx.hit(msg.to, msg.from, msg.kind, msg.skill);
@@ -1605,7 +1614,7 @@ export class GameScene extends Phaser.Scene {
     const text = msg.kind === "miss" ? vi.combat.miss : msg.kind === "crit" ? `${msg.damage}!` : String(msg.damage);
     const color = msg.to === this.selfId ? "#ff6b6b" : msg.kind === "crit" ? "#ffd54a" : "#ffffff";
     const label = this.add
-      .text(s.x, s.y - 50, text, { fontFamily: FONT, fontSize: msg.kind === "crit" ? "18px" : "14px", color, stroke: "#000000", strokeThickness: 3 })
+      .text(s.x + (msg.dot ? (Math.random() - 0.5) * 24 : 0), s.y - 50, text, { fontFamily: FONT, fontSize: msg.kind === "crit" ? "18px" : msg.dot ? "11px" : "14px", color, stroke: "#000000", strokeThickness: msg.dot ? 2 : 3 })
       .setOrigin(0.5, 1)
       .setDepth(1000);
     this.tweens.add({ targets: label, y: label.y - 28, alpha: 0, duration: 800, onComplete: () => label.destroy() });

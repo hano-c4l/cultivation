@@ -41,6 +41,14 @@ class Lab extends Phaser.Scene {
     add("ngu kiem", () => this.fx.skill("me", "ngu_kiem_tram", "foe", undefined, undefined));
     add("buff atk", () => this.fx.skill("me", "cuong_luc_2", undefined, undefined, undefined));
     add("buff def", () => this.fx.skill("me", "thuan_0", undefined, undefined, undefined));
+    // the new ways of delivering a skill: a piercing shot, a ring round the caster, a lane and a field that stay
+    for (const [label, id, el] of [["pierce kim", "kim_3", "kim"], ["pierce hoa", "hoa_4", "hoa"], ["pierce bang", "bang_3", "bang"], ["pierce loi", "loi_3", "loi"], ["pierce phong", "phong_3", "phong"], ["nova kim", "kim_4", "kim"], ["nova tho", "tho_4", "tho"], ["nova loi", "loi_4", "loi"], ["nova phong", "phong_4", "phong"]] as const) add(label, () => this.fx.skill("me", id, "foe", undefined, el));
+    for (const [label, id, el] of [["lane hoa", "hoa_3", "hoa"], ["field moc", "moc_4", "moc"], ["field thuy", "thuy_5", "thuy"], ["field bang", "bang_4", "bang"], ["field tho", "tho_5", "tho"], ["field phong", "phong_5", "phong"]] as const) {
+      add(label, () => {
+        this.fx.skill("me", id, "foe", undefined, el);
+        this.fx.zone(`lab${label}`, id, caster, target, 6000, el);
+      });
+    }
     add("dots", () => {
       // three running effects on one figure for 6 s, each with its own share of the circle
       const ids = ["thuan_0", "cuong_luc_2", "hoi_0"];

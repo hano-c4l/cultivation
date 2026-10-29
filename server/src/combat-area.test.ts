@@ -5,7 +5,7 @@ import { CombatSim, type ProfileSeed, type SimEvent } from "./combat-sim";
 const noCrit = () => 0.99;
 const seed = (over: Partial<ProfileSeed> = {}): ProfileSeed => ({
   id: "p1",
-  granted: ["chuong_0", "tram_0", "kim_3"],
+  granted: ["chuong_0", "tram_0", "kim_3", "kim_4", "moc_3", "hoa_3", "moc_4"],
   name: "p1",
   potentialPoints: 5,
   element: "kim",
@@ -42,6 +42,7 @@ const hitsOf = (events: SimEvent[]) => events.filter((e): e is Extract<SimEvent,
 const player = (sim: CombatSim, over: Partial<ProfileSeed> = {}, weapon?: string) => {
   const p = sim.addPlayer(seed(over));
   if (weapon) p.weapon = weapon;
+  p.maxMp = p.mp = 999; // the book skills are dear: these tests are about where they fall, not about the cost
   return p;
 };
 
@@ -112,13 +113,13 @@ describe("skills with an area and casts at a point", () => {
     const a = place(0, [20, 20]);
     const b = place(1, [21.2, 20]);
     const far = place(2, [25, 20]);
-    expect(sim.queueCast("p1", "kim_3", a.id, 0)).toEqual({ ok: true });
+    expect(sim.queueCast("p1", "moc_3", a.id, 0)).toEqual({ ok: true });
     const events = sim.tick(0, new Map([["p1", [17, 20]]]));
     const hits = hitsOf(events);
     expect(hits.map((h) => h.to).sort()).toEqual([a.id, b.id].sort());
     expect(far.hp).toBe(far.maxHp);
     expect(events.filter((e) => e.t === "cast_ok")).toHaveLength(1);
-    expect(p.cooldowns.get("kim_3")).toBeGreaterThan(0);
+    expect(p.cooldowns.get("moc_3")).toBeGreaterThan(0);
   });
 
   it("a cast at a point, with no target, hits the monsters there and sets no target", () => {
@@ -126,11 +127,11 @@ describe("skills with an area and casts at a point", () => {
     const p = player(sim);
     const a = place(0, [20, 20]);
     const b = place(1, [21, 20.5]);
-    expect(sim.queueCast("p1", "kim_3", null, 0, [20.2, 20.2])).toEqual({ ok: true });
+    expect(sim.queueCast("p1", "moc_3", null, 0, [20.2, 20.2])).toEqual({ ok: true });
     const events = sim.tick(0, new Map([["p1", [17, 20]]]));
     expect(hitsOf(events).map((h) => h.to).sort()).toEqual([a.id, b.id].sort());
     expect(p.targetId).toBeNull();
-    expect(events.find((e) => e.t === "fx")).toMatchObject({ skill: "kim_3", dest: [20.2, 20.2] });
+    expect(events.find((e) => e.t === "fx")).toMatchObject({ skill: "moc_3", dest: [20.2, 20.2] });
   });
 
   it("a cast at a point out of reach first walks to just inside the reach, then falls on the point itself", () => {
@@ -260,5 +261,84 @@ describe("who a skill's area falls on among players and guards", () => {
     const d = arena(0, 0);
     d.a.hitBy.set("p2", 0); // p2 hit p1 a moment ago
     expect(hurt(d.sim.tick(1000, d.pos), "p2")).toBe(true);
+  });
+});
+
+describe("ways of delivering a skill", () => {
+  const dotHits = (events: SimEvent[]) => events.filter((e): e is Extract<SimEvent, { t: "hit" }> => e.t === "hit" && e.from === "p1" && !!e.dot);
+
+  it("a piercing skill hits everything in a row along its line, and not what stands beside it", () => {
+    const { sim, place } = bare();
+    player(sim);
+    const a = place(0, [20, 20]);
+    const b = place(1, [23, 20.3]);
+    const c = place(2, [26, 19.8]);
+    const aside = place(3, [23, 24]);
+    sim.queueCast("p1", "kim_3", a.id, 0);
+    const hits = hitsOf(sim.tick(0, new Map([["p1", [17, 20]]])));
+    expect(hits.map((h) => h.to).sort()).toEqual([a.id, b.id, c.id].sort());
+    expect(aside.hp).toBe(aside.maxHp);
+  });
+
+  it("a ring round the caster hits the monsters near the caster with nobody targeted", () => {
+    const { sim, place } = bare();
+    player(sim);
+    const near = place(0, [21.5, 20]);
+    const near2 = place(1, [20, 22.5]);
+    const far = place(2, [26, 20]);
+    sim.queueCast("p1", "kim_4", null, 0, [30, 30]);
+    const events = sim.tick(0, new Map([["p1", [20, 20]]]));
+    expect(hitsOf(events).map((h) => h.to).sort()).toEqual([near.id, near2.id].sort());
+    expect(far.hp).toBe(far.maxHp);
+  });
+
+  it("a lane of fire stays, hurts what stands in it every tick, ends on time, and keeps the sim awake", () => {
+    const { sim, place } = bare();
+    const p = player(sim);
+    const m = place(0, [21, 20]);
+    const aside = place(1, [21, 24]);
+    expect(sim.queueCast("p1", "hoa_3", null, 0, [20, 20])).toEqual({ ok: true });
+    const pos = new Map<string, Vec2>([["p1", [17, 20]]]);
+    const first = sim.tick(0, pos);
+    expect(first.some((e) => e.t === "zone")).toBe(true);
+    const ticks: number[] = [];
+    let ended = false;
+    for (let t = 0; t <= 7000; t += 100) {
+      const ev = t === 0 ? first : sim.tick(t, pos);
+      if (dotHits(ev).some((h) => h.to === m.id)) ticks.push(t);
+      if (ev.some((e) => e.t === "zone_end")) ended = true;
+      if (t === 3000) expect(sim.isIdle(pos)).toBe(false);
+    }
+    expect(ticks.length).toBeGreaterThanOrEqual(8);
+    expect(ticks[0]).toBe(0);
+    expect(ended).toBe(true);
+    expect(aside.hp).toBe(aside.maxHp);
+    expect(p.cooldowns.get("hoa_3")).toBeGreaterThan(0);
+    expect(dotHits(sim.tick(8000, pos))).toHaveLength(0);
+  });
+
+  it("a zone is laid even where nobody stands, and the fire goes out with its caster", () => {
+    const { sim } = bare();
+    player(sim);
+    sim.queueCast("p1", "moc_4", null, 0, [20, 20]);
+    const pos = new Map<string, Vec2>([["p1", [19, 20]]]);
+    const ev = sim.tick(0, pos);
+    expect(ev.find((e) => e.t === "zone")).toBeDefined();
+    expect(hitsOf(ev)).toHaveLength(0);
+    sim.removePlayer("p1");
+    expect(sim.isIdle(new Map())).toBe(true);
+  });
+
+  it("zone ticks follow the PK rules", () => {
+    const b = bare();
+    b.sim.addPlayer(seed({ stage: 5 }));
+    b.sim.addPlayer(seed({ id: "p2", name: "p2", stage: 5 }));
+    b.sim.setPkMode("p1", 1);
+    b.sim.setPkMode("p2", 0);
+    b.sim.queueCast("p1", "moc_4", null, 0, [20, 20]);
+    const pos = new Map<string, Vec2>([["p1", [17, 20]], ["p2", [20, 20]]]);
+    expect(dotHits(b.sim.tick(0, pos)).some((h) => h.to === "p2")).toBe(false);
+    b.sim.setPkMode("p2", 1);
+    expect(dotHits(b.sim.tick(1000, pos)).some((h) => h.to === "p2")).toBe(true);
   });
 });

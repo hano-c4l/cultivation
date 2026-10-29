@@ -12,6 +12,7 @@ import {
   type EquippedItem,
   type SkillContext,
   skillContextFor,
+  skillAreaOf,
   skillDisplayName,
   PATHS,
   type SkillDef,
@@ -51,11 +52,20 @@ export function elementDot(element: string): HTMLElement {
   return dot;
 }
 
+/** How an attack skill reaches its targets, as a short tail for the line ("xuyên thấu", "vệt cháy 6 giây"); nothing for a single target. */
+function shapeText(s: SkillDef): string {
+  const a = skillAreaOf(s);
+  const sec = a.zone ? Math.round(a.zone.ms / 1000) : 0;
+  const w = vi.skills.shapes;
+  const text = a.shape === "single" ? "" : a.zone ? (a.shape === "line" ? w.lane(sec) : w.field(sec)) : a.shape === "line" ? w.pierce : a.shape === "arc" ? w.arc : a.at === "self" ? w.nova : w.burst;
+  return text ? ` · ${text}` : "";
+}
+
 /** What the skill does at the strength this character has it, in one line. */
 export function effectText(s: SkillDef, ctx: SkillContext): string {
   const e = effectiveSkill(s, ctx);
   const pct = Math.round(e.power * 100);
-  if (s.kind === "attack") return `${vi.skills.kinds.attack} · ${vi.skills.power.attack(Math.round(e.power * 10) / 10)} · ${vi.skills.range(s.range)}`;
+  if (s.kind === "attack") return `${vi.skills.kinds.attack} · ${vi.skills.power.attack(Math.round(e.power * 10) / 10)} · ${vi.skills.range(s.range)}${shapeText(s)}`;
   if (s.kind === "teleport") return `${vi.skills.kinds.teleport} · ${vi.skills.power.teleport(s.range)}`;
   if (s.kind === "heal") return `${vi.skills.kinds.heal} · ${vi.skills.power.heal(pct)}`;
   if (s.kind === "passive") return `${vi.skills.kinds.passive} · ${vi.skills.power.passive(s.passive?.stat ?? "attack", pct)}`;

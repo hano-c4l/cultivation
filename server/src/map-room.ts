@@ -1452,7 +1452,7 @@ export class MapRoom extends DurableObject<Env> {
         this.broadcastAbout([ev.id], { t: "mon_gone", id: ev.id, dead: true });
         return this.forgetEntity(ev.id);
       case "hit": {
-        this.broadcastAbout([ev.from, ev.to], { t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}), ...(ev.aoe ? { aoe: true as const } : {}) });
+        this.broadcastAbout([ev.from, ev.to], { t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}), ...(ev.aoe ? { aoe: true as const } : {}), ...(ev.dot ? { dot: true as const } : {}) });
         // Anything that attacks a character in the middle of a breakthrough (hit or miss) breaks it.
         // Who hit whom among the players: a player that hit you in the last 3 minutes is a self-defence kill, and shows grey on your screen.
         // An answer to a blow is not an attack of its own and does not count.
@@ -1506,6 +1506,10 @@ export class MapRoom extends DurableObject<Env> {
           ...(ev.dest ? { x: ev.dest[0], y: ev.dest[1] } : {}),
           ...(ev.element ? { el: ev.element } : {}),
         });
+      case "zone":
+        return this.broadcastAbout([ev.playerId], { t: "fx_zone", id: ev.id, owner: ev.playerId, skill: ev.skill, x: ev.origin[0], y: ev.origin[1], ax: ev.aim[0], ay: ev.aim[1], ms: ev.ms, ...(ev.element ? { el: ev.element } : {}) });
+      case "zone_end":
+        return this.broadcastAbout([ev.playerId], { t: "fx_zone_end", id: ev.id });
       case "guard_skill":
         return this.broadcastAbout([ev.monsterId], { t: "fx_guard", id: ev.monsterId, skill: ev.skill });
       case "cone":
