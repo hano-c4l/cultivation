@@ -11,8 +11,9 @@ describe("the teleport array", () => {
     expect(townDistance("town", "town2")).toBe(100);
     expect(waygatePrice("town", "town2")).toBe(waygatePrice("town2", "town"));
     expect(waygatePrice("town", "town2")).toBe(500 + 40 * 100);
-    expect(waygateDestinations("town").map((d) => d.map)).toEqual(["town2"]);
-    expect(waygateDestinations("town2").map((d) => d.map)).toEqual(["town"]);
+    expect(waygateDestinations("town").map((d) => d.map)).toEqual(["town2", "town3"]);
+    expect(waygateDestinations("town2").map((d) => d.map).sort()).toEqual(["town", "town3"]);
+    expect(waygateDestinations("town3").map((d) => d.map)).toEqual(["town2", "town"]);
   });
 
   it("a farther town costs more (the tuning sets the rate), and a nearer one less", () => {

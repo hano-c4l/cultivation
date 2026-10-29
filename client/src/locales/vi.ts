@@ -23,10 +23,10 @@ export const vi = {
     noPotion: "Không dùng",
     potionBelow: "Uống đan khi sinh lực dưới",
     start: "Bắt đầu",
-    note: "Đòn đánh thường của Auto là đòn bạn chọn ở ô đứng trước thanh phím tắt. Cài đặt được lưu theo nhân vật trên trình duyệt này. Auto chỉ chạy khi trang đang mở, và dừng khi bạn bấm đi hoặc đánh, khi chết, đổi bản đồ hoặc mất kết nối.",
+    note: "Đòn đánh thường của Auto là đòn bạn chọn ở ô đứng trước thanh phím tắt. Cài đặt được lưu theo nhân vật trên trình duyệt này. Auto chỉ chạy khi trang đang mở, bạn vẫn bấm chuột để đi chỗ khác được (kỹ năng tự bắn quái trong tầm khi đang đi, dừng chân thì Auto đánh quanh chỗ mới). Auto dừng khi bạn bấm vào quái hoặc người, NPC, khi chết, đổi bản đồ hoặc mất kết nối.",
     safeMap: "Không dùng Auto trong thành (khu an toàn).",
     started: (radius: number) => `Auto bắt đầu: đánh quái trong ${radius} ô quanh chỗ này.`,
-    ended: { stopped: "Auto đã dừng.", manual: "Auto đã dừng vì bạn tự điều khiển.", dead: "Auto đã dừng vì bạn tử vong.", moved: "Auto đã dừng vì đổi bản đồ hoặc kết nối lại." } as Record<"stopped" | "manual" | "dead" | "moved", string>,
+    ended: { stopped: "Auto đã dừng.", manual: "Auto đã dừng vì bạn tự chọn mục tiêu.", dead: "Auto đã dừng vì bạn tử vong.", moved: "Auto đã dừng vì đổi bản đồ hoặc kết nối lại." } as Record<"stopped" | "manual" | "dead" | "moved", string>,
   },
   hotbar: {
     primary: "Đòn đánh khi bấm vào quái",
@@ -51,7 +51,7 @@ export const vi = {
   kicked: "Tài khoản đăng nhập ở nơi khác.",
   title: "Tu Tiên Giới",
   transferring: "Đang chuyển bản đồ…",
-  maps: { town: "Thanh Vân Thành (an toàn)", forest: "Hắc Mộc Lâm", cave: "U Minh Động", town2: "Thiên Hà Thành (an toàn)", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên" } as Record<string, string>,
+  maps: { town: "Thanh Vân Thành (an toàn)", forest: "Hắc Mộc Lâm", cave: "U Minh Động", town2: "Thiên Hà Thành (an toàn)", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên", town3: "Huyền Thiên Thành (an toàn)", hoathan: "Lôi Âm Tuyệt Cốc", luyenhu: "Hư Không Hải" } as Record<string, string>,
   chat: {
     placeholder: "Nói gì đó… (Enter)",
     targetPlaceholder: "Gửi cho…",
@@ -381,7 +381,7 @@ export const vi = {
       invalid: "Mục tiêu không hợp lệ.",
     } as Record<string, string>,
   },
-  npcs: { merchant: "Thương nhân", smith: "Thợ Rèn", elder: "Trưởng Lão", merchant2: "Thương nhân", smith2: "Thợ Rèn", elder2: "Trưởng Lão", waygate: "Truyền Tống Trận", waygate2: "Truyền Tống Trận", path_kiem: "Kiếm Đạo Sư", path_thuat: "Thuật Đạo Sư", path_dan: "Đan Đạo Sư" } as Record<string, string>,
+  npcs: { merchant: "Thương nhân", smith: "Thợ Rèn", elder: "Trưởng Lão", merchant2: "Thương nhân", smith2: "Thợ Rèn", elder2: "Trưởng Lão", waygate: "Truyền Tống Trận", waygate2: "Truyền Tống Trận", merchant3: "Thương nhân", smith3: "Thợ Rèn", elder3: "Trưởng Lão", alchemist3: "Đan Sư", waygate3: "Truyền Tống Trận", path_kiem: "Kiếm Đạo Sư", path_thuat: "Thuật Đạo Sư", path_dan: "Đan Đạo Sư" } as Record<string, string>,
   quests: {
     title: "Nhiệm vụ",
     none: "Hiện chưa có nhiệm vụ nào để nhận hay đang làm.",

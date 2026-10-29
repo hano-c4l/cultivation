@@ -143,7 +143,7 @@ describe("the maps screen", () => {
     resetMapsCache();
     await getMapRecipes(db);
     expect(isWaygateTown("thanh_tt")).toBe(true);
-    expect(waygateDestinations("town").map((d) => d.map)).toEqual(["town2", "thanh_tt"]); // nearest first
+    expect(waygateDestinations("town").map((d) => d.map)).toEqual(["town2", "town3", "thanh_tt"]); // nearest first
     expect(waygatePrice("town2", "thanh_tt")).toBeGreaterThan(waygatePrice("town", "town2"));
     // a position on a map that is not a safe town is refused; so is changing a code town's
     expect(await createMap(db, ADMIN, input({ id: "rung_x", world: [1, 1] }))).toMatchObject({ ok: false, error: "invalid" });

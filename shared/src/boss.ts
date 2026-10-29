@@ -31,7 +31,7 @@ export function bossTier(): number {
   return tuning().boss.tier;
 }
 /** Where the boss stands when no random spot could be found (tile units): the middle of the map, off the monster groups and the guards (see CombatSim.spawnBoss, which picks a random spot). */
-export const BOSS_SPOTS: Record<MapId, readonly [number, number] | null> = { town: null, forest: screenToTile(MAP_SIZE.forest!, 0, 0), cave: screenToTile(MAP_SIZE.cave!, 0, 0), town2: null, kimdan: screenToTile(MAP_SIZE.kimdan!, 0, 0), nguyenanh: screenToTile(MAP_SIZE.nguyenanh!, 0, 0) };
+export const BOSS_SPOTS: Record<MapId, readonly [number, number] | null> = { town: null, forest: screenToTile(MAP_SIZE.forest!, 0, 0), cave: screenToTile(MAP_SIZE.cave!, 0, 0), town2: null, kimdan: screenToTile(MAP_SIZE.kimdan!, 0, 0), nguyenanh: screenToTile(MAP_SIZE.nguyenanh!, 0, 0), town3: null, hoathan: screenToTile(MAP_SIZE.hoathan!, 0, 0), luyenhu: screenToTile(MAP_SIZE.luyenhu!, 0, 0) };
 const CODE_BOSS_SPOTS: Readonly<Record<MapId, readonly [number, number] | null>> = { ...BOSS_SPOTS };
 // A map recipe with its own content (or without, which is the code's) sets the fallback boss spot of its map.
 onMapRecipe((id, r) => {
@@ -137,7 +137,7 @@ export function pickByShare(shares: readonly BossShare[], roll: number): string 
 }
 
 /** Where players read about the boss: the map's name and the channel number (a boss lives in one channel only). */
-const BOSS_MAP_NAMES: Readonly<Record<string, string>> = { forest: "Hắc Mộc Lâm", cave: "U Minh Động", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên" };
+const BOSS_MAP_NAMES: Readonly<Record<string, string>> = { forest: "Hắc Mộc Lâm", cave: "U Minh Động", kimdan: "Xích Diễm Sơn", nguyenanh: "Vạn Cổ Hàn Uyên", hoathan: "Lôi Âm Tuyệt Cốc", luyenhu: "Hư Không Hải" };
 
 export function bossSpawnText(bossName: string, mapId: string, channel: string): string {
   return `${bossName} đã xuất hiện ở ${MAP_NAMES[mapId] ?? BOSS_MAP_NAMES[mapId] ?? mapId}, kênh ${channel}!`;

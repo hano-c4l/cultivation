@@ -32,7 +32,7 @@ interface View {
   skills: Array<{ id: string; source: string; realm: number; level: number; maxLevel: number }>;
 }
 
-const REALMS = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"];
+const REALMS = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh", "Hóa Thần", "Luyện Hư"];
 const SKILL_LEVELS = ["Nhập môn", "Tiểu thành", "Đại thành", "Viên mãn", "Thần thông"];
 const ENHANCE_MAX = 10;
 const STAT_LABEL: Record<string, string> = { canCot: "Căn cốt", thanPhap: "Thân pháp", ngoTinh: "Ngộ tính", linhLuc: "Linh lực", thanThuc: "Thần thức", phucDuyen: "Phúc duyên" };

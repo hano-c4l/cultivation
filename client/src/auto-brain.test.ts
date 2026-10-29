@@ -29,6 +29,18 @@ function view(over: Partial<AutoView> = {}): AutoView {
   };
 }
 
+describe("the Auto hunt while the player walks by hand", () => {
+  it("casts at what is in reach but neither picks targets nor walks home", () => {
+    const sk = "s:khi_co_ban:kim";
+    const monsters = [mon("a", 22, 20)];
+    const st = settings({ skills: [sk] });
+    const act = decide(view({ monsters, manual: true, anchor: { x: 0, y: 0 } }), st, newAutoMemory(), lim);
+    expect(act).toMatchObject({ t: "cast", target: null, at: { x: 22, y: 20 } });
+    expect(decide(view({ monsters: [mon("far", 60, 20)], manual: true, anchor: { x: 0, y: 0 } }), st, newAutoMemory(), lim)).toBeNull();
+    expect(decide(view({ manual: true, anchor: { x: 0, y: 0 } }), settings(), newAutoMemory(), lim)).toBeNull();
+  });
+});
+
 describe("the Auto hunt decides what to do next", () => {
   it("attacks the nearest monster in range, never a guard, and respects the boss and rare switches", () => {
     const mem = newAutoMemory();

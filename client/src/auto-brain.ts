@@ -52,7 +52,9 @@ export interface AutoView {
   maxMp: number;
   /** Nothing to do now: dead, changing map, in a breakthrough or a talisman channel. */
   busy: boolean;
-  /** Where Start was pressed. */
+  /** The player is walking by hand (a click on the ground): the hunt only casts at what is already in reach and neither picks targets nor walks. */
+  manual?: boolean;
+  /** Where Start was pressed (or where the last manual walk ended). */
   anchor: { x: number; y: number };
   /** The monster the character has targeted now (the server keeps it until it dies or another is picked). */
   targetId: string | null;
@@ -85,7 +87,7 @@ export const newAutoMemory = (): AutoMemory => ({ watchId: null, watchHp: 0, wat
 
 export type AutoAction =
   | { t: "potion"; type: string }
-  | { t: "cast"; value: string; skill: string; element: string | null; target: string | null }
+  | { t: "cast"; value: string; skill: string; element: string | null; target: string | null; /** A point to cast at instead of a target (a walk by hand: naming a target would make the server chase it). */ at?: { x: number; y: number } }
   | { t: "attack"; id: string }
   | { t: "walk"; x: number; y: number };
 
@@ -127,6 +129,27 @@ export function decide(view: AutoView, s: AutoSettings, mem: AutoMemory, lim: Au
   const buff = picks.find((p) => p.def.kind === "buff" && usable(p.slot.id) && view.buffUntil(p.slot.id) <= now);
   if (buff) return cast(buff, null);
 
+  const eligible = (m: AutoMonster): boolean => !m.guard && !(m.boss && !s.huntBoss) && !(m.rare && !m.boss && !s.huntRare) && (mem.skipUntil.get(m.id) ?? 0) <= now;
+
+  // 3b. walking by hand: attack skills still fire at the nearest monster within their reach, but nothing steers the character
+  if (view.manual) {
+    const attacks = picks.filter((p) => p.def.kind === "attack");
+    if (mpPct < s.mpMin || attacks.length === 0) return null;
+    let nearest: AutoMonster | undefined;
+    let nearestD = Infinity;
+    for (const m of view.monsters) {
+      const d = dist(m.x, m.y, view.self.x, view.self.y);
+      if (eligible(m) && d < nearestD) {
+        nearest = m;
+        nearestD = d;
+      }
+    }
+    if (!nearest) return null;
+    // A margin inside the reach: the character is walking, and a blow that falls out of reach by the time it goes off would make the server walk it to the point.
+    const atk = attacks.find((p) => usable(p.slot.id) && nearestD <= Math.max(1, castReachOf(p.def) - 1.5));
+    return atk ? { t: "cast", value: atk.value, skill: atk.slot.id, element: atk.slot.element, target: null, at: { x: nearest.x, y: nearest.y } } : null;
+  }
+
   // 4. a target: the one being fought while it stays in range and keeps losing HP, else the nearest one worth fighting
   const near = (m: AutoMonster): boolean => dist(m.x, m.y, view.anchor.x, view.anchor.y) <= s.radius;
   let target = view.targetId ? view.monsters.find((m) => m.id === view.targetId) : undefined;
@@ -145,7 +168,7 @@ export function decide(view: AutoView, s: AutoSettings, mem: AutoMemory, lim: Au
     let best: AutoMonster | undefined;
     let bestD = Infinity;
     for (const m of view.monsters) {
-      if (m.guard || !near(m) || (m.boss && !s.huntBoss) || (m.rare && !m.boss && !s.huntRare) || (mem.skipUntil.get(m.id) ?? 0) > now) continue;
+      if (!near(m) || !eligible(m)) continue;
       const d = dist(m.x, m.y, view.self.x, view.self.y);
       if (d < bestD) {
         best = m;

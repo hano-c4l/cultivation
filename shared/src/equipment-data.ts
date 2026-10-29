@@ -181,8 +181,8 @@ function unitsOf(realm: number, tier: number, grade: number): number {
  * wearer's resonance changes it, so the range is what a player sees. The boots are a modest boost, the flight pháp bảo a large one.
  */
 export const SPEED_RANGES: Readonly<Partial<Record<EquipKind, readonly (readonly [number, number])[]>>> = {
-  boots: [[10, 20], [15, 25], [20, 30], [30, 40]],
-  flight: [[40, 60], [60, 80], [80, 100], [110, 150]],
+  boots: [[10, 20], [15, 25], [20, 30], [30, 40], [35, 45], [40, 50]],
+  flight: [[40, 60], [60, 80], [80, 100], [110, 150], [130, 170], [150, 200]],
 };
 
 /** The speed range of a kind at flat level `lv`, or undefined when the kind gives no speed. */

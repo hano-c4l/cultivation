@@ -50,9 +50,9 @@ describe("boots", () => {
 });
 
 describe("the flight pháp bảo", () => {
-  it("give 40-60% speed in Luyện Khí, 60-80 in Trúc Cơ, 80-100 in Kim Đan, never above 150", () => {
+  it("give 40-60% speed in Luyện Khí, 60-80 in Trúc Cơ, 80-100 in Kim Đan, never above 200", () => {
     expect(SPEED_RANGES.flight!.slice(0, 3)).toEqual([[40, 60], [60, 80], [80, 100]]);
-    for (const r of SPEED_RANGES.flight!) expect(r[1]).toBeLessThanOrEqual(150);
+    for (const r of SPEED_RANGES.flight!) expect(r[1]).toBeLessThanOrEqual(200);
     expect(defaultMasterEntry("flight", "u", 0, 4)!.stats.moveSpeed).toEqual([40, 60]);
     expect(defaultMasterEntry("flight", "u", 1, 4)!.stats.moveSpeed).toEqual([60, 80]);
   });
