@@ -79,7 +79,6 @@ import {
   upgradeCost,
   equipBlock,
   equipmentBonus,
-  equipmentRegen,
   gearLookOf,
   type GearLook,
   equipmentInfo,
@@ -335,7 +334,6 @@ function seedOf(row: CharacterRow, bag: BagState | undefined, skills: readonly S
     roots: parseRoots(row.roots, row.spiritual_root),
     vitals: parseVitals(row.vitals),
     gear: bag ? equipmentBonus(bag.equipped, wearerOfRow(row, catalog)) : undefined,
-    regen: bag ? equipmentRegen(bag.equipped, wearerOfRow(row, catalog)) : undefined,
     weapon: bag ? weaponFamily(bag.equipped) : null,
     gearSkills: bag ? gearSkillInfo(bag.equipped) : [],
     granted: (skills ?? []).map((r) => r.skill_id),
@@ -1530,6 +1528,7 @@ export class MapRoom extends DurableObject<Env> {
           entry.ws.serializeAttachment(st);
         }
         this.send(entry.ws, { t: "meditating", on: false, reason: ev.reason });
+        this.broadcastAbout([ev.playerId], { t: "sit", id: ev.playerId, on: false });
         this.sendRegen(ev.playerId, entry.ws);
         return;
       }
@@ -1880,6 +1879,7 @@ export class MapRoom extends DurableObject<Env> {
     fresh.med = true;
     ws.serializeAttachment(fresh);
     this.send(ws, { t: "meditating", on: true });
+    this.broadcastAbout([fresh.id], { t: "sit", id: fresh.id, on: true });
     this.sendRegen(fresh.id, ws);
     const p = this.sim.getPlayer(fresh.id);
     if (p) this.sendMp(ws, p, Date.now());
@@ -1897,6 +1897,7 @@ export class MapRoom extends DurableObject<Env> {
     const stopped = this.sim?.stopMeditation(state.id, Date.now()) === true;
     if (was || stopped || tell) {
       this.send(ws, { t: "meditating", on: false, ...(was || stopped ? { reason } : {}) });
+      if (was || stopped) this.broadcastAbout([state.id], { t: "sit", id: state.id, on: false });
       if (stopped) {
         this.sendRegen(state.id, ws);
         const p = this.sim?.getPlayer(state.id);
@@ -1975,7 +1976,6 @@ export class MapRoom extends DurableObject<Env> {
     }
     const before = this.sim.skillsOf(p).join(",");
     this.sim.updateGear(id, equipmentBonus(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity, mounted: this.isMounted(id) }), weaponFamily(bag.equipped), gearSkillInfo(bag.equipped));
-    this.sim.updateRegen(id, equipmentRegen(bag.equipped, { gender: p.gender, realm: p.realm, stage: p.stage, base: p.base, affinity: p.affinity, mounted: this.isMounted(id) }), Date.now());
     this.sendToCharacter(id, { t: "hp", hp: p.hp, maxHp: p.maxHp }, direct);
     this.sendRegen(id, direct);
     // Pháp bảo grant skills while worn: the list changes when one is put on, taken off or breaks.
@@ -4165,7 +4165,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.lk ? { lk: p.lk } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.lk ? { lk: p.lk } : {}), ...(p.med ? { med: true as const } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
   }
 
   /** A character sheet went out (a level, a breakthrough): when the realm or stage changed, everyone who sees the player gets the new look with it. */

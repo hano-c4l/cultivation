@@ -60,14 +60,17 @@ export function slotKind(slot: EquipSlot): EquipKind {
 
 /** Stats gear can add. Limited to what combat already uses (docs/PHASE2.md, 2b). Rates are percentage points. */
 /** moveSpeed is a percentage added to the walking speed (see effectiveSpeed). */
-export const EQUIP_STAT_KEYS = ["attack", "defense", "maxHp", "critRate", "dodgeRate", "moveSpeed"] as const;
-/** Stats given in percentage points, shown with one decimal. */
-export const EQUIP_RATE_KEYS: readonly EquipStatKey[] = ["critRate", "dodgeRate", "moveSpeed"];
+export const EQUIP_STAT_KEYS = ["attack", "defense", "maxHp", "critRate", "dodgeRate", "moveSpeed", "hpRegen", "mpRegen", "hpRegenPct", "mpRegenPct"] as const;
+/**
+ * Stats given in percentage points, shown with one decimal. `hpRegen`/`mpRegen` are points of HP/MP regenerated every second and `hpRegenPct`/`mpRegenPct` percent of the maximum regenerated every
+ * MINUTE; they work all the time (in a fight too, meditating or not, see gear-regen.ts).
+ */
+export const EQUIP_RATE_KEYS: readonly EquipStatKey[] = ["critRate", "dodgeRate", "moveSpeed", "hpRegenPct", "mpRegenPct"];
 export type EquipStatKey = (typeof EQUIP_STAT_KEYS)[number];
 export type EquipStats = Record<EquipStatKey, number>;
 
 export function emptyEquipStats(): EquipStats {
-  return { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0 };
+  return { attack: 0, defense: 0, maxHp: 0, critRate: 0, dodgeRate: 0, moveSpeed: 0, hpRegen: 0, mpRegen: 0, hpRegenPct: 0, mpRegenPct: 0 };
 }
 
 /** Vietnamese names per kind and style. Display data, like monster names. */
@@ -92,10 +95,10 @@ const KIND_WEIGHTS: Readonly<Record<EquipKind, Partial<EquipStats>>> = {
   hat: { defense: 1.2, maxHp: 4 },
   robe: { defense: 2, maxHp: 6 },
   bracer: { attack: 1, defense: 1 },
-  ring: { attack: 1, critRate: 0.15 },
-  jade: { maxHp: 5, dodgeRate: 0.1 },
-  necklace: { maxHp: 5, defense: 0.8 },
-  belt: { defense: 1.5, maxHp: 3 },
+  ring: { attack: 1, critRate: 0.15, mpRegen: 0.35 },
+  jade: { maxHp: 5, dodgeRate: 0.1, mpRegenPct: 0.6 },
+  necklace: { maxHp: 5, defense: 0.8, hpRegenPct: 0.6 },
+  belt: { defense: 1.5, maxHp: 3, hpRegen: 0.5 },
   boots: { defense: 0.8 },
   charm: { attack: 1.5, defense: 0.5 },
   bonded: { attack: 2, defense: 1, maxHp: 3 },
@@ -243,7 +246,7 @@ export const SPECIAL_EQUIPMENT: Readonly<Record<string, EquipInfo>> = {
     grade: 4,
     element: null,
     weaponType: null,
-    stats: { attack: 4, defense: 0, maxHp: 0, critRate: 1, dodgeRate: 0, moveSpeed: 0 },
+    stats: { ...emptyEquipStats(), attack: 4, critRate: 1 },
     maxDurability: null,
     req: { level: null, stat: null },
     nameVi: "Vạn Cổ Giới",

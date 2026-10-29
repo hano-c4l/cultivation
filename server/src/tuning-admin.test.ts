@@ -21,7 +21,7 @@ const version = async () => (await db.prepare("SELECT version FROM config_versio
 describe("saving a tuning group", () => {
   it("lists the groups of the screen with defaults and a token, seeding the rows", async () => {
     const groups = await listTuningGroups(db);
-    expect(groups.map((g) => g.group)).toEqual(["pvp", "waygate", "aoi", "combat", "gearRegen", "gearLooks", "theme"]);
+    expect(groups.map((g) => g.group)).toEqual(["pvp", "waygate", "aoi", "combat", "gearLooks", "theme"]);
     expect(groups[1]).toMatchObject({ value: DEFAULT_TUNING.waygate, default: DEFAULT_TUNING.waygate, stored: true, updatedBy: null });
   });
 

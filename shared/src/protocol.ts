@@ -226,6 +226,8 @@ export interface PlayerSnapshot {
   o?: string;
   /** The look of the worn flight pháp bảo (`FlightStyle`), so a rider is drawn on the right one. */
   fl?: string;
+  /** Sitting in meditation (left out when not): the figure is drawn sitting, with healing motes round it. */
+  med?: true;
   /** How the worn weapon, robe, hat and boots change the look (see gear-look.ts), left out when none is worn. */
   lk?: GearLook;
   /** The cultivation level, `realm * 10 + stage`: it sets the colour and strength of the qi drawn round the figure. */
@@ -253,6 +255,8 @@ export type ServerMessage =
   | { t: "mounted"; on: boolean; error?: "no_flight" | "broken" | "busy" | "requirements" }
   /** Whether the character meditates now. `reason` when it stopped by itself: hit, moved (also an attack or a skill), died, or refused (`safe`: a town needs no meditation, `busy`: a breakthrough or a talisman runs). */
   | { t: "meditating"; on: boolean; reason?: "hit" | "moved" | "died" | "safe" | "busy" }
+  /** A player sat down to meditate or stood up (the others draw the pose and the motes). */
+  | { t: "sit"; id: string; on: boolean }
   /** HP and MP regenerated per second now (points, may be fractional): sent when meditation starts or ends, when the gear or the maximums change, and at the join. */
   | { t: "regen"; hp: number; mp: number }
   /** A monster appeared or changed its path. */
