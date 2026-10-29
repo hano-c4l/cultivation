@@ -41,6 +41,16 @@ class Lab extends Phaser.Scene {
     add("ngu kiem", () => this.fx.skill("me", "ngu_kiem_tram", "foe", undefined, undefined));
     add("buff atk", () => this.fx.skill("me", "cuong_luc_2", undefined, undefined, undefined));
     add("buff def", () => this.fx.skill("me", "thuan_0", undefined, undefined, undefined));
+    add("dots", () => {
+      // three running effects on one figure for 6 s, each with its own share of the circle
+      const ids = ["thuan_0", "cuong_luc_2", "hoi_0"];
+      const t0 = performance.now();
+      const timer = window.setInterval(() => {
+        const left = 6 - (performance.now() - t0) / 1000;
+        if (left <= 0) return window.clearInterval(timer);
+        ids.forEach((id, i) => this.fx.lingering("me", id, left, i, ids.length));
+      }, 260);
+    });
     add("heal", () => this.fx.skill("me", "hoi_0", undefined, undefined, undefined));
     add("heal+", () => this.fx.skill("me", "dt_dai_hoi", undefined, undefined, undefined));
     add("blink", () => this.fx.skill("me", "pt_thuan_di", undefined, target, undefined));

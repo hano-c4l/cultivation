@@ -46,6 +46,8 @@ export const ELEMENT_COLOR: Readonly<Record<string, number>> = {
   phong: 0xb8f5c0,
 };
 export const BUFF_COLOR: Readonly<Record<string, number>> = { attack: 0xff6b6b, defense: 0x6bb6ff, dodge: 0x8ff0a4 };
+/** The colour of the dots round someone with a running buff (by the stat it raises) or a heal. */
+export const DOT_COLOR: Readonly<Record<string, number>> = { attack: 0xff6b5a, defense: 0xffd23f, dodge: 0xbfe6ff, heal: 0x5fdc78 };
 export const NEUTRAL = 0xe8e4d8;
 
 
