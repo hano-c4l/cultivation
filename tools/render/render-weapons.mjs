@@ -1,5 +1,5 @@
 // Renders the weapon layers (phase 4d): one atlas for each weapon family and body, drawn on top of the body sprite.
-//   node tools/render/render-weapons.mjs <out dir outside the repo> [--preview] [--family kiem,dao] [--body female]
+//   node tools/render/render-weapons.mjs <out dir outside the repo> [--preview [--anims idle,thrust]] [--family kiem,dao] [--body female]
 // Reads tools/render/weapons.json. --preview renders the idle animation only, with the body visible (to place a weapon in the hand), into <out dir>/preview-*.
 // Without it every animation is rendered with the body as a holdout, so the frames hold only the visible parts of the weapon; publish them with
 // `node tools/gfx-publish.mjs <out dir>/<name>` (sprite key `weapon.<family>.<body>`, loaded on demand by the game).
@@ -31,7 +31,7 @@ for (const family of families) {
       name,
       spriteKey: `weapon.${family}.${body}`,
       holdout: !preview,
-      ...(preview ? { preview: true, onlyAnims: ["idle", "attack"] } : {}),
+      ...(preview ? { preview: true, onlyAnims: (flag("--anims") ?? "idle,attack").split(",") } : {}),
       weapon: { model: `${table.pack}/${w.file}`, bone: w.bone, length: w.length, location: w.location, rotationDeg: w.rotationDeg },
     };
     const cfgPath = join(outRoot, "configs", `${name}.json`);

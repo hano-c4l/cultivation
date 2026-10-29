@@ -86,6 +86,52 @@ export class Effects {
     }
   }
 
+  /**
+   * The light a timed buff keeps round its wearer while it runs (called a few times a second by the scene): rising embers for a strength buff, a
+   * shimmering ring on the ground for a ward, streaks of wind for a dodge buff, a column of motes otherwise. It thins out in the last second.
+   */
+  lingering(id: string, skillId: string, leftS: number): void {
+    const at = this.posOf(id);
+    const def = getSkill(skillId);
+    if (!at || !def?.buff) return;
+    const color = BUFF_COLOR[def.buff.stat] ?? NEUTRAL;
+    const fade = Math.min(1, leftS);
+    switch (def.buff.stat) {
+      case "attack":
+        this.layer.puff("ember", at.x + (Math.random() - 0.5) * 18, at.y - 8, 1, color);
+        if (Math.random() < 0.5) this.layer.puff("spark", at.x + (Math.random() - 0.5) * 22, at.y - 26, 1, 0xffffff);
+        this.layer.glow(at.x, at.y - 22, color, 0.5, 1.1, 300, 0.22 * fade);
+        break;
+      case "dodge":
+        this.layer.puff("trail", at.x + (Math.random() - 0.5) * 26, at.y - 14 - Math.random() * 20, 1, color);
+        this.layer.ring(at.x, at.y + 6, color, 0.5, 1.1, 520, 0.28 * fade);
+        break;
+      default:
+        this.layer.ring(at.x, at.y + 6, color, 0.7, 1.05, 700, 0.32 * fade);
+        this.layer.puff("mote", at.x + (Math.random() - 0.5) * 24, at.y - 2, 1, color);
+        this.layer.glow(at.x, at.y - 22, color, 0.5, 1.2, 300, 0.2 * fade);
+    }
+  }
+
+  /** A guard used a skill: a glow of its colour (mend: lotus light, ward: a ring, burst and slash: a flash of its spear). */
+  guardSkill(id: string, skill: string): void {
+    const at = this.posOf(id);
+    if (!at) return;
+    switch (skill) {
+      case "mend":
+        this.layer.puff("petal", at.x, at.y - 10, 8, 0x9be8a8);
+        this.layer.glow(at.x, at.y - 24, 0x9be8a8, 0.6, 1.6, 700, 0.5);
+        break;
+      case "ward":
+        this.layer.ring(at.x, at.y + 6, 0xffd36a, 0.5, 1.5, 800, 0.7);
+        this.layer.puff("mote", at.x, at.y - 6, 8, 0xffd36a);
+        break;
+      default:
+        this.layer.glow(at.x, at.y - 24, 0xff7a4a, 0.6, 1.7, 500, 0.6);
+        this.layer.puff("spark", at.x, at.y - 24, 6, 0xffe2b0);
+    }
+  }
+
   /** A few particles of a kind at a spot (the trail of a flying sword, say): the layer's emitters are shared, so this costs one explode. */
   puff(kind: Puff, x: number, y: number, n: number, color: number): void {
     this.layer.puff(kind, x, y, n, color);
@@ -103,7 +149,8 @@ export class Effects {
     const b = this.posOf(to);
     if (!a || !b) return;
     const color = byMonster ? BASIC_COLOR.monster : BASIC_COLOR.player;
-    if (basicFxOf(Math.hypot(b.x - a.x, b.y - a.y)) !== "melee") return this.bolt(a, b, color, "plain", basicProjectileOf(weapon, byMonster) === "arrow");
+    const arrow = basicProjectileOf(weapon, byMonster) === "arrow";
+    if (arrow || basicFxOf(Math.hypot(b.x - a.x, b.y - a.y)) !== "melee") return this.bolt(a, b, color, "plain", arrow);
     const ang = Math.atan2(b.y - a.y, b.x - a.x);
     const cy = b.y - 22;
     const area = weaponAreaOf(weapon);

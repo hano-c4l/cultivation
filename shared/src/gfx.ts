@@ -14,7 +14,7 @@ import type { Vec2 } from "./map";
 export const GFX_FRAME_SIZE = 96;
 export const GFX_ATLAS_MAX_PX = 2048;
 export const GFX_DIRECTIONS = 8;
-export const GFX_ANIMS = ["idle", "run", "attack", "cast", "hit", "die"] as const;
+export const GFX_ANIMS = ["idle", "run", "attack", "thrust", "cast", "hit", "die"] as const;
 export type GfxAnimName = (typeof GFX_ANIMS)[number];
 
 /** Atlas id "*" lists the atlases loaded on every map (the players, the common effects). */

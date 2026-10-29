@@ -29,6 +29,13 @@ export function weaponAreaOf(weapon: string | undefined): AreaDef {
   return (weapon ? (t?.[weapon] ?? DEFAULT_TUNING.weaponArea[weapon]) : undefined) ?? t?.none ?? SINGLE;
 }
 
+/** How far (tiles) the plain attack of a weapon family reaches (none or an unknown family: bare hands). */
+export function weaponReachOf(weapon: string | null | undefined): number {
+  const t = tuning().weaponReach;
+  const d = DEFAULT_TUNING.weaponReach;
+  return (weapon ? (t?.[weapon] ?? d[weapon]) : undefined) ?? t?.none ?? d.none ?? 1.6;
+}
+
 /** The id of the template a skill id comes from: `tram_2` -> `tram`. */
 const templateOf = (id: string): string => id.replace(/_\d+$/, "");
 
@@ -42,6 +49,16 @@ export function skillAreaOf(def: Pick<SkillDef, "id"> | undefined): AreaDef {
   const d = DEFAULT_TUNING.skillAreas;
   const family = def.id.replace(/^(pb|bm)_.*/, "$1");
   return t?.[def.id] ?? d[def.id] ?? t?.[templateOf(def.id)] ?? d[templateOf(def.id)] ?? t?.[family] ?? d[family] ?? SINGLE;
+}
+
+/**
+ * How far from its target a caster must stand for the skill to do what it draws: the skill's range, but for an area that starts at the caster (a
+ * fan, a line, a ring round the caster) no more than that area reaches, or the target would be out of the area and its splash round the caster.
+ */
+export function castReachOf(def: Pick<SkillDef, "id" | "range">): number {
+  const a = skillAreaOf(def);
+  const fromCaster = a.shape === "arc" || a.shape === "line" || (a.shape === "circle" && a.at === "self");
+  return fromCaster ? Math.min(def.range, a.range) : def.range;
 }
 
 const dist = (a: Pt, b: Pt): number => Math.hypot(a[0] - b[0], a[1] - b[1]);

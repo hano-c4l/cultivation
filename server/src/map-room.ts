@@ -1506,6 +1506,8 @@ export class MapRoom extends DurableObject<Env> {
           ...(ev.dest ? { x: ev.dest[0], y: ev.dest[1] } : {}),
           ...(ev.element ? { el: ev.element } : {}),
         });
+      case "guard_skill":
+        return this.broadcastAbout([ev.monsterId], { t: "fx_guard", id: ev.monsterId, skill: ev.skill });
       case "cone":
         return this.broadcastAbout([ev.monsterId], { t: "fx_cone", id: ev.monsterId, x: ev.at[0], y: ev.at[1], ax: ev.aim[0], ay: ev.aim[1], range: ev.range, half: ev.halfAngleDeg });
       case "cast_fail": {

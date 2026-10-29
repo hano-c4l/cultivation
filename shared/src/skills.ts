@@ -92,9 +92,9 @@ export interface SkillTemplate {
 }
 
 export const ATTACK_TEMPLATES: readonly SkillTemplate[] = [
-  { id: "chuong", nameVi: "Linh Chưởng", descVi: "Đánh một chưởng vào mục tiêu, hệ tùy chọn khi gán phím tắt.", kind: "attack", mpCost: 8, cooldownMs: 3000, range: 4, power: 1.6 },
-  { id: "tram", nameVi: "Cương Trảm", descVi: "Chém mạnh vào mục tiêu, tốn nhiều linh lực hơn.", kind: "attack", mpCost: 18, cooldownMs: 6000, range: 5, power: 2.4 },
-  { id: "chi", nameVi: "Phi Chỉ", descVi: "Bắn một đạo chỉ lực đánh xa.", kind: "attack", mpCost: 12, cooldownMs: 4500, range: 6, power: 2.0 },
+  { id: "chuong", nameVi: "Linh Chưởng", descVi: "Đánh một chưởng vào mục tiêu, hệ tùy chọn khi gán phím tắt.", kind: "attack", mpCost: 8, cooldownMs: 3000, range: 7, power: 1.6 },
+  { id: "tram", nameVi: "Cương Trảm", descVi: "Chém mạnh vào mục tiêu, tốn nhiều linh lực hơn.", kind: "attack", mpCost: 18, cooldownMs: 6000, range: 8, power: 2.4 },
+  { id: "chi", nameVi: "Phi Chỉ", descVi: "Bắn một đạo chỉ lực đánh xa.", kind: "attack", mpCost: 12, cooldownMs: 4500, range: 9, power: 2.0 },
 ];
 
 /** The second (random) skill of a realm is drawn from the attacks again and from these. */
@@ -135,15 +135,15 @@ function rootSkillsOfRealm(realm: number): SkillDef[] {
 /** Element-bound book skills: the strongest of each element, learned from a bí tịch (their ids are stored and must not change). */
 function elementBookSkill(root: SpiritualRoot): SkillDef {
   const n = ELEMENT_NAMES[root];
-  return { id: `${root}_3`, nameVi: `Vạn ${n} Diệt Thế`, descVi: `Tuyệt kỹ hệ ${n}, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 1, grade: 3, mpCost: 24, cooldownMs: 10_000, range: 6, power: 2.6, learn: { realm: 1, stage: 1 } };
+  return { id: `${root}_3`, nameVi: `Vạn ${n} Diệt Thế`, descVi: `Tuyệt kỹ hệ ${n}, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 1, grade: 3, mpCost: 24, cooldownMs: 10_000, range: 9, power: 2.6, learn: { realm: 1, stage: 1 } };
 }
 
 /** The strongest skill of each element for Kim Đan (`${root}_4`) and Nguyên Anh (`${root}_5`), learned from a bí tịch sold in the second town. */
 function elementBookSkillHigh(root: SpiritualRoot, realm: 2 | 3): SkillDef {
   const n = ELEMENT_NAMES[root];
   return realm === 2
-    ? { id: `${root}_4`, nameVi: `Cửu Thiên ${n} Chấn`, descVi: `Tuyệt kỹ hệ ${n} của Kim Đan, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 2, grade: 3, mpCost: 42, cooldownMs: 11_000, range: 6, power: 3.4, learn: { realm: 2, stage: 1 } }
-    : { id: `${root}_5`, nameVi: `Thái Cổ ${n} Diệt`, descVi: `Tuyệt kỹ hệ ${n} của Nguyên Anh, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 3, grade: 4, mpCost: 64, cooldownMs: 12_000, range: 7, power: 4.6, learn: { realm: 3, stage: 1 } };
+    ? { id: `${root}_4`, nameVi: `Cửu Thiên ${n} Chấn`, descVi: `Tuyệt kỹ hệ ${n} của Kim Đan, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 2, grade: 3, mpCost: 42, cooldownMs: 11_000, range: 9, power: 3.4, learn: { realm: 2, stage: 1 } }
+    : { id: `${root}_5`, nameVi: `Thái Cổ ${n} Diệt`, descVi: `Tuyệt kỹ hệ ${n} của Nguyên Anh, học từ bí tịch.`, kind: "attack", source: "learned", element: root, realm: 3, grade: 4, mpCost: 64, cooldownMs: 12_000, range: 10, power: 4.6, learn: { realm: 3, stage: 1 } };
 }
 
 /**
@@ -158,9 +158,9 @@ function gearSkills(): SkillDef[] {
     // One skill for each of the four pháp bảo slots (a piece in each slot gives its own, at that piece's strength), so two
     // pieces of the same element both show and cool down on their own.
     for (let n = 1; n <= 4; n++) {
-      out.push({ id: `pb_${root}_${n}`, nameVi: `Pháp Bảo ${ELEMENT_NAMES[root]} Quang`, descVi: `Pháp bảo ở ô ${n} hệ ${ELEMENT_NAMES[root]} phóng ra một đạo quang chấn thương mục tiêu. Cần đeo pháp bảo hệ ${ELEMENT_NAMES[root]} ở ô ${n}.`, kind: "attack", source: "gear", element: root, realm: 0, mpCost: 16, cooldownMs: 8000, range: 5, power: 2.8, gear: "charm" });
+      out.push({ id: `pb_${root}_${n}`, nameVi: `Pháp Bảo ${ELEMENT_NAMES[root]} Quang`, descVi: `Pháp bảo ở ô ${n} hệ ${ELEMENT_NAMES[root]} phóng ra một đạo quang chấn thương mục tiêu. Cần đeo pháp bảo hệ ${ELEMENT_NAMES[root]} ở ô ${n}.`, kind: "attack", source: "gear", element: root, realm: 0, mpCost: 16, cooldownMs: 8000, range: 8, power: 2.8, gear: "charm" });
     }
-    out.push({ id: `bm_${root}`, nameVi: `Bản Mệnh ${n} Kích`, descVi: `Tuyệt chiêu của pháp bảo bản mệnh hệ ${n}, mạnh hơn mọi pháp bảo thường. Cần đeo pháp bảo bản mệnh hệ ${n}.`, kind: "attack", source: "gear", element: root, realm: 0, mpCost: 40, cooldownMs: 15_000, range: 7, power: 5.5, gear: "bonded" });
+    out.push({ id: `bm_${root}`, nameVi: `Bản Mệnh ${n} Kích`, descVi: `Tuyệt chiêu của pháp bảo bản mệnh hệ ${n}, mạnh hơn mọi pháp bảo thường. Cần đeo pháp bảo bản mệnh hệ ${n}.`, kind: "attack", source: "gear", element: root, realm: 0, mpCost: 40, cooldownMs: 15_000, range: 10, power: 5.5, gear: "bonded" });
   }
   out.push(
     { id: "bm_ho_the", nameVi: "Bản Mệnh Hộ Thể", descVi: "Pháp bảo bản mệnh bao bọc chủ nhân, tăng phòng thủ trong 12 giây.", kind: "buff", source: "gear", element: null, realm: 0, mpCost: 30, cooldownMs: 45_000, range: 0, power: 0.5, buff: { stat: "defense", durationMs: 12_000 }, gear: "bonded" },
@@ -187,7 +187,7 @@ function pathSkills(): SkillDef[] {
     grade: 1,
     mpCost: 20,
     cooldownMs: 6000,
-    range: 6,
+    range: 9,
     power: 2.8,
     path: p,
     pathLevel: 0,
@@ -195,23 +195,23 @@ function pathSkills(): SkillDef[] {
   });
   return [
     // Level 0 (the first level of each path)
-    path("kt_kiem_khi", "Kiếm Khí Trảm", "Kiếm tu: chém ra một đạo kiếm khí vào mục tiêu.", "kiem", { flex: true, mpCost: 20, cooldownMs: 6000, range: 6, power: 2.8 }),
-    path("kt_lien_hoan", "Phi Kiếm Liên Hoàn", "Kiếm tu: ngự kiếm chém liên hoàn, mạnh hơn nhưng tốn nhiều linh lực.", "kiem", { flex: true, mpCost: 36, cooldownMs: 14_000, range: 7, power: 4.2 }),
-    path("tt_phap_an", "Pháp Ấn", "Thuật tu: kết ấn đánh một đạo pháp lực vào mục tiêu.", "thuat", { flex: true, mpCost: 18, cooldownMs: 5000, range: 6, power: 2.6 }),
+    path("kt_kiem_khi", "Kiếm Khí Trảm", "Kiếm tu: chém ra một đạo kiếm khí vào mục tiêu.", "kiem", { flex: true, mpCost: 20, cooldownMs: 6000, range: 9, power: 2.8 }),
+    path("kt_lien_hoan", "Phi Kiếm Liên Hoàn", "Kiếm tu: ngự kiếm chém liên hoàn, mạnh hơn nhưng tốn nhiều linh lực.", "kiem", { flex: true, mpCost: 36, cooldownMs: 14_000, range: 10, power: 4.2 }),
+    path("tt_phap_an", "Pháp Ấn", "Thuật tu: kết ấn đánh một đạo pháp lực vào mục tiêu.", "thuat", { flex: true, mpCost: 18, cooldownMs: 5000, range: 9, power: 2.6 }),
     path("tt_linh_an", "Linh Ấn Tụ Lực", "Thuật tu: tụ linh lực, tăng công kích trong 15 giây.", "thuat", { kind: "buff", mpCost: 28, cooldownMs: 30_000, range: 0, power: 0.35, buff: { stat: "attack", durationMs: 15_000 } }),
     path("dt_hoi_xuan", "Hồi Xuân Thuật", "Đan tu: vận đan khí chữa thương, hồi sinh lực.", "dan", { kind: "heal", mpCost: 30, cooldownMs: 20_000, range: 0, power: 0.35 }),
     path("dt_duong_nguyen", "Dưỡng Nguyên Chú", "Đan tu: tăng phòng thủ trong 15 giây.", "dan", { kind: "buff", mpCost: 26, cooldownMs: 30_000, range: 0, power: 0.3, buff: { stat: "defense", durationMs: 15_000 } }),
     // Level 1: given when both skills of level 0 have reached the top mastery level
-    path("kt_kiem_y", "Kiếm Ý Xuyên Tâm", "Kiếm tu (Kiếm Ý): kiếm ý xuyên thẳng vào mục tiêu.", "kiem", { flex: true, pathLevel: 1, mpCost: 30, cooldownMs: 8000, range: 7, power: 3.8 }),
-    path("kt_kiem_vu", "Kiếm Vũ", "Kiếm tu (Kiếm Ý): múa kiếm thành mưa, sát thương rất lớn.", "kiem", { flex: true, pathLevel: 1, mpCost: 46, cooldownMs: 15_000, range: 7, power: 5.2 }),
-    path("tt_phap_tran", "Pháp Trận Chấn", "Thuật tu (Pháp Sư): bày pháp trận chấn mục tiêu.", "thuat", { flex: true, pathLevel: 1, mpCost: 28, cooldownMs: 7000, range: 7, power: 3.6 }),
+    path("kt_kiem_y", "Kiếm Ý Xuyên Tâm", "Kiếm tu (Kiếm Ý): kiếm ý xuyên thẳng vào mục tiêu.", "kiem", { flex: true, pathLevel: 1, mpCost: 30, cooldownMs: 8000, range: 10, power: 3.8 }),
+    path("kt_kiem_vu", "Kiếm Vũ", "Kiếm tu (Kiếm Ý): múa kiếm thành mưa, sát thương rất lớn.", "kiem", { flex: true, pathLevel: 1, mpCost: 46, cooldownMs: 15_000, range: 10, power: 5.2 }),
+    path("tt_phap_tran", "Pháp Trận Chấn", "Thuật tu (Pháp Sư): bày pháp trận chấn mục tiêu.", "thuat", { flex: true, pathLevel: 1, mpCost: 28, cooldownMs: 7000, range: 10, power: 3.6 }),
     path("tt_linh_hai", "Linh Hải Tụ Lực", "Thuật tu (Pháp Sư): linh hải cuộn trào, tăng mạnh công kích trong 20 giây.", "thuat", { kind: "buff", pathLevel: 1, mpCost: 40, cooldownMs: 40_000, range: 0, power: 0.5, buff: { stat: "attack", durationMs: 20_000 } }),
     path("dt_dan_khi", "Đan Khí Hộ Thể", "Đan tu (Đan Sư): đan khí bao quanh, tăng mạnh phòng thủ trong 20 giây.", "dan", { kind: "buff", pathLevel: 1, mpCost: 36, cooldownMs: 40_000, range: 0, power: 0.45, buff: { stat: "defense", durationMs: 20_000 } }),
     path("dt_hoi_duong", "Hồi Dương Đan Chú", "Đan tu (Đan Sư): hồi sinh lực lớn.", "dan", { kind: "heal", pathLevel: 1, mpCost: 44, cooldownMs: 30_000, range: 0, power: 0.5 }),
     // Level 2
     path("kt_hop_nhat", "Nhân Kiếm Hợp Nhất", "Kiếm tu (Nhân Kiếm Hợp Nhất): người và kiếm làm một, tăng vọt công kích trong 20 giây.", "kiem", { kind: "buff", pathLevel: 2, mpCost: 50, cooldownMs: 40_000, range: 0, power: 0.6, buff: { stat: "attack", durationMs: 20_000 } }),
-    path("kt_than_kiem", "Thần Kiếm Trảm", "Kiếm tu (Nhân Kiếm Hợp Nhất): một kiếm trảm thiên.", "kiem", { flex: true, pathLevel: 2, mpCost: 70, cooldownMs: 20_000, range: 8, power: 7.5 }),
-    path("tt_dai_phap", "Đại Pháp Diệt", "Thuật tu (Đại Pháp Sư): đại pháp giáng xuống mục tiêu.", "thuat", { flex: true, pathLevel: 2, mpCost: 64, cooldownMs: 18_000, range: 8, power: 6.8 }),
+    path("kt_than_kiem", "Thần Kiếm Trảm", "Kiếm tu (Nhân Kiếm Hợp Nhất): một kiếm trảm thiên.", "kiem", { flex: true, pathLevel: 2, mpCost: 70, cooldownMs: 20_000, range: 12, power: 7.5 }),
+    path("tt_dai_phap", "Đại Pháp Diệt", "Thuật tu (Đại Pháp Sư): đại pháp giáng xuống mục tiêu.", "thuat", { flex: true, pathLevel: 2, mpCost: 64, cooldownMs: 18_000, range: 12, power: 6.8 }),
     path("tt_hoi_linh", "Hồi Linh Quyết", "Thuật tu (Đại Pháp Sư): thu linh khí chữa thương.", "thuat", { kind: "heal", pathLevel: 2, mpCost: 50, cooldownMs: 45_000, range: 0, power: 0.5 }),
     path("dt_dai_hoi", "Đại Hồi Xuân", "Đan tu (Đan Tông): hồi sinh lực rất lớn.", "dan", { kind: "heal", pathLevel: 2, mpCost: 70, cooldownMs: 50_000, range: 0, power: 0.7 }),
     path("dt_kim_than", "Kim Thân Đan Quyết", "Đan tu (Đan Tông): kim thân bất hoại, tăng vọt phòng thủ trong 25 giây.", "dan", { kind: "buff", pathLevel: 2, mpCost: 60, cooldownMs: 60_000, range: 0, power: 0.7, buff: { stat: "defense", durationMs: 25_000 } }),
@@ -223,7 +223,7 @@ export const SKILLS: readonly SkillDef[] = [
   ...gearSkills(),
   ...pathSkills(),
   { id: "cuong_than", nameVi: "Cuồng Thần Thuật", descVi: "Tăng công kích trong 15 giây, học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 0, grade: 1, mpCost: 20, cooldownMs: 30_000, range: 0, power: 0.25, buff: { stat: "attack", durationMs: 15_000 }, learn: { realm: 0, stage: 5 } },
-  { id: "ngu_kiem_tram", nameVi: "Ngự Kiếm Trảm", descVi: "Ngự kiếm chém xa; phải cầm kiếm. Học từ bí tịch.", kind: "attack", source: "learned", element: null, realm: 0, grade: 2, mpCost: 30, cooldownMs: 8000, range: 7, power: 3.2, weapon: "kiem", learn: { realm: 0, stage: 7 } },
+  { id: "ngu_kiem_tram", nameVi: "Ngự Kiếm Trảm", descVi: "Ngự kiếm chém xa; phải cầm kiếm. Học từ bí tịch.", kind: "attack", source: "learned", element: null, realm: 0, grade: 2, mpCost: 30, cooldownMs: 8000, range: 10, power: 3.2, weapon: "kiem", learn: { realm: 0, stage: 7 } },
   ...SPIRITUAL_ROOTS.map(elementBookSkill),
   // Kim Đan and Nguyên Anh (bí tịch of the second town): the strongest skill of each element, and a guard, a heal and a battle cry.
   ...SPIRITUAL_ROOTS.map((r) => elementBookSkillHigh(r, 2)),

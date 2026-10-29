@@ -299,6 +299,8 @@ export type ServerMessage =
   /** A skill went off (drawn for everyone who sees the caster): `id` cast `skill` at `to` (a monster or player), or to the point x,y (a teleport), in element `el`. */
   | { t: "fx"; id: string; skill: string; to?: string; x?: number; y?: number; el?: string }
   /** The boss struck in a cone from (x, y) towards (ax, ay): reach in tiles and half the opening in degrees. */
+  /** A guard used one of its skills (`mend`, `ward`, `burst`, `slash`): its robe shows the light of it for a moment. */
+  | { t: "fx_guard"; id: string; skill: string }
   | { t: "fx_cone"; id: string; x: number; y: number; ax: number; ay: number; range: number; half: number }
   /** A player started (`on`) or ended a long channel: a breakthrough ("bt") or a teleport ("tp": talisman or array). `ok` says how it ended. */
   | { t: "fx_channel"; id: string; what: "bt" | "tp"; on: boolean; ok?: boolean }
