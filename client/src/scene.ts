@@ -1,6 +1,9 @@
 import Phaser from "phaser";
 import {
   headingAlongPath,
+  tuning,
+  BASIC_SKILL_ID,
+  parseSkillSlot,
   directionOf,
   type GfxAnimName,
   bossKinds,
@@ -94,7 +97,12 @@ import { initSkills, type SkillsUi } from "./skills-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
+import { decide, newAutoMemory, type AutoAction, type AutoMemory, type AutoSettings, type AutoView } from "./auto-brain";
+import { initAuto, type AutoUi } from "./auto-ui";
+import { loadPrimary, savePrimary, type PrimaryChoice } from "./primary-store";
 import { iconButton } from "./icons";
+import { loading } from "./loading-ui";
+import { qiSpawnPoint, qiStyleOf } from "./qi-aura";
 import { mapLabel, vi } from "./locales/vi";
 import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
@@ -152,6 +160,10 @@ interface Actor {
   outfit?: string;
   /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
   flight?: string;
+  /** The cultivation level (`realm * 10 + stage`): the colour and thickness of the qi haze round the figure. */
+  lv?: number;
+  /** When (performance.now) the next wisp of that haze is released. */
+  qiNext?: number;
   wview?: GfxView;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
@@ -295,6 +307,28 @@ export class GameScene extends Phaser.Scene {
   private colo = "…";
   private portalSentAt = 0;
   private transferring = false;
+  /** The Auto hunt: the window and button, whether it runs, what it was started with, what it remembers, where it started and when it thinks next. */
+  private autoUi!: AutoUi;
+  private autoOn = false;
+  private autoSettings: AutoSettings | null = null;
+  private autoMem: AutoMemory = newAutoMemory();
+  private autoAnchor = { x: 0, y: 0 };
+  private autoNextAt = 0;
+  /** When each skill is ready again (performance.now) as the server last said, the hotbar as the server holds it, and your own HP, max MP and whether you are dead (for Auto). */
+  private cdUntil = new Map<string, number>();
+  private hotbarSlots: string[] = [];
+  private selfHp = 0;
+  private selfMaxHp = 0;
+  private selfMaxMp = 0;
+  private selfDead = false;
+  /** The attack the player chose for the slot in front of the hotbar (null: the plain attack), kept per character in the browser and told to the server at every welcome. */
+  private primary: PrimaryChoice | null = null;
+  /** The loading screen: the welcome is in, and for how many frames in a row nothing has been left to load; when it was put up. */
+  private welcomed = false;
+  private settledFrames = 0;
+  private loadingSince = 0;
+  /** The next frame puts the camera straight on yourself (no slide from wherever it was). */
+  private snapCamera = false;
   private marker!: Phaser.GameObjects.Graphics;
 
   constructor() {
@@ -330,6 +364,14 @@ export class GameScene extends Phaser.Scene {
       getTarget: () => this.targetId,
       getAim: () => this.aimPoint(),
       getMp: () => this.vitals.getMp(),
+      primary: () => this.primary,
+      setPrimary: (choice) => {
+        this.primary = choice;
+        savePrimary(this.selfSheet?.id ?? null, choice);
+        this.net.send({ t: "primary", skill: choice?.skill ?? "", ...(choice?.el ? { el: choice.el as SpiritualRoot } : {}) });
+      },
+      roots: () => this.selfSheet?.roots ?? [],
+      hasBasic: () => !!this.knownSkills?.includes(BASIC_SKILL_ID),
       contextOf: (skill) => this.skillContext(skill),
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
@@ -345,6 +387,20 @@ export class GameScene extends Phaser.Scene {
     this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }), (npc, view) => this.switchNpcView(npc, view));
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
     this.pk = initPk((msg) => this.net.send(msg));
+    this.autoUi = initAuto({
+      charId: () => this.selfSheet?.id ?? null,
+      hotbarSkills: () => this.hotbarSlots.flatMap((v, i) => (parseSkillSlot(v) && getSkill(parseSkillSlot(v)!.id) ? [{ value: v, key: i + 1 }] : [])),
+      potions: () => {
+        const by = new Map<string, number>();
+        for (const it of this.inventory.list()) {
+          const d = getItemDef(it.type);
+          if (d?.healFraction !== undefined || d?.mpFraction !== undefined) by.set(it.type, (by.get(it.type) ?? 0) + it.qty);
+        }
+        return [...by].map(([type, qty]) => ({ type, name: getItemDef(type)?.nameVi ?? type, qty, hp: getItemDef(type)?.healFraction !== undefined, mp: getItemDef(type)?.mpFraction !== undefined }));
+      },
+      onStart: (settings) => this.startAuto(settings),
+      onStop: () => this.stopAuto("stopped"),
+    });
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
     ensureFlightTextures(this);
@@ -396,9 +452,12 @@ export class GameScene extends Phaser.Scene {
         this.refreshHud();
       },
       onStatus: (connected) => {
+        if (connected) loading.set(0.3, vi.loadingScreen.entering);
         if (!connected) {
           this.hud.textContent = this.transferring ? vi.transferring : vi.disconnected;
           this.clearActors();
+          this.stopAuto("moved");
+          this.beginLoading(this.transferring ? vi.loadingScreen.transferring : vi.loadingScreen.reconnecting);
         }
       },
     });
@@ -633,6 +692,7 @@ export class GameScene extends Phaser.Scene {
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.transferring) return;
     if (this.guardBreakthrough()) return;
+    this.stopAuto("manual"); // a click on the map is the player taking over
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
@@ -785,7 +845,16 @@ export class GameScene extends Phaser.Scene {
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
+        this.primary = loadPrimary(msg.character.id, msg.character.roots);
+        this.net.send({ t: "primary", skill: this.primary?.skill ?? "", ...(this.primary?.el ? { el: this.primary.el as SpiritualRoot } : {}) });
         this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
+        this.selfHp = msg.hp;
+        this.selfMaxHp = msg.maxHp;
+        this.selfMaxMp = msg.maxMp;
+        this.selfDead = false;
+        this.hotbarSlots = msg.hotbar;
+        this.stopAuto("moved"); // a new room: the spot it started from means nothing now
+        this.autoUi.show(true);
         this.vitals.setWallet(msg.wallet);
         this.linhThach = msg.wallet.linh_thach;
         this.waygate.setBalance(this.linhThach);
@@ -811,8 +880,11 @@ export class GameScene extends Phaser.Scene {
         this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, mpRegenPerS());
         this.hotbar.refresh(); // the slots were drawn before the MP was known (they dim what the MP cannot pay)
         this.buffs.set(msg.effects);
-        for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
+        for (const [skill, ms] of Object.entries(msg.cd)) this.noteCooldown(skill, ms);
         this.refreshHud();
+        this.welcomed = true;
+        this.snapCamera = true;
+        loading.set(0.5, vi.loadingScreen.images(0, 0));
         break;
       case "mon":
         this.upsertMonster(msg.monster);
@@ -833,8 +905,12 @@ export class GameScene extends Phaser.Scene {
         break;
       case "hp":
         this.vitals.set(msg.hp, msg.maxHp);
+        this.selfHp = msg.hp;
+        this.selfMaxHp = msg.maxHp;
         break;
       case "died":
+        this.selfDead = true;
+        this.stopAuto("dead");
         this.playOnce(this.selfId, "die"); // stays on the last frame until the transfer to town replaces the view
         this.hitMeAt.clear(); // the quarrel with whoever killed us is over: their name goes back to its real colour
         this.channel.stop();
@@ -886,6 +962,7 @@ export class GameScene extends Phaser.Scene {
           looker.weapon = msg.w;
           looker.outfit = msg.o;
           looker.flight = msg.fl;
+          if (msg.lv !== undefined) looker.lv = msg.lv;
         }
         break;
       }
@@ -918,6 +995,8 @@ export class GameScene extends Phaser.Scene {
       case "transfer":
         // The server closes the socket right after; Net reconnects and the welcome brings the new map.
         this.transferring = true;
+        this.stopAuto("moved");
+        this.beginLoading(vi.loadingScreen.transferring);
         this.hotbar.setAimNote(null); // a talisman channel that completed ends here
         this.hud.textContent = vi.transferring;
         this.chat.system(vi.chat.transferTo(mapLabel(msg.map)));
@@ -967,6 +1046,7 @@ export class GameScene extends Phaser.Scene {
       }
       case "hotbar":
         this.hotbar.setSlots(msg.slots);
+        this.hotbarSlots = msg.slots;
         break;
       case "skill_state": {
         this.skillStates[msg.id] = { lv: msg.lv, xp: msg.xp };
@@ -979,12 +1059,15 @@ export class GameScene extends Phaser.Scene {
       }
       case "mp":
         this.vitals.setMp(msg.mp, msg.maxMp, msg.regenInMs, msg.perSec);
+        this.selfMaxMp = msg.maxMp;
         break;
       case "cast_ok":
-        this.hotbar.setCooldown(msg.skill, msg.cdMs);
+        this.noteCooldown(msg.skill, msg.cdMs);
         break;
       case "cast_error":
-        this.chat.system(vi.skills.errors[msg.reason] ?? vi.skills.errors.unknown!, "error");
+        // Auto asks for skills a little before they are ready: its refusals stay out of the chat and the skill is left alone for a moment.
+        if (this.autoOn) this.autoMem.backoffUntil.set(msg.skill, performance.now() + tuning().auto.castBackoffMs);
+        else this.chat.system(vi.skills.errors[msg.reason] ?? vi.skills.errors.unknown!, "error");
         break;
       case "effects":
         this.buffs.set(msg.list);
@@ -1035,6 +1118,12 @@ export class GameScene extends Phaser.Scene {
         this.fx.guardSkill(msg.id, msg.skill);
         break;
       }
+      case "fx_zone":
+        this.fx.zone(msg.id, msg.skill, toScreen(msg.x, msg.y), toScreen(msg.ax, msg.ay), msg.ms, msg.el);
+        break;
+      case "fx_zone_end":
+        this.fx.zoneEnd(msg.id);
+        break;
       case "fx_cone": {
         const from = toScreen(msg.x, msg.y);
         const aim = toScreen(msg.ax, msg.ay);
@@ -1278,6 +1367,7 @@ export class GameScene extends Phaser.Scene {
       actor.weapon = p.w;
       actor.outfit = p.o;
       actor.flight = p.fl;
+      actor.lv = p.lv;
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
@@ -1580,7 +1670,10 @@ export class GameScene extends Phaser.Scene {
       this.fx.basic(msg.from, msg.to, !!attacker, weapon);
       this.playOnce(msg.from, attackAnimOf(weapon), msg.to);
     }
-    if (msg.kind !== "miss") {
+    if (msg.dot) {
+      // one tick of a lasting zone: a spark and a small number, no recoil (ten ticks on five monsters must not be fifty shoves)
+      if (msg.kind !== "miss") this.fx.hit(msg.to, msg.from, "hit", msg.skill, true);
+    } else if (msg.kind !== "miss") {
       this.playOnce(msg.to, "hit", msg.from);
       this.shove(msg.from, msg.to, msg.kind === "crit");
       this.fx.hit(msg.to, msg.from, msg.kind, msg.skill);
@@ -1605,7 +1698,7 @@ export class GameScene extends Phaser.Scene {
     const text = msg.kind === "miss" ? vi.combat.miss : msg.kind === "crit" ? `${msg.damage}!` : String(msg.damage);
     const color = msg.to === this.selfId ? "#ff6b6b" : msg.kind === "crit" ? "#ffd54a" : "#ffffff";
     const label = this.add
-      .text(s.x, s.y - 50, text, { fontFamily: FONT, fontSize: msg.kind === "crit" ? "18px" : "14px", color, stroke: "#000000", strokeThickness: 3 })
+      .text(s.x + (msg.dot ? (Math.random() - 0.5) * 24 : 0), s.y - 50, text, { fontFamily: FONT, fontSize: msg.kind === "crit" ? "18px" : msg.dot ? "11px" : "14px", color, stroke: "#000000", strokeThickness: msg.dot ? 2 : 3 })
       .setOrigin(0.5, 1)
       .setDepth(1000);
     this.tweens.add({ targets: label, y: label.y - 28, alpha: 0, duration: 800, onComplete: () => label.destroy() });
@@ -1640,6 +1733,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Shows the sprite of a player when the manifest has one (and the oval otherwise); plays run or idle facing the way it walks. */
+  /** The qi haze round a cultivator (see `qi-aura.ts`): level from the character sheet for yourself, from the snapshot for the others; wisps are released at a steady rate. */
+  private syncQi(a: Actor, now: number, x: number, y: number): void {
+    const lv = a.id === this.selfId && this.selfSheet ? this.selfSheet.realm * 10 + this.selfSheet.stage : a.lv;
+    if (lv === undefined || now < (a.qiNext ?? 0)) return;
+    const st = qiStyleOf(lv, tuning().theme.realmColors);
+    a.qiNext = now + (1000 / st.rate) * (0.6 + Math.random() * 0.8);
+    const height = a.view?.alive ? a.view.rise() : 38;
+    const at = qiSpawnPoint(x, y, height);
+    this.fx.puff("qi", at.x, at.y, st.burst, st.color);
+  }
+
   private syncActorView(a: Actor, now: number, x: number, y: number, depth: number, moving: boolean): void {
     if (a.view && !a.view.alive) {
       a.wview?.destroy();
@@ -1735,6 +1839,123 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** A skill's cooldown as the server said it: the bar shows it, and Auto waits for it. */
+  private noteCooldown(skill: string, ms: number): void {
+    this.cdUntil.set(skill, performance.now() + ms);
+    this.hotbar.setCooldown(skill, ms);
+  }
+
+  /** Start was pressed in the Auto window. False (and a line in the chat) when it cannot run here. */
+  private startAuto(settings: AutoSettings): boolean {
+    const self = this.actors.get(this.selfId);
+    if (!self || this.selfDead || this.transferring) return false;
+    if (this.map.safe) {
+      this.chat.system(vi.auto.safeMap, "error");
+      return false;
+    }
+    const here = currentPos(self, performance.now());
+    this.autoAnchor = { x: here.x, y: here.y };
+    this.autoSettings = settings;
+    this.autoMem = newAutoMemory();
+    this.autoNextAt = 0;
+    this.autoOn = true;
+    this.autoUi.setRunning(true);
+    this.chat.system(vi.auto.started(settings.radius));
+    return true;
+  }
+
+  /** Ends the hunt (the button reads Auto again) and says why. Does nothing when it is not running. */
+  private stopAuto(reason: "stopped" | "manual" | "dead" | "moved"): void {
+    if (!this.autoOn) return;
+    this.autoOn = false;
+    this.autoSettings = null;
+    this.autoUi.setRunning(false);
+    this.chat.system(vi.auto.ended[reason]);
+  }
+
+  /** What the hunt sees now: the character, the monsters around, the skills' readiness and the bag. */
+  private autoView(now: number): AutoView | null {
+    const self = this.actors.get(this.selfId);
+    if (!self || !this.selfSheet) return null;
+    const here = currentPos(self, now);
+    const monsters = [...this.monsters.values()].flatMap((m) => {
+      if (m.dyingUntil !== undefined || m.hp <= 0) return [];
+      const p = positionAlongPath(m.path, now - m.startedAt, m.speed);
+      return [{ id: m.id, x: p.x, y: p.y, guard: m.guard, boss: m.boss, rare: m.rank !== "normal", hp: m.hp }];
+    });
+    const bag = this.inventory.list();
+    return {
+      now,
+      self: { x: here.x, y: here.y, moving: here.moving },
+      hp: this.selfHp,
+      maxHp: this.selfMaxHp,
+      mp: this.vitals.getMp(),
+      maxMp: this.selfMaxMp,
+      busy: this.selfDead || this.transferring || this.charPanel.isBreaking(),
+      anchor: this.autoAnchor,
+      targetId: this.targetId,
+      monsters,
+      readyAt: (id) => this.cdUntil.get(id) ?? 0,
+      buffUntil: (id) => this.buffGlows.get(this.selfId)?.get(id) ?? 0,
+      mpCost: (id) => {
+        const def = getSkill(id);
+        return def ? effectiveSkill(def, this.skillContext(def)).mpCost : 0;
+      },
+      bagCount: (type) => bag.reduce((n, it) => (it.type === type ? n + it.qty : n), 0),
+      healMsOf: (type) => getItemDef(type)?.healOverMs ?? 0,
+    };
+  }
+
+  /** The hunt thinks a few times a second and carries out at most one command each time, through the same messages as the player's own taps. */
+  private tickAuto(now: number): void {
+    if (!this.autoOn || !this.autoSettings || now < this.autoNextAt) return;
+    this.autoNextAt = now + tuning().auto.tickMs;
+    const view = this.autoView(now);
+    if (!view) return;
+    const act: AutoAction | null = decide(view, this.autoSettings, this.autoMem, tuning().auto);
+    if (!act) return;
+    switch (act.t) {
+      case "potion":
+        this.net.send({ t: "use_type", type: act.type });
+        break;
+      case "cast":
+        if (act.target) this.targetId = act.target;
+        this.net.send({ t: "cast", skill: act.skill, ...(act.target ? { target: act.target } : {}), ...(act.element ? { el: act.element as SpiritualRoot } : {}) });
+        break;
+      case "attack":
+        this.targetId = act.id;
+        this.net.send({ t: "attack", id: act.id });
+        break;
+      case "walk":
+        this.targetId = null;
+        this.sendWalk(act.x, act.y);
+        break;
+    }
+  }
+
+  /** Puts the loading screen up for a (re)entry: the welcome has to come again and everything in it has to be loaded before the screen goes. */
+  private beginLoading(label: string): void {
+    this.welcomed = false;
+    this.settledFrames = 0;
+    this.loadingSince = performance.now();
+    loading.show(label);
+    loading.set(0.15, label);
+  }
+
+  /** While the loading screen is up: shows how far the sprites are and takes it away once nothing is left to load (or after a while, whatever is missing). */
+  private watchLoading(now: number): void {
+    if (!loading.active) return;
+    if (this.loadingSince === 0) this.loadingSince = now;
+    if (now - this.loadingSince > 15_000) return loading.finish(); // never keep the player out for a slow or failed download
+    if (!this.welcomed) return;
+    const st = this.gfx.loadState();
+    const settled = st.ready && st.pending === 0;
+    const total = st.loaded + st.pending;
+    loading.set(0.5 + 0.45 * (settled ? 1 : total > 0 ? st.loaded / total : 0), settled ? vi.loadingScreen.almost : vi.loadingScreen.images(st.loaded, total));
+    this.settledFrames = settled ? this.settledFrames + 1 : 0;
+    if (this.settledFrames >= 10) loading.finish(); // a few frames after the last atlas: the figures have made their views in that time
+  }
+
   /** About four times a second, every timed buff that is still running lights up its wearer a little; one that ended is forgotten. */
   private tickBuffGlows(now: number): void {
     if (now < this.nextGlowAt || this.buffGlows.size === 0) return;
@@ -1756,11 +1977,17 @@ export class GameScene extends Phaser.Scene {
       this.gfx.sweepIdle(now);
     }
     this.syncNpcViews();
+    this.watchLoading(now);
+    this.tickAuto(now);
     this.tickBuffGlows(now);
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
       actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
+      if (this.snapCamera && actor.id === this.selfId) {
+        this.cameras.main.centerOn(actor.body.x, actor.body.y); // the first frame after a welcome: no slide in from the old view
+        this.snapCamera = false;
+      }
       if (actor.cloud) {
         // the flight pháp bảo hovers: a slow bob (out of step between riders); a sword turns to the way it flies and sheds spirit light from its tail
         const bob = Math.sin(now / 340 + actor.id.length * 1.7) * 2.2;
@@ -1788,6 +2015,7 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);
+      this.syncQi(actor, now, s.x, s.y - (actor.mounted ? 8 : 0));
       // The name stands just above the head: a sprite says how tall it is, the oval has a fixed height (a rider is lifted a little).
       const rise = actor.view?.alive ? actor.view.rise() + 6 + (actor.mounted ? 8 : 0) : actor.mounted ? 46 : 38;
       actor.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);

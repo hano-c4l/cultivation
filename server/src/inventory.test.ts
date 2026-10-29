@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { BAG_CELLS_PER_TAB, MAIL_ITEM_EXPIRY_MS, MAX_BAG_TABS, applyOps, planAdd, planMove, planRemove, planSort, planSplit, type BagItem, type BagOp } from "@game/shared";
-import { beforeEach, describe, expect, it } from "vitest";
+import { ITEMS } from "@game/shared";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { claimMailItem, commitBagOps, deleteExpiredMail, expandBag, listMail, loadBag, pruneGrants } from "./inventory";
 import { makeDb } from "./test-db";
 
@@ -10,6 +11,12 @@ let db: D1Database;
 let raw: DatabaseSync;
 let n = 0;
 const newId = () => `item-${++n}`;
+
+/** These tests exercise the stack mechanics at a small, fixed limit (99): the real limit of these items is bigger and tuned, so the tests set it themselves. */
+const SMALL_STACK = ["linh_thao", "thu_cot", "yeu_dan", "hoi_huyet_dan", "duong_huyet_dan", "dai_hoi_huyet_dan", "ngo_dao_dan"];
+beforeAll(() => {
+  for (const id of SMALL_STACK) if (ITEMS[id]) (ITEMS[id] as { maxStack: number }).maxStack = 99;
+});
 
 beforeEach(() => {
   ({ db, raw } = makeDb());

@@ -60,6 +60,8 @@ const PLAIN_LOW: StockRule[] = [
   { id: "duong_huyet_dan", kind: "item", item: "duong_huyet_dan", dailyLimit: 30 },
   { id: "dai_hoi_huyet_dan", kind: "item", item: "dai_hoi_huyet_dan", dailyLimit: 20 },
   { id: "ngo_dao_dan", kind: "item", item: "ngo_dao_dan", dailyLimit: 2 },
+  { id: "hoi_linh_dan", kind: "item", item: "hoi_linh_dan" },
+  { id: "dai_hoi_linh_dan", kind: "item", item: "dai_hoi_linh_dan", dailyLimit: 20 },
 ];
 /** The second town's alchemist sells the plain pills too, with bigger daily limits; Linh Nguyên, Bảo Nguyên and Thiên Ngộ are brewed (alchemy.ts). */
 const PLAIN_HIGH: StockRule[] = [
@@ -67,6 +69,8 @@ const PLAIN_HIGH: StockRule[] = [
   { id: "duong_huyet_dan", kind: "item", item: "duong_huyet_dan", dailyLimit: 60 },
   { id: "dai_hoi_huyet_dan", kind: "item", item: "dai_hoi_huyet_dan", dailyLimit: 30 },
   { id: "ngo_dao_dan", kind: "item", item: "ngo_dao_dan", dailyLimit: 5 },
+  { id: "hoi_linh_dan", kind: "item", item: "hoi_linh_dan" },
+  { id: "dai_hoi_linh_dan", kind: "item", item: "dai_hoi_linh_dan", dailyLimit: 30 },
 ];
 const book = (skill: string, price: number): StockRule => ({ id: bookItemId(skill), kind: "item", item: bookItemId(skill), price });
 /** Skill books (bí tịch), unlimited because a skill can only be learned once: Luyện Khí's two basic ones and the strongest of each element for Trúc Cơ. */
@@ -95,6 +99,7 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
       { id: "gear_low", kind: "gear", realms: [0, 1], tiers: [1], grade: 1 },
       { id: "ttp_town", kind: "item", item: "ttp_town" },
       { id: "keep_level", kind: "keep_level" },
+      { id: "hoi_linh_dan", kind: "item", item: "hoi_linh_dan" },
     ],
   },
   merchant2: {
@@ -109,6 +114,7 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
       { id: "gear_high", kind: "gear", realms: [2, 3], tiers: [1], grade: 1 },
       { id: "ttp_town2", kind: "item", item: "ttp_town2" },
       { id: "keep_level", kind: "keep_level" },
+      { id: "dai_hoi_linh_dan", kind: "item", item: "dai_hoi_linh_dan", dailyLimit: 30 },
     ],
   },
   // The alchemist sells and buys pills and materials (and brews: alchemy.ts); the blacksmith's goods are gear and pháp bảo.

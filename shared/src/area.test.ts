@@ -56,7 +56,7 @@ describe("areas, looks and flight looks in the tuning", () => {
     for (const s of SKILLS) if (s.kind !== "passive") expect(skillLookOf(s), s.id).toBeTruthy();
     expect(skillLookOf(getSkill("tram_0")!)).toBe("slash");
     expect(skillLookOf(getSkill("bm_hoi_sinh")!)).toBe("phoenix");
-    expect(skillLookOf(getSkill("kim_4")!)).toBe("spell");
+    expect(skillLookOf(getSkill("kim_5")!)).toBe("spell");
     setTuning({ skillLooks: {} });
     expect(skillLookOf(getSkill("thuan_0")!)).toBe("dome");
   });
@@ -77,5 +77,28 @@ describe("areas, looks and flight looks in the tuning", () => {
     expect(validTuningGroup("weaponArea", { kiem: { shape: "arc", range: 2, maxTargets: 0, pct: 70 } })).toBe(false);
     expect(validTuningGroup("skillLooks", { tram: "explode" })).toBe(false);
     expect(validTuningGroup("flightLooks", { default: "sword", byElement: { kim: "jetpack" } })).toBe(false);
+  });
+});
+
+describe("how skills are delivered", () => {
+  it("each element's three book skills use different ways: piercing, around the caster, a lasting zone, or a burst on the spot", () => {
+    for (const el of ["kim", "moc", "thuy", "hoa", "tho", "loi", "bang", "phong"]) {
+      const ways = [3, 4, 5].map((n) => {
+        const a = skillAreaOf({ id: `${el}_${n}` });
+        return a.zone ? "zone" : a.shape === "line" ? "pierce" : a.shape === "circle" && a.at === "self" ? "nova" : "burst";
+      });
+      expect(new Set(ways).size, el).toBe(3);
+    }
+    expect(skillAreaOf({ id: "hoa_3" }).zone).toEqual({ ms: 6000, tickMs: 600 });
+  });
+
+  it("a zone's time and tick are checked, and a zone skill has a matching look", () => {
+    expect(validTuningGroup("skillAreas", DEFAULT_TUNING.skillAreas)).toBe(true);
+    expect(validTuningGroup("skillAreas", { x: { shape: "line", range: 5, width: 1, maxTargets: 2, pct: 20, zone: { ms: 10, tickMs: 600 } } })).toBe(false);
+    expect(validTuningGroup("skillAreas", { x: { shape: "line", range: 5, width: 1, maxTargets: 2, pct: 20, zone: { ms: 5000, tickMs: 50 } } })).toBe(false);
+    expect(skillLookOf(getSkill("hoa_3")!)).toBe("lane");
+    expect(skillLookOf(getSkill("moc_4")!)).toBe("field");
+    expect(skillLookOf(getSkill("kim_3")!)).toBe("lance");
+    expect(skillLookOf(getSkill("kim_4")!)).toBe("nova");
   });
 });

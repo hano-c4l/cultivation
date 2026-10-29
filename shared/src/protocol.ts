@@ -101,6 +101,8 @@ export type ClientMessage =
   | { t: "smith_repair"; npc: string; slot: EquipSlot | "all" }
   /** Use a skill. `target` is the monster to hit (attack skills; omitted: the current target). Heals and buffs need none. */
   | { t: "cast"; skill: string; target?: string; x?: number; y?: number; el?: SpiritualRoot }
+  /** The attack used instead of the plain one when a monster is clicked or Auto fights: `skill` the basic qi blast (with the element `el`) or "" for the plain attack. The client keeps the choice and sends it at every welcome. */
+  | { t: "primary"; skill: string; el?: SpiritualRoot }
   /** Set one hotbar slot: "" (empty), "s:<skill id>" or "i:<item type>". One slot per message, one D1 write. */
   | { t: "hotbar_set"; slot: number; v: string }
   /** Swap two hotbar slots (drag and drop): one message, one D1 write. */
@@ -221,13 +223,15 @@ export interface PlayerSnapshot {
   o?: string;
   /** The look of the worn flight pháp bảo (`FlightStyle`), so a rider is drawn on the right one. */
   fl?: string;
+  /** The cultivation level, `realm * 10 + stage`: it sets the colour and strength of the qi drawn round the figure. */
+  lv?: number;
 }
 
 export type ServerMessage =
   | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][]; tuning: Tuning; npcs: NpcSpot[]; mapRecipe?: MapRecipe; mapNames?: Record<string, string>; items?: ItemOverlay[]; mutant?: Pick<ElementTuning, "mutantRootChancePermille" | "mutantSkillBonusPct" | "mutantGearBonusPct" | "mutantGearDropPermille"> }
   | { t: "joined"; player: PlayerSnapshot }
   /** What a player holds or wears changed (a weapon or a robe put on, taken off or broken): `w` is the weapon family and `o` the outfit, each left out for none. */
-  | { t: "look"; id: string; w?: string; o?: string; fl?: string }
+  | { t: "look"; id: string; w?: string; o?: string; fl?: string; lv?: number }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
   /** Reply to the mover. `player` is present only when the server corrected or rejected the move. */
@@ -248,7 +252,7 @@ export type ServerMessage =
   | { t: "mon_gone"; id: string; dead?: true }
   /** One attack landed (or missed). `hp` is the target's HP afterwards; `to` is a monster id or a character id. */
   /** `ret`: a player answering a blow (not an attack of their own: it does not make them grey to the one they hit back). */
-  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; ret?: true; aoe?: true }
+  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; ret?: true; aoe?: true; /** One tick of a lasting zone: a light reaction, no swing. */ dot?: true }
   /** The receiving character's own HP changed (regeneration or damage). */
   | { t: "hp"; hp: number; maxHp: number }
   /** One of the receiving character's balances changed; `gained` is the amount just added, when it is a gain. */
@@ -301,6 +305,9 @@ export type ServerMessage =
   /** The boss struck in a cone from (x, y) towards (ax, ay): reach in tiles and half the opening in degrees. */
   /** A guard used one of its skills (`mend`, `ward`, `burst`, `slash`): its robe shows the light of it for a moment. */
   | { t: "fx_guard"; id: string; skill: string }
+  /** A lasting area went down (`id`: its number): `owner` cast `skill` from (x, y) towards (ax, ay), and it stays for `ms` unless `fx_zone_end` comes first. */
+  | { t: "fx_zone"; id: string; owner: string; skill: string; x: number; y: number; ax: number; ay: number; ms: number; el?: string }
+  | { t: "fx_zone_end"; id: string }
   | { t: "fx_cone"; id: string; x: number; y: number; ax: number; ay: number; range: number; half: number }
   /** A player started (`on`) or ended a long channel: a breakthrough ("bt") or a teleport ("tp": talisman or array). `ok` says how it ended. */
   | { t: "fx_channel"; id: string; what: "bt" | "tp"; on: boolean; ok?: boolean }
@@ -442,6 +449,11 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (m.x !== undefined || m.y !== undefined) return isCoord(m.x) && isCoord(m.y) ? { t: "cast", skill: m.skill, x: m.x, y: m.y, ...withEl } : null;
       if (m.target === undefined) return { t: "cast", skill: m.skill, ...withEl };
       return isCombatTargetId(m.target) ? { t: "cast", skill: m.skill, target: m.target, ...withEl } : null;
+    }
+    case "primary": {
+      if (typeof m.skill !== "string" || !/^[a-z0-9_]{0,32}$/.test(m.skill)) return null;
+      if (m.el === undefined) return { t: "primary", skill: m.skill };
+      return typeof m.el === "string" && (ALL_ROOTS as readonly string[]).includes(m.el) ? { t: "primary", skill: m.skill, el: m.el as SpiritualRoot } : null;
     }
     case "hotbar_set":
       return isInt(m.slot) && m.slot >= 0 && m.slot < HOTBAR_SLOTS && typeof m.v === "string" && HOTBAR_SLOT_PATTERN.test(m.v) ? { t: "hotbar_set", slot: m.slot, v: m.v } : null;

@@ -1,4 +1,4 @@
-import { equipmentInfo, getItemDef, type SkillDef } from "@game/shared";
+import { equipmentInfo, getItemDef, skillLookOf, type SkillDef } from "@game/shared";
 import { ELEMENT_COLOR, skillFxOf } from "./fx-kinds";
 
 /**
@@ -14,6 +14,8 @@ export type IconShape =
   | "hat" | "robe" | "bracer" | "ring" | "jade" | "necklace" | "belt" | "boots" | "charm" | "bonded" | "flight"
   | "pill" | "ore" | "book" | "scroll" | "unknown"
   | "slash" | "bolt" | "fan" | "blink" | "buff" | "heal" | "passive"
+  // the ways of delivering an attack skill: through a line, round the caster, a lane on the ground, a field on the ground
+  | "pierce" | "nova" | "lane" | "field"
   // the interface: the currencies and the buttons of the windows
   | "stone" | "merit" | "immortal" | "person" | "shield" | "bag" | "taiji" | "trophy" | "swap" | "door";
 
@@ -50,6 +52,10 @@ export function iconSpecOf(type: string): IconSpec {
 export function skillIconSpecOf(def: SkillDef | undefined): IconSpec {
   if (!def) return { shape: "unknown", element: null, grade: 0 };
   if (def.kind === "passive") return { shape: "passive", element: def.element ?? null, grade: 0 };
+  const look = skillLookOf(def);
+  if (def.kind === "attack" && (look === "lance" || look === "nova" || look === "lane" || look === "field")) {
+    return { shape: look === "lance" ? "pierce" : look, element: def.element ?? null, grade: 0 };
+  }
   const fx = skillFxOf(def);
   const shape: IconShape = fx === "melee" ? "slash" : fx === "ranged" ? "bolt" : fx === "cone" ? "fan" : fx === "blink" ? "blink" : fx;
   return { shape, element: def.element ?? null, grade: 0 };
@@ -88,6 +94,10 @@ const SHAPES: Readonly<Record<IconShape, readonly Part[]>> = {
   blink: [["M4 8 L13 16 L4 24", "a", 3], ["M15 8 L24 16 L15 24", "l", 3]],
   buff: [["M16 16 m-11 0 a11 11 0 1 0 22 0 a11 11 0 1 0 -22 0", "a", 2], ["M16 25 V8 M9 15 L16 8 L23 15", "l", 3]],
   heal: [["M12 5 H20 V12 H27 V20 H20 V27 H12 V20 H5 V12 H12 Z", "a"], ["M13 7 V13 H7", "l", 1]],
+  pierce: [["M3 16 H25", "a", 3.2], ["M27 16 L20 10 M27 16 L20 22", "a", 3], ["M9 16 m-2.2 0 a2.2 2.2 0 1 0 4.4 0 a2.2 2.2 0 1 0 -4.4 0", "l"], ["M16 16 m-2.2 0 a2.2 2.2 0 1 0 4.4 0 a2.2 2.2 0 1 0 -4.4 0", "l"]],
+  nova: [["M16 16 m-5 0 a5 5 0 1 0 10 0 a5 5 0 1 0 -10 0", "a"], ["M16 16 m-11.5 0 a11.5 11.5 0 1 0 23 0 a11.5 11.5 0 1 0 -23 0", "a", 2], ["M16 2 V6 M16 26 V30 M2 16 H6 M26 16 H30", "l", 2]],
+  lane: [["M3 27 H29", "d", 1.4], ["M8 26 Q4 18 9 9 Q11 16 13 18 Q14 12 16 5 Q24 15 21 26 Z", "a"], ["M12 26 Q11 21 14 17 Q17 21 17 26 Z", "l"], ["M23 26 Q22 22 24 19 Q27 22 26 26 Z", "a"]],
+  field: [["M16 20 m-12 0 a12 6 0 1 0 24 0 a12 6 0 1 0 -24 0", "a"], ["M16 20 m-8 0 a8 3.8 0 1 0 16 0 a8 3.8 0 1 0 -16 0", "l", 1], ["M10 17 L10 8 M16 18 L16 5 M22 17 L22 10", "a", 2.4]],
   stone: [["M16 3 L27 11 L22 28 H10 L5 11 Z", "m"], ["M5 11 H27", "l", 1], ["M16 3 L12 11 L16 27 L20 11 Z", "l", 1]],
   merit: [["M16 16 m-11 0 a11 11 0 1 0 22 0 a11 11 0 1 0 -22 0", "m"], ["M16 16 m-8.5 0 a8.5 8.5 0 1 0 17 0 a8.5 8.5 0 1 0 -17 0", "l", 1], ["M12 12 H20 V20 H12 Z", "d"]],
   immortal: [["M16 16 m-11 0 a11 11 0 1 0 22 0 a11 11 0 1 0 -22 0", "m"], ["M16 7 Q21 14 16 23 Q11 14 16 7 Z", "l"], ["M8 14 Q14 15 16 23 Q9 23 8 14 Z", "l"], ["M24 14 Q18 15 16 23 Q23 23 24 14 Z", "l"]],

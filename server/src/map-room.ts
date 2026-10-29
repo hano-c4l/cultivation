@@ -221,6 +221,8 @@ interface PlayerState {
   o?: string;
   /** The look of the worn flight pháp bảo (see `flightStyleOf`); `applyGear` keeps it current. */
   fl?: string;
+  /** The cultivation level, `realm * 10 + stage` (see `PlayerSnapshot.lv`); `syncQi` keeps it current. */
+  lv?: number;
   /** Lock claim id of this connection, kept so the lock can be released after a wake-up. */
   claimId: string;
   mapId: MapId;
@@ -563,6 +565,7 @@ export class MapRoom extends DurableObject<Env> {
         ...(weaponFamily(bagNow.equipped) ? { w: weaponFamily(bagNow.equipped) as string } : {}),
         ...(outfitOf(bagNow.equipped) ? { o: outfitOf(bagNow.equipped) as string } : {}),
         ...(flightLookOf(bagNow.equipped) ? { fl: flightLookOf(bagNow.equipped) as string } : {}),
+        lv: row.realm * 10 + row.stage,
         claimId,
         mapId,
         path: [position],
@@ -631,6 +634,11 @@ export class MapRoom extends DurableObject<Env> {
       await lock.release(claimId);
       throw err;
     }
+  }
+
+  /** Whether a connection with this claim is still open in this room (CharacterLock asks before it calls an old claim "online"). */
+  async hasCharacter(claimId: string): Promise<boolean> {
+    return this.ctx.getWebSockets().some((ws) => (ws.deserializeAttachment() as PlayerState | null)?.claimId === claimId);
   }
 
   /** Called by CharacterLock when the same character connects elsewhere: save, then kick the old socket. */
@@ -718,6 +726,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleQuestAbandon(ws, state, msg.quest);
       case "cast":
         return this.handleCast(ws, state, msg);
+      case "primary":
+        return void this.sim?.setPrimary(state.id, msg.skill, msg.el);
       case "hotbar_set":
         return this.handleHotbar(ws, state, msg.slot, msg.v);
       case "hotbar_swap":
@@ -1452,7 +1462,7 @@ export class MapRoom extends DurableObject<Env> {
         this.broadcastAbout([ev.id], { t: "mon_gone", id: ev.id, dead: true });
         return this.forgetEntity(ev.id);
       case "hit": {
-        this.broadcastAbout([ev.from, ev.to], { t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}), ...(ev.aoe ? { aoe: true as const } : {}) });
+        this.broadcastAbout([ev.from, ev.to], { t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}), ...(ev.aoe ? { aoe: true as const } : {}), ...(ev.dot ? { dot: true as const } : {}) });
         // Anything that attacks a character in the middle of a breakthrough (hit or miss) breaks it.
         // Who hit whom among the players: a player that hit you in the last 3 minutes is a self-defence kill, and shows grey on your screen.
         // An answer to a blow is not an attack of its own and does not count.
@@ -1506,6 +1516,10 @@ export class MapRoom extends DurableObject<Env> {
           ...(ev.dest ? { x: ev.dest[0], y: ev.dest[1] } : {}),
           ...(ev.element ? { el: ev.element } : {}),
         });
+      case "zone":
+        return this.broadcastAbout([ev.playerId], { t: "fx_zone", id: ev.id, owner: ev.playerId, skill: ev.skill, x: ev.origin[0], y: ev.origin[1], ax: ev.aim[0], ay: ev.aim[1], ms: ev.ms, ...(ev.element ? { el: ev.element } : {}) });
+      case "zone_end":
+        return this.broadcastAbout([ev.playerId], { t: "fx_zone_end", id: ev.id });
       case "guard_skill":
         return this.broadcastAbout([ev.monsterId], { t: "fx_guard", id: ev.monsterId, skill: ev.skill });
       case "cone":
@@ -1861,7 +1875,7 @@ export class MapRoom extends DurableObject<Env> {
         if (fl) sock.state.fl = fl;
         else delete sock.state.fl;
         sock.ws.serializeAttachment(sock.state);
-        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}), ...(o ? { o } : {}), ...(fl ? { fl } : {}) });
+        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}), ...(o ? { o } : {}), ...(fl ? { fl } : {}), ...(sock.state.lv !== undefined ? { lv: sock.state.lv } : {}) });
       }
     }
     void this.syncMount(id).catch((err) => console.error("mount sync failed", id, err));
@@ -2857,7 +2871,7 @@ export class MapRoom extends DurableObject<Env> {
       if (slotSkill.element && !(def.flex && who?.roots.includes(slotSkill.element))) return resend();
     } else if (v.startsWith("i:")) {
       const slotItem = getItemDef(v.slice(2));
-      if (slotItem?.healFraction === undefined && slotItem?.teleportTo === undefined) return resend(); // potions and talismans can be put on the bar
+      if (slotItem?.healFraction === undefined && slotItem?.mpFraction === undefined && slotItem?.teleportTo === undefined) return resend(); // potions and talismans can be put on the bar
     }
     const next = [...current];
     next[slot] = v;
@@ -2968,12 +2982,17 @@ export class MapRoom extends DurableObject<Env> {
     const teleport = item ? getItemDef(item.type)?.teleportTo : undefined;
     if (item && teleport) return this.useTalisman(ws, id, tab, cell, teleport);
     const heal = item ? getItemDef(item.type)?.healFraction : undefined;
-    if (!item || heal === undefined) return this.resync(ws, id, "invalid");
+    const mpBack = item ? getItemDef(item.type)?.mpFraction : undefined;
+    if (!item || (heal === undefined && mpBack === undefined)) return this.resync(ws, id, "invalid");
     const profile = this.sim?.getPlayer(id);
     const now = Date.now();
-    if (!profile || profile.dead || profile.hp >= profile.maxHp) return this.send(ws, { t: "inv_error", reason: "not_needed" });
-    if (now < profile.potionReadyAt) return this.send(ws, { t: "inv_error", reason: "cooldown" });
-    profile.potionReadyAt = now + POTION_COOLDOWN_MS;
+    // A pill is only used when it would do something: a healing one at less than full HP, an MP one at less than full MP (one that does both, when either is short).
+    const needsHp = heal !== undefined && !!profile && profile.hp < profile.maxHp;
+    const needsMp = mpBack !== undefined && !!profile && !!this.sim && this.sim.currentMp(profile, now) < profile.maxMp;
+    if (!profile || profile.dead || (!needsHp && !needsMp)) return this.send(ws, { t: "inv_error", reason: "not_needed" });
+    if ((needsHp && now < profile.potionReadyAt) || (needsMp && now < profile.mpPotionReadyAt)) return this.send(ws, { t: "inv_error", reason: "cooldown" });
+    if (needsHp) profile.potionReadyAt = now + POTION_COOLDOWN_MS;
+    if (needsMp) profile.mpPotionReadyAt = now + POTION_COOLDOWN_MS;
     // The hướng tu (Đan tu) make healing pills heal more.
     const healBoost = 1 + pathBonuses(profile.paths ?? NO_PATHS).potionHealPct / 100;
     const res = await this.mutateBag(id, (b) => {
@@ -2982,6 +3001,11 @@ export class MapRoom extends DurableObject<Env> {
     });
     if (!res.ok) return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
     this.sendBagDelta(id, res.before, res.after);
+    if (needsMp && mpBack !== undefined) {
+      const ev = this.sim?.restoreMp(id, mpBack, Date.now());
+      if (ev) this.sendToCharacter(id, { t: "mp", mp: ev.mp, maxMp: ev.maxMp, regenInMs: ev.regenInMs, perSec: mpRegenPerS() });
+    }
+    if (!needsHp || heal === undefined) return;
     const over = getItemDef(item.type)?.healOverMs;
     if (over !== undefined) {
       // Heals a little every second; the effect shows on the buff bar until it has all landed.
@@ -4054,10 +4078,22 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.fl ? { fl: p.fl } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+  }
+
+  /** A character sheet went out (a level, a breakthrough): when the realm or stage changed, everyone who sees the player gets the new look with it. */
+  private syncQi(ws: WebSocket, c: { realm: number; stage: number }): void {
+    const att = ws.deserializeAttachment() as PlayerState | null;
+    if (!att) return;
+    const lv = c.realm * 10 + c.stage;
+    if (att.lv === lv) return;
+    att.lv = lv;
+    ws.serializeAttachment(att);
+    this.broadcastAbout([att.id], { t: "look", id: att.id, ...(att.w ? { w: att.w } : {}), ...(att.o ? { o: att.o } : {}), ...(att.fl ? { fl: att.fl } : {}), lv });
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {
+    if (msg.t === "stats") this.syncQi(ws, msg.character);
     try {
       ws.send(JSON.stringify(msg));
     } catch {

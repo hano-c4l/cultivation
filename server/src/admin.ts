@@ -19,7 +19,7 @@ import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
 import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
 import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
 import { getEnhanceView, getMasterView, getSetsView, saveEnhance, saveMaster, saveSets } from "./gear-admin";
-import { addItem, addSkill, adjustMoney, addEquipment, deleteCharacter, editConstitution, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, startReview, type ProfileInput, type StatsInput } from "./characters-admin";
+import { addItem, addSkill, adjustMoney, addEquipment, deleteCharacter, editConstitution, editItem, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, setSkillLevel, startReview, type ItemEditInput, type ProfileInput, type StatsInput } from "./characters-admin";
 import { getConstitutionCatalog } from "./constitution-catalog";
 import { banAccount, getAccountDetail, listAccounts, parseAccountQuery, setTempPassword, unbanAccount } from "./accounts-admin";
 import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
@@ -675,7 +675,7 @@ export async function adminCharacterAction(request: Request, env: Env): Promise<
       result = await addItem(env.DB, admin, id, body.item, body.qty);
       break;
     case "addEquipment":
-      result = await addEquipment(env.DB, admin, id, body.type);
+      result = await addEquipment(env.DB, admin, id, body.type, Date.now(), body.qty ?? 1);
       break;
     case "removeItem":
       result = await removeItem(env.DB, admin, id, body.instance);
@@ -685,6 +685,12 @@ export async function adminCharacterAction(request: Request, env: Env): Promise<
       break;
     case "removeSkill":
       result = await removeSkill(env.DB, admin, id, body.skill);
+      break;
+    case "skillLevel":
+      result = await setSkillLevel(env.DB, admin, id, body.skill, body.level);
+      break;
+    case "editItem":
+      result = await editItem(env.DB, admin, id, body.instance, body.input as ItemEditInput);
       break;
     default:
       return errorResponse("invalid_body", 400);

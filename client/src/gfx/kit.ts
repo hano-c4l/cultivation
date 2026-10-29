@@ -158,7 +158,10 @@ export class GfxKit {
 
   /** Fetches the manifest, then loads the atlases of the current map. Never throws. */
   async init(): Promise<void> {
-    if (new URLSearchParams(location.search).get("gfx") === "off") return; // `?gfx=off`: everything stays code-drawn (the comparison for `?perf=1`)
+    if (new URLSearchParams(location.search).get("gfx") === "off") {
+      this.ready = true; // nothing to wait for
+      return;
+    } // `?gfx=off`: everything stays code-drawn (the comparison for `?perf=1`)
     try {
       const res = await fetch(manifestUrl(), { cache: "no-cache" });
       if (!res.ok) return;
@@ -176,6 +179,11 @@ export class GfxKit {
       this.ready = true;
     }
     if (this.mapId) this.useMap(this.mapId);
+  }
+
+  /** How far the loading is: the manifest is in (`ready`), how many atlases are still on their way and how many are in. The loading screen watches it. */
+  loadState(): { ready: boolean; pending: number; loaded: number } {
+    return { ready: this.ready, pending: this.pending.size, loaded: this.loaded.size };
   }
 
   /** Counts for the performance overlay (`?perf=1`). */

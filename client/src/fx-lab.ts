@@ -1,17 +1,24 @@
 import Phaser from "phaser";
 import { Effects } from "./fx";
 import { FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
+import { qiSpawnPoint, qiStyleOf } from "./qi-aura";
+import { DEFAULT_THEME } from "@game/shared";
 
 /**
  * A dev-only page (`/fx-lab.html` under `npm run dev -w client`; the build does not include it): two dots stand in for a caster and a target and every
  * skill effect can be fired at will, so effects are tuned by eye without a server, a login or a monster.
  */
+/** Cultivation levels (`realm * 10 + stage`) the `qi` button shows: the first and the last stage of each realm. */
+const LEVELS = [1, 9, 11, 19, 21, 29, 31, 39];
 const caster = { x: 260, y: 420 };
 const target = { x: 560, y: 340 };
 const posOf = (id: string): { x: number; y: number } | null => (id === "me" ? caster : id === "foe" ? target : id === "far" ? { x: 120, y: 300 } : null);
 
 class Lab extends Phaser.Scene {
   fx!: Effects;
+  /** Whether the figures wearing the qi of each level are shown (the `qi` button), and when each releases its next wisp. */
+  qi = false;
+  qiNext: number[] = [];
   create(): void {
     this.cameras.main.setBackgroundColor("#2c4a2e");
     for (const p of [caster, target]) this.add.ellipse(p.x, p.y, 36, 16, 0x000000, 0.35);
@@ -41,6 +48,22 @@ class Lab extends Phaser.Scene {
     add("ngu kiem", () => this.fx.skill("me", "ngu_kiem_tram", "foe", undefined, undefined));
     add("buff atk", () => this.fx.skill("me", "cuong_luc_2", undefined, undefined, undefined));
     add("buff def", () => this.fx.skill("me", "thuan_0", undefined, undefined, undefined));
+    // the new ways of delivering a skill: a piercing shot, a ring round the caster, a lane and a field that stay
+    for (const [label, id, el] of [["pierce kim", "kim_3", "kim"], ["pierce hoa", "hoa_4", "hoa"], ["pierce bang", "bang_3", "bang"], ["pierce loi", "loi_3", "loi"], ["pierce phong", "phong_3", "phong"], ["nova kim", "kim_4", "kim"], ["nova tho", "tho_4", "tho"], ["nova loi", "loi_4", "loi"], ["nova phong", "phong_4", "phong"]] as const) add(label, () => this.fx.skill("me", id, "foe", undefined, el));
+    for (const [label, id, el] of [["lane hoa", "hoa_3", "hoa"], ["field moc", "moc_4", "moc"], ["field thuy", "thuy_5", "thuy"], ["field bang", "bang_4", "bang"], ["field tho", "tho_5", "tho"], ["field phong", "phong_5", "phong"]] as const) {
+      add(label, () => {
+        this.fx.skill("me", id, "foe", undefined, el);
+        this.fx.zone(`lab${label}`, id, caster, target, 6000, el);
+      });
+    }
+    add("qi", () => {
+      // eight levels side by side: the first and last stage of the first four realms
+      this.qi = true;
+      LEVELS.forEach((lv, i) => {
+        this.add.rectangle(70 + i * 90, 300 - 20, 14, 36, 0xeeeeee).setDepth(10).setData("qi", true);
+        this.add.text(54 + i * 90, 306, String(lv), { color: "#ddd", fontSize: "11px" }).setData("qi", true);
+      });
+    });
     add("dots", () => {
       // three running effects on one figure for 6 s, each with its own share of the circle
       const ids = ["thuan_0", "cuong_luc_2", "hoi_0"];
@@ -76,6 +99,15 @@ class Lab extends Phaser.Scene {
   }
   update(time: number): void {
     this.fx.update(time);
+    if (this.qi) {
+      LEVELS.forEach((lv, i) => {
+        if (time < (this.qiNext[i] ?? 0)) return;
+        const st = qiStyleOf(lv, DEFAULT_THEME.realmColors);
+        this.qiNext[i] = time + (1000 / st.rate) * (0.6 + Math.random() * 0.8);
+        const at = qiSpawnPoint(70 + i * 90, 300, 36);
+        this.fx.puff("qi", at.x, at.y, st.burst, st.color);
+      });
+    }
   }
 }
 

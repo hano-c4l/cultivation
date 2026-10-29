@@ -1,6 +1,7 @@
-import { HOTBAR_SLOTS, REALMS, getItemDef, getSkill, parseSkillSlot, skillDisplayName, type ClientMessage, type SkillContext, type SkillDef } from "@game/shared";
+import { BASIC_SKILL_ID, HOTBAR_SLOTS, REALMS, getItemDef, getSkill, parseSkillSlot, skillDisplayName, type ClientMessage, type SkillContext, type SkillDef } from "@game/shared";
 import { realmClass } from "./equip-text";
-import { iconFor, skillIconFor } from "./icons";
+import { iconFor, renderIcon, skillIconSpecOf, uiIcon } from "./icons";
+import type { PrimaryChoice } from "./primary-store";
 import { vi } from "./locales/vi";
 
 export interface HotbarUi {
@@ -30,14 +31,16 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
  * (skills window, bag), then tap a slot", which also works on a touch screen. The server decides everything; the bar only
  * shows cooldowns it was told about and dims what MP cannot pay.
  */
-export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (skill: SkillDef) => void; mpCostOf: (skill: SkillDef) => number; getTarget: () => string | null; getAim: () => { x: number; y: number } | null; getMp: () => number; countOf: (type: string) => number; contextOf: (skill: SkillDef) => SkillContext }): HotbarUi {
+export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (skill: SkillDef) => void; mpCostOf: (skill: SkillDef) => number; getTarget: () => string | null; getAim: () => { x: number; y: number } | null; getMp: () => number; countOf: (type: string) => number; contextOf: (skill: SkillDef) => SkillContext; primary: () => PrimaryChoice | null; setPrimary: (choice: PrimaryChoice | null) => void; roots: () => string[]; hasBasic: () => boolean }): HotbarUi {
   const root = el("div");
   root.id = "hotbar";
   root.hidden = true;
   const note = el("div", "hb-note");
   note.hidden = true;
   const row = el("div", "hb-row");
-  root.append(note, row);
+  const menu = el("div", "hb-primary-menu");
+  menu.hidden = true;
+  root.append(note, menu, row);
   document.body.append(root);
   // On a phone the bar sits just above the chat box, whatever height that has.
   const chat = document.getElementById("chat");
@@ -51,8 +54,52 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
   /** Set when a mouse drag just ended, so the click that follows it does not also press the slot. */
   let justDragged = false;
 
+  /** The icon of the chosen attack: the plain one is a sword, the basic blast carries the colour of its element. */
+  function primaryIcon(choice: PrimaryChoice | null): SVGSVGElement {
+    const def = choice ? getSkill(choice.skill) : undefined;
+    if (!choice || !def) return uiIcon("sword");
+    return renderIcon({ ...skillIconSpecOf(def), element: choice.el || deps.roots()[0] || null });
+  }
+
+  const primaryName = (choice: PrimaryChoice | null): string => (choice ? `${skillDisplayName(getSkill(choice.skill) ?? { id: BASIC_SKILL_ID, nameVi: "Phóng Khí" } as SkillDef)}${deps.roots().length > 1 ? ` · ${vi.skills.elementNames[choice.el || deps.roots()[0] || ""] ?? ""}` : ""}` : vi.hotbar.plainAttack);
+
+  /** The slot in front of the first one: the attack used when a monster is clicked and nothing else is chosen. Tapping it lists the plain attack and the basic blast in each element. */
+  function primarySlot(): HTMLElement {
+    const choice = deps.primary();
+    const b = el("button", "hb-primary");
+    b.append(primaryIcon(choice), el("span", "hb-name", choice ? vi.hotbar.blastShort : vi.hotbar.plainShort));
+    b.title = `${vi.hotbar.primary}: ${primaryName(choice)}`;
+    b.onclick = (ev) => {
+      ev.stopPropagation();
+      if (!menu.hidden) return void (menu.hidden = true);
+      menu.replaceChildren(el("div", "hb-pm-title", vi.hotbar.primary));
+      const options: Array<PrimaryChoice | null> = [null];
+      if (deps.hasBasic()) {
+        const roots = deps.roots();
+        for (const r of roots.length > 0 ? roots : [""]) options.push({ skill: BASIC_SKILL_ID, el: r });
+      }
+      for (const o of options) {
+        const same = (o === null && choice === null) || (o !== null && choice !== null && (o.el || deps.roots()[0] || "") === (choice.el || deps.roots()[0] || ""));
+        const item = el("button", `hb-pm-item${same ? " on" : ""}`);
+        item.append(primaryIcon(o), el("span", undefined, o === null ? vi.hotbar.plainAttack : primaryName(o)));
+        item.onclick = (e) => {
+          e.stopPropagation();
+          deps.setPrimary(o);
+          menu.hidden = true;
+          render();
+        };
+        menu.append(item);
+      }
+      menu.hidden = false;
+    };
+    return b;
+  }
+  document.addEventListener("pointerdown", (ev) => {
+    if (!menu.hidden && !(ev.target instanceof Node && (menu.contains(ev.target) || row.querySelector(".hb-primary")?.contains(ev.target)))) menu.hidden = true;
+  });
+
   function render(): void {
-    row.replaceChildren();
+    row.replaceChildren(primarySlot());
     let busy = false;
     slots.forEach((v, i) => {
       const b = el("button", "hb-slot");
@@ -62,7 +109,7 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
       const slotSkill = parseSkillSlot(v);
       if (slotSkill) {
         const skill = getSkill(slotSkill.id);
-        b.append(skillIconFor(skill), el("span", "hb-name", skill ? skillDisplayName(skill) : slotSkill.id));
+        b.append(renderIcon(skillIconSpecOf(skill)), el("span", "hb-name", skill ? skillDisplayName(skill) : slotSkill.id));
         // The element the skill is used with (its own, or the one picked when it was put here) shows in the corner, like on gear.
         const element = skill?.element ?? slotSkill.element;
         if (element) b.append(el("span", `elem-dot hb-elem elem-${element}`));

@@ -26,6 +26,9 @@ export interface LootLine {
   max: number;
 }
 
+/** The limits of the Auto hunt (see `Tuning.auto`). */
+export type AutoLimits = Tuning["auto"];
+
 export interface Tuning {
   /** Tinh luyện: ore taken, Linh Thạch (as a share of `enhanceCost.linhBase` of the realm) and the chance each stat is rolled. */
   refine: { materials: number; linhShare: number; statChance: number };
@@ -162,6 +165,8 @@ export interface Tuning {
   weaponReach: Record<string, number>;
   /** The ground a skill covers besides its target, by skill id, then by template (`tram_2` is `tram`), then by gear family (`pb`, `bm`). */
   skillAreas: Record<string, AreaDef>;
+  /** The limits of the Auto hunt (the client automation): what a player may pick and how fast it works. The player's own choices are kept in the browser. */
+  auto: { radiusMin: number; radiusMax: number; radiusDefault: number; tickMs: number; giveUpMs: number; skipMs: number; potionGapMs: number; castBackoffMs: number };
   /** How a skill is drawn, by skill id, then template, then gear family: a style name of `SKILL_LOOKS` (a skill with none is drawn by its kind). */
   skillLooks: Record<string, string>;
 }
@@ -293,6 +298,10 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       hoi_huyet_dan: 10,
       duong_huyet_dan: 25,
       dai_hoi_huyet_dan: 60,
+      hoi_linh_dan: 10,
+      dai_hoi_linh_dan: 60,
+      linh_tuyen_dan: 400,
+      bao_linh_dan: 1_500,
       ngo_dao_dan: 1500,
       linh_thao: 3,
       thu_cot: 3,
@@ -451,6 +460,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     liet_hoa_xa: "snake",
   },
   flightLooks: { default: "sword", byElement: { moc: "lotus", thuy: "cloud", phong: "cloud", bang: "cloud", hoa: "sword", kim: "sword", loi: "sword", tho: "lotus" } },
+  auto: { radiusMin: 3, radiusMax: 40, radiusDefault: 20, tickMs: 350, giveUpMs: 6000, skipMs: 20_000, potionGapMs: 2500, castBackoffMs: 2500 },
   weaponReach: { kiem: 1.8, dao: 1.8, thuong: 3, riu: 1.7, cung: 7, quyen: 1.5, none: 1.6 },
   weaponArea: {
     kiem: { shape: "arc", range: 1.9, deg: 120, maxTargets: 3, pct: 70 },
@@ -467,35 +477,43 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     ngu_kiem_tram: { shape: "circle", range: 1.8, at: "aim", maxTargets: 4, pct: 70 },
     pb: { shape: "circle", range: 1.5, at: "aim", maxTargets: 3, pct: 60 },
     bm: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 80 },
-    kim_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
-    kim_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    kim_3: { shape: "line", range: 10, width: 1.2, maxTargets: 4, pct: 75 },
+    kim_4: { shape: "circle", range: 4, at: "self", maxTargets: 6, pct: 80 },
     kim_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
     moc_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
-    moc_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
-    moc_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
-    thuy_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
+    moc_4: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 28, zone: { ms: 7000, tickMs: 1000 } },
+    moc_5: { shape: "circle", range: 4.5, at: "self", maxTargets: 7, pct: 85 },
+    thuy_3: { shape: "line", range: 10, width: 1.2, maxTargets: 4, pct: 75 },
     thuy_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
-    thuy_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
-    hoa_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
-    hoa_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    thuy_5: { shape: "circle", range: 3.5, at: "aim", maxTargets: 7, pct: 30, zone: { ms: 8000, tickMs: 1000 } },
+    hoa_3: { shape: "line", range: 8, width: 1.6, maxTargets: 5, pct: 16, zone: { ms: 6000, tickMs: 600 } },
+    hoa_4: { shape: "line", range: 11, width: 1.4, maxTargets: 5, pct: 80 },
     hoa_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
     tho_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
-    tho_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
-    tho_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
-    loi_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
-    loi_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    tho_4: { shape: "circle", range: 4, at: "self", maxTargets: 6, pct: 80 },
+    tho_5: { shape: "circle", range: 3.5, at: "aim", maxTargets: 7, pct: 30, zone: { ms: 8000, tickMs: 1000 } },
+    loi_3: { shape: "line", range: 10, width: 1.2, maxTargets: 4, pct: 75 },
+    loi_4: { shape: "circle", range: 4, at: "self", maxTargets: 6, pct: 80 },
     loi_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
-    bang_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
-    bang_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
-    bang_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
-    phong_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
-    phong_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
-    phong_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
+    bang_3: { shape: "line", range: 10, width: 1.2, maxTargets: 4, pct: 75 },
+    bang_4: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 28, zone: { ms: 7000, tickMs: 1000 } },
+    bang_5: { shape: "circle", range: 4.5, at: "self", maxTargets: 7, pct: 85 },
+    phong_3: { shape: "line", range: 10, width: 1.2, maxTargets: 4, pct: 75 },
+    phong_4: { shape: "circle", range: 4, at: "self", maxTargets: 6, pct: 80 },
+    phong_5: { shape: "circle", range: 3.5, at: "aim", maxTargets: 7, pct: 30, zone: { ms: 8000, tickMs: 1000 } },
+    kt_kiem_khi: { shape: "line", range: 9, width: 1.2, maxTargets: 4, pct: 70 },
+    kt_kiem_y: { shape: "line", range: 10, width: 1.4, maxTargets: 5, pct: 75 },
+    kt_than_kiem: { shape: "line", range: 12, width: 2, maxTargets: 6, pct: 85 },
+    kt_lien_hoan: { shape: "circle", range: 3, at: "self", maxTargets: 5, pct: 70 },
+    tt_phap_tran: { shape: "circle", range: 3, at: "aim", maxTargets: 5, pct: 26, zone: { ms: 6000, tickMs: 1000 } },
+    tt_dai_phap: { shape: "circle", range: 4.5, at: "self", maxTargets: 7, pct: 85 },
   },
   skillLooks: {
     chuong: "palm", tram: "slash", chi: "finger", ngu_kiem_tram: "sword", pb: "orb", bm: "great",
     thuan: "dome", cuong_luc: "flames", phong_bo: "wind", cuong_than: "flames", cuong_than_na: "flames", ho_the_kd: "bell", bm_ho_the: "bell",
     tt_linh_an: "seal", tt_linh_hai: "seal", kt_hop_nhat: "sword", dt_duong_nguyen: "furnace", dt_dan_khi: "furnace", dt_kim_than: "bell", pt_phong_than: "wind",
+    kim_3: "lance", kim_4: "nova", moc_4: "field", moc_5: "nova", thuy_3: "lance", thuy_5: "field", hoa_3: "lane", hoa_4: "lance", tho_4: "nova", tho_5: "field", loi_3: "lance", loi_4: "nova", bang_3: "lance", bang_4: "field", bang_5: "nova", phong_3: "lance", phong_4: "nova", phong_5: "field", kt_kiem_khi: "lance", kt_kiem_y: "lance", kt_than_kiem: "lance", kt_lien_hoan: "nova", tt_phap_tran: "field", tt_dai_phap: "nova",
+    khi_co_ban: "bolt",
     hoi: "lotus", hoi_nguyen_kd: "lotus", tt_hoi_linh: "lotus", bm_hoi_sinh: "phoenix", dt_hoi_xuan: "furnace", dt_hoi_duong: "furnace", dt_dai_hoi: "furnace",
   },
   monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
@@ -566,6 +584,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
   flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen), theo hệ của món đang dùng",
+  auto: "Giới hạn của Auto đánh quái: phạm vi tối thiểu, tối đa, mặc định (ô), nhịp ra lệnh (ms), thời gian bỏ một con đánh mãi không trúng, nghỉ giữa hai lần uống đan, nghỉ sau khi kỹ năng báo lỗi",
   weaponReach: "Tầm đánh thường theo họ vũ khí (ô): nhân vật đứng cách mục tiêu tối đa chừng này rồi mới ra đòn (cung bắn từ xa, thương dài hơn kiếm)",
   weaponArea: "Vùng chém của đánh thường theo họ vũ khí: quái gần mục tiêu trong vùng cũng bị đánh",
   skillAreas: "Vùng sát thương của kỹ năng tấn công: hình quạt, đường thẳng hay vòng tròn, số mục tiêu tối đa, phần sát thương của mục tiêu phụ",
@@ -846,6 +865,18 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       const styles = (m: unknown): boolean => m === undefined || (obj(m) && Object.keys(m).length <= 40 && Object.entries(m).every(([k, v]) => /^[a-z0-9_]{1,16}$/.test(k) && (FLIGHT_STYLES as readonly unknown[]).includes(v)));
       return (FLIGHT_STYLES as readonly unknown[]).includes(value.default) && styles(value.byElement) && styles(value.byRealm);
     }
+    case "auto":
+      return (
+        int(value.radiusMin, 1, 60) &&
+        int(value.radiusMax, 1, 60) &&
+        (value.radiusMin as number) <= (value.radiusMax as number) &&
+        int(value.radiusDefault, value.radiusMin as number, value.radiusMax as number) &&
+        int(value.tickMs, 150, 2000) &&
+        int(value.giveUpMs, 1000, 60_000) &&
+        int(value.skipMs, 1000, 300_000) &&
+        int(value.potionGapMs, 500, 30_000) &&
+        int(value.castBackoffMs, 500, 30_000)
+      );
     case "weaponReach":
       return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && num(v, 0.5, 20));
     case "weaponArea":
@@ -858,7 +889,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
         (a.width === undefined || num(a.width, 0.1, 10)) &&
         (a.at === undefined || a.at === "self" || a.at === "aim") &&
         int(a.maxTargets, 1, 20) &&
-        num(a.pct, 1, 300);
+        num(a.pct, 1, 300) &&
+        (a.zone === undefined || (obj(a.zone) && int(a.zone.ms, 500, 30_000) && int(a.zone.tickMs, 200, 5000)));
       return Object.keys(value).length <= 300 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && area(v));
     }
     case "skillLooks":

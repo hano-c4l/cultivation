@@ -34,6 +34,8 @@ export interface ItemDef {
   healFraction?: number;
   /** With `healFraction`: the heal is spread evenly over this many ms instead of landing at once (shown as an effect on the buff bar). */
   healOverMs?: number;
+  /** Consumables that restore MP (linh lực): fraction of max MP restored on use, all at once. A pill may restore both. */
+  mpFraction?: number;
   /** Equipment only: the template behind the item (slot kind, stats, requirements, durability). */
   equip?: EquipInfo;
   /** Pills that raise the mastery of a skill: how many mastery points one gives (used from the skills window). */
@@ -69,7 +71,7 @@ const BREAKTHROUGH_PILLS: Record<string, ItemDef> = Object.fromEntries(
         nameVi: `Đan Đột Phá ${realm}`,
         descVi: `Cần để đột phá lên cảnh giới ${realm} (tối đa ${b.maxPills} viên mỗi lần, càng nhiều càng dễ thành công). Dùng từ bảng Nhân vật.`,
         category: "consumable",
-        maxStack: 99,
+        maxStack: 999,
         rarity: "epic",
         grade: Math.min(MAX_ITEM_GRADE, b.to + 1),
         breakthroughTo: b.to,
@@ -84,7 +86,7 @@ const PATH_ITEMS: Record<string, ItemDef> = Object.fromEntries(
     const p = PATHS[id];
     return [
       p.item,
-      { id: p.item, nameVi: p.itemNameVi, descVi: `Vật phẩm để bước vào hướng tu ${p.nameVi}. Dùng từ bảng Nhân vật, mục hướng tu.`, category: "material", maxStack: 99, rarity: "epic", grade: 3, pathItem: id } satisfies ItemDef,
+      { id: p.item, nameVi: p.itemNameVi, descVi: `Vật phẩm để bước vào hướng tu ${p.nameVi}. Dùng từ bảng Nhân vật, mục hướng tu.`, category: "material", maxStack: 999, rarity: "epic", grade: 3, pathItem: id } satisfies ItemDef,
     ];
   }),
 );
@@ -94,13 +96,13 @@ const SMITH_ITEMS: Record<string, ItemDef> = {
   ...Object.fromEntries(
     SMITH_ORES.map((id, realm) => [
       id,
-      { id, nameVi: `Tinh Thiết ${REALMS[realm]?.nameVi ?? ""}`, descVi: `Nguyên liệu để Thợ Rèn nâng cấp trang bị và pháp bảo cảnh giới ${REALMS[realm]?.nameVi ?? ""}. Chỉ rơi từ quái cảnh giới này.`, category: "material", maxStack: 99, rarity: "uncommon", grade: Math.min(MAX_ITEM_GRADE, realm + 1) } satisfies ItemDef,
+      { id, nameVi: `Tinh Thiết ${REALMS[realm]?.nameVi ?? ""}`, descVi: `Nguyên liệu để Thợ Rèn nâng cấp trang bị và pháp bảo cảnh giới ${REALMS[realm]?.nameVi ?? ""}. Chỉ rơi từ quái cảnh giới này.`, category: "material", maxStack: 999, rarity: "uncommon", grade: Math.min(MAX_ITEM_GRADE, realm + 1) } satisfies ItemDef,
     ]),
   ),
   ...Object.fromEntries(
     REFINE_ORES.map((id, realm) => [
       id,
-      { id, nameVi: `Tinh Hoa ${REALMS[realm]?.nameVi ?? ""}`, descVi: `Nguyên liệu để Thợ Rèn tinh luyện trang bị và pháp bảo cảnh giới ${REALMS[realm]?.nameVi ?? ""}, tăng chỉ số lên gần mức tối đa. Hiếm hơn Tinh Thiết; chỉ rơi từ quái và boss cảnh giới này.`, category: "material", maxStack: 99, rarity: "rare", grade: Math.min(MAX_ITEM_GRADE, realm + 1) } satisfies ItemDef,
+      { id, nameVi: `Tinh Hoa ${REALMS[realm]?.nameVi ?? ""}`, descVi: `Nguyên liệu để Thợ Rèn tinh luyện trang bị và pháp bảo cảnh giới ${REALMS[realm]?.nameVi ?? ""}, tăng chỉ số lên gần mức tối đa. Hiếm hơn Tinh Thiết; chỉ rơi từ quái và boss cảnh giới này.`, category: "material", maxStack: 999, rarity: "rare", grade: Math.min(MAX_ITEM_GRADE, realm + 1) } satisfies ItemDef,
     ]),
   ),
   [KEEP_LEVEL_ITEM]: {
@@ -108,7 +110,7 @@ const SMITH_ITEMS: Record<string, ItemDef> = {
     nameVi: "Hộ Cấp Phù",
     descVi: "Dùng khi nâng cấp ở Thợ Rèn (từ +6 trở lên): nếu thất bại thì giữ nguyên cấp cường hóa, không bị rớt. Chỉ mất phù khi thật sự cứu được một cấp. Bán bằng Tiên Ngọc.",
     category: "material",
-    maxStack: 99,
+    maxStack: 999,
     rarity: "epic",
     grade: 3,
   },
@@ -124,7 +126,7 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     nameVi: "Hồi Huyết Đan",
     descVi: "Đan dược cơ bản, hồi 40% sinh lực khi dùng.",
     category: "consumable",
-    maxStack: 99,
+    maxStack: 999,
     rarity: "common",
     grade: 1,
     healFraction: 0.4,
@@ -134,7 +136,7 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     nameVi: "Dưỡng Huyết Đan",
     descVi: "Đan dược hồi 40% sinh lực, thấm dần trong 5 giây.",
     category: "consumable",
-    maxStack: 99,
+    maxStack: 999,
     rarity: "uncommon",
     grade: 1,
     healFraction: 0.4,
@@ -145,7 +147,7 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     nameVi: "Đại Hồi Huyết Đan",
     descVi: "Đan dược hồi 80% sinh lực khi dùng.",
     category: "consumable",
-    maxStack: 99,
+    maxStack: 999,
     rarity: "uncommon",
     grade: 2,
     healFraction: 0.8,
@@ -155,7 +157,7 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     nameVi: "Linh Nguyên Đan",
     descVi: "Đan dược cấp Kim Đan, hồi 60% sinh lực khi dùng.",
     category: "consumable",
-    maxStack: 99,
+    maxStack: 999,
     rarity: "rare",
     grade: 3,
     healFraction: 0.6,
@@ -165,18 +167,58 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     nameVi: "Bảo Nguyên Đan",
     descVi: "Đan dược cấp Nguyên Anh, hồi đầy sinh lực, thấm dần trong 4 giây.",
     category: "consumable",
-    maxStack: 99,
+    maxStack: 999,
     rarity: "epic",
     grade: 4,
     healFraction: 1,
     healOverMs: 4000,
+  },
+  hoi_linh_dan: {
+    id: "hoi_linh_dan",
+    nameVi: "Hồi Linh Đan",
+    descVi: "Đan dược cơ bản, hồi 40% linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 999,
+    rarity: "common",
+    grade: 1,
+    mpFraction: 0.4,
+  },
+  dai_hoi_linh_dan: {
+    id: "dai_hoi_linh_dan",
+    nameVi: "Đại Hồi Linh Đan",
+    descVi: "Đan dược hồi 80% linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 999,
+    rarity: "uncommon",
+    grade: 2,
+    mpFraction: 0.8,
+  },
+  linh_tuyen_dan: {
+    id: "linh_tuyen_dan",
+    nameVi: "Linh Tuyền Đan",
+    descVi: "Đan dược cấp Kim Đan, hồi 60% linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 999,
+    rarity: "rare",
+    grade: 3,
+    mpFraction: 0.6,
+  },
+  bao_linh_dan: {
+    id: "bao_linh_dan",
+    nameVi: "Bảo Linh Đan",
+    descVi: "Đan dược cấp Nguyên Anh, hồi đầy linh lực khi dùng.",
+    category: "consumable",
+    maxStack: 999,
+    rarity: "epic",
+    grade: 4,
+    mpFraction: 1,
   },
   thien_ngo_dan: {
     id: "thien_ngo_dan",
     nameVi: "Thiên Ngộ Đan",
     descVi: "Dùng từ cửa sổ Kỹ năng để tăng độ thuần thục cho một kỹ năng, gấp năm lần một Ngộ Đạo Đan.",
     category: "consumable",
-    maxStack: 99,
+    maxStack: 999,
     rarity: "epic",
     grade: 4,
     masteryPills: MASTERY_PILL_POINTS * 5,
@@ -186,7 +228,7 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     nameVi: "Truyền Tống Phù · Thiên Hà Thành",
     descVi: "Dùng để lập tức trở về Thiên Hà Thành. Chỉ bán ở thương nhân của thành, không rơi từ quái.",
     category: "consumable",
-    maxStack: 20,
+    maxStack: 99,
     rarity: "rare",
     grade: 3,
     teleportTo: "town2",
@@ -196,7 +238,7 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     nameVi: "Truyền Tống Phù · Thanh Vân Thành",
     descVi: "Dùng để lập tức trở về Thanh Vân Thành. Chỉ bán ở thương nhân của thành, không rơi từ quái.",
     category: "consumable",
-    maxStack: 20,
+    maxStack: 99,
     rarity: "uncommon",
     grade: 2,
     teleportTo: "town",
@@ -206,14 +248,14 @@ export const ITEMS: Readonly<Record<string, ItemDef>> = {
     nameVi: "Ngộ Đạo Đan",
     descVi: "Dùng từ cửa sổ Kỹ năng để tăng độ thuần thục cho một kỹ năng (kỹ năng linh căn, tông môn hoặc học được).",
     category: "consumable",
-    maxStack: 99,
+    maxStack: 999,
     rarity: "rare",
     grade: 3,
     masteryPills: MASTERY_PILL_POINTS,
   },
-  linh_thao: { id: "linh_thao", nameVi: "Linh Thảo", descVi: "Thảo dược mọc nơi linh khí dồi dào, dùng làm nguyên liệu luyện đan.", category: "material", maxStack: 99, rarity: "common", grade: 1 },
-  thu_cot: { id: "thu_cot", nameVi: "Thú Cốt", descVi: "Xương của yêu thú, dùng làm nguyên liệu.", category: "material", maxStack: 99, rarity: "common", grade: 1 },
-  yeu_dan: { id: "yeu_dan", nameVi: "Yêu Đan", descVi: "Tinh hoa ngưng tụ trong người yêu thú mạnh.", category: "material", maxStack: 99, rarity: "rare", grade: 2 },
+  linh_thao: { id: "linh_thao", nameVi: "Linh Thảo", descVi: "Thảo dược mọc nơi linh khí dồi dào, dùng làm nguyên liệu luyện đan.", category: "material", maxStack: 999, rarity: "common", grade: 1 },
+  thu_cot: { id: "thu_cot", nameVi: "Thú Cốt", descVi: "Xương của yêu thú, dùng làm nguyên liệu.", category: "material", maxStack: 999, rarity: "common", grade: 1 },
+  yeu_dan: { id: "yeu_dan", nameVi: "Yêu Đan", descVi: "Tinh hoa ngưng tụ trong người yêu thú mạnh.", category: "material", maxStack: 999, rarity: "rare", grade: 2 },
 };
 
 const EQUIPMENT_RARITY: readonly ItemRarity[] = ["common", "uncommon", "rare", "epic"];
@@ -278,9 +320,10 @@ export function itemOverlayProblem(o: ItemOverlay): string | null {
   if (!isInt(d.maxStack, 1, 9999)) return "bad stack size";
   if (d.healFraction !== undefined && !(typeof d.healFraction === "number" && d.healFraction > 0 && d.healFraction <= 1)) return "bad heal";
   if (d.healOverMs !== undefined && (d.healFraction === undefined || !isInt(d.healOverMs, 1, 600_000))) return "bad heal time";
+  if (d.mpFraction !== undefined && !(typeof d.mpFraction === "number" && d.mpFraction > 0 && d.mpFraction <= 1)) return "bad MP restore";
   if (d.masteryPills !== undefined && !isInt(d.masteryPills, 1, 1_000_000)) return "bad mastery points";
-  if (d.category !== "consumable" && (d.healFraction !== undefined || d.masteryPills !== undefined)) return "only consumables heal or teach";
-  if (d.healFraction !== undefined && d.masteryPills !== undefined) return "a consumable heals or raises mastery, not both";
+  if (d.category !== "consumable" && (d.healFraction !== undefined || d.mpFraction !== undefined || d.masteryPills !== undefined)) return "only consumables heal or teach";
+  if ((d.healFraction !== undefined || d.mpFraction !== undefined) && d.masteryPills !== undefined) return "a consumable heals or raises mastery, not both";
   return null;
 }
 
