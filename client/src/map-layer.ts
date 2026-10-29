@@ -74,6 +74,12 @@ export function ensureGroundTexture(scene: Phaser.Scene, palette: MapData["palet
     const y = 6 + rnd(n, 8, 32) * (GROUND_H - 12);
     detail(g, style, x, y, palette, rnd(n, 9, 33));
   }
+  // a few larger marks of the style, each fully inside as well: flowers, flagstone joints, frost runes, glowing cracks
+  for (let n = 0; n < 16; n++) {
+    const x = 24 + rnd(n, 11, 41) * (GROUND_W - 48);
+    const y = 14 + rnd(n, 12, 42) * (GROUND_H - 28);
+    feature(g, style, x, y, palette, rnd(n, 13, 43));
+  }
   g.generateTexture(key, GROUND_W, GROUND_H);
   g.destroy();
   return key;
@@ -83,6 +89,54 @@ export function ensureGroundTexture(scene: Phaser.Scene, palette: MapData["palet
 function mixColor(a: number, b: number): number {
   const c = (shift: number): number => Math.round((((a >> shift) & 255) + ((b >> shift) & 255)) / 2);
   return (c(16) << 16) | (c(8) << 8) | c(0);
+}
+
+/** One larger mark on the ground of a style at (x, y), in the manner of a xianxia garden: a flower, a carved flagstone ring, a frost rune, a glowing crack. */
+function feature(g: Phaser.GameObjects.Graphics, style: GroundStyle, x: number, y: number, p: MapData["palette"], v: number): void {
+  switch (style) {
+    case "grass": {
+      if (v < 0.35) {
+        // a lily pad with a pink lotus bud
+        g.fillStyle(shade(p.groundA, 0.7), 0.9).fillEllipse(x, y, 16, 7);
+        g.fillStyle(0xffd9ea, 0.95).fillEllipse(x - 1, y - 2, 6, 3).fillEllipse(x + 2, y - 2, 4, 2.4);
+        g.fillStyle(0xf59ac0, 1).fillCircle(x, y - 2.5, 1.4);
+      } else {
+        // a little flower: white petals, a yellow heart
+        for (let i = 0; i < 5; i++) g.fillStyle(0xffffff, 0.95).fillCircle(x + Math.cos((i / 5) * Math.PI * 2) * 2.2, y + Math.sin((i / 5) * Math.PI * 2) * 1.2, 1.2);
+        g.fillStyle(0xf2c94c, 1).fillCircle(x, y, 1);
+      }
+      break;
+    }
+    case "stone": {
+      // flagstone joints with a small carved ring
+      g.lineStyle(1, shade(p.groundA, 0.55), 0.7).lineBetween(x - 14, y - 4, x + 14, y + 4).lineBetween(x - 8, y + 6, x + 6, y - 6);
+      if (v < 0.4) g.lineStyle(1, shade(p.groundA, 1.5), 0.7).strokeEllipse(x, y, 12, 6).strokeEllipse(x, y, 5, 2.5);
+      break;
+    }
+    case "snow": {
+      // a frost rune: six strokes through a point
+      g.lineStyle(1, 0xbfe3ff, 0.9);
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI;
+        g.lineBetween(x - Math.cos(a) * 6, y - Math.sin(a) * 3, x + Math.cos(a) * 6, y + Math.sin(a) * 3);
+      }
+      g.fillStyle(0xffffff, 0.9).fillCircle(x, y, 1);
+      break;
+    }
+    case "lava": {
+      // a glowing crack with a spark of ember
+      g.lineStyle(2, 0xff7a2a, 0.5).lineBetween(x - 9, y - 2, x - 2, y + 2).lineBetween(x - 2, y + 2, x + 3, y - 1).lineBetween(x + 3, y - 1, x + 10, y + 3);
+      g.lineStyle(1, 0xffd27a, 0.95).lineBetween(x - 9, y - 2, x - 2, y + 2).lineBetween(x - 2, y + 2, x + 3, y - 1).lineBetween(x + 3, y - 1, x + 10, y + 3);
+      break;
+    }
+    case "dirt": {
+      // a scatter of pebbles
+      for (let i = 0; i < 4; i++) g.fillStyle(shade(p.groundA, 0.65 + (i % 2) * 0.5), 0.85).fillEllipse(x + (i - 1.5) * 3.5, y + ((i * 5) % 3), 2.6, 1.6);
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 /** One small mark on the ground of a style at (x, y); `v` in [0, 1) varies it. */
@@ -188,6 +242,38 @@ export function ensureObstacleTexture(scene: Phaser.Scene, style: ObstacleStyle,
         g.fillStyle(shade(col, 0.85), 0.95).lineStyle(1.5, 0x1d3a52, 1).fillTriangle(cx + dx - w, base, cx + dx + w, base, cx + dx, base - h).strokeTriangle(cx + dx - w, base, cx + dx + w, base, cx + dx, base - h);
         g.fillStyle(0xffffff, 0.7).fillTriangle(cx + dx - w, base, cx + dx, base, cx + dx, base - h);
       }
+      break;
+    }
+    case "bamboo": {
+      // a clump of green stalks with nodes and a few leaves
+      const stalks: Array<[number, number, number]> = [[-9, 46, 3.4], [-2, 56 + variant * 3, 3.8], [6, 50, 3.4], [12, 38, 3]];
+      for (const [dx, h, w] of stalks) {
+        g.fillStyle(0x6faa4a, 1).lineStyle(1.5, 0x1d3a16, 1).fillRect(cx + dx - w, base - h, w * 2, h).strokeRect(cx + dx - w, base - h, w * 2, h);
+        g.fillStyle(0xa5d46a, 0.9).fillRect(cx + dx - w, base - h, w * 0.7, h);
+        for (let n = 1; n * 12 < h; n++) g.lineStyle(1.2, 0x2d5a22, 1).lineBetween(cx + dx - w, base - n * 12, cx + dx + w, base - n * 12);
+        for (const [lx, ly] of [[-1, 6], [1, 18]] as const) g.fillStyle(0x4f9a3a, 1).lineStyle(1, 0x1d3a16, 1).fillTriangle(cx + dx, base - h + ly, cx + dx + lx * 16, base - h + ly - 6, cx + dx + lx * 9, base - h + ly + 3);
+      }
+      break;
+    }
+    case "lantern": {
+      // a stone lantern: a base, a post, a lit box and a roof
+      const stone = 0xa9a39a;
+      g.fillStyle(stone, 1).lineStyle(1.5, outline, 1).fillRect(cx - 9, base - 6, 18, 6).strokeRect(cx - 9, base - 6, 18, 6);
+      g.fillRect(cx - 3, base - 26, 6, 20).strokeRect(cx - 3, base - 26, 6, 20);
+      g.fillStyle(0xffd27a, 0.35).fillCircle(cx, base - 36, 15);
+      g.fillStyle(0xffe9a0, 1).lineStyle(1.5, outline, 1).fillRect(cx - 7, base - 42, 14, 14).strokeRect(cx - 7, base - 42, 14, 14);
+      g.lineStyle(1, 0x8a5a14, 1).lineBetween(cx, base - 42, cx, base - 28).lineBetween(cx - 7, base - 35, cx + 7, base - 35);
+      g.fillStyle(0x6e675e, 1).lineStyle(1.5, outline, 1).fillTriangle(cx - 13, base - 42, cx + 13, base - 42, cx, base - 54).strokeTriangle(cx - 13, base - 42, cx + 13, base - 42, cx, base - 54);
+      break;
+    }
+    case "jade": {
+      // a boulder of jade with a pale heart
+      const col = 0x5fbf8f;
+      const pts = [[-22, 0], [-20, -14], [-10, -26], [6, -28], [19, -18], [22, -4], [18, 0]].map(([x, y]) => new Phaser.Math.Vector2(cx + (x as number), base + (y as number) * (0.85 + variant * 0.07)));
+      g.fillStyle(col, 1).lineStyle(1.5, 0x123a28, 1).fillPoints(pts, true).strokePoints(pts, true);
+      g.fillStyle(0xbff0d4, 0.85).fillPoints([pts[1] as Phaser.Math.Vector2, pts[2] as Phaser.Math.Vector2, new Phaser.Math.Vector2(cx - 2, base - 14), new Phaser.Math.Vector2(cx - 12, base - 8)], true);
+      g.fillStyle(0xe6fff0, 0.9).fillCircle(cx + 6, base - 18, 3).fillCircle(cx - 8, base - 12, 1.6);
+      g.lineStyle(1, 0x2f8a60, 0.9).lineBetween(cx + 4, base - 24, cx + 9, base - 10);
       break;
     }
     default:

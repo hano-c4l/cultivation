@@ -145,7 +145,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { bodyOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
@@ -195,6 +195,12 @@ import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
 
+/** The look of the worn flight pháp bảo (none when nothing is worn there or it is broken): the others draw a rider on it. */
+function flightLookOf(equipped: ReadonlyArray<{ slot: string; type: string; dur?: number }>): string | undefined {
+  const f = equipped.find((e) => e.slot === "flight" && e.dur !== 0);
+  return f ? flightStyleOf(f.type) : undefined;
+}
+
 /** Per-socket state persisted via the hibernation attachment, so the DO can sleep safely. */
 /** Least time between two answers to `mail_refresh` on one socket (it reads D1). */
 const MAIL_REFRESH_GAP_MS = 5000;
@@ -213,6 +219,8 @@ interface PlayerState {
   w?: string;
   /** The outfit shown (see `outfitOf`); `applyGear` keeps it current. */
   o?: string;
+  /** The look of the worn flight pháp bảo (see `flightStyleOf`); `applyGear` keeps it current. */
+  fl?: string;
   /** Lock claim id of this connection, kept so the lock can be released after a wake-up. */
   claimId: string;
   mapId: MapId;
@@ -554,6 +562,7 @@ export class MapRoom extends DurableObject<Env> {
         ...(bodyOf(row.gender) === "female" ? { female: true } : {}),
         ...(weaponFamily(bagNow.equipped) ? { w: weaponFamily(bagNow.equipped) as string } : {}),
         ...(outfitOf(bagNow.equipped) ? { o: outfitOf(bagNow.equipped) as string } : {}),
+        ...(flightLookOf(bagNow.equipped) ? { fl: flightLookOf(bagNow.equipped) as string } : {}),
         claimId,
         mapId,
         path: [position],
@@ -1443,7 +1452,7 @@ export class MapRoom extends DurableObject<Env> {
         this.broadcastAbout([ev.id], { t: "mon_gone", id: ev.id, dead: true });
         return this.forgetEntity(ev.id);
       case "hit": {
-        this.broadcastAbout([ev.from, ev.to], { t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}) });
+        this.broadcastAbout([ev.from, ev.to], { t: "hit", from: ev.from, to: ev.to, kind: ev.kind, damage: ev.damage, hp: ev.hp, ...(ev.skill ? { skill: ev.skill } : {}), ...(ev.ret ? { ret: true as const } : {}), ...(ev.aoe ? { aoe: true as const } : {}) });
         // Anything that attacks a character in the middle of a breakthrough (hit or miss) breaks it.
         // Who hit whom among the players: a player that hit you in the last 3 minutes is a self-defence kill, and shows grey on your screen.
         // An answer to a blow is not an attack of its own and does not count.
@@ -1841,13 +1850,16 @@ export class MapRoom extends DurableObject<Env> {
     if (sock) {
       const w = weaponFamily(bag.equipped) ?? undefined;
       const o = outfitOf(bag.equipped) ?? undefined;
-      if (w !== sock.state.w || o !== sock.state.o) {
+      const fl = flightLookOf(bag.equipped);
+      if (w !== sock.state.w || o !== sock.state.o || fl !== sock.state.fl) {
         if (w) sock.state.w = w;
         else delete sock.state.w;
         if (o) sock.state.o = o;
         else delete sock.state.o;
+        if (fl) sock.state.fl = fl;
+        else delete sock.state.fl;
         sock.ws.serializeAttachment(sock.state);
-        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}), ...(o ? { o } : {}) });
+        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}), ...(o ? { o } : {}), ...(fl ? { fl } : {}) });
       }
     }
     void this.syncMount(id).catch((err) => console.error("mount sync failed", id, err));
@@ -4040,7 +4052,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.fl ? { fl: p.fl } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {

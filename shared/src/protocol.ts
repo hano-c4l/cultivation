@@ -219,13 +219,15 @@ export interface PlayerSnapshot {
   w?: string;
   /** The outfit worn (an `outfits` tuning key), left out for the plain clothes: it picks the body sprite variant. */
   o?: string;
+  /** The look of the worn flight pháp bảo (`FlightStyle`), so a rider is drawn on the right one. */
+  fl?: string;
 }
 
 export type ServerMessage =
   | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][]; tuning: Tuning; npcs: NpcSpot[]; mapRecipe?: MapRecipe; mapNames?: Record<string, string>; items?: ItemOverlay[]; mutant?: Pick<ElementTuning, "mutantRootChancePermille" | "mutantSkillBonusPct" | "mutantGearBonusPct" | "mutantGearDropPermille"> }
   | { t: "joined"; player: PlayerSnapshot }
   /** What a player holds or wears changed (a weapon or a robe put on, taken off or broken): `w` is the weapon family and `o` the outfit, each left out for none. */
-  | { t: "look"; id: string; w?: string; o?: string }
+  | { t: "look"; id: string; w?: string; o?: string; fl?: string }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
   /** Reply to the mover. `player` is present only when the server corrected or rejected the move. */
@@ -246,7 +248,7 @@ export type ServerMessage =
   | { t: "mon_gone"; id: string; dead?: true }
   /** One attack landed (or missed). `hp` is the target's HP afterwards; `to` is a monster id or a character id. */
   /** `ret`: a player answering a blow (not an attack of their own: it does not make them grey to the one they hit back). */
-  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; ret?: true }
+  | { t: "hit"; from: string; to: string; kind: HitKind; damage: number; hp: number; skill?: string; ret?: true; aoe?: true }
   /** The receiving character's own HP changed (regeneration or damage). */
   | { t: "hp"; hp: number; maxHp: number }
   /** One of the receiving character's balances changed; `gained` is the amount just added, when it is a gain. */
@@ -428,15 +430,16 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "cast": {
       if (typeof m.skill !== "string" || !/^[a-z0-9_]{1,32}$/.test(m.skill)) return null;
       // An attack skill without a fixed element says which of the character's elements to use.
+      let el: SpiritualRoot | undefined;
       if (m.el !== undefined) {
         if (typeof m.el !== "string" || !(ALL_ROOTS as readonly string[]).includes(m.el)) return null;
-        const el = m.el as SpiritualRoot;
-        if (m.target === undefined) return { t: "cast", skill: m.skill, el };
-        return isCombatTargetId(m.target) ? { t: "cast", skill: m.skill, target: m.target, el } : null;
+        el = m.el as SpiritualRoot;
       }
-      if (m.x !== undefined || m.y !== undefined) return isCoord(m.x) && isCoord(m.y) ? { t: "cast", skill: m.skill, x: m.x, y: m.y } : null; // a teleport names a point
-      if (m.target === undefined) return { t: "cast", skill: m.skill };
-      return isCombatTargetId(m.target) ? { t: "cast", skill: m.skill, target: m.target } : null;
+      const withEl = el ? { el } : {};
+      // A teleport, or an attack aimed at a point instead of a target, names a point.
+      if (m.x !== undefined || m.y !== undefined) return isCoord(m.x) && isCoord(m.y) ? { t: "cast", skill: m.skill, x: m.x, y: m.y, ...withEl } : null;
+      if (m.target === undefined) return { t: "cast", skill: m.skill, ...withEl };
+      return isCombatTargetId(m.target) ? { t: "cast", skill: m.skill, target: m.target, ...withEl } : null;
     }
     case "hotbar_set":
       return isInt(m.slot) && m.slot >= 0 && m.slot < HOTBAR_SLOTS && typeof m.v === "string" && HOTBAR_SLOT_PATTERN.test(m.v) ? { t: "hotbar_set", slot: m.slot, v: m.v } : null;

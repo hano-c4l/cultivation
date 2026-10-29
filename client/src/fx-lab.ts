@@ -45,6 +45,12 @@ class Lab extends Phaser.Scene {
     add("heal+", () => this.fx.skill("me", "dt_dai_hoi", undefined, undefined, undefined));
     add("blink", () => this.fx.skill("me", "pt_thuan_di", undefined, target, undefined));
     add("basic", () => this.fx.basic("me", "foe", false));
+    for (const w of ["kiem", "dao", "thuong", "riu", "quyen"]) add(`w ${w}`, () => this.fx.basic("me", "foe", false, w));
+    add("guard", () => this.fx.basic("foe", "me", true, "thuong"));
+    add("hit", () => this.fx.hit("foe", "me", "hit"));
+    add("crit", () => this.fx.hit("foe", "me", "crit", "kim_3"));
+    for (const [label, id] of [["palm", "chuong_1"], ["slash", "tram_2"], ["finger", "chi_1"], ["orb", "pb_kim_1"], ["great", "bm_kim"], ["dome", "thuan_0"], ["flames", "cuong_luc_2"], ["wind", "phong_bo_0"], ["seal", "tt_linh_an"], ["furnace", "dt_duong_nguyen"], ["bell", "ho_the_kd"], ["phoenix", "bm_hoi_sinh"]] as const) add(label, () => this.fx.skill("me", id, id.startsWith("bm_hoi") || ["thuan_0", "cuong_luc_2", "phong_bo_0", "tt_linh_an", "dt_duong_nguyen", "ho_the_kd"].includes(id) ? undefined : "foe", undefined, id === "chuong_1" ? "hoa" : id === "tram_2" ? "kim" : undefined));
+    add("ground", () => this.fx.skill("me", "kim_3", undefined, { x: 520, y: 380 }, "kim"));
     add("basic far", () => this.fx.basic("far", "foe", false));
     add("cone", () => this.fx.coneFrom(target, caster, 5, 45));
     add("equip", () => this.fx.equip("me"));

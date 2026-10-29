@@ -13,6 +13,16 @@ export function monsterTintOf(element: string): number | undefined {
 }
 
 /** What a rider of the flight pháp bảo stands on (a stored tuning from before the group existed falls back to the default). */
-export function flightStyleOf(): FlightStyle {
-  return tuning().flightLooks?.default ?? DEFAULT_TUNING.flightLooks.default;
+export function flightStyleOf(item?: string): FlightStyle {
+  const t = tuning().flightLooks ?? DEFAULT_TUNING.flightLooks;
+  if (item) {
+    // `eq.flight.<style>.<realm>.<tier>.<grade>[.<element>]`: the element picks the look, then the realm
+    const parts = item.split(".");
+    const element = parts[6];
+    const realm = parts[3];
+    const byElement = (element ? (t.byElement ?? DEFAULT_TUNING.flightLooks.byElement)?.[element] : undefined);
+    const byRealm = realm ? t.byRealm?.[realm] : undefined;
+    return byElement ?? byRealm ?? t.default;
+  }
+  return t.default ?? DEFAULT_TUNING.flightLooks.default;
 }

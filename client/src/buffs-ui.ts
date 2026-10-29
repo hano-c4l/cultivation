@@ -1,3 +1,4 @@
+import { iconFor, skillIconFor } from "./icons";
 import { getItemDef, getSkill, type EffectView } from "@game/shared";
 
 export interface BuffsUi {
@@ -43,13 +44,10 @@ export function initBuffs(): BuffsUi {
         const tile = document.createElement("div");
         tile.className = `buff ${isItem ? "buff-item" : "buff-skill"}`;
         tile.title = `${name} · ${formatLeft(e.until - now)}`;
-        const label = document.createElement("span");
-        label.className = "buff-tag";
-        label.textContent = tag(name);
         const left = document.createElement("span");
         left.className = "buff-left";
         left.textContent = formatLeft(e.until - now);
-        tile.append(label, left);
+        tile.append(isItem ? iconFor(key) : skillIconFor(getSkill(key)), left);
         // Hover shows the name through `title`; a touch screen has no hover, so a tap names it in the line under the tiles.
         tile.onclick = () => {
           shown = shown === e.id ? null : e.id;

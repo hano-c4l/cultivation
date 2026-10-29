@@ -23,7 +23,7 @@ export function mapArtOf(mapId: string): MapArt {
 }
 
 /** Looks that only make sense small: a big spot is never drawn as one of these (a giant bush or stump), when the mix has anything else. */
-const SMALL_LOOKS: readonly ObstacleStyle[] = ["bush", "stump"];
+const SMALL_LOOKS: readonly ObstacleStyle[] = ["bush", "stump", "lantern"];
 /** A spot with a radius above this many tiles counts as big. */
 export const BIG_SPOT_RADIUS = 0.9;
 
