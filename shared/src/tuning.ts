@@ -1,4 +1,6 @@
 import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
+import type { AreaDef } from "./area";
+import { SKILL_LOOKS } from "./skill-looks";
 import { FLIGHT_STYLES, GROUND_STYLES, OBSTACLE_STYLES, type FlightStyle, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
 import type { EquipKind } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
@@ -153,7 +155,13 @@ export interface Tuning {
   /** How the NPCs look: a player body with an optional outfit and weapon, by NPC id (a trailing number is ignored: `smith2` is `smith`) or else by kind. */
   npcLooks: { byKind: Record<string, NpcLook>; byId: Record<string, NpcLook> };
   /** What a rider of the flight pháp bảo stands on (one look for everyone while the server syncs only "is riding"; a look per item waits for the Admin art screens). */
-  flightLooks: { default: FlightStyle };
+  flightLooks: { default: FlightStyle; /** By the element of the worn flight pháp bảo (its id's last part), then by its realm; else `default`. */ byElement?: Record<string, FlightStyle>; byRealm?: Record<string, FlightStyle> };
+  /** The ground a plain attack covers besides its target, by weapon family (`none`: bare hands or an unknown family). */
+  weaponArea: Record<string, AreaDef>;
+  /** The ground a skill covers besides its target, by skill id, then by template (`tram_2` is `tram`), then by gear family (`pb`, `bm`). */
+  skillAreas: Record<string, AreaDef>;
+  /** How a skill is drawn, by skill id, then template, then gear family: a style name of `SKILL_LOOKS` (a skill with none is drawn by its kind). */
+  skillLooks: Record<string, string>;
 }
 
 export interface MonsterNumbers {
@@ -440,16 +448,62 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     nham_giap_thu: "orc",
     liet_hoa_xa: "snake",
   },
-  flightLooks: { default: "sword" },
+  flightLooks: { default: "sword", byElement: { moc: "lotus", thuy: "cloud", phong: "cloud", bang: "cloud", hoa: "sword", kim: "sword", loi: "sword", tho: "lotus" } },
+  weaponArea: {
+    kiem: { shape: "arc", range: 1.9, deg: 120, maxTargets: 3, pct: 70 },
+    dao: { shape: "arc", range: 1.8, deg: 150, maxTargets: 3, pct: 70 },
+    thuong: { shape: "line", range: 3, width: 0.9, maxTargets: 3, pct: 65 },
+    riu: { shape: "circle", range: 1.7, at: "self", maxTargets: 4, pct: 60 },
+    cung: { shape: "single", range: 0, maxTargets: 1, pct: 100 },
+    quyen: { shape: "single", range: 0, maxTargets: 1, pct: 100 },
+    none: { shape: "single", range: 0, maxTargets: 1, pct: 100 },
+  },
+  skillAreas: {
+    tram: { shape: "arc", range: 3.2, deg: 100, maxTargets: 4, pct: 70 },
+    chi: { shape: "line", range: 6, width: 0.9, maxTargets: 3, pct: 70 },
+    ngu_kiem_tram: { shape: "circle", range: 1.8, at: "aim", maxTargets: 4, pct: 70 },
+    pb: { shape: "circle", range: 1.5, at: "aim", maxTargets: 3, pct: 60 },
+    bm: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 80 },
+    kim_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
+    kim_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    kim_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
+    moc_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
+    moc_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    moc_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
+    thuy_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
+    thuy_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    thuy_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
+    hoa_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
+    hoa_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    hoa_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
+    tho_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
+    tho_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    tho_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
+    loi_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
+    loi_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    loi_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
+    bang_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
+    bang_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    bang_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
+    phong_3: { shape: "circle", range: 2, at: "aim", maxTargets: 4, pct: 70 },
+    phong_4: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 75 },
+    phong_5: { shape: "circle", range: 3, at: "aim", maxTargets: 6, pct: 80 },
+  },
+  skillLooks: {
+    chuong: "palm", tram: "slash", chi: "finger", ngu_kiem_tram: "sword", pb: "orb", bm: "great",
+    thuan: "dome", cuong_luc: "flames", phong_bo: "wind", cuong_than: "flames", cuong_than_na: "flames", ho_the_kd: "bell", bm_ho_the: "bell",
+    tt_linh_an: "seal", tt_linh_hai: "seal", kt_hop_nhat: "sword", dt_duong_nguyen: "furnace", dt_dan_khi: "furnace", dt_kim_than: "bell", pt_phong_than: "wind",
+    hoi: "lotus", hoi_nguyen_kd: "lotus", tt_hoi_linh: "lotus", bm_hoi_sinh: "phoenix", dt_hoi_xuan: "furnace", dt_hoi_duong: "furnace", dt_dai_hoi: "furnace",
+  },
   monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
   mapArt: {
     maps: {
-      town: { ground: "grass", obstacle: "tree", mix: ["tree", "tree", "tree", "bush", "bush", "stump", "rock"] },
-      forest: { ground: "grass", obstacle: "tree", mix: ["tree", "tree", "tree", "tree", "bush", "bush", "stump", "boulder"] },
-      cave: { ground: "stone", obstacle: "pillar", mix: ["pillar", "pillar", "boulder", "boulder", "rock", "rock"] },
-      town2: { ground: "stone", obstacle: "rock", mix: ["rock", "rock", "boulder", "pillar", "bush"] },
+      town: { ground: "grass", obstacle: "tree", mix: ["tree", "tree", "tree", "bamboo", "bamboo", "bush", "lantern", "rock"] },
+      forest: { ground: "grass", obstacle: "tree", mix: ["tree", "tree", "tree", "bamboo", "bamboo", "bush", "stump", "boulder"] },
+      cave: { ground: "stone", obstacle: "pillar", mix: ["pillar", "pillar", "boulder", "jade", "jade", "rock"] },
+      town2: { ground: "stone", obstacle: "rock", mix: ["rock", "lantern", "boulder", "pillar", "jade", "bamboo"] },
       kimdan: { ground: "lava", obstacle: "rock", mix: ["ember", "ember", "rock", "boulder", "pillar"] },
-      nguyenanh: { ground: "snow", obstacle: "crystal", mix: ["crystal", "crystal", "boulder", "rock", "pillar"] },
+      nguyenanh: { ground: "snow", obstacle: "crystal", mix: ["crystal", "crystal", "jade", "boulder", "pillar"] },
     },
   },
   // Xianxia robes for everyone: the white robe `tien`, one colour each by tint, a formation circle in the same colour under the feet.
@@ -508,7 +562,10 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
-  flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen)",
+  flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen), theo hệ của món đang dùng",
+  weaponArea: "Vùng chém của đánh thường theo họ vũ khí: quái gần mục tiêu trong vùng cũng bị đánh",
+  skillAreas: "Vùng sát thương của kỹ năng tấn công: hình quạt, đường thẳng hay vòng tròn, số mục tiêu tối đa, phần sát thương của mục tiêu phụ",
+  skillLooks: "Kiểu hình ảnh của từng kỹ năng (theo mã, mẫu hoặc họ pháp bảo)",
   monsterTints: "Màu phủ lên hình quái theo hệ (một mô hình trông khác nhau ở mỗi hệ)",
   monsterModels: "Hình quái: loài quái nào dùng mô hình nào (một mô hình có thể dùng chung cho nhiều loài)",
   mapArt: "Hình bản đồ: kiểu nền và kiểu vật cản nhỏ (cây, đá, cột, tinh thể) của từng bản đồ",
@@ -781,8 +838,25 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       const table = (t: unknown): boolean => obj(t) && Object.keys(t).length <= 100 && Object.entries(t).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && look(v));
       return table(value.byKind) && table(value.byId);
     }
-    case "flightLooks":
-      return (FLIGHT_STYLES as readonly unknown[]).includes(value.default);
+    case "flightLooks": {
+      const styles = (m: unknown): boolean => m === undefined || (obj(m) && Object.keys(m).length <= 40 && Object.entries(m).every(([k, v]) => /^[a-z0-9_]{1,16}$/.test(k) && (FLIGHT_STYLES as readonly unknown[]).includes(v)));
+      return (FLIGHT_STYLES as readonly unknown[]).includes(value.default) && styles(value.byElement) && styles(value.byRealm);
+    }
+    case "weaponArea":
+    case "skillAreas": {
+      const area = (a: unknown): boolean =>
+        obj(a) &&
+        (a.shape === "single" || a.shape === "arc" || a.shape === "line" || a.shape === "circle") &&
+        num(a.range, 0, 20) &&
+        (a.deg === undefined || num(a.deg, 1, 360)) &&
+        (a.width === undefined || num(a.width, 0.1, 10)) &&
+        (a.at === undefined || a.at === "self" || a.at === "aim") &&
+        int(a.maxTargets, 1, 20) &&
+        num(a.pct, 1, 300);
+      return Object.keys(value).length <= 300 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && area(v));
+    }
+    case "skillLooks":
+      return Object.keys(value).length <= 300 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && (SKILL_LOOKS as readonly string[]).includes(v));
     case "monsterTints":
       return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z]{1,16}$/.test(k) && typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v));
     case "monsterModels":

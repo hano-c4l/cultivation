@@ -30,7 +30,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
  * (skills window, bag), then tap a slot", which also works on a touch screen. The server decides everything; the bar only
  * shows cooldowns it was told about and dims what MP cannot pay.
  */
-export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (skill: SkillDef) => void; mpCostOf: (skill: SkillDef) => number; getTarget: () => string | null; getMp: () => number; countOf: (type: string) => number; contextOf: (skill: SkillDef) => SkillContext }): HotbarUi {
+export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (skill: SkillDef) => void; mpCostOf: (skill: SkillDef) => number; getTarget: () => string | null; getAim: () => { x: number; y: number } | null; getMp: () => number; countOf: (type: string) => number; contextOf: (skill: SkillDef) => SkillContext }): HotbarUi {
   const root = el("div");
   root.id = "hotbar";
   root.hidden = true;
@@ -153,7 +153,7 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
     window.addEventListener("pointerup", up);
   }
 
-  function press(i: number): void {
+  function press(i: number, directional = false): void {
     if (pending) {
       deps.send({ t: "hotbar_set", slot: i, v: pending.value });
       pending = null;
@@ -167,7 +167,10 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
     const chosen = slotSkill ? getSkill(slotSkill.id) : undefined;
     if (chosen?.kind === "teleport") deps.aim(chosen); // needs a point: the next map click gives it
     else if (slotSkill) {
-      deps.send({ t: "cast", skill: slotSkill.id, ...(target ? { target } : {}), ...(slotSkill.element ? { el: slotSkill.element } : {}) });
+      // An attack with a target goes at the target; with none (or with Shift held) it is aimed at the point under the pointer: a directional cast.
+      const aim = chosen?.kind === "attack" && (!target || directional) ? deps.getAim() : null;
+      const at = aim ? { x: Math.round(aim.x * 100) / 100, y: Math.round(aim.y * 100) / 100 } : null;
+      deps.send({ t: "cast", skill: slotSkill.id, ...(at ? at : target ? { target } : {}), ...(slotSkill.element ? { el: slotSkill.element } : {}) });
     }
     else if (v.startsWith("i:")) deps.send({ t: "use_type", type: v.slice(2) });
   }
@@ -180,8 +183,9 @@ export function initHotbar(deps: { send: (msg: ClientMessage) => void; aim: (ski
       pending = null;
       note.hidden = true;
       render();
-    } else if (ev.key >= "1" && ev.key <= String(HOTBAR_SLOTS)) {
-      press(Number(ev.key) - 1);
+    } else if (/^Digit[1-9]$/.test(ev.code) && Number(ev.code.slice(5)) <= HOTBAR_SLOTS) {
+      // read from the key code: with Shift held `ev.key` is "!" or "@", not the digit
+      press(Number(ev.code.slice(5)) - 1, ev.shiftKey);
     }
   });
 

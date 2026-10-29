@@ -78,13 +78,16 @@ import { Effects } from "./fx";
 import { FLIGHT_GLOW, FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
+/** The flight look an actor rides on: the one its worn pháp bảo gives, else the default. */
+const actorFlight = (a: { flight?: string }): FlightStyle => ((FLIGHT_STYLES as readonly string[]).includes(a.flight ?? "") ? (a.flight as FlightStyle) : flightStyleOf());
+
 /** `#rrggbb` as a number, or undefined (no tint) when there is none. */
 const hexOf = (hex: string | undefined): number | undefined => (hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? parseInt(hex.slice(1), 16) : undefined);
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
 import { setGearSetNames, setWornSkillSets, skillDisplayName, grayWindowMs, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
-import { NPC_INTERACT_RADIUS, flightStyleOf, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
+import { FLIGHT_STYLES, NPC_INTERACT_RADIUS, flightStyleOf, type FlightStyle, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
@@ -146,6 +149,8 @@ interface Actor {
   weapon?: string;
   /** The outfit worn (from the snapshot and the `look` messages): picks the body sprite variant. */
   outfit?: string;
+  /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
+  flight?: string;
   wview?: GfxView;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
@@ -229,6 +234,8 @@ export class GameScene extends Phaser.Scene {
   private mapLayer?: MapLayer;
   private lastSweepAt = 0;
   /** The NPCs of the current map: their shape figure, name, and the sprite views that replace the figure. */
+  /** Blows just taken, by id: the figure flashes white and is shoved back a little for a moment (applied where its sprite is placed). */
+  private reacts = new Map<string, { at: number; ms: number; kx: number; ky: number; push: number }>();
   private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView; aura?: Phaser.GameObjects.Container }> = [];
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
@@ -313,6 +320,7 @@ export class GameScene extends Phaser.Scene {
       aim: (skill) => this.beginAim(skill),
       mpCostOf: (skill) => effectiveSkill(skill, this.skillContext(skill)).mpCost,
       getTarget: () => this.targetId,
+      getAim: () => this.aimPoint(),
       getMp: () => this.vitals.getMp(),
       contextOf: (skill) => this.skillContext(skill),
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
@@ -429,6 +437,7 @@ export class GameScene extends Phaser.Scene {
       f.aura?.destroy();
     }
     this.npcFigures = [];
+    this.reacts.clear();
     for (const obj of this.mapObjects) obj.destroy();
     this.mapObjects = [];
 
@@ -603,6 +612,14 @@ export class GameScene extends Phaser.Scene {
     if (!this.charPanel.isBreaking()) return false;
     this.chat.system(vi.breakthrough.blocked, "error");
     return true;
+  }
+
+  /** The ground point under the pointer (the last place it touched on a phone), in tiles: where a directional cast is aimed. */
+  private aimPoint(): { x: number; y: number } | null {
+    const p = this.input.activePointer;
+    if (!this.cameras.main || (p.x === 0 && p.y === 0 && !p.isDown)) return null;
+    const w = this.cameras.main.getWorldPoint(p.x, p.y);
+    return toTile(w.x, w.y);
   }
 
   private handleClick(pointer: Phaser.Input.Pointer): void {
@@ -860,6 +877,7 @@ export class GameScene extends Phaser.Scene {
           if (weaponEquipped(looker.weapon, msg.w)) this.fx.equip(msg.id);
           looker.weapon = msg.w;
           looker.outfit = msg.o;
+          looker.flight = msg.fl;
         }
         break;
       }
@@ -1238,6 +1256,7 @@ export class GameScene extends Phaser.Scene {
       actor.female = p.f === true;
       actor.weapon = p.w;
       actor.outfit = p.o;
+      actor.flight = p.fl;
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
@@ -1258,6 +1277,7 @@ export class GameScene extends Phaser.Scene {
     const actor = this.actors.get(id);
     if (!actor) return;
     this.fx.forget(id);
+    this.reacts.delete(id);
     actor.wview?.destroy();
     actor.view?.destroy();
     actor.body.destroy();
@@ -1417,6 +1437,7 @@ export class GameScene extends Phaser.Scene {
   private removeMonster(id: string): void {
     const m = this.monsters.get(id);
     if (!m) return;
+    this.reacts.delete(id);
     m.wview?.destroy();
     m.view?.destroy();
     m.aura?.destroy();
@@ -1448,7 +1469,7 @@ export class GameScene extends Phaser.Scene {
   private setActorMounted(actor: Actor, on: boolean): void {
     if (actor.mounted === on) return;
     actor.mounted = on;
-    if (on && !actor.cloud) actor.cloud = this.add.image(0, 0, FLIGHT_TEX[flightStyleOf()]).setAlpha(0.95);
+    if (on && !actor.cloud) actor.cloud = this.add.image(0, 0, FLIGHT_TEX[actorFlight(actor)]).setAlpha(0.95);
     actor.cloud?.setVisible(on);
     if (actor.id === this.selfId && isMounted() !== on) this.applyMounted(on);
   }
@@ -1530,12 +1551,18 @@ export class GameScene extends Phaser.Scene {
 
   private showHit(msg: Extract<ServerMessage, { t: "hit" }>): void {
     if (msg.to === this.selfId && this.actors.has(msg.from) && !msg.ret) this.hitMeAt.set(msg.from, performance.now());
-    // A hit with no skill behind it is a plain attack (a skill is drawn from its own `fx` message).
-    if (!msg.skill) {
-      this.fx.basic(msg.from, msg.to, this.monsters.has(msg.from), this.actors.get(msg.from)?.weapon);
-      this.playOnce(msg.from, "attack", msg.to);
+    // A hit with no skill behind it is a plain attack (a skill is drawn from its own `fx` message); the extra targets of one swing (`aoe`) do not swing again.
+    const attacker = this.monsters.get(msg.from);
+    const weapon = attacker ? (attacker.guard ? guardLookOf().weapon : undefined) : this.actors.get(msg.from)?.weapon;
+    if (!msg.skill && !msg.aoe) {
+      this.fx.basic(msg.from, msg.to, !!attacker, weapon);
+      this.playOnce(msg.from, weapon === "cung" ? "cast" : "attack", msg.to); // a bow is drawn with the casting arms (the pack has no archery animation)
     }
-    if (msg.kind !== "miss") this.playOnce(msg.to, "hit", msg.from);
+    if (msg.kind !== "miss") {
+      this.playOnce(msg.to, "hit", msg.from);
+      this.shove(msg.from, msg.to, msg.kind === "crit");
+      this.fx.hit(msg.to, msg.from, msg.kind, msg.skill);
+    }
     const monster = this.monsters.get(msg.to);
     if (monster) monster.hp = msg.hp;
     const now = performance.now();
@@ -1560,6 +1587,34 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(1000);
     this.tweens.add({ targets: label, y: label.y - 28, alpha: 0, duration: 800, onComplete: () => label.destroy() });
+  }
+
+  /** Starts the recoil of a blow: a flash and a shove away from the attacker (harder for a critical hit). */
+  private shove(from: string, to: string, crit: boolean): void {
+    const a = this.screenPosOf(from);
+    const b = this.screenPosOf(to);
+    const dx = a && b ? b.x - a.x : 1;
+    const dy = a && b ? b.y - a.y : 0;
+    const len = Math.hypot(dx, dy) || 1;
+    this.reacts.set(to, { at: performance.now(), ms: crit ? 260 : 190, kx: dx / len, ky: (dy / len) * 0.5, push: crit ? 11 : 6 });
+  }
+
+  /** The recoil of a blow on `id`'s figure (and its weapon layer): a flash of white at first, a shove away from the attacker that eases off. */
+  private applyReact(id: string, view: GfxView | undefined, wview: GfxView | undefined, now: number): void {
+    const r = this.reacts.get(id);
+    if (!view?.alive) return;
+    if (!r || now - r.at >= r.ms) {
+      if (r) this.reacts.delete(id);
+      view.setFlash(false);
+      view.setOffset(0, 0);
+      wview?.setOffset(0, 0);
+      return;
+    }
+    const t = 1 - (now - r.at) / r.ms;
+    view.setFlash(now - r.at < 80);
+    const k = r.push * t * t;
+    view.setOffset(r.kx * k, r.ky * k);
+    wview?.setOffset(r.kx * k, r.ky * k);
   }
 
   /** Shows the sprite of a player when the manifest has one (and the oval otherwise); plays run or idle facing the way it walks. */
@@ -1598,6 +1653,7 @@ export class GameScene extends Phaser.Scene {
     a.view.play(anim, dir);
     if (a.view.alive) {
       a.wview?.followFrame(a.view);
+      this.applyReact(a.id, a.view, a.wview, now);
       a.view.place(x, y - (a.mounted ? 8 : 0), depth);
       a.wview?.place(x, y - (a.mounted ? 8 : 0), depth + 0.02);
     } else {
@@ -1635,6 +1691,7 @@ export class GameScene extends Phaser.Scene {
     m.view.setTint(look ? hexOf(look.tint) : monsterTintOf(m.element)); // one model, a colour for each element; a guard wears its own robe colour
     m.view.play(positionAlongPath(m.path, now - m.startedAt, m.speed).moving ? "run" : "idle", headingAlongPath(m.path, now - m.startedAt, m.speed) ?? m.view.dir);
     if (!m.view.alive) return;
+    this.applyReact(m.id, m.view, m.wview, now);
     m.view.place(x, y, depth);
     if (look?.aura && !m.aura) m.aura = this.makeAura(x, y + 2, look.aura, 46, 0.45);
     m.aura?.setPosition(x, y + 2);
@@ -1676,7 +1733,9 @@ export class GameScene extends Phaser.Scene {
         }
         fly.x = s.x;
         fly.y = s.y;
-        const sword = actor.cloud.texture.key === FLIGHT_TEX.sword;
+        const want = FLIGHT_TEX[actorFlight(actor)];
+        if (actor.cloud.texture.key !== want) actor.cloud.setTexture(want); // another pháp bảo was put on
+        const sword = want === FLIGHT_TEX.sword;
         const ca = Math.cos(fly.a);
         const sa = Math.sin(fly.a);
         // the sword lies on the ground, which is squashed 2:1 on screen: along a screen-vertical heading it is seen half as long
@@ -1684,7 +1743,7 @@ export class GameScene extends Phaser.Scene {
         const along = sword ? Math.hypot(Math.cos(ga), 0.5 * Math.sin(ga)) : 1;
         actor.cloud.setPosition(s.x, s.y - 4 + bob).setDepth(10 + pos.x + pos.y - 0.1);
         actor.cloud.setRotation(sword ? fly.a : 0).setFlipY(sword && ca < 0).setScale(along, 1);
-        if (pos.moving && Math.random() < 0.4) this.fx.puff("trail", s.x - (sword ? ca * 50 * along : 14), s.y - 4 + bob - (sword ? sa * 50 * along : 0), 1, FLIGHT_GLOW[flightStyleOf()]);
+        if (pos.moving && Math.random() < 0.4) this.fx.puff("trail", s.x - (sword ? ca * 50 * along : 14), s.y - 4 + bob - (sword ? sa * 50 * along : 0), 1, FLIGHT_GLOW[actorFlight(actor)]);
       }
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);

@@ -1,3 +1,4 @@
+import { iconFor } from "./icons";
 import {
   REALMS,
   SHOP_CATEGORIES,
@@ -100,6 +101,10 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   });
 
   const nameOf = (type: string) => getItemDef(type)?.nameVi ?? type;
+  const withIcon = (node: HTMLElement, type: string): HTMLElement => {
+    node.prepend(iconFor(type));
+    return node;
+  };
 
   function itemCell(type: string, dur?: number, max?: number, lv?: number): HTMLElement {
     const def = getItemDef(type);
@@ -107,6 +112,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     const name = el("div", "shop-name", nameOf(type));
     const dot = elementDot(type);
     if (dot) name.prepend(dot);
+    name.prepend(iconFor(type));
     const tag = itemTierTag(type, lv);
     if (tag) name.prepend(el("span", `eq-tier ${realmClass(itemTierRealm(type, lv))}`, tag));
     // A weapon says its family (kiếm, cung, ...): the same name covers all of them and some skills need a particular one.
@@ -333,7 +339,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       const row = el("div", "shop-row");
       const left = Math.ceil((job.readyAt - serverNow()) / 1000);
       const main = el("div");
-      main.append(el("div", "shop-name", `${nameOf(job.output)} ×${job.qty}`), el("div", "muted", left > 0 ? vi.brew.left(left) : vi.brew.ready));
+      main.append(withIcon(el("div", "shop-name", `${nameOf(job.output)} ×${job.qty}`), job.output), el("div", "muted", left > 0 ? vi.brew.left(left) : vi.brew.ready));
       const take = el("button", undefined, vi.brew.collect);
       take.disabled = left > 0;
       take.onclick = () => send({ t: "brew_collect", npc, job: job.id });
@@ -347,7 +353,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     for (const recipe of recipes) {
       const row = el("div", "shop-row");
       const main = el("div");
-      main.append(el("div", "shop-name", `${recipe.nameVi} → ${nameOf(recipe.output)} ×${recipe.qty}`));
+      main.append(withIcon(el("div", "shop-name", `${recipe.nameVi} → ${nameOf(recipe.output)} ×${recipe.qty}`), recipe.output));
       const mats = recipe.inputs.map((i) => `${nameOf(i.item)} ${i.qty} (${vi.brew.have(countOf(i.item))})`).join(", ");
       main.append(el("div", "muted", `${mats} · ${vi.brew.cost(recipe.linhThach)} · ${vi.brew.left(recipe.seconds)}`));
       const start = el("button", undefined, vi.brew.start);

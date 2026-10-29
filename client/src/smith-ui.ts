@@ -1,3 +1,4 @@
+import { iconFor } from "./icons";
 import {
   ENHANCE_MAX,
   EQUIP_SLOTS,
@@ -106,6 +107,7 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
     const name = el("div", "shop-name", `${nameOf(piece.type)}${level > 0 ? ` +${level}` : ""}`);
     const dot = elementDot(piece.type);
     if (dot) name.prepend(dot);
+    name.prepend(iconFor(piece.type));
     const tag = itemTierTag(piece.type, piece.lv);
     if (tag) name.prepend(el("span", `eq-tier ${realmClass(itemTierRealm(piece.type, piece.lv))}`, tag));
     main.append(name);

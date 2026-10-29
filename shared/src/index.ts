@@ -48,3 +48,5 @@ export * from "./alchemy";
 export * from "./map-content";
 export * from "./npc-tabs";
 export * from "./gfx";
+export * from "./area";
+export * from "./skill-looks";
