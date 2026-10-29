@@ -97,7 +97,7 @@ import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { iconButton } from "./icons";
 import { loading } from "./loading-ui";
-import { drawQiAura, qiStyleOf } from "./qi-aura";
+import { qiSpawnPoint, qiStyleOf } from "./qi-aura";
 import { mapLabel, vi } from "./locales/vi";
 import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
@@ -155,9 +155,10 @@ interface Actor {
   outfit?: string;
   /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
   flight?: string;
-  /** The cultivation level (`realm * 10 + stage`) the qi round the figure follows, and the graphics that draws it. */
+  /** The cultivation level (`realm * 10 + stage`): the colour and thickness of the qi haze round the figure. */
   lv?: number;
-  qi?: Phaser.GameObjects.Graphics;
+  /** When (performance.now) the next wisp of that haze is released. */
+  qiNext?: number;
   wview?: GfxView;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
@@ -1326,7 +1327,6 @@ export class GameScene extends Phaser.Scene {
     this.fx.forget(id);
     this.reacts.delete(id);
     this.buffGlows.delete(id);
-    actor.qi?.destroy();
     actor.wview?.destroy();
     actor.view?.destroy();
     actor.body.destroy();
@@ -1670,14 +1670,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Shows the sprite of a player when the manifest has one (and the oval otherwise); plays run or idle facing the way it walks. */
-  /** The qi round a cultivator (see `qi-aura.ts`): level from the character sheet for yourself, from the snapshot for the others; drawn just behind the figure. */
-  private syncQi(a: Actor, now: number, x: number, y: number, depth: number): void {
+  /** The qi haze round a cultivator (see `qi-aura.ts`): level from the character sheet for yourself, from the snapshot for the others; wisps are released at a steady rate. */
+  private syncQi(a: Actor, now: number, x: number, y: number): void {
     const lv = a.id === this.selfId && this.selfSheet ? this.selfSheet.realm * 10 + this.selfSheet.stage : a.lv;
-    if (lv === undefined) return;
-    const g = (a.qi ??= this.add.graphics());
+    if (lv === undefined || now < (a.qiNext ?? 0)) return;
+    const st = qiStyleOf(lv, tuning().theme.realmColors);
+    a.qiNext = now + (1000 / st.rate) * (0.6 + Math.random() * 0.8);
     const height = a.view?.alive ? a.view.rise() : 38;
-    g.clear().setDepth(depth - 0.02);
-    drawQiAura(g, x, y, height, now / 1000 + a.id.length * 0.7, qiStyleOf(lv, tuning().theme.realmColors));
+    const at = qiSpawnPoint(x, y, height);
+    this.fx.puff("qi", at.x, at.y, st.burst, st.color);
   }
 
   private syncActorView(a: Actor, now: number, x: number, y: number, depth: number, moving: boolean): void {
@@ -1856,7 +1857,7 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);
-      this.syncQi(actor, now, s.x, s.y - (actor.mounted ? 8 : 0), depth);
+      this.syncQi(actor, now, s.x, s.y - (actor.mounted ? 8 : 0));
       // The name stands just above the head: a sprite says how tall it is, the oval has a fixed height (a rider is lifted a little).
       const rise = actor.view?.alive ? actor.view.rise() + 6 + (actor.mounted ? 8 : 0) : actor.mounted ? 46 : 38;
       actor.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);

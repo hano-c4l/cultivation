@@ -1,17 +1,17 @@
 /**
- * The qi round a cultivator: a thin smoke that follows the outline of the figure (over the head and down both sides, never under the feet).
- * Its colour is that of the realm (the theme's `realmColors`) and it grows stronger with the realm and, inside a realm, with the stage: a pale thread
- * at the first stage, the full colour and a thicker band at the last. This file is only the numbers and the drawing; the scene calls it every frame.
+ * The qi round a cultivator: a light smoke that rises off the body, thickest at the sides and over the head and never from the feet, so it reads as
+ * a haze round the figure and not as a ring. Its colour is that of the realm (the theme's `realmColors`) and it grows richer with the realm and, inside a
+ * realm, with the stage: a few pale wisps at the first stage, a denser, fuller coloured haze at the last. This file is only the numbers; the scene
+ * releases the puffs (`Effects.puff("qi", ...)`) at the rate given here.
  */
-import type Phaser from "phaser";
 
 export interface QiStyle {
   /** 0xRRGGBB. */
   color: number;
-  /** Opacity of the soft band under the line (0..1); the line itself is drawn about twice as strong. */
-  alpha: number;
-  /** Width of the line in pixels. */
-  width: number;
+  /** Wisps released per second. */
+  rate: number;
+  /** Wisps released together at each release (a higher realm puffs bigger clouds). */
+  burst: number;
 }
 
 const WHITE = 0xffffff;
@@ -32,52 +32,27 @@ export function qiParts(lv: number): { realm: number; stage: number } {
   return { realm: Math.max(0, Math.floor(lv / 10)), stage: Math.min(9, Math.max(1, lv % 10 || 1)) };
 }
 
-/** What the qi of a cultivator at `lv` looks like, from the realm colours of the theme (the last colour serves any higher realm). */
+/** What the qi of a cultivator at `lv` is like, from the realm colours of the theme (the last colour serves any higher realm). */
 export function qiStyleOf(lv: number, realmColors: readonly string[]): QiStyle {
   const { realm, stage } = qiParts(lv);
   const s = (stage - 1) / 8;
   const base = hexOf(realmColors[Math.min(realm, Math.max(0, realmColors.length - 1))]);
+  const climb = Math.min(1, (realm * 9 + stage - 1) / 35); // one climb over all the levels, so a new realm never starts thinner than the last stage before it
   return {
     color: mix(WHITE, base, 0.35 + 0.65 * s), // pale at the first stage, the realm's own colour at the last
-    alpha: 0.1 + 0.4 * Math.min(1, (realm * 9 + stage - 1) / 35), // one climb over all the levels, so a new realm never starts paler than the last stage before it
-    width: 2 + 0.7 * Math.min(realm, 4) + s,
+    rate: 3 + 9 * climb,
+    burst: realm >= 2 ? 2 : 1,
   };
 }
 
-const TWO_PI = Math.PI * 2;
-const SEGMENTS = 30;
-/** The arc runs from the lower left (120 degrees, y down) over the head to the lower right (420 degrees = 60): the 60 degrees at the feet stay open. */
-const FROM = (120 * Math.PI) / 180;
-const SPAN = (300 * Math.PI) / 180;
-
 /**
- * Draws the qi round a figure whose feet are at (x, y) and whose head is `height` px above them. `t` is the time in seconds (the smoke waves and a few
- * brighter wisps travel along it); the band fades out at both ends and is never drawn under the feet.
+ * Where one wisp starts: a random point in the haze round a figure whose feet are at (x, y) and whose head is `height` px above them. The angle runs from
+ * a little under the waist on one side, over the head, to the same on the other side (never the feet); the distance from the body varies so the haze is ragged.
  */
-export function drawQiAura(g: Phaser.GameObjects.Graphics, x: number, y: number, height: number, t: number, style: QiStyle): void {
-  const cy = y - height * 0.5;
-  const ry = height * 0.5 + 8;
-  const rx = 21;
-  const pts: Array<{ x: number; y: number; k: number }> = [];
-  for (let i = 0; i <= SEGMENTS; i++) {
-    const a = FROM + (i / SEGMENTS) * SPAN;
-    const wob = Math.sin(a * 3 + t * 1.6) * 2.6 + Math.sin(a * 5 - t * 2.3) * 1.4;
-    const drift = Math.sin(a * 2 + t * 0.9) * 2;
-    pts.push({ x: x + Math.cos(a) * (rx + wob), y: cy + Math.sin(a) * (ry + wob) + drift, k: Math.pow(Math.sin((Math.PI * i) / SEGMENTS), 0.6) });
-  }
-  for (let i = 1; i < pts.length; i++) {
-    const p = pts[i - 1]!;
-    const q = pts[i]!;
-    const k = (p.k + q.k) / 2;
-    g.lineStyle(style.width * 3.2, style.color, style.alpha * 0.5 * k).lineBetween(p.x, p.y, q.x, q.y);
-    g.lineStyle(style.width, style.color, Math.min(0.85, style.alpha * 2.2) * k).lineBetween(p.x, p.y, q.x, q.y);
-  }
-  // a few brighter wisps slide along the outline
-  for (let w = 0; w < 3; w++) {
-    const f = (t * 0.16 + w / 3) % 1;
-    const i = Math.floor(f * SEGMENTS);
-    const p = pts[i];
-    const q = pts[Math.min(SEGMENTS, i + 2)];
-    if (p && q) g.lineStyle(style.width * 1.2, WHITE, Math.min(0.9, style.alpha * 2.6) * p.k).lineBetween(p.x, p.y, q.x, q.y);
-  }
+export function qiSpawnPoint(x: number, y: number, height: number, random: () => number = Math.random): { x: number; y: number } {
+  const theta = ((-25 + random() * 230) * Math.PI) / 180; // from -25 degrees (right, a little low) over the top to 205 degrees (left, a little low)
+  const f = 0.85 + random() * 0.4;
+  const rx = 15 * f;
+  const ry = (height * 0.5 + 4) * f;
+  return { x: x + Math.cos(theta) * rx, y: y - height * 0.5 - Math.sin(theta) * ry };
 }
