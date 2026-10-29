@@ -2,6 +2,7 @@ import { tuning, tuningGeneration, type SkillNumbers } from "./tuning";
 import type { SpiritualRoot } from "./character";
 import { ALL_ROOTS, SPIRITUAL_ROOTS } from "./character";
 import type { MonsterRank } from "./monsters";
+import type { AreaDef } from "./area";
 import { REALMS } from "./progression-data";
 import { rateCap, getRootGrade, levelIndex, type Element } from "./progression";
 
@@ -69,6 +70,8 @@ export interface SkillDef {
   pathLevel?: number;
   /** Attacks: the effect other players see, when an admin picked one (otherwise the client decides from the template). */
   fx?: SkillFxKind;
+  /** The area this skill hits, when it is not the one the tuning (`skillAreas`) gives by its id: the realm variants of the basic qi blast carry theirs. */
+  area?: AreaDef;
 }
 
 /** The effects an admin can give an attack (the other kinds of skill have theirs by kind). */
@@ -315,6 +318,41 @@ export function applySkillOverride(base: SkillDef, live: Partial<SkillNumbers>):
  * a buff and the effect of an attack.
  */
 export function getSkill(id: string): SkillDef | undefined {
+  if (id === BASIC_SKILL_ID && basicViewRealm > 0) return basicSkillAt(basicViewRealm);
+  return lookupSkill(id);
+}
+
+/** The realm the basic qi blast is shown and used at in this program (the client sets its own character's realm; the server picks the realm per player with `basicSkillAt`). */
+let basicViewRealm = 0;
+export function setBasicSkillRealm(realm: number): void {
+  basicViewRealm = Math.max(0, Math.trunc(realm) || 0);
+}
+
+const basicCache = new Map<number, SkillDef>();
+let basicCacheGeneration = -1;
+/**
+ * The basic qi blast at a realm: the skill with the entry of the tuning (`basicSkill`) for that realm over it (a new name, the power multiplied, a longer reach,
+ * another MP cost, an area). Realm 0 is the skill itself when its entry has no more than the multiplier 1.
+ */
+export function basicSkillAt(realm: number): SkillDef {
+  const base = lookupSkill(BASIC_SKILL_ID) ?? BASIC_SKILL;
+  const list = tuning().basicSkill.realms;
+  const r = Math.max(0, Math.min(Math.trunc(realm) || 0, 99));
+  const t = list[Math.min(r, list.length - 1)];
+  if (!t) return base;
+  if (basicCacheGeneration !== tuningGeneration()) {
+    basicCache.clear();
+    basicCacheGeneration = tuningGeneration();
+  }
+  let def = basicCache.get(r);
+  if (!def) {
+    def = { ...base, power: Math.round(base.power * t.powerMult * 1000) / 1000, ...(t.nameVi ? { nameVi: t.nameVi } : {}), ...(t.range !== undefined ? { range: t.range } : {}), ...(t.mpCost !== undefined ? { mpCost: t.mpCost } : {}), ...(t.area ? { area: t.area } : {}) };
+    basicCache.set(r, def);
+  }
+  return def;
+}
+
+function lookupSkill(id: string): SkillDef | undefined {
   const base = BY_ID.get(id);
   if (!base) return undefined;
   const all = tuning().skillOverrides;

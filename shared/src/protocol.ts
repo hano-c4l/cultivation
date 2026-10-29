@@ -18,6 +18,7 @@ import type { ElementTuning } from "./element-tuning";
 import { MAP_ID_PATTERN } from "./map";
 import type { WaygateDest } from "./waygate";
 import { isEquipSlot, type EquipBlock, type EquipSlot, type EquippedItem } from "./equipment-data";
+import type { GearLook } from "./gear-look";
 import { BAG_CELLS_PER_TAB, MAX_BAG_TABS, SORT_MODES, type BagItem, type Carry, type BagPos, type SortMode } from "./inventory";
 import type { MonsterRank } from "./monsters";
 import { HOTBAR_SLOTS, HOTBAR_SLOT_PATTERN } from "./skills";
@@ -123,6 +124,8 @@ export type ClientMessage =
   | { t: "bt_cancel" }
   /** Get on (true) or off (false) the flight pháp bảo. Its stats and speed only count while riding. */
   | { t: "mount"; on: boolean; fx?: number; fy?: number }
+  /** Sit down to meditate (HP and MP regenerate) or stand up again. Walking, attacking or being hit stands the character up. */
+  | { t: "meditate"; on: boolean }
   /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
   | { t: "conn_report"; code: number; reason: string; clean: boolean; downMs: number }
   /** Take a path item (a placeholder for the NPC quest): one per path per character. */
@@ -223,6 +226,8 @@ export interface PlayerSnapshot {
   o?: string;
   /** The look of the worn flight pháp bảo (`FlightStyle`), so a rider is drawn on the right one. */
   fl?: string;
+  /** How the worn weapon, robe, hat and boots change the look (see gear-look.ts), left out when none is worn. */
+  lk?: GearLook;
   /** The cultivation level, `realm * 10 + stage`: it sets the colour and strength of the qi drawn round the figure. */
   lv?: number;
 }
@@ -231,7 +236,7 @@ export type ServerMessage =
   | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][]; tuning: Tuning; npcs: NpcSpot[]; mapRecipe?: MapRecipe; mapNames?: Record<string, string>; items?: ItemOverlay[]; mutant?: Pick<ElementTuning, "mutantRootChancePermille" | "mutantSkillBonusPct" | "mutantGearBonusPct" | "mutantGearDropPermille"> }
   | { t: "joined"; player: PlayerSnapshot }
   /** What a player holds or wears changed (a weapon or a robe put on, taken off or broken): `w` is the weapon family and `o` the outfit, each left out for none. */
-  | { t: "look"; id: string; w?: string; o?: string; fl?: string; lv?: number }
+  | { t: "look"; id: string; w?: string; o?: string; fl?: string; lk?: GearLook; lv?: number }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
   /** Reply to the mover. `player` is present only when the server corrected or rejected the move. */
@@ -246,6 +251,10 @@ export type ServerMessage =
   | { t: "stats"; character: CharacterSheet }
   /** Whether you are riding the flight pháp bảo now (also sent when it comes off by itself), or why getting on failed. */
   | { t: "mounted"; on: boolean; error?: "no_flight" | "broken" | "busy" | "requirements" }
+  /** Whether the character meditates now. `reason` when it stopped by itself: hit, moved (also an attack or a skill), died, or refused (`safe`: a town needs no meditation, `busy`: a breakthrough or a talisman runs). */
+  | { t: "meditating"; on: boolean; reason?: "hit" | "moved" | "died" | "safe" | "busy" }
+  /** HP and MP regenerated per second now (points, may be fractional): sent when meditation starts or ends, when the gear or the maximums change, and at the join. */
+  | { t: "regen"; hp: number; mp: number }
   /** A monster appeared or changed its path. */
   | { t: "mon"; monster: MonsterSnapshot }
   /** A monster left the room. `dead` when it was killed (the client plays its death before dropping it). */
@@ -471,6 +480,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "boss_summon" };
     case "bt_cancel":
       return { t: "bt_cancel" };
+    case "meditate":
+      return typeof m.on === "boolean" ? { t: "meditate", on: m.on } : null;
     case "mount":
       if (typeof m.on !== "boolean") return null;
       if (m.fx !== undefined || m.fy !== undefined) return isCoord(m.fx) && isCoord(m.fy) ? { t: "mount", on: m.on, fx: m.fx, fy: m.fy } : null;

@@ -84,8 +84,8 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   const ticked = new Set<string>();
   let armedMany = 0;
   /** The kind of sort picked in the drop-down, and the one the "Sắp xếp" button applied last (a view only, nothing is rewritten). */
-  let sortPicked: SortMode = "name";
-  let sortApplied: SortMode = "name";
+  let sortPicked: SortMode = "realm";
+  let sortApplied: SortMode = "realm";
   /** Realms and grades picked in the filters of the sell tab; empty means no filter. They only steer "Chọn hết". */
   const realmSel = new Set<number>();
   const gradeSel = new Set<number>();

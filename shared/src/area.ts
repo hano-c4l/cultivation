@@ -49,8 +49,9 @@ const templateOf = (id: string): string => id.replace(/_\d+$/, "");
  * The area of a skill: by its id, then its template (`kim_3` has its own, `tram_2` falls to `tram`), then by the family of a gear skill
  * (`pb_kim_2` is `pb`, `bm_kim` is `bm`). A skill with none hits one target.
  */
-export function skillAreaOf(def: Pick<SkillDef, "id"> | undefined): AreaDef {
+export function skillAreaOf(def: (Pick<SkillDef, "id"> & { area?: AreaDef }) | undefined): AreaDef {
   if (!def) return SINGLE;
+  if (def.area) return def.area; // a variant that carries its own (the basic qi blast of a high realm)
   const t = tuning().skillAreas;
   const d = DEFAULT_TUNING.skillAreas;
   const family = def.id.replace(/^(pb|bm)_.*/, "$1");
@@ -61,7 +62,7 @@ export function skillAreaOf(def: Pick<SkillDef, "id"> | undefined): AreaDef {
  * How far from its target a caster must stand for the skill to do what it draws: the skill's range, but for an area that starts at the caster (a
  * fan, a line, a ring round the caster) no more than that area reaches, or the target would be out of the area and its splash round the caster.
  */
-export function castReachOf(def: Pick<SkillDef, "id" | "range">): number {
+export function castReachOf(def: Pick<SkillDef, "id" | "range"> & { area?: AreaDef }): number {
   const a = skillAreaOf(def);
   const fromCaster = a.shape === "arc" || a.shape === "line" || (a.shape === "circle" && a.at === "self");
   return fromCaster ? Math.min(def.range, a.range) : def.range;

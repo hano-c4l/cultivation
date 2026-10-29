@@ -112,6 +112,33 @@ const BASE_SCREENS: readonly TuningScreenGroup[] = [
     ],
   },
   {
+    group: "gearRegen",
+    page: "misc",
+    title: "Hồi sinh lực và linh lực của trang bị",
+    note: "Trọng số theo loại món: một món cho (trọng số × đơn vị theo cấp và phẩm của món) mỗi giây, hồi cả khi đang đánh quái. Hồi theo điểm làm tròn lên ít nhất 1 khi trọng số lớn hơn 0; hồi theo phần trăm tính trên sinh lực hoặc linh lực tối đa (số thập phân, 0,5 là nửa phần trăm mỗi giây). Ngồi thiền hồi thêm phần mặc định (2% mỗi giây) cộng với phần này. Loại món chưa có trong danh sách thì không hồi.",
+    fields: Object.keys(DEFAULT_TUNING.gearRegen.weights).flatMap((k): TuningField[] => {
+      const name = ({ necklace: "Dây chuyền", belt: "Đai lưng", ring: "Nhẫn", jade: "Ngọc bội" } as Record<string, string>)[k] ?? k;
+      return [
+        { path: `weights.${k}.hp`, label: `${name}: hồi sinh lực (điểm mỗi giây)`, kind: "num" },
+        { path: `weights.${k}.mp`, label: `${name}: hồi linh lực (điểm mỗi giây)`, kind: "num" },
+        { path: `weights.${k}.hpPct`, label: `${name}: hồi sinh lực (% tối đa mỗi giây)`, kind: "num" },
+        { path: `weights.${k}.mpPct`, label: `${name}: hồi linh lực (% tối đa mỗi giây)`, kind: "num" },
+      ];
+    }),
+  },
+  {
+    group: "gearLooks",
+    page: "misc",
+    title: "Màu trang bị trên nhân vật",
+    note: "Vũ khí nhuộm theo hệ của món (cảnh giới cao thì sáng hơn một chút), áo, mũ và giày lấy màu trong bảng theo bộ (số bộ chia dư cho số màu). Chỉ đổi cách hiển thị; người chơi nhận màu mới khi vào lại game. Nhập màu dạng #rrggbb.",
+    fields: [
+      ...Object.keys(DEFAULT_TUNING.gearLooks.weapon).map((k): TuningField => ({ path: `weapon.${k}`, label: `Màu vũ khí: ${k === "none" ? "không hệ" : k}`, kind: "color" })),
+      ...DEFAULT_TUNING.gearLooks.robe.map((_, i): TuningField => ({ path: `robe.${i}`, label: `Màu áo, bảng ${i + 1}`, kind: "color" })),
+      ...DEFAULT_TUNING.gearLooks.hat.map((_, i): TuningField => ({ path: `hat.${i}`, label: `Màu mũ, bảng ${i + 1}`, kind: "color" })),
+      ...DEFAULT_TUNING.gearLooks.boots.map((_, i): TuningField => ({ path: `boots.${i}`, label: `Màu bụi của giày, bảng ${i + 1}`, kind: "color" })),
+    ],
+  },
+  {
     group: "theme",
     page: "misc",
     title: "Màu giao diện",

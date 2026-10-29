@@ -41,8 +41,11 @@ export interface RestoredVitals {
   buffs: Array<{ skill: string; until: number }>;
 }
 
-/** HP, MP, cooldowns and buffs at `now`, given what was stored when the character left. */
-export function restoreVitals(v: Vitals | null, now: number, maxHp: number, maxMp: number): RestoredVitals {
+/**
+ * HP, MP, cooldowns and buffs at `now`, given what was stored when the character left. `rates` (points per second, see regenPerSecond) is the regeneration of the
+ * time away: absent, the old rule applies (a share of the maximum per second after the usual delay), which is what a town still uses.
+ */
+export function restoreVitals(v: Vitals | null, now: number, maxHp: number, maxMp: number, rates?: { hp: number; mp: number }): RestoredVitals {
   if (!v) return { hp: maxHp, mp: maxMp, cooldowns: {}, buffs: [] };
   const away = Math.max(0, now - v.at);
   const regen = (stored: number, max: number, perS: number, delayMs: number): number => {
@@ -51,9 +54,10 @@ export function restoreVitals(v: Vitals | null, now: number, maxHp: number, maxM
   };
   const cooldowns: Record<string, number> = {};
   for (const [k, t] of Object.entries(v.cd ?? {})) if (t > now) cooldowns[k] = t;
+  const flat = (stored: number, max: number, perS: number): number => Math.min(max, Math.max(0, Math.round(stored)) + Math.floor((away / 1000) * perS));
   return {
-    hp: Math.max(1, regen(v.hp, maxHp, REGEN_PER_S, regenDelayMs())),
-    mp: regen(v.mp, maxMp, mpRegenPerS(), mpRegenDelayMs()),
+    hp: Math.max(1, rates ? flat(v.hp, maxHp, rates.hp) : regen(v.hp, maxHp, REGEN_PER_S, regenDelayMs())),
+    mp: rates ? flat(v.mp, maxMp, rates.mp) : regen(v.mp, maxMp, mpRegenPerS(), mpRegenDelayMs()),
     cooldowns,
     buffs: (v.buffs ?? []).filter((b) => b.until > now),
   };
