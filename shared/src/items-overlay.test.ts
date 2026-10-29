@@ -64,3 +64,12 @@ describe("the item catalogue overlay", () => {
     expect(itemOverlayProblem(custom({ masteryPills: 100 }))).toBe("a consumable heals or raises mastery, not both");
   });
 });
+
+describe("how many of an item fit in one stack", () => {
+  it("ordinary items stack to 999 and the teleport talismans to 99; equipment never stacks", () => {
+    for (const id of ["hoi_huyet_dan", "hoi_linh_dan", "linh_thao", "thu_cot", "yeu_dan", "ngo_dao_dan"]) expect(getItemDef(id)?.maxStack, id).toBe(999);
+    for (const id of ["ttp_town", "ttp_town2"]) expect(getItemDef(id)?.maxStack, id).toBe(99);
+    expect(getItemDef("eq.weapon.u.0.1.1.kim.kiem")?.maxStack).toBe(1);
+    expect(getItemDef("bt_kim_3")?.maxStack).toBe(1);
+  });
+});

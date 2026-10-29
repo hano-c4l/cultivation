@@ -3,6 +3,8 @@ import type { Env } from "./env";
 
 interface Holder {
   room: string;
+  /** When the claim was made: a claim that is old is checked against the room before it counts as online. */
+  at?: number;
   /** Unique per connection, so a late release from an old connection cannot free a newer claim. */
   claimId: string;
 }
@@ -29,7 +31,7 @@ export class CharacterLock extends DurableObject<Env> {
       const stub = this.env.MAP_ROOM.get(this.env.MAP_ROOM.idFromName(holder.room));
       await stub.evictCharacter(characterId);
     }
-    await this.ctx.storage.put("holder", next);
+    await this.ctx.storage.put("holder", { ...next, at: Date.now() });
   }
 
   /** Kicks whoever holds the character (saving first) and frees the lock: used when an admin bans the account. */
@@ -50,7 +52,17 @@ export class CharacterLock extends DurableObject<Env> {
 
   /** Whether a connection holds the character right now (the admin screen shows it as online). */
   async isHeld(): Promise<boolean> {
-    return (await this.ctx.storage.get<Holder>("holder")) !== undefined;
+    const holder = await this.ctx.storage.get<Holder>("holder");
+    if (!holder) return false;
+    // A claim that outlived its connection (a release that never came) must not show a character as online for ever: an older claim is checked against the room.
+    if (Date.now() - (holder.at ?? 0) < 60_000) return true;
+    try {
+      const here = await this.env.MAP_ROOM.get(this.env.MAP_ROOM.idFromName(holder.room)).hasCharacter(holder.claimId);
+      if (!here && (await this.ctx.storage.get<Holder>("holder"))?.claimId === holder.claimId) await this.ctx.storage.delete("holder"); // unless a newer claim came meanwhile
+      return here;
+    } catch {
+      return true; // the room could not be asked: the lock stays as it is
+    }
   }
 
   /** Called by the holding connection after it left; ignored unless the claim id still matches. */

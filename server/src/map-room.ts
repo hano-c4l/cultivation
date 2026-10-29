@@ -636,6 +636,11 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  /** Whether a connection with this claim is still open in this room (CharacterLock asks before it calls an old claim "online"). */
+  async hasCharacter(claimId: string): Promise<boolean> {
+    return this.ctx.getWebSockets().some((ws) => (ws.deserializeAttachment() as PlayerState | null)?.claimId === claimId);
+  }
+
   /** Called by CharacterLock when the same character connects elsewhere: save, then kick the old socket. */
   async evictCharacter(characterId: string): Promise<void> {
     for (const ws of this.ctx.getWebSockets()) {

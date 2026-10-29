@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { BAG_CELLS_PER_TAB, BAG_COLS, BAG_ROWS, SORT_MODES, applyOps, bagUsage, inBounds, planAdd, planMove, planRemove, planSort, planSplit, type BagItem } from "./inventory";
 import { ITEMS, LOOT_TABLES, rollLoot } from "./items";
+
+/** These tests exercise the stack mechanics at a small, fixed limit (99): the real limit of these items is bigger and tuned, so the tests set it themselves. */
+const SMALL_STACK = ["linh_thao", "thu_cot", "yeu_dan", "hoi_huyet_dan", "duong_huyet_dan", "dai_hoi_huyet_dan", "ngo_dao_dan"];
+beforeAll(() => {
+  for (const id of SMALL_STACK) if (ITEMS[id]) (ITEMS[id] as { maxStack: number }).maxStack = 99;
+});
 
 let n = 0;
 const newId = () => `id${++n}`;
