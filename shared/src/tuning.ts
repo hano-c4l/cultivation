@@ -26,6 +26,9 @@ export interface LootLine {
   max: number;
 }
 
+/** The limits of the Auto hunt (see `Tuning.auto`). */
+export type AutoLimits = Tuning["auto"];
+
 export interface Tuning {
   /** Tinh luyện: ore taken, Linh Thạch (as a share of `enhanceCost.linhBase` of the realm) and the chance each stat is rolled. */
   refine: { materials: number; linhShare: number; statChance: number };
@@ -162,6 +165,8 @@ export interface Tuning {
   weaponReach: Record<string, number>;
   /** The ground a skill covers besides its target, by skill id, then by template (`tram_2` is `tram`), then by gear family (`pb`, `bm`). */
   skillAreas: Record<string, AreaDef>;
+  /** The limits of the Auto hunt (the client automation): what a player may pick and how fast it works. The player's own choices are kept in the browser. */
+  auto: { radiusMin: number; radiusMax: number; radiusDefault: number; tickMs: number; giveUpMs: number; skipMs: number; potionGapMs: number; castBackoffMs: number };
   /** How a skill is drawn, by skill id, then template, then gear family: a style name of `SKILL_LOOKS` (a skill with none is drawn by its kind). */
   skillLooks: Record<string, string>;
 }
@@ -451,6 +456,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     liet_hoa_xa: "snake",
   },
   flightLooks: { default: "sword", byElement: { moc: "lotus", thuy: "cloud", phong: "cloud", bang: "cloud", hoa: "sword", kim: "sword", loi: "sword", tho: "lotus" } },
+  auto: { radiusMin: 3, radiusMax: 15, radiusDefault: 8, tickMs: 350, giveUpMs: 6000, skipMs: 20_000, potionGapMs: 2500, castBackoffMs: 2500 },
   weaponReach: { kiem: 1.8, dao: 1.8, thuong: 3, riu: 1.7, cung: 7, quyen: 1.5, none: 1.6 },
   weaponArea: {
     kiem: { shape: "arc", range: 1.9, deg: 120, maxTargets: 3, pct: 70 },
@@ -573,6 +579,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
   flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen), theo hệ của món đang dùng",
+  auto: "Giới hạn của Auto đánh quái: phạm vi tối thiểu, tối đa, mặc định (ô), nhịp ra lệnh (ms), thời gian bỏ một con đánh mãi không trúng, nghỉ giữa hai lần uống đan, nghỉ sau khi kỹ năng báo lỗi",
   weaponReach: "Tầm đánh thường theo họ vũ khí (ô): nhân vật đứng cách mục tiêu tối đa chừng này rồi mới ra đòn (cung bắn từ xa, thương dài hơn kiếm)",
   weaponArea: "Vùng chém của đánh thường theo họ vũ khí: quái gần mục tiêu trong vùng cũng bị đánh",
   skillAreas: "Vùng sát thương của kỹ năng tấn công: hình quạt, đường thẳng hay vòng tròn, số mục tiêu tối đa, phần sát thương của mục tiêu phụ",
@@ -853,6 +860,18 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       const styles = (m: unknown): boolean => m === undefined || (obj(m) && Object.keys(m).length <= 40 && Object.entries(m).every(([k, v]) => /^[a-z0-9_]{1,16}$/.test(k) && (FLIGHT_STYLES as readonly unknown[]).includes(v)));
       return (FLIGHT_STYLES as readonly unknown[]).includes(value.default) && styles(value.byElement) && styles(value.byRealm);
     }
+    case "auto":
+      return (
+        int(value.radiusMin, 1, 30) &&
+        int(value.radiusMax, 1, 30) &&
+        (value.radiusMin as number) <= (value.radiusMax as number) &&
+        int(value.radiusDefault, value.radiusMin as number, value.radiusMax as number) &&
+        int(value.tickMs, 150, 2000) &&
+        int(value.giveUpMs, 1000, 60_000) &&
+        int(value.skipMs, 1000, 300_000) &&
+        int(value.potionGapMs, 500, 30_000) &&
+        int(value.castBackoffMs, 500, 30_000)
+      );
     case "weaponReach":
       return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && num(v, 0.5, 20));
     case "weaponArea":
