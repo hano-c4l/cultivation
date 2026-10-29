@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { getSkill, skillAreaOf, skillLookOf, weaponAreaOf, type AreaDef, type SkillLook } from "@game/shared";
 import { FxLayer, type Puff } from "./fx-layer";
-import { BASIC_COLOR, BUFF_COLOR, ELEMENT_COLOR, NEUTRAL, basicFxOf, basicProjectileOf, elementStyleOf, skillFxOf, templateOf, type ElementStyle } from "./fx-kinds";
+import { BASIC_COLOR, BUFF_COLOR, DOT_COLOR, ELEMENT_COLOR, NEUTRAL, basicFxOf, basicProjectileOf, elementStyleOf, skillFxOf, templateOf, type ElementStyle } from "./fx-kinds";
 
 /** A point on screen (world pixels of the scene) where an effect is drawn, or null when the thing it belongs to is not in view. */
 export type PosOf = (id: string) => { x: number; y: number } | null;
@@ -87,30 +87,19 @@ export class Effects {
   }
 
   /**
-   * The light a timed buff keeps round its wearer while it runs (called a few times a second by the scene): rising embers for a strength buff, a
-   * shimmering ring on the ground for a ward, streaks of wind for a dodge buff, a column of motes otherwise. It thins out in the last second.
+   * The few dots a timed buff (or a heal, for a moment) leaves round its wearer, called a few times a second by the scene: sparse and small, each
+   * kind in its own colour (defence yellow, strength red, dodge pale blue, healing green). `slot` of `total` running effects on the same figure
+   * says which share of the circle round the body this one uses, so two effects never sit on top of each other. The dots thin out in the last second.
    */
-  lingering(id: string, skillId: string, leftS: number): void {
+  lingering(id: string, skillId: string, leftS: number, slot = 0, total = 1): void {
     const at = this.posOf(id);
     const def = getSkill(skillId);
-    if (!at || !def?.buff) return;
-    const color = BUFF_COLOR[def.buff.stat] ?? NEUTRAL;
-    const fade = Math.min(1, leftS);
-    switch (def.buff.stat) {
-      case "attack":
-        this.layer.puff("ember", at.x + (Math.random() - 0.5) * 18, at.y - 8, 1, color);
-        if (Math.random() < 0.5) this.layer.puff("spark", at.x + (Math.random() - 0.5) * 22, at.y - 26, 1, 0xffffff);
-        this.layer.glow(at.x, at.y - 22, color, 0.5, 1.1, 300, 0.22 * fade);
-        break;
-      case "dodge":
-        this.layer.puff("trail", at.x + (Math.random() - 0.5) * 26, at.y - 14 - Math.random() * 20, 1, color);
-        this.layer.ring(at.x, at.y + 6, color, 0.5, 1.1, 520, 0.28 * fade);
-        break;
-      default:
-        this.layer.ring(at.x, at.y + 6, color, 0.7, 1.05, 700, 0.32 * fade);
-        this.layer.puff("mote", at.x + (Math.random() - 0.5) * 24, at.y - 2, 1, color);
-        this.layer.glow(at.x, at.y - 22, color, 0.5, 1.2, 300, 0.2 * fade);
-    }
+    if (!at || !def || (!def.buff && def.kind !== "heal")) return;
+    if (Math.random() > 0.55 * Math.min(1, leftS + 0.2)) return;
+    const color = def.kind === "heal" ? DOT_COLOR.heal! : (DOT_COLOR[def.buff?.stat ?? ""] ?? NEUTRAL);
+    const a = ((slot + Math.random()) / total) * Math.PI * 2;
+    const rx = 20 + Math.random() * 12;
+    this.layer.puff("mote", at.x + Math.cos(a) * rx, at.y - 22 + Math.sin(a) * rx * 0.5 - Math.random() * 18, 1, color);
   }
 
   /** A guard used a skill: a glow of its colour (mend: lotus light, ward: a ring, burst and slash: a flash of its spear). */
