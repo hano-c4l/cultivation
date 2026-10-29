@@ -15,6 +15,8 @@ export * from "./character";
 export * from "./gender";
 export * from "./equipment-data";
 export * from "./equipment";
+export * from "./gear-regen";
+export * from "./gear-look";
 export * from "./skills";
 export * from "./vitals";
 export * from "./progression-data";

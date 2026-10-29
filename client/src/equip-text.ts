@@ -1,4 +1,4 @@
-import { type RollPosition, rollPosition, type RolledStats, resonanceBonus, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
+import { gearRegenOf, type RollPosition, rollPosition, type RolledStats, resonanceBonus, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
 import { vi } from "./locales/vi";
 
 /** "+12 Công kích" style text for one stat; rates are percentage points. */
@@ -93,6 +93,15 @@ function statsText(type: string, dur?: number, max?: number, lv?: number, mult =
     .join(", ");
 }
 
+/** "Hồi +3 sinh lực/giây, +0,5% linh lực tối đa/giây" of a piece that regenerates, or null (it works all the time, in a fight too). */
+export function regenText(type: string): string | null {
+  const info = equipmentInfo(type);
+  if (!info) return null;
+  const g = gearRegenOf(info);
+  const parts = [g.hp > 0 ? vi.equip.regen.hp(g.hp) : "", g.hpPct > 0 ? vi.equip.regen.hpPct(g.hpPct) : "", g.mp > 0 ? vi.equip.regen.mp(g.mp) : "", g.mpPct > 0 ? vi.equip.regen.mpPct(g.mpPct) : ""].filter(Boolean);
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 /** "Luyện Khí tầng 1, Căn cốt ≥ 8", or null when the piece asks nothing. */
 function requirementText(type: string): string | null {
   const info = equipmentInfo(type);
@@ -110,7 +119,8 @@ function requirementText(type: string): string | null {
 export function equipLines(type: string, dur?: number, max?: number, lv?: number, rs?: RolledStats, en?: number): string[] {
   if (!equipmentInfo(type)) return [];
   const req = requirementText(type);
-  return [statsText(type, dur, max, lv, 1, rs, en), durabilityText(dur, max), ...(req ? [`${vi.equip.requires}: ${req}`] : [])];
+  const regen = regenText(type);
+  return [statsText(type, dur, max, lv, 1, rs, en), ...(regen ? [regen] : []), durabilityText(dur, max), ...(req ? [`${vi.equip.requires}: ${req}`] : [])];
 }
 
 /** The element name for display ("Thủy"), or null. */
@@ -165,6 +175,8 @@ export function describeItem(type: string, opts: { dur?: number; max?: number; q
       stats.append(span);
     });
     box.append(stats);
+    const regen = regenText(type);
+    if (regen) line(regen);
     if (suits) line(vi.equip.resonates(Math.round(resonanceBonus(info, opts.wearer?.affinity) * 100)));
     // The pháp bảo bản mệnh trains on its own EXP, up to the level of its owner.
     if (info.kind === "bonded") line(vi.equip.refine(opts.xp ?? 0, refineExpNeeded(refineLevelOf(info, opts.lv))));

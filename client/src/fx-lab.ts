@@ -25,8 +25,8 @@ class Lab extends Phaser.Scene {
     this.add.rectangle(caster.x, caster.y - 22, 14, 36, 0xeeeeee).setDepth(10);
     this.add.rectangle(target.x, target.y - 22, 14, 36, 0xcc5555).setDepth(10);
     ensureFlightTextures(this);
-    (["plain", "sword", "cloud", "lotus"] as const).forEach((k, i) => {
-      const x = 120 + i * 150;
+    (["plain", "sword", "cloud", "lotus", "phoenix", "dragon"] as const).forEach((k, i) => {
+      const x = 70 + i * 92;
       this.add.rectangle(x, 470 - 25, 14, 36, 0xeeeeee).setDepth(1);
       this.add.image(x, 466, FLIGHT_TEX[k]).setDepth(0);
       this.add.text(x - 20, 488, k, { color: "#ddd", fontSize: "12px" });

@@ -1,4 +1,4 @@
-import { BASIC_SKILL_ID, areaTargets, castReachOf, firstAlongLine, skillAreaOf, weaponAreaOf, weaponReachOf, type AreaDef } from "@game/shared";
+import { BASIC_SKILL_ID, basicSkillAt, NO_GEAR_REGEN, regenPerSecond, type GearRegen, areaTargets, castReachOf, firstAlongLine, skillAreaOf, weaponAreaOf, weaponReachOf, type AreaDef } from "@game/shared";
 import {
   PLAYER_ATTACK_COOLDOWN_MS,
   regenDelayMs,
@@ -127,6 +127,9 @@ export interface ProfileSeed {
   gender: Gender;
   /** Stats of the gear worn right now (equipmentBonus); recomputed by the room whenever gear or requirements change. */
   gear?: EquipStats;
+  /** Regeneration the worn gear gives all the time (equipmentRegen), and whether the character is meditating when the profile is made. */
+  regen?: GearRegen;
+  meditating?: boolean;
   /** Weapon family of the worn weapon (a skill may need one); null: no weapon or a weapon without a family. */
   weapon?: string | null;
   /** The skills the character was given: its root skills of each realm reached and the ones learned from bí tịch (by id). */
@@ -165,6 +168,14 @@ export interface PlayerProfile extends ProfileSeed {
   nextAttackAt: number;
   lastHurtAt: number;
   lastRegenAt: number;
+  /** Sitting in meditation: the ordinary regeneration of HP and MP works only then (plus what the gear gives all the time). A hit, a step, an attack or a skill ends it. */
+  meditating: boolean;
+  /** Regeneration that worn gear gives all the time. */
+  gearRegen: GearRegen;
+  /** HP and MP regenerated per second now (points; `setRates` keeps them current), and the fraction of a point of HP carried over between the one-second steps. */
+  hpRate: number;
+  mpRate: number;
+  hpFrac: number;
   lastRepathAt: number;
   lastAttackMsgAt: number;
   pendingPoints: number;
@@ -268,7 +279,9 @@ export type SimEvent =
   /** The kill's EXP, which the pháp bảo bản mệnh of the winner also receives (its own stream, no effect on the character's EXP). */
   | { t: "refine"; playerId: string; gain: number }
   /** MP changed (spent, or settled when hit); the client regenerates it from the snapshot. */
-  | { t: "mp"; playerId: string; mp: number; maxMp: number; regenInMs: number }
+  | { t: "mp"; playerId: string; mp: number; maxMp: number; regenInMs: number; /** Fraction of the maximum regenerated per second. */ perSec: number }
+  /** The character stood up from meditation because it was hit or died (a step, an attack or a skill is the room's to see). */
+  | { t: "med"; playerId: string; reason: "hit" | "died" }
   | { t: "cast_ok"; playerId: string; skill: string; cdMs: number }
   /** A skill went off, for everyone who can see it: who cast it, at what (a monster or player id) or where (a teleport's destination), in which element. */
   | { t: "fx"; playerId: string; skill: string; target?: string; dest?: Vec2; element?: string }
@@ -527,7 +540,7 @@ export class CombatSim {
       }
     }
     for (const p of this.players.values()) {
-      if (p.dead || p.targetId !== null || p.hp < p.maxHp || p.hots.length > 0 || moving.has(p.id)) return false;
+      if (p.dead || p.targetId !== null || (p.hp < p.maxHp && p.hpRate > 0) || p.hots.length > 0 || moving.has(p.id)) return false;
     }
     return this.zones.length === 0; // a lasting zone is tick-driven
   }
@@ -701,6 +714,11 @@ export class CombatSim {
       nextAttackAt: 0,
       lastHurtAt: 0,
       lastRegenAt: 0,
+      meditating: seed.meditating === true,
+      gearRegen: seed.regen ?? NO_GEAR_REGEN,
+      hpRate: 0,
+      mpRate: 0,
+      hpFrac: 0,
       lastRepathAt: 0,
       lastAttackMsgAt: 0,
       pendingPoints: 0,
@@ -723,7 +741,9 @@ export class CombatSim {
     if (seed.vitals) {
       // Back from a reload or another map: pick up where they left, with the regeneration of the time away.
       const now = Date.now();
-      const r = restoreVitals(seed.vitals, now, d.maxHp, d.maxMp);
+      // The time away regenerates only what the gear gives (and, in a safe map, the ordinary regeneration): nobody meditates while away.
+      const away = regenPerSecond(d.maxHp, d.maxMp, this.map.safe, seed.regen ?? NO_GEAR_REGEN);
+      const r = restoreVitals(seed.vitals, now, d.maxHp, d.maxMp, away);
       profile.hp = r.hp;
       profile.mp = r.mp;
       profile.mpAt = now;
@@ -735,6 +755,7 @@ export class CombatSim {
       if (profile.buffs.length > 0) this.recompute(profile, false);
     }
     this.players.set(seed.id, profile);
+    this.setRates(profile);
     return profile;
   }
 
@@ -907,9 +928,51 @@ export class CombatSim {
   /** MP at time `now`: the stored value plus regeneration since it was stored (starting mpRegenDelayMs() after the last hit). */
   currentMp(p: PlayerProfile, now: number): number {
     if (p.mp >= p.maxMp) return p.maxMp;
-    const from = Math.max(p.mpAt, p.lastHurtAt + mpRegenDelayMs());
-    if (now <= from) return p.mp;
-    return Math.min(p.maxMp, p.mp + Math.floor(((now - from) / 1000) * Math.max(1, p.maxMp * mpRegenPerS())));
+    if (p.mpRate <= 0 || now <= p.mpAt) return p.mp;
+    return Math.min(p.maxMp, p.mp + Math.floor(((now - p.mpAt) / 1000) * p.mpRate));
+  }
+
+  /** The regeneration per second now: the ordinary one while meditating (always in a safe map, where there is nothing to fear), and what the gear gives. Call after anything that changes it, having settled the MP first. */
+  private setRates(p: PlayerProfile): void {
+    const r = regenPerSecond(p.maxHp, p.maxMp, p.meditating || this.map.safe, p.gearRegen);
+    p.hpRate = r.hp;
+    p.mpRate = r.mp;
+  }
+
+  /** HP and MP regenerated per second now (what the client shows while it waits for the next message). */
+  regenOf(id: string): { hp: number; mp: number } | null {
+    const p = this.players.get(id);
+    return p ? { hp: p.hpRate, mp: p.mpRate } : null;
+  }
+
+  /** Sit down or stand up. Refused (false) when dead. Standing up from an attack, a step or a hit goes through `stopMeditation`. */
+  setMeditating(id: string, on: boolean, now: number): boolean {
+    const p = this.players.get(id);
+    if (!p || p.dead) return false;
+    if (p.meditating === on) return true;
+    this.settleMp(p, now);
+    p.meditating = on;
+    this.setRates(p);
+    return true;
+  }
+
+  /** The character stood up: a hit, a step, an attack, a skill, death. Returns whether it was meditating (the room then tells the client). */
+  stopMeditation(id: string, now: number): boolean {
+    const p = this.players.get(id);
+    if (!p?.meditating) return false;
+    this.settleMp(p, now);
+    p.meditating = false;
+    this.setRates(p);
+    return true;
+  }
+
+  /** The regeneration the worn gear gives changed. */
+  updateRegen(id: string, regen: GearRegen, now: number): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    this.settleMp(p, now);
+    p.gearRegen = regen;
+    this.setRates(p);
   }
 
   /** Stores the MP worked out for `now` (call before changing it or before `lastHurtAt` moves). */
@@ -928,7 +991,7 @@ export class CombatSim {
   }
 
   mpEvent(p: PlayerProfile, now: number): SimEvent {
-    return { t: "mp", playerId: p.id, mp: this.currentMp(p, now), maxMp: p.maxMp, regenInMs: Math.max(0, p.lastHurtAt + mpRegenDelayMs() - now) };
+    return { t: "mp", playerId: p.id, mp: this.currentMp(p, now), maxMp: p.maxMp, regenInMs: 0, perSec: p.maxMp > 0 ? p.mpRate / p.maxMp : 0 };
   }
 
   /**
@@ -937,7 +1000,7 @@ export class CombatSim {
    */
   queueCast(playerId: string, skillId: string, targetId: string | null, now: number, dest?: Vec2, element?: SpiritualRoot): { ok: true } | { ok: false; reason: "unknown" | "mp" | "cooldown" | "no_target" | "weapon" } {
     const p = this.players.get(playerId);
-    const skill = getSkill(skillId);
+    const skill = p ? this.skillFor(p, skillId) : undefined;
     if (!p || p.dead || !skill || skill.kind === "passive" || !this.skillsOf(p).includes(skillId)) return { ok: false, reason: "unknown" };
     if (skill.weapon !== undefined && p.weapon !== skill.weapon) return { ok: false, reason: "weapon" };
     if (now < (p.cooldowns.get(skillId) ?? 0)) return { ok: false, reason: "cooldown" };
@@ -980,6 +1043,12 @@ export class CombatSim {
     p.hp = fullHeal ? d.maxHp : Math.max(p.hp > 0 ? 1 : 0, Math.round(d.maxHp * ratio));
     p.maxMp = d.maxMp;
     p.mp = fullHeal ? d.maxMp : Math.min(p.mp, d.maxMp);
+    this.setRates(p); // the rates that are a share of the maximum follow it
+  }
+
+  /** A skill as this player has it: the basic qi blast grows with the realm (range, power, MP, area), the rest are as they are. */
+  private skillFor(p: PlayerProfile, id: string): SkillDef | undefined {
+    return id === BASIC_SKILL_ID ? basicSkillAt(p.realm) : getSkill(id);
   }
 
   /** Targets a monster, or (PvP) another player when the rules allow it (PK switch on, nobody under the newbie protection). */
@@ -1330,8 +1399,9 @@ export class CombatSim {
   private hurtPlayer(m: Monster, p: PlayerProfile, attacker: Combatant, now: number, events: SimEvent[]): void {
     const hit = computeDamage(attacker, p.stats, this.rand);
     p.hp = Math.max(0, p.hp - hit.damage);
-    this.settleMp(p, now); // regeneration up to this hit is kept; it pauses from here
+    this.settleMp(p, now); // regeneration up to this hit is kept
     p.lastHurtAt = now;
+    if (this.stopMeditation(p.id, now)) events.push({ t: "med", playerId: p.id, reason: "hit" });
     events.push({ t: "hit", from: m.id, to: p.id, kind: hit.kind, damage: hit.damage, hp: p.hp });
     events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
     if (p.mp < p.maxMp) events.push(this.mpEvent(p, now));
@@ -1357,10 +1427,15 @@ export class CombatSim {
       // A retaliation lasts only while the player still has that attacker targeted.
       if (p.retaliateId !== null && p.targetId !== p.retaliateId) p.retaliateId = null;
 
-      if (p.hp < p.maxHp && now - p.lastHurtAt >= regenDelayMs() && now - p.lastRegenAt >= 1000) {
+      if (p.hp < p.maxHp && p.hpRate > 0 && now - p.lastRegenAt >= 1000) {
         p.lastRegenAt = now;
-        p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(p.maxHp * REGEN_PER_S)));
-        events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+        p.hpFrac += p.hpRate;
+        const gain = Math.floor(p.hpFrac);
+        p.hpFrac -= gain;
+        if (gain > 0) {
+          p.hp = Math.min(p.maxHp, p.hp + gain);
+          events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
+        }
       }
 
       let effectsChanged = false;
@@ -1414,7 +1489,7 @@ export class CombatSim {
    */
   private primaryOf(p: PlayerProfile, now: number): SkillDef | undefined {
     if (!p.primary) return undefined;
-    const def = getSkill(p.primary.skill);
+    const def = this.skillFor(p, p.primary.skill);
     if (!def || def.kind !== "attack" || !this.skillsOf(p).includes(def.id)) return undefined;
     return this.currentMp(p, now) >= this.effectiveOf(p, def).mpCost ? def : undefined;
   }
@@ -1435,7 +1510,7 @@ export class CombatSim {
 
   /** How far the player's next blow reaches: the waiting skill's range, the chosen attack's, else the wielded weapon's. */
   private reachOf(p: PlayerProfile): number {
-    const skill = p.pendingCast ? getSkill(p.pendingCast.skill) : undefined;
+    const skill = p.pendingCast ? this.skillFor(p, p.pendingCast.skill) : undefined;
     if (skill && skill.kind === "attack") return castReachOf(skill);
     const primary = this.primaryOf(p, this.clock);
     return primary ? castReachOf(primary) : weaponReachOf(p.weapon);
@@ -1480,7 +1555,7 @@ export class CombatSim {
    */
   private runCast(p: PlayerProfile, pos: Vec2, now: number, events: SimEvent[], positions: ReadonlyMap<string, Vec2>): boolean {
     const pending = p.pendingCast;
-    const skill = pending ? getSkill(pending.skill) : undefined;
+    const skill = pending ? this.skillFor(p, pending.skill) : undefined;
     if (!pending || !skill) {
       p.pendingCast = null;
       return false;
@@ -1744,8 +1819,9 @@ export class CombatSim {
     if (!answering) q.hitBy.set(p.id, now);
     const applied = Math.min(q.hp, hit.damage);
     q.hp = Math.max(0, q.hp - hit.damage);
-    this.settleMp(q, now); // regeneration up to this hit is kept; it pauses from here
+    this.settleMp(q, now); // regeneration up to this hit is kept
     q.lastHurtAt = now;
+    if (this.stopMeditation(q.id, now)) events.push({ t: "med", playerId: q.id, reason: "hit" });
     events.push({ t: "hit", from: p.id, to: q.id, kind: hit.kind, damage: hit.damage, hp: q.hp, ...(skill ? { skill: skill.id } : {}), ...(answering ? { ret: true as const } : {}), ...(aoe ? { aoe: true as const } : {}), ...(dot ? { dot: true as const } : {}) });
     events.push({ t: "hp", playerId: q.id, hp: q.hp, maxHp: q.maxHp });
     if (q.mp < q.maxMp) events.push(this.mpEvent(q, now));

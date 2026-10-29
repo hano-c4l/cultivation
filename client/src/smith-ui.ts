@@ -78,8 +78,8 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
   let protect = false;
   let tab: Tab = "gear";
   let mode: Mode = "enhance";
-  let sortPicked: SortMode = "name";
-  let sortApplied: SortMode = "name";
+  let sortPicked: SortMode = "realm";
+  let sortApplied: SortMode = "realm";
   let flash: { text: string; ok: boolean } | null = null;
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
   let banned = "";

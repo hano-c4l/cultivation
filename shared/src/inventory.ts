@@ -16,7 +16,7 @@ export const MAIL_ITEM_EXPIRY_MS = 30 * 60_000;
 export const INV_MIN_GAP_MS = 150;
 
 /** How the sort button orders the bag. Each click uses the next mode. */
-export const SORT_MODES = ["name", "rarity", "grade", "realm"] as const;
+export const SORT_MODES = ["realm", "name", "rarity", "grade"] as const;
 export type SortMode = (typeof SORT_MODES)[number];
 /**
  * A sort rewrites many rows (about 4 D1 rows per moved item, so a full bag costs hundreds), so it is limited: three

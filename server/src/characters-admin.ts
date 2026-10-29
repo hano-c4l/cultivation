@@ -126,10 +126,10 @@ function maxLevelOf(skillId: string, rootGrade: number): number {
 export type CharacterResult = { ok: true; kicked?: boolean } | { ok: false; error: "invalid" | "not_found" | "not_reviewing" | "reviewed_by_other" | "unchanged" | "full" | "funds" | "busy" | "unknown_item" | "name_taken" | "equipped" | "gender" | "mutant_alone" };
 
 /** Fails the batch unless this admin's review of the character is still running. */
-const reviewGuard = (db: D1Database, id: string, admin: string, now: number) =>
+export const reviewGuard = (db: D1Database, id: string, admin: string, now: number) =>
   db.prepare("INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM characters WHERE id = ? AND review_by = ? AND review_until > ?)").bind(id, admin, now);
 
-async function reviewing(db: D1Database, id: string, admin: string, now: number): Promise<boolean> {
+export async function reviewing(db: D1Database, id: string, admin: string, now: number): Promise<boolean> {
   return !!(await db.prepare("SELECT 1 AS x FROM characters WHERE id = ? AND review_by = ? AND review_until > ?").bind(id, admin, now).first());
 }
 
@@ -194,7 +194,7 @@ export async function editStats(db: D1Database, admin: string, id: string, input
   return { ok: true };
 }
 
-function mapGuard(err: unknown): CharacterResult {
+export function mapGuard(err: unknown): CharacterResult {
   if (String(err).includes("inv_guard")) return { ok: false, error: "not_reviewing" };
   console.error("character edit failed", err);
   return { ok: false, error: "busy" };

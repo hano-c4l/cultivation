@@ -85,7 +85,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
   let justDragged = false;
   let confirmDrop: "one" | "all" | null = null;
   /** The mode picked in the list next to the sort button; the button sorts by it. */
-  let sortMode: SortMode = "name";
+  let sortMode: SortMode = "realm";
   /** The button is locked after a click, matching the server's limit of one sort per 15 seconds. */
   let sortLockedUntil = 0;
   /** Set by a "wait" refusal: the button shows the seconds left and stays locked until then. */

@@ -120,6 +120,8 @@ const KIND_REQ_STAT: Readonly<Record<EquipKind, StatKey>> = {
 
 export const MAX_EQUIP_GRADE = 4;
 /** Phẩm cấp multiplier of a piece's stats, grade 1 (Hạ) to 4 (Cực). */
+/** Bậc in a realm, as the look numbers count them (the same as STAGES_PER_REALM). */
+export const STAGES_PER_REALM_FOR_LOOK = 9;
 export const GRADE_MULT = [1, 1.25, 1.6, 2.2] as const;
 /** Linh Thạch to repair one lost durability point, per grade (doubling each grade). */
 export const REPAIR_COST_PER_POINT = [1, 2, 4, 8] as const;
