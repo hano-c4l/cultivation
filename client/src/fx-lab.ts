@@ -1,7 +1,7 @@
 import Phaser from "phaser";
 import { Effects } from "./fx";
 import { FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
-import { drawQiAura, qiStyleOf } from "./qi-aura";
+import { qiSpawnPoint, qiStyleOf } from "./qi-aura";
 import { DEFAULT_THEME } from "@game/shared";
 
 /**
@@ -16,8 +16,9 @@ const posOf = (id: string): { x: number; y: number } | null => (id === "me" ? ca
 
 class Lab extends Phaser.Scene {
   fx!: Effects;
-  /** Figures wearing the qi of each level, shown with the `qi` button. */
-  qi: Phaser.GameObjects.Graphics | null = null;
+  /** Whether the figures wearing the qi of each level are shown (the `qi` button), and when each releases its next wisp. */
+  qi = false;
+  qiNext: number[] = [];
   create(): void {
     this.cameras.main.setBackgroundColor("#2c4a2e");
     for (const p of [caster, target]) this.add.ellipse(p.x, p.y, 36, 16, 0x000000, 0.35);
@@ -57,8 +58,7 @@ class Lab extends Phaser.Scene {
     }
     add("qi", () => {
       // eight levels side by side: the first and last stage of the first four realms
-      this.qi?.destroy();
-      this.qi = this.add.graphics().setDepth(5);
+      this.qi = true;
       LEVELS.forEach((lv, i) => {
         this.add.rectangle(70 + i * 90, 300 - 20, 14, 36, 0xeeeeee).setDepth(10).setData("qi", true);
         this.add.text(54 + i * 90, 306, String(lv), { color: "#ddd", fontSize: "11px" }).setData("qi", true);
@@ -100,8 +100,13 @@ class Lab extends Phaser.Scene {
   update(time: number): void {
     this.fx.update(time);
     if (this.qi) {
-      this.qi.clear();
-      LEVELS.forEach((lv, i) => drawQiAura(this.qi!, 70 + i * 90, 300, 36, time / 1000, qiStyleOf(lv, DEFAULT_THEME.realmColors)));
+      LEVELS.forEach((lv, i) => {
+        if (time < (this.qiNext[i] ?? 0)) return;
+        const st = qiStyleOf(lv, DEFAULT_THEME.realmColors);
+        this.qiNext[i] = time + (1000 / st.rate) * (0.6 + Math.random() * 0.8);
+        const at = qiSpawnPoint(70 + i * 90, 300, 36);
+        this.fx.puff("qi", at.x, at.y, st.burst, st.color);
+      });
     }
   }
 }

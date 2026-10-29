@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
 /** The feels of particle a hit, a bolt or a cast can throw: each is one emitter, made once, fired with `explode`. */
-export type Puff = "spark" | "mote" | "trail" | "ember" | "drop" | "petal" | "shard" | "smoke";
+export type Puff = "spark" | "mote" | "trail" | "ember" | "drop" | "petal" | "shard" | "smoke" | "qi";
 
 const ADD = Phaser.BlendModes.ADD;
 /** Ground decals (circles, rings) are drawn just above the ground, under every actor (actors sit at 10 + x + y), so they lie under the feet and not over the legs. */
@@ -17,6 +17,8 @@ const PUFFS: Readonly<Record<Puff, { tex: string; cfg: Phaser.Types.GameObjects.
   drop: { tex: FX_TEX.glow, cfg: { speed: { min: 40, max: 120 }, angle: { min: 200, max: 340 }, gravityY: 320, lifespan: { min: 350, max: 600 }, scale: { start: 0.24, end: 0.08 }, alpha: { start: 1, end: 0 } } },
   petal: { tex: FX_TEX.petal, cfg: { speed: { min: 25, max: 90 }, gravityY: 25, lifespan: { min: 800, max: 1200 }, scale: { start: 0.7, end: 0.2 }, alpha: { start: 1, end: 0 }, rotate: { start: 0, end: 540 } } },
   shard: { tex: FX_TEX.shard, cfg: { speed: { min: 70, max: 190 }, gravityY: 180, lifespan: { min: 380, max: 620 }, scale: { start: 0.55, end: 0.1 }, alpha: { start: 1, end: 0 }, rotate: { start: 0, end: 360 } } },
+  // the haze of qi round a cultivator: small, slow and faint, drifting up and spreading as it thins out
+  qi: { tex: FX_TEX.wisp, cfg: { speed: { min: 2, max: 10 }, gravityY: -16, lifespan: { min: 1200, max: 1900 }, scale: { start: 0.25, end: 0.9 }, alpha: { start: 0.38, end: 0 } } },
   smoke: { tex: FX_TEX.wisp, cfg: { speed: { min: 8, max: 36 }, gravityY: -26, lifespan: { min: 600, max: 900 }, scale: { start: 0.35, end: 1.2 }, alpha: { start: 0.45, end: 0 } } },
 };
 
@@ -53,7 +55,7 @@ export class FxLayer {
     let em = this.emitters.get(kind);
     if (!em) {
       const def = PUFFS[kind];
-      em = this.scene.add.particles(0, 0, def.tex, { ...def.cfg, emitting: false, blendMode: kind === "smoke" ? Phaser.BlendModes.NORMAL : ADD, maxAliveParticles: MAX_ALIVE }).setDepth(this.depth + 1);
+      em = this.scene.add.particles(0, 0, def.tex, { ...def.cfg, emitting: false, blendMode: kind === "smoke" || kind === "qi" ? Phaser.BlendModes.NORMAL : ADD, maxAliveParticles: MAX_ALIVE }).setDepth(this.depth + 1);
       this.emitters.set(kind, em);
     }
     em.setParticleTint(color);
