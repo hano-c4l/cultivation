@@ -21,6 +21,24 @@ interface Channel {
 
 type P = { x: number; y: number };
 
+/** Most zones drawn at once. */
+const MAX_ZONES = 12;
+
+interface ZoneFx {
+  g: Phaser.GameObjects.Graphics;
+  pts: P[];
+  area: AreaDef;
+  from: P;
+  aim: P;
+  color: number;
+  style: ElementStyle;
+  born: number;
+  until: number;
+  nextPuff: number;
+  /** When the server put it out early (0: it has not). */
+  ending: number;
+}
+
 /**
  * The visual effects of skills and of the long channels (breakthrough, teleport). All of them are drawn with graphics and tweens (no art needed) and
  * are destroyed when they end. The server decides what happens and tells everyone who sees it (`fx`, `fx_cone`, `fx_channel`); this only draws.
@@ -31,6 +49,8 @@ export class Effects {
   private readonly selfId: () => string | undefined;
   private readonly channels = new Map<string, Channel>();
   private oneShots = 0;
+  /** The lasting zones standing now (by the server's number). */
+  private readonly zones = new Map<string, ZoneFx>();
   /** Bumped by `clear`: delayed parts of an effect check it, so they do not fire on the next map. */
   private epoch = 0;
   /** Particles, glows, rings and the formation circle (everything that is not a line or a shape). */
@@ -60,7 +80,7 @@ export class Effects {
     if (from && (kind === "melee" || kind === "ranged" || kind === "cone")) this.castSigil(from, color, lvl);
     if (from && aimed && def?.kind === "attack") this.areaMark(skillAreaOf(def), from, aimed, color, 0.26);
     const look = def && !def.fx ? skillLookOf(def) : undefined;
-    if (look && this.styled(look, from, aimed, id, color, style, lvl, def?.buff ? (BUFF_COLOR[def.buff.stat] ?? NEUTRAL) : NEUTRAL)) return;
+    if (look && this.styled(look, from, aimed, id, color, style, lvl, def?.buff ? (BUFF_COLOR[def.buff.stat] ?? NEUTRAL) : NEUTRAL, def?.kind === "attack" ? skillAreaOf(def).range : 6)) return;
     switch (kind) {
       case "melee":
         if (aimed) {
@@ -216,6 +236,7 @@ export class Effects {
 
   /** Every frame: the running channels follow their players and turn. A channel whose player is out of view or has gone is dropped. */
   update(now: number): void {
+    this.updateZones(now);
     for (const [key, ch] of this.channels) {
       const at = this.posOf(ch.id);
       // A teleport channel lasts a few seconds: whatever happens to the message that ends it, the drawing does not outlive that by much.
@@ -252,6 +273,8 @@ export class Effects {
     }
     this.running.clear();
     this.oneShots = 0;
+    for (const z of this.zones.values()) z.g.destroy();
+    this.zones.clear();
   }
 
   /** Drops the channels of one player (they left or were removed). */
@@ -314,8 +337,8 @@ export class Effects {
    * Draws, on the ground, the very shape the server hits (`shared/src/area.ts` decides who is inside it): a fan, a strip or a disc, lit for a moment.
    * `from` is where the blow comes from and `aim` the point it is aimed at, both on screen; `alpha` dims it (a plain blow marks it softly).
    */
-  private areaMark(area: AreaDef, from: P, aim: P, color: number, alpha = 0.3): void {
-    if (area.shape === "single") return;
+  /** The outline of an area on screen, as the server's geometry has it: `from` is the caster's place and `aim` the point aimed at. */
+  private areaPts(area: AreaDef, from: P, aim: P): P[] {
     const d = this.ground(aim.x - from.x, aim.y - from.y);
     const len = Math.hypot(d.x, d.y) || 1;
     const ux = d.x / len;
@@ -343,6 +366,12 @@ export class Effects {
       add(ux * area.range + uy * w, uy * area.range - ux * w);
       add(uy * w, -ux * w);
     }
+    return pts;
+  }
+
+  private areaMark(area: AreaDef, from: P, aim: P, color: number, alpha = 0.3): void {
+    if (area.shape === "single") return;
+    const pts = this.areaPts(area, from, aim);
     this.shot(520, 0.62, (g, p) => {
       g.fillStyle(color, alpha * (1 - p)).lineStyle(2, 0xffffff, Math.min(0.8, alpha * 2.2) * (1 - p)).beginPath().moveTo(pts[0]?.x ?? 0, pts[0]?.y ?? 0);
       for (const q of pts) g.lineTo(q.x, q.y);
@@ -351,9 +380,15 @@ export class Effects {
   }
 
   /** A blow landed on `to` (from `from`): sparks thrown away from the attacker, a streak across the figure, and a burst for a critical hit. */
-  hit(to: string, from: string, kind: "hit" | "crit", skillId?: string): void {
+  hit(to: string, from: string, kind: "hit" | "crit", skillId?: string, light = false): void {
     const at = this.posOf(to);
     if (!at) return;
+    if (light) {
+      // a tick of a lasting zone: one small spark in the colour of the skill's element
+      const def0 = skillId ? getSkill(skillId) : undefined;
+      this.layer.puff("spark", at.x, at.y - 22, 2, (def0?.element ? ELEMENT_COLOR[def0.element] : undefined) ?? 0xfff0d0);
+      return;
+    }
     const src = this.posOf(from);
     const def = skillId ? getSkill(skillId) : undefined;
     const color = (def?.element ? ELEMENT_COLOR[def.element] : undefined) ?? (kind === "crit" ? 0xffd54a : 0xfff0d0);
@@ -541,7 +576,7 @@ export class Effects {
    * The special look of a skill (`skillLooks`): returns true when it drew the skill whole. The common ones (the spell of an element, an aura, a lotus,
    * a blink) are drawn by the kind of skill in `skill`.
    */
-  private styled(look: SkillLook, from: P | null, target: P | null, id: string, color: number, style: ElementStyle, lvl: number, buffColor: number): boolean {
+  private styled(look: SkillLook, from: P | null, target: P | null, id: string, color: number, style: ElementStyle, lvl: number, buffColor: number, range = 6): boolean {
     switch (look) {
       case "palm":
         if (target) this.melee(target, color, style, from ?? undefined, lvl, "chuong");
@@ -586,8 +621,177 @@ export class Effects {
       case "phoenix":
         if (from) this.phoenix(from, id);
         return !!from;
+      case "lance":
+        if (from && target) this.lance(from, target, color, style, lvl, range);
+        return !!(from && target);
+      case "nova":
+        if (from) this.nova(from, color, style, lvl, range);
+        return !!from;
+      case "lane":
+      case "field":
+        // the lasting part is drawn from the zone message; the cast itself is the spark that lights it
+        if (from) {
+          this.layer.glow(from.x, from.y - 24, color, 0.5, 1.4, 360, 0.6);
+          if (target) this.layer.glow(target.x, target.y - 4, color, 0.4, 1.2, 420, 0.5);
+        }
+        return !!from;
       default:
         return false;
+    }
+  }
+
+  /**
+   * A piercing shot: the head flies from the caster along the aimed line for the whole `range` (tiles), through whatever stands on it, trailing light, and
+   * fades at the far end. The server hurts everything on the line at once; the hits show as they come.
+   */
+  private lance(from: P, aim: P, color: number, style: ElementStyle, lvl: number, range: number): void {
+    const d = this.ground(aim.x - from.x, aim.y - from.y);
+    const len = Math.hypot(d.x, d.y) || 1;
+    const end = this.gs((d.x / len) * range, (d.y / len) * range);
+    const fx = from.x;
+    const fy = from.y - 22;
+    const tx = from.x + end.x;
+    const ty = from.y + end.y - 22;
+    const ang = Math.atan2(ty - fy, tx - fx);
+    const flight = Math.min(520, 160 + Math.hypot(tx - fx, ty - fy) * 0.8);
+    this.shot(flight + 260, FX_DEPTH, (g, p) => {
+      const t = Math.min(1, (p * (flight + 260)) / flight);
+      const x = fx + (tx - fx) * t;
+      const y = fy + (ty - fy) * t;
+      const back = Math.max(0, t - 0.32);
+      const fade = p * (flight + 260) > flight ? 1 - (p * (flight + 260) - flight) / 260 : 1;
+      g.lineStyle(10 + 4 * lvl, color, 0.2 * fade).lineBetween(fx + (tx - fx) * back, fy + (ty - fy) * back, x, y);
+      g.lineStyle(4, color, 0.7 * fade).lineBetween(fx + (tx - fx) * back, fy + (ty - fy) * back, x, y);
+      g.lineStyle(2, 0xffffff, 0.9 * fade).lineBetween(fx + (tx - fx) * Math.max(0, t - 0.12), fy + (ty - fy) * Math.max(0, t - 0.12), x, y);
+      if (fade > 0.5) {
+        g.fillStyle(color, 0.25).fillCircle(x, y, 15 + 6 * lvl);
+        this.head(g, x, y, ang, t, style, color);
+        this.layer.puff("trail", x, y, 1, color);
+        if (Math.random() < 0.5) this.layer.puff(style === "hoa" ? "ember" : style === "moc" ? "petal" : style === "thuy" ? "drop" : "spark", x, y, 1, style === "plain" ? 0xffffff : color);
+      }
+    });
+    this.later(flight, () => this.layer.ring(tx, ty + 22, color, 0.2, 0.8, 360, 0.6));
+  }
+
+  /** A ring thrown out from the caster: the shock runs out to the edge of the area (`range` tiles), the element's own sparks fly with it. */
+  private nova(at: P, color: number, style: ElementStyle, lvl: number, range: number): void {
+    const rx = range * 45.25;
+    const ry = range * 22.6;
+    const cy = at.y + 4;
+    this.layer.glow(at.x, at.y - 20, color, 0.8, 2 + lvl, 420, 0.7);
+    this.shot(620, 0.64, (g, p) => {
+      for (let i = 0; i < 3; i++) {
+        const q = Math.min(1, Math.max(0, p * 1.25 - i * 0.12));
+        if (q <= 0) continue;
+        g.lineStyle(6 - i * 2, i === 0 ? 0xffffff : color, 0.85 * (1 - q)).strokeEllipse(at.x, cy, rx * 2 * q, ry * 2 * q);
+      }
+      g.fillStyle(color, 0.18 * (1 - p)).fillEllipse(at.x, cy, rx * 2 * p, ry * 2 * p);
+    });
+    const kind: Puff = style === "hoa" ? "ember" : style === "moc" ? "petal" : style === "thuy" ? "drop" : style === "phong" ? "trail" : style === "tho" ? "smoke" : "spark";
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      this.later(40 + i * 12, () => this.layer.puff(kind, at.x + Math.cos(a) * rx * 0.55, cy - 6 + Math.sin(a) * ry * 0.55, 2, color));
+    }
+  }
+
+  // ---- lasting zones (a lane of fire, a field of thorns) ----
+
+  /**
+   * A zone that stays on the ground for `ms`: the very shape the server hurts in (`areaPts`), pulsing, with the element's own sparks rising from it
+   * all the while. `from` and `aim` are screen points. It ends on time, on `zoneEnd`, or when the effects are cleared.
+   */
+  zone(zid: string, skillId: string, from: P, aim: P, ms: number, element: string | undefined): void {
+    const def = getSkill(skillId);
+    if (!def || this.zones.size >= MAX_ZONES) return;
+    const area = skillAreaOf(def);
+    if (area.shape === "single") return;
+    const color = (element ? ELEMENT_COLOR[element] : undefined) ?? (def.element ? ELEMENT_COLOR[def.element] : undefined) ?? NEUTRAL;
+    const style = elementStyleOf(element ?? def.element ?? undefined);
+    const g = this.scene.add.graphics().setDepth(0.6);
+    this.zones.get(zid)?.g.destroy();
+    this.zones.set(zid, { g, pts: this.areaPts(area, from, aim), area, from, aim, color, style, born: performance.now(), until: performance.now() + ms, nextPuff: 0, ending: 0 });
+  }
+
+  /** The server put a zone out early (its caster left or fell): it dies down quickly. */
+  zoneEnd(zid: string): void {
+    const z = this.zones.get(zid);
+    if (z && !z.ending) z.ending = performance.now();
+  }
+
+  /** A point inside a zone, at random (where a spark rises). */
+  private inZone(z: ZoneFx): P {
+    const a = z.area;
+    const d = this.ground(z.aim.x - z.from.x, z.aim.y - z.from.y);
+    const len = Math.hypot(d.x, d.y) || 1;
+    const ux = d.x / len;
+    const uy = d.y / len;
+    if (a.shape === "line") {
+      const along = Math.random() * a.range;
+      const across = (Math.random() - 0.5) * (a.width ?? 1);
+      const o = this.gs(ux * along - uy * across, uy * along + ux * across);
+      return { x: z.from.x + o.x, y: z.from.y + o.y };
+    }
+    const c = a.shape === "circle" && a.at === "self" ? z.from : z.aim;
+    const r = Math.sqrt(Math.random()) * a.range;
+    const ang = Math.random() * Math.PI * 2;
+    const o = this.gs(Math.cos(ang) * r, Math.sin(ang) * r);
+    return { x: c.x + o.x, y: c.y + o.y };
+  }
+
+  private updateZones(now: number): void {
+    for (const [zid, z] of this.zones) {
+      const fadeOut = z.ending ? Math.max(0, 1 - (now - z.ending) / 500) : Math.min(1, Math.max(0, (z.until - now) / 700));
+      const fadeIn = Math.min(1, (now - z.born) / 250);
+      if (now >= z.until || fadeOut <= 0) {
+        z.g.destroy();
+        this.zones.delete(zid);
+        continue;
+      }
+      const k = fadeIn * fadeOut;
+      const pulse = 0.75 + 0.25 * Math.sin(now / 160);
+      z.g.clear();
+      z.g.fillStyle(z.color, 0.22 * k * pulse).lineStyle(2, z.color, 0.7 * k).beginPath().moveTo(z.pts[0]?.x ?? 0, z.pts[0]?.y ?? 0);
+      for (const q of z.pts) z.g.lineTo(q.x, q.y);
+      z.g.closePath().fillPath().strokePath();
+      if (now < z.nextPuff) continue;
+      z.nextPuff = now + 110;
+      const n = Math.max(2, Math.round(z.area.range * (z.area.shape === "circle" ? 2 : 1.1)));
+      for (let i = 0; i < n; i++) {
+        const at = this.inZone(z);
+        switch (z.style) {
+          case "hoa":
+            this.layer.puff("ember", at.x, at.y - 4, 2, 0xff7a2a);
+            if (Math.random() < 0.7) this.layer.glow(at.x, at.y - 12, Math.random() < 0.5 ? 0xff9a3a : 0xffd27a, 0.6, 1.8, 340, 0.55 * k);
+            if (Math.random() < 0.2) this.layer.puff("smoke", at.x, at.y - 10, 1, 0x5a4a44);
+            break;
+          case "bang":
+            this.layer.puff("shard", at.x, at.y - 2, 1, 0xcff4ff);
+            if (Math.random() < 0.3) this.layer.puff("spark", at.x, at.y - 10, 1, 0xffffff);
+            break;
+          case "moc":
+            this.layer.puff("petal", at.x, at.y - 2, 1, 0x8fe08f);
+            if (Math.random() < 0.4) this.layer.puff("mote", at.x, at.y - 2, 1, 0xd6ffcf);
+            break;
+          case "thuy":
+            this.layer.puff("drop", at.x, at.y - 6, 1, 0x8fd0ff);
+            if (Math.random() < 0.3) this.layer.ring(at.x, at.y, 0x8fd0ff, 0.2, 0.5, 520, 0.5 * k);
+            break;
+          case "tho":
+            this.layer.puff("smoke", at.x, at.y - 2, 1, 0xb08a5a);
+            if (Math.random() < 0.4) this.layer.puff("shard", at.x, at.y - 2, 1, 0xd2a878);
+            break;
+          case "loi":
+            this.layer.puff("spark", at.x, at.y - 6, 2, 0xe6d6ff);
+            if (Math.random() < 0.15) this.layer.glow(at.x, at.y - 14, 0xb89cff, 0.6, 1.8, 160, 0.7 * k);
+            break;
+          case "phong":
+            this.layer.puff("trail", at.x, at.y - 8, 1, 0xcff5e8);
+            if (Math.random() < 0.3) this.layer.puff("mote", at.x, at.y - 4, 1, 0xa6ebd9);
+            break;
+          default:
+            this.layer.puff("spark", at.x, at.y - 4, 1, z.color);
+        }
+      }
     }
   }
 

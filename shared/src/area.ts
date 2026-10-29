@@ -14,9 +14,15 @@ export interface AreaDef {
   /** Width of a line, in tiles. */
   width?: number;
   at?: "self" | "aim";
-  /** Most targets in all, the main one included. */
+  /** Most targets in all, the main one included (a lasting zone: the most it hurts at once). */
   maxTargets: number;
+  /** The share of the damage the extra targets take (a lasting zone: the share each tick deals to everyone inside). */
   pct: number;
+  /**
+   * Set: the skill leaves the area standing where it was cast for `ms` and hurts whoever is inside it every `tickMs` (a lane of fire), instead of
+   * one blow. The area is fixed at the moment of the cast: a `line` runs from the caster's place towards the aim, a `circle` is round the aim.
+   */
+  zone?: { ms: number; tickMs: number };
 }
 
 export type Pt = readonly [number, number];
