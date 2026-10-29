@@ -298,6 +298,10 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       hoi_huyet_dan: 10,
       duong_huyet_dan: 25,
       dai_hoi_huyet_dan: 60,
+      hoi_linh_dan: 10,
+      dai_hoi_linh_dan: 60,
+      linh_tuyen_dan: 400,
+      bao_linh_dan: 1_500,
       ngo_dao_dan: 1500,
       linh_thao: 3,
       thu_cot: 3,
@@ -456,7 +460,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     liet_hoa_xa: "snake",
   },
   flightLooks: { default: "sword", byElement: { moc: "lotus", thuy: "cloud", phong: "cloud", bang: "cloud", hoa: "sword", kim: "sword", loi: "sword", tho: "lotus" } },
-  auto: { radiusMin: 3, radiusMax: 15, radiusDefault: 8, tickMs: 350, giveUpMs: 6000, skipMs: 20_000, potionGapMs: 2500, castBackoffMs: 2500 },
+  auto: { radiusMin: 3, radiusMax: 40, radiusDefault: 20, tickMs: 350, giveUpMs: 6000, skipMs: 20_000, potionGapMs: 2500, castBackoffMs: 2500 },
   weaponReach: { kiem: 1.8, dao: 1.8, thuong: 3, riu: 1.7, cung: 7, quyen: 1.5, none: 1.6 },
   weaponArea: {
     kiem: { shape: "arc", range: 1.9, deg: 120, maxTargets: 3, pct: 70 },
@@ -509,6 +513,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     thuan: "dome", cuong_luc: "flames", phong_bo: "wind", cuong_than: "flames", cuong_than_na: "flames", ho_the_kd: "bell", bm_ho_the: "bell",
     tt_linh_an: "seal", tt_linh_hai: "seal", kt_hop_nhat: "sword", dt_duong_nguyen: "furnace", dt_dan_khi: "furnace", dt_kim_than: "bell", pt_phong_than: "wind",
     kim_3: "lance", kim_4: "nova", moc_4: "field", moc_5: "nova", thuy_3: "lance", thuy_5: "field", hoa_3: "lane", hoa_4: "lance", tho_4: "nova", tho_5: "field", loi_3: "lance", loi_4: "nova", bang_3: "lance", bang_4: "field", bang_5: "nova", phong_3: "lance", phong_4: "nova", phong_5: "field", kt_kiem_khi: "lance", kt_kiem_y: "lance", kt_than_kiem: "lance", kt_lien_hoan: "nova", tt_phap_tran: "field", tt_dai_phap: "nova",
+    khi_co_ban: "bolt",
     hoi: "lotus", hoi_nguyen_kd: "lotus", tt_hoi_linh: "lotus", bm_hoi_sinh: "phoenix", dt_hoi_xuan: "furnace", dt_hoi_duong: "furnace", dt_dai_hoi: "furnace",
   },
   monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
@@ -862,8 +867,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     }
     case "auto":
       return (
-        int(value.radiusMin, 1, 30) &&
-        int(value.radiusMax, 1, 30) &&
+        int(value.radiusMin, 1, 60) &&
+        int(value.radiusMax, 1, 60) &&
         (value.radiusMin as number) <= (value.radiusMax as number) &&
         int(value.radiusDefault, value.radiusMin as number, value.radiusMax as number) &&
         int(value.tickMs, 150, 2000) &&

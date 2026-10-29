@@ -22,6 +22,7 @@ function view(over: Partial<AutoView> = {}): AutoView {
     readyAt: () => 0,
     buffUntil: () => 0,
     mpCost: () => 10,
+    hasBasic: true,
     bagCount: () => 0,
     healMsOf: () => 0,
     ...over,
@@ -103,14 +104,47 @@ describe("the Auto hunt decides what to do next", () => {
   });
 });
 
+describe("the basic qi blast and the MP pill", () => {
+  const monsters = [mon("m", 25, 20)];
+
+  it("is thrown in place of the plain attack when ticked, in the chosen element, while MP lasts", () => {
+    const on = settings({ basic: true, basicElement: "hoa" });
+    expect(decide(view({ monsters, targetId: "m" }), on, newAutoMemory(), lim)).toEqual({ t: "cast", value: "s:khi_co_ban:hoa", skill: "khi_co_ban", element: "hoa", target: "m" });
+    expect(decide(view({ monsters, targetId: "m" }), settings({ basic: true }), newAutoMemory(), lim)).toMatchObject({ skill: "khi_co_ban", element: null, value: "s:khi_co_ban" });
+    expect(decide(view({ monsters, targetId: "m" }), settings({ basic: false }), newAutoMemory(), lim)).toBeNull(); // not ticked: the plain attack
+    expect(decide(view({ monsters, targetId: "m", mp: 2 }), on, newAutoMemory(), lim)).toBeNull(); // not enough MP for it: the plain attack
+    expect(decide(view({ monsters, targetId: "m", readyAt: () => 99_999 }), on, newAutoMemory(), lim)).toBeNull(); // cooling down
+    expect(decide(view({ monsters, targetId: "m", hasBasic: false }), on, newAutoMemory(), lim)).toBeNull();
+  });
+
+  it("a chosen skill comes before the basic one, and the basic one waits out of its reach", () => {
+    const both = settings({ basic: true, skills: ["s:chuong_0"] });
+    expect(decide(view({ monsters, targetId: "m" }), both, newAutoMemory(), lim)).toMatchObject({ skill: "chuong_0" });
+    expect(decide(view({ monsters: [mon("far", 33, 20)], targetId: "far" }), settings({ basic: true, radius: 20 }), newAutoMemory(), lim)).toBeNull(); // 13 tiles away: the basic blast reaches 7
+  });
+
+  it("drinks an MP pill under the threshold, apart from the healing one", () => {
+    const st = settings({ mpPotion: "hoi_linh_dan", mpPotionBelow: 30, potion: "hoi_huyet_dan", potionBelow: 40 });
+    const v = view({ mp: 20, bagCount: () => 5 });
+    expect(decide(v, st, newAutoMemory(), lim)).toEqual({ t: "potion", type: "hoi_linh_dan" });
+    expect(decide(view({ mp: 60, bagCount: () => 5 }), st, newAutoMemory(), lim)).toBeNull();
+    expect(decide(view({ hp: 20, mp: 20, bagCount: () => 5 }), st, newAutoMemory(), lim)).toEqual({ t: "potion", type: "hoi_huyet_dan" }); // HP first
+  });
+
+  it("the range goes much further than before", () => {
+    expect(lim.radiusMax).toBeGreaterThanOrEqual(40);
+    expect(decide(view({ monsters: [mon("m", 45, 20)] }), settings({ radius: 30 }), newAutoMemory(), lim)).toEqual({ t: "attack", id: "m" }); // 25 tiles from the anchor
+  });
+});
+
 describe("the saved settings", () => {
   it("come back as saved, per character, and a broken or foreign value falls back to the defaults", () => {
     const store = new Map<string, string>();
     const write = (k: string, v: string) => void store.set(k, v);
     const read = (k: string) => store.get(k) ?? null;
-    saveAuto("c1", settings({ radius: 11, skills: ["s:chuong_0:kim"], potion: "pill_hp", huntBoss: true }), write);
+    saveAuto("c1", settings({ radius: 11, skills: ["s:chuong_0:kim"], potion: "pill_hp", huntBoss: true, basic: true, basicElement: "moc", mpPotion: "hoi_linh_dan" }), write);
     const back = loadAuto("c1", read);
-    expect(back).toMatchObject({ radius: 11, skills: ["s:chuong_0:kim"], potion: "pill_hp", huntBoss: true });
+    expect(back).toMatchObject({ radius: 11, skills: ["s:chuong_0:kim"], potion: "pill_hp", huntBoss: true, basic: true, basicElement: "moc", mpPotion: "hoi_linh_dan" });
     expect(loadAuto("c2", read).skills).toEqual([]);
     store.set("auto:c3", "{not json");
     expect(loadAuto("c3", read).radius).toBe(lim.radiusDefault);

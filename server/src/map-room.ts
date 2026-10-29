@@ -2864,7 +2864,7 @@ export class MapRoom extends DurableObject<Env> {
       if (slotSkill.element && !(def.flex && who?.roots.includes(slotSkill.element))) return resend();
     } else if (v.startsWith("i:")) {
       const slotItem = getItemDef(v.slice(2));
-      if (slotItem?.healFraction === undefined && slotItem?.teleportTo === undefined) return resend(); // potions and talismans can be put on the bar
+      if (slotItem?.healFraction === undefined && slotItem?.mpFraction === undefined && slotItem?.teleportTo === undefined) return resend(); // potions and talismans can be put on the bar
     }
     const next = [...current];
     next[slot] = v;
@@ -2975,12 +2975,17 @@ export class MapRoom extends DurableObject<Env> {
     const teleport = item ? getItemDef(item.type)?.teleportTo : undefined;
     if (item && teleport) return this.useTalisman(ws, id, tab, cell, teleport);
     const heal = item ? getItemDef(item.type)?.healFraction : undefined;
-    if (!item || heal === undefined) return this.resync(ws, id, "invalid");
+    const mpBack = item ? getItemDef(item.type)?.mpFraction : undefined;
+    if (!item || (heal === undefined && mpBack === undefined)) return this.resync(ws, id, "invalid");
     const profile = this.sim?.getPlayer(id);
     const now = Date.now();
-    if (!profile || profile.dead || profile.hp >= profile.maxHp) return this.send(ws, { t: "inv_error", reason: "not_needed" });
-    if (now < profile.potionReadyAt) return this.send(ws, { t: "inv_error", reason: "cooldown" });
-    profile.potionReadyAt = now + POTION_COOLDOWN_MS;
+    // A pill is only used when it would do something: a healing one at less than full HP, an MP one at less than full MP (one that does both, when either is short).
+    const needsHp = heal !== undefined && !!profile && profile.hp < profile.maxHp;
+    const needsMp = mpBack !== undefined && !!profile && !!this.sim && this.sim.currentMp(profile, now) < profile.maxMp;
+    if (!profile || profile.dead || (!needsHp && !needsMp)) return this.send(ws, { t: "inv_error", reason: "not_needed" });
+    if ((needsHp && now < profile.potionReadyAt) || (needsMp && now < profile.mpPotionReadyAt)) return this.send(ws, { t: "inv_error", reason: "cooldown" });
+    if (needsHp) profile.potionReadyAt = now + POTION_COOLDOWN_MS;
+    if (needsMp) profile.mpPotionReadyAt = now + POTION_COOLDOWN_MS;
     // The hướng tu (Đan tu) make healing pills heal more.
     const healBoost = 1 + pathBonuses(profile.paths ?? NO_PATHS).potionHealPct / 100;
     const res = await this.mutateBag(id, (b) => {
@@ -2989,6 +2994,11 @@ export class MapRoom extends DurableObject<Env> {
     });
     if (!res.ok) return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
     this.sendBagDelta(id, res.before, res.after);
+    if (needsMp && mpBack !== undefined) {
+      const ev = this.sim?.restoreMp(id, mpBack, Date.now());
+      if (ev) this.sendToCharacter(id, { t: "mp", mp: ev.mp, maxMp: ev.maxMp, regenInMs: ev.regenInMs, perSec: mpRegenPerS() });
+    }
+    if (!needsHp || heal === undefined) return;
     const over = getItemDef(item.type)?.healOverMs;
     if (over !== undefined) {
       // Heals a little every second; the effect shows on the buff bar until it has all landed.

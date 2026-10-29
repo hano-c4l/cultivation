@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import {
   headingAlongPath,
   tuning,
+  BASIC_SKILL_ID,
   parseSkillSlot,
   directionOf,
   type GfxAnimName,
@@ -380,9 +381,14 @@ export class GameScene extends Phaser.Scene {
       hotbarSkills: () => this.hotbarSlots.flatMap((v, i) => (parseSkillSlot(v) && getSkill(parseSkillSlot(v)!.id) ? [{ value: v, key: i + 1 }] : [])),
       potions: () => {
         const by = new Map<string, number>();
-        for (const it of this.inventory.list()) if (getItemDef(it.type)?.healFraction !== undefined) by.set(it.type, (by.get(it.type) ?? 0) + it.qty);
-        return [...by].map(([type, qty]) => ({ type, name: getItemDef(type)?.nameVi ?? type, qty }));
+        for (const it of this.inventory.list()) {
+          const d = getItemDef(it.type);
+          if (d?.healFraction !== undefined || d?.mpFraction !== undefined) by.set(it.type, (by.get(it.type) ?? 0) + it.qty);
+        }
+        return [...by].map(([type, qty]) => ({ type, name: getItemDef(type)?.nameVi ?? type, qty, hp: getItemDef(type)?.healFraction !== undefined, mp: getItemDef(type)?.mpFraction !== undefined }));
       },
+      roots: () => this.selfSheet?.roots ?? [],
+      hasBasic: () => !!this.knownSkills?.includes(BASIC_SKILL_ID),
       onStart: (settings) => this.startAuto(settings),
       onStop: () => this.stopAuto("stopped"),
     });
@@ -1884,6 +1890,7 @@ export class GameScene extends Phaser.Scene {
         const def = getSkill(id);
         return def ? effectiveSkill(def, this.skillContext(def)).mpCost : 0;
       },
+      hasBasic: !!this.knownSkills?.includes(BASIC_SKILL_ID),
       bagCount: (type) => bag.reduce((n, it) => (it.type === type ? n + it.qty : n), 0),
       healMsOf: (type) => getItemDef(type)?.healOverMs ?? 0,
     };
