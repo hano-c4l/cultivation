@@ -12,10 +12,6 @@ export interface AutoUiDeps {
   hotbarSkills(): Array<{ value: string; key: number }>;
   /** The potions in the bag that heal (`hp`) and those that restore linh lực (`mp`; a pill that does both is in both lists). */
   potions(): Array<{ type: string; name: string; qty: number; hp: boolean; mp: boolean }>;
-  /** The elements the character has (the basic qi blast may be thrown in any of them). */
-  roots(): string[];
-  /** Whether the character has the basic qi blast. */
-  hasBasic(): boolean;
   /** Start was pressed: false when it is refused (the scene says why), so the window stays. */
   onStart(settings: AutoSettings): boolean;
   onStop(): void;
@@ -137,24 +133,6 @@ export function initAuto(deps: AutoUiDeps): AutoUi {
       return select;
     };
 
-    // the basic qi blast: a tick, and the element when the character has more than one
-    const roots = deps.roots();
-    const basicRow = el("div");
-    if (deps.hasBasic()) {
-      basicRow.append(check(vi.auto.basic, current.basic, (v) => (current.basic = v)));
-      if (roots.length > 1) {
-        const pick = el("select");
-        pick.append(new Option(vi.auto.basicMain, ""));
-        for (const r of roots) pick.append(new Option(vi.skills.elementNames[r] ?? r, r));
-        pick.value = roots.includes(current.basicElement) ? current.basicElement : "";
-        pick.onchange = () => {
-          current.basicElement = pick.value;
-          commit();
-        };
-        basicRow.append(row(vi.auto.basicElement, pick));
-      } else current.basicElement = "";
-    }
-
     const start = el("button", "au-start", vi.auto.start);
     start.onclick = () => {
       commit();
@@ -169,7 +147,6 @@ export function initAuto(deps: AutoUiDeps): AutoUi {
       check(vi.auto.huntBoss, current.huntBoss, (v) => (current.huntBoss = v)),
       el("div", "au-sub", vi.auto.skills),
       list,
-      basicRow,
       row(vi.auto.mpMin, slider(0, 100, current.mpMin, "%", (v) => (current.mpMin = v))),
       row(vi.auto.healBelow, slider(0, 100, current.healBelow, "%", (v) => (current.healBelow = v))),
       el("div", "au-sub", vi.auto.potion),

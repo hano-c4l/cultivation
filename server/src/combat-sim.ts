@@ -1,4 +1,4 @@
-import { areaTargets, castReachOf, firstAlongLine, skillAreaOf, weaponAreaOf, weaponReachOf, type AreaDef } from "@game/shared";
+import { BASIC_SKILL_ID, areaTargets, castReachOf, firstAlongLine, skillAreaOf, weaponAreaOf, weaponReachOf, type AreaDef } from "@game/shared";
 import {
   PLAYER_ATTACK_COOLDOWN_MS,
   regenDelayMs,
@@ -178,6 +178,8 @@ export interface PlayerProfile extends ProfileSeed {
   hitBy: Map<string, number>;
   /** The player that last hit this one while it stood still (it fights back at it even with the PK switch off). */
   retaliateId: string | null;
+  /** The attack the player uses in place of the plain one (the basic qi blast in an element of theirs), or undefined for the plain attack. */
+  primary?: { skill: string; element: SpiritualRoot };
   /** Earliest time the next potion may be used (healing ones and MP ones have a cooldown each). */
   potionReadyAt: number;
   mpPotionReadyAt: number;
@@ -1398,7 +1400,7 @@ export class CombatSim {
       const d = dist(pos, mpos);
       const reach = this.reachOf(p);
       if (d <= reach) {
-        if (now >= p.nextAttackAt && !p.pendingCast) this.playerAttack(p, m, mpos, now, events, undefined, 1, undefined, pos, positions);
+        if (this.strikeDue(p, m.id, now)) this.playerAttack(p, m, mpos, now, events, undefined, 1, undefined, pos, positions);
       } else if (now - p.lastRepathAt >= REPATH_MS) {
         p.lastRepathAt = now;
         events.push({ t: "path_request", playerId: p.id, to: this.standOff(pos, mpos, reach) });
@@ -1406,10 +1408,46 @@ export class CombatSim {
     }
   }
 
-  /** How far the player's next blow reaches: the waiting skill's range, else the wielded weapon's. */
+  /**
+   * The player's chosen attack in place of the plain one, when it can be used now: the player has it, it is an attack and there is MP for it (the cooldown does
+   * not count: the player waits for it standing where it reaches). Otherwise the plain attack.
+   */
+  private primaryOf(p: PlayerProfile, now: number): SkillDef | undefined {
+    if (!p.primary) return undefined;
+    const def = getSkill(p.primary.skill);
+    if (!def || def.kind !== "attack" || !this.skillsOf(p).includes(def.id)) return undefined;
+    return this.currentMp(p, now) >= this.effectiveOf(p, def).mpCost ? def : undefined;
+  }
+
+  /** The player picks the attack that stands in for the plain one (`skill` empty: back to the plain attack). Only the basic qi blast, in an element the player has. */
+  setPrimary(id: string, skill: string, element?: SpiritualRoot): boolean {
+    const p = this.players.get(id);
+    if (!p) return false;
+    if (!skill) {
+      delete p.primary;
+      return true;
+    }
+    if (skill !== BASIC_SKILL_ID || !this.skillsOf(p).includes(skill)) return false;
+    const roots = p.roots ?? [p.element];
+    p.primary = { skill, element: element && roots.includes(element) ? element : p.element };
+    return true;
+  }
+
+  /** How far the player's next blow reaches: the waiting skill's range, the chosen attack's, else the wielded weapon's. */
   private reachOf(p: PlayerProfile): number {
     const skill = p.pendingCast ? getSkill(p.pendingCast.skill) : undefined;
-    return skill && skill.kind === "attack" ? castReachOf(skill) : weaponReachOf(p.weapon);
+    if (skill && skill.kind === "attack") return castReachOf(skill);
+    const primary = this.primaryOf(p, this.clock);
+    return primary ? castReachOf(primary) : weaponReachOf(p.weapon);
+  }
+
+  /** In reach of the target and free to strike: the chosen attack when there is one, else the plain blow. Returns whether a plain blow is due (the chosen attack was queued or is cooling down: no). */
+  private strikeDue(p: PlayerProfile, target: string, now: number): boolean {
+    if (now < p.nextAttackAt || p.pendingCast) return false;
+    const primary = this.primaryOf(p, now);
+    if (!primary) return true;
+    if (now >= (p.cooldowns.get(primary.id) ?? 0)) this.queueCast(p.id, primary.id, target, now, undefined, p.primary!.element);
+    return false;
   }
 
   /** Where to stand to hit `to` from `pos`: on the line between them, a little inside `reach` (about one tile short for a short weapon). */
@@ -1429,7 +1467,7 @@ export class CombatSim {
     const d = dist(pos, qpos);
     const reach = this.reachOf(p);
     if (d <= reach) {
-      if (now >= p.nextAttackAt && !p.pendingCast) this.pvpAttack(p, q, qpos, now, events, undefined, 1, undefined, pos, positions);
+      if (this.strikeDue(p, q.id, now)) this.pvpAttack(p, q, qpos, now, events, undefined, 1, undefined, pos, positions);
     } else if (now - p.lastRepathAt >= REPATH_MS) {
       p.lastRepathAt = now;
       events.push({ t: "path_request", playerId: p.id, to: this.standOff(pos, qpos, reach) });

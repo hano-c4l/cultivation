@@ -721,6 +721,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleQuestAbandon(ws, state, msg.quest);
       case "cast":
         return this.handleCast(ws, state, msg);
+      case "primary":
+        return void this.sim?.setPrimary(state.id, msg.skill, msg.el);
       case "hotbar_set":
         return this.handleHotbar(ws, state, msg.slot, msg.v);
       case "hotbar_swap":

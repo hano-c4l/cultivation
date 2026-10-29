@@ -101,6 +101,8 @@ export type ClientMessage =
   | { t: "smith_repair"; npc: string; slot: EquipSlot | "all" }
   /** Use a skill. `target` is the monster to hit (attack skills; omitted: the current target). Heals and buffs need none. */
   | { t: "cast"; skill: string; target?: string; x?: number; y?: number; el?: SpiritualRoot }
+  /** The attack used instead of the plain one when a monster is clicked or Auto fights: `skill` the basic qi blast (with the element `el`) or "" for the plain attack. The client keeps the choice and sends it at every welcome. */
+  | { t: "primary"; skill: string; el?: SpiritualRoot }
   /** Set one hotbar slot: "" (empty), "s:<skill id>" or "i:<item type>". One slot per message, one D1 write. */
   | { t: "hotbar_set"; slot: number; v: string }
   /** Swap two hotbar slots (drag and drop): one message, one D1 write. */
@@ -447,6 +449,11 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (m.x !== undefined || m.y !== undefined) return isCoord(m.x) && isCoord(m.y) ? { t: "cast", skill: m.skill, x: m.x, y: m.y, ...withEl } : null;
       if (m.target === undefined) return { t: "cast", skill: m.skill, ...withEl };
       return isCombatTargetId(m.target) ? { t: "cast", skill: m.skill, target: m.target, ...withEl } : null;
+    }
+    case "primary": {
+      if (typeof m.skill !== "string" || !/^[a-z0-9_]{0,32}$/.test(m.skill)) return null;
+      if (m.el === undefined) return { t: "primary", skill: m.skill };
+      return typeof m.el === "string" && (ALL_ROOTS as readonly string[]).includes(m.el) ? { t: "primary", skill: m.skill, el: m.el as SpiritualRoot } : null;
     }
     case "hotbar_set":
       return isInt(m.slot) && m.slot >= 0 && m.slot < HOTBAR_SLOTS && typeof m.v === "string" && HOTBAR_SLOT_PATTERN.test(m.v) ? { t: "hotbar_set", slot: m.slot, v: m.v } : null;

@@ -2,6 +2,7 @@ import { DEFAULT_TUNING } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { AUTO_DEFAULTS, decide, newAutoMemory, type AutoMonster, type AutoSettings, type AutoView } from "./auto-brain";
 import { loadAuto, saveAuto } from "./auto-store";
+import { loadPrimary, savePrimary } from "./primary-store";
 
 const lim = DEFAULT_TUNING.auto;
 const mon = (id: string, x: number, y: number, over: Partial<AutoMonster> = {}): AutoMonster => ({ id, x, y, guard: false, boss: false, rare: false, hp: 100, ...over });
@@ -22,7 +23,6 @@ function view(over: Partial<AutoView> = {}): AutoView {
     readyAt: () => 0,
     buffUntil: () => 0,
     mpCost: () => 10,
-    hasBasic: true,
     bagCount: () => 0,
     healMsOf: () => 0,
     ...over,
@@ -104,23 +104,11 @@ describe("the Auto hunt decides what to do next", () => {
   });
 });
 
-describe("the basic qi blast and the MP pill", () => {
+describe("the MP pill and the range", () => {
   const monsters = [mon("m", 25, 20)];
 
-  it("is thrown in place of the plain attack when ticked, in the chosen element, while MP lasts", () => {
-    const on = settings({ basic: true, basicElement: "hoa" });
-    expect(decide(view({ monsters, targetId: "m" }), on, newAutoMemory(), lim)).toEqual({ t: "cast", value: "s:khi_co_ban:hoa", skill: "khi_co_ban", element: "hoa", target: "m" });
-    expect(decide(view({ monsters, targetId: "m" }), settings({ basic: true }), newAutoMemory(), lim)).toMatchObject({ skill: "khi_co_ban", element: null, value: "s:khi_co_ban" });
-    expect(decide(view({ monsters, targetId: "m" }), settings({ basic: false }), newAutoMemory(), lim)).toBeNull(); // not ticked: the plain attack
-    expect(decide(view({ monsters, targetId: "m", mp: 2 }), on, newAutoMemory(), lim)).toBeNull(); // not enough MP for it: the plain attack
-    expect(decide(view({ monsters, targetId: "m", readyAt: () => 99_999 }), on, newAutoMemory(), lim)).toBeNull(); // cooling down
-    expect(decide(view({ monsters, targetId: "m", hasBasic: false }), on, newAutoMemory(), lim)).toBeNull();
-  });
-
-  it("a chosen skill comes before the basic one, and the basic one waits out of its reach", () => {
-    const both = settings({ basic: true, skills: ["s:chuong_0"] });
-    expect(decide(view({ monsters, targetId: "m" }), both, newAutoMemory(), lim)).toMatchObject({ skill: "chuong_0" });
-    expect(decide(view({ monsters: [mon("far", 33, 20)], targetId: "far" }), settings({ basic: true, radius: 20 }), newAutoMemory(), lim)).toBeNull(); // 13 tiles away: the basic blast reaches 7
+  it("has no blast of its own to throw: the plain attack it leaves to the server is the one the player chose", () => {
+    expect(decide(view({ monsters, targetId: "m" }), settings(), newAutoMemory(), lim)).toBeNull();
   });
 
   it("drinks an MP pill under the threshold, apart from the healing one", () => {
@@ -142,13 +130,32 @@ describe("the saved settings", () => {
     const store = new Map<string, string>();
     const write = (k: string, v: string) => void store.set(k, v);
     const read = (k: string) => store.get(k) ?? null;
-    saveAuto("c1", settings({ radius: 11, skills: ["s:chuong_0:kim"], potion: "pill_hp", huntBoss: true, basic: true, basicElement: "moc", mpPotion: "hoi_linh_dan" }), write);
+    saveAuto("c1", settings({ radius: 11, skills: ["s:chuong_0:kim"], potion: "pill_hp", huntBoss: true, mpPotion: "hoi_linh_dan" }), write);
     const back = loadAuto("c1", read);
-    expect(back).toMatchObject({ radius: 11, skills: ["s:chuong_0:kim"], potion: "pill_hp", huntBoss: true, basic: true, basicElement: "moc", mpPotion: "hoi_linh_dan" });
+    expect(back).toMatchObject({ radius: 11, skills: ["s:chuong_0:kim"], potion: "pill_hp", huntBoss: true, mpPotion: "hoi_linh_dan" });
     expect(loadAuto("c2", read).skills).toEqual([]);
     store.set("auto:c3", "{not json");
     expect(loadAuto("c3", read).radius).toBe(lim.radiusDefault);
     store.set("auto:c4", JSON.stringify({ v: 1, radius: 999, mpMin: -5, skills: ["x", 3, "s:hoi_0"], potion: "../evil" }));
     expect(loadAuto("c4", read)).toMatchObject({ radius: lim.radiusMax, mpMin: 0, skills: ["s:hoi_0"], potion: "" });
+  });
+});
+
+describe("the chosen attack in front of the hotbar", () => {
+  it("is kept per character, falls back to the main element if the saved one is gone, and to the plain attack when nothing or rubbish is saved", () => {
+    const store = new Map<string, string>();
+    const write = (k: string, v: string) => void store.set(k, v);
+    const read = (k: string) => store.get(k) ?? null;
+    expect(loadPrimary("c1", ["kim"], read)).toBeNull(); // nothing chosen yet
+    savePrimary("c1", { skill: "khi_co_ban", el: "hoa" }, write);
+    expect(loadPrimary("c1", ["kim", "hoa"], read)).toEqual({ skill: "khi_co_ban", el: "hoa" });
+    expect(loadPrimary("c1", ["kim"], read)).toEqual({ skill: "khi_co_ban", el: "" }); // no fire any more: the main element
+    expect(loadPrimary("c2", ["kim"], read)).toBeNull();
+    savePrimary("c1", null, write);
+    expect(loadPrimary("c1", ["kim"], read)).toBeNull(); // back to the plain attack
+    store.set("primary:c3", "{nope");
+    expect(loadPrimary("c3", ["kim"], read)).toBeNull();
+    store.set("primary:c4", JSON.stringify({ skill: "chuong_0", el: "kim" }));
+    expect(loadPrimary("c4", ["kim"], read)).toBeNull(); // only the basic blast stands in
   });
 });

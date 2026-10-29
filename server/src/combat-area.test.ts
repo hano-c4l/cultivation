@@ -371,3 +371,54 @@ describe("the basic qi blast and MP pills", () => {
     expect(sim.restoreMp("nobody", 1, 0)).toBeNull();
   });
 });
+
+describe("the chosen attack in place of the plain one", () => {
+  const blastHits = (events: SimEvent[]) => hitsOf(events).filter((h) => h.skill === "khi_co_ban");
+
+  it("fires the basic blast again and again from afar at a clicked monster, instead of walking up to swing", () => {
+    const { sim, place } = bare();
+    const p = player(sim, {}, "kiem");
+    const m = place(0, [26, 20]);
+    expect(sim.setPrimary("p1", "khi_co_ban", "kim")).toBe(true);
+    sim.setTarget("p1", m.id);
+    const pos = new Map<string, Vec2>([["p1", [20, 20]]]);
+    let blasts = 0;
+    let walked = false;
+    for (let t = 0; t <= 3500; t += 100) {
+      const ev = sim.tick(t, pos);
+      blasts += blastHits(ev).length;
+      if (ev.some((e) => e.t === "path_request")) walked = true;
+    }
+    expect(blasts).toBeGreaterThanOrEqual(3); // about one a second
+    expect(walked).toBe(false); // 6 tiles away is in the blast's reach: it stands and shoots
+    expect(p.mp).toBeLessThan(p.maxMp);
+  });
+
+  it("goes back to the plain attack when the player clears it, has no MP for it, or lacks the skill", () => {
+    const { sim, place } = bare();
+    const p = player(sim, {}, "kiem");
+    const m = place(0, [26, 20]);
+    sim.setPrimary("p1", "khi_co_ban", "kim");
+    p.mp = 0;
+    p.mpAt = 0;
+    p.maxMp = 100;
+    sim.setTarget("p1", m.id);
+    const ev = sim.tick(0, new Map([["p1", [20, 20]]]));
+    expect(blastHits(ev)).toHaveLength(0);
+    const req = ev.find((e) => e.t === "path_request") as Extract<SimEvent, { t: "path_request" }>;
+    expect(Math.hypot(req.to[0] - 26, req.to[1] - 20)).toBeLessThan(2.5); // no MP: it walks up for the sword
+    sim.setPrimary("p1", "");
+    expect(p.primary).toBeUndefined();
+    expect(sim.setPrimary("p1", "chuong_0")).toBe(false); // only the basic blast stands in
+    expect(sim.setPrimary("nobody", "khi_co_ban")).toBe(false);
+  });
+
+  it("uses the element picked if the player has it, the main one if not", () => {
+    const { sim } = bare();
+    const p = player(sim, {});
+    sim.setPrimary("p1", "khi_co_ban", "hoa");
+    expect(p.primary?.element).toBe("kim"); // a kim character has no fire
+    sim.setPrimary("p1", "khi_co_ban", "kim");
+    expect(p.primary?.element).toBe("kim");
+  });
+});

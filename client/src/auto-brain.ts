@@ -3,7 +3,7 @@
  * only gathers the view and carries the command out through the same messages a player's clicks send, so the server's rules (reach, cooldowns, MP,
  * rate limits) apply unchanged. Nothing here knows about Phaser, the network or the page.
  */
-import { BASIC_SKILL_ID, castReachOf, getSkill, parseSkillSlot, type AutoLimits } from "@game/shared";
+import { castReachOf, getSkill, parseSkillSlot, type AutoLimits } from "@game/shared";
 
 /** What the player chose in the Auto window (kept in the browser, per character). */
 export interface AutoSettings {
@@ -27,12 +27,9 @@ export interface AutoSettings {
   /** The same for MP (a pill that restores linh lực). */
   mpPotion: string;
   mpPotionBelow: number;
-  /** Use the basic qi blast in place of the plain attack while MP lasts, in this element (empty: the character's main one). */
-  basic: boolean;
-  basicElement: string;
 }
 
-export const AUTO_DEFAULTS: AutoSettings = { v: 1, radius: 8, returnHome: true, huntRare: true, huntBoss: false, skills: [], mpMin: 20, healBelow: 50, potion: "", potionBelow: 40, mpPotion: "", mpPotionBelow: 30, basic: false, basicElement: "" };
+export const AUTO_DEFAULTS: AutoSettings = { v: 1, radius: 8, returnHome: true, huntRare: true, huntBoss: false, skills: [], mpMin: 20, healBelow: 50, potion: "", potionBelow: 40, mpPotion: "", mpPotionBelow: 30 };
 
 export interface AutoMonster {
   id: string;
@@ -64,8 +61,6 @@ export interface AutoView {
   readyAt(skillId: string): number;
   buffUntil(skillId: string): number;
   mpCost(skillId: string): number;
-  /** The character has the basic qi blast. */
-  hasBasic: boolean;
   /** How many of an item type are in the bag, and how long the heal of a potion takes to land in full (0: at once). */
   bagCount(type: string): number;
   healMsOf(type: string): number;
@@ -177,11 +172,6 @@ export function decide(view: AutoView, s: AutoSettings, mem: AutoMemory, lim: Au
     const atk = picks.find((p) => p.def.kind === "attack" && usable(p.slot.id) && d <= castReachOf(p.def));
     if (atk) return cast(atk, target.id);
   }
-  // 6. the basic qi blast instead of the plain attack, while there is MP for it
-  const basic = getSkill(BASIC_SKILL_ID);
-  if (s.basic && view.hasBasic && basic && usable(BASIC_SKILL_ID) && dist(view.self.x, view.self.y, target.x, target.y) <= castReachOf(basic)) {
-    const element = s.basicElement || null;
-    return { t: "cast", value: `s:${BASIC_SKILL_ID}${element ? `:${element}` : ""}`, skill: BASIC_SKILL_ID, element, target: target.id };
-  }
+  // Otherwise the plain attack carries on; it is the attack the player chose for the slot in front of the hotbar (the server uses it), so Auto has nothing of its own to say here.
   return null;
 }
