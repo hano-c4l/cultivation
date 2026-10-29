@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { api } from "./api";
 import { hideAuth, showAuth, showCharacterCreate, showCharacterList } from "./auth-ui";
 import { iconButton } from "./icons";
+import { loading } from "./loading-ui";
 import { vi } from "./locales/vi";
 import { GameScene } from "./scene";
 import { applyTheme } from "./theme";
@@ -76,6 +77,7 @@ async function boot(): Promise<void> {
     await api.logout();
     location.reload();
   };
+  loading.show(); // up until the game has what it needs to look right (the scene finishes it)
   startGame(me.ok && me.data!.account.role === "admin");
 }
 

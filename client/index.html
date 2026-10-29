@@ -278,6 +278,14 @@
       #eq-panel .eq-tag { position: absolute; top: 0; left: 0; font-size: 9px; font-weight: 700; line-height: 1; color: var(--ui-highlight); }
       /* Icons (icons.ts): behind the name in a bag cell or hotbar slot, beside it in the gear window. */
       .ic { display: block; flex: none; }
+      /* The loading screen: over everything, until the scene has what it needs to look right. */
+      #loading { position: fixed; inset: 0; z-index: 5000; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 40%, #1b2536 0%, #0b0f17 70%); transition: opacity 0.28s ease; }
+      #loading[hidden] { display: none; } #loading.fading { opacity: 0; pointer-events: none; }
+      #loading .ld-card { width: min(360px, 80vw); text-align: center; font-family: "Be Vietnam Pro", system-ui, sans-serif; color: var(--ui-text); }
+      #loading .ld-title { font-size: 26px; font-weight: 600; letter-spacing: 2px; margin-bottom: 22px; color: var(--ui-accent); }
+      #loading .ld-bar { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+      #loading-fill { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--ui-accent), #fff0b0); transition: width 0.25s ease; }
+      #loading-text { margin-top: 12px; font-size: 13px; opacity: 0.8; min-height: 18px; }
       /* A window's button or a currency shown as a picture: the words are the tooltip. */
       .icon-btn { min-width: 0 !important; width: 38px; height: 34px; padding: 5px !important; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; }
       .icon-btn .ic { width: 22px; height: 22px; }
@@ -378,6 +386,7 @@
   </head>
   <body>
     <div id="game"></div>
+    <div id="loading" hidden><div class="ld-card"><div class="ld-title">Tu Tiên Giới</div><div class="ld-bar"><div id="loading-fill"></div></div><div id="loading-text"></div></div></div>
     <div id="auth" hidden></div>
     <div id="hud">Đang tải…</div>
     <div id="vitals-wrap"><div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div></div><div id="pk-row"></div><div id="buffs" hidden></div></div>

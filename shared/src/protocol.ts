@@ -221,13 +221,15 @@ export interface PlayerSnapshot {
   o?: string;
   /** The look of the worn flight pháp bảo (`FlightStyle`), so a rider is drawn on the right one. */
   fl?: string;
+  /** The cultivation level, `realm * 10 + stage`: it sets the colour and strength of the qi drawn round the figure. */
+  lv?: number;
 }
 
 export type ServerMessage =
   | { t: "welcome"; self: string; map: string; players: PlayerSnapshot[]; colo: string; character: CharacterSheet; monsters: MonsterSnapshot[]; hp: number; maxHp: number; wallet: Wallet; bag: BagView; mail: MailView[]; constitutions: ConstitutionCatalog; equipped: EquippedItem[]; skills: string[]; hotbar: string[]; mp: number; maxMp: number; cd: Record<string, number>; regenInMs: number; effects: EffectView[]; skillStates: SkillStateView; gearSets?: string[][]; tuning: Tuning; npcs: NpcSpot[]; mapRecipe?: MapRecipe; mapNames?: Record<string, string>; items?: ItemOverlay[]; mutant?: Pick<ElementTuning, "mutantRootChancePermille" | "mutantSkillBonusPct" | "mutantGearBonusPct" | "mutantGearDropPermille"> }
   | { t: "joined"; player: PlayerSnapshot }
   /** What a player holds or wears changed (a weapon or a robe put on, taken off or broken): `w` is the weapon family and `o` the outfit, each left out for none. */
-  | { t: "look"; id: string; w?: string; o?: string; fl?: string }
+  | { t: "look"; id: string; w?: string; o?: string; fl?: string; lv?: number }
   | { t: "left"; id: string }
   | { t: "path"; player: PlayerSnapshot }
   /** Reply to the mover. `player` is present only when the server corrected or rejected the move. */

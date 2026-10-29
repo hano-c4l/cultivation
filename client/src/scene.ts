@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import {
   headingAlongPath,
+  tuning,
   directionOf,
   type GfxAnimName,
   bossKinds,
@@ -95,6 +96,8 @@ import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { iconButton } from "./icons";
+import { loading } from "./loading-ui";
+import { drawQiAura, qiStyleOf } from "./qi-aura";
 import { mapLabel, vi } from "./locales/vi";
 import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
@@ -152,6 +155,9 @@ interface Actor {
   outfit?: string;
   /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
   flight?: string;
+  /** The cultivation level (`realm * 10 + stage`) the qi round the figure follows, and the graphics that draws it. */
+  lv?: number;
+  qi?: Phaser.GameObjects.Graphics;
   wview?: GfxView;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
@@ -295,6 +301,12 @@ export class GameScene extends Phaser.Scene {
   private colo = "…";
   private portalSentAt = 0;
   private transferring = false;
+  /** The loading screen: the welcome is in, and for how many frames in a row nothing has been left to load; when it was put up. */
+  private welcomed = false;
+  private settledFrames = 0;
+  private loadingSince = 0;
+  /** The next frame puts the camera straight on yourself (no slide from wherever it was). */
+  private snapCamera = false;
   private marker!: Phaser.GameObjects.Graphics;
 
   constructor() {
@@ -396,9 +408,11 @@ export class GameScene extends Phaser.Scene {
         this.refreshHud();
       },
       onStatus: (connected) => {
+        if (connected) loading.set(0.3, vi.loadingScreen.entering);
         if (!connected) {
           this.hud.textContent = this.transferring ? vi.transferring : vi.disconnected;
           this.clearActors();
+          this.beginLoading(this.transferring ? vi.loadingScreen.transferring : vi.loadingScreen.reconnecting);
         }
       },
     });
@@ -813,6 +827,9 @@ export class GameScene extends Phaser.Scene {
         this.buffs.set(msg.effects);
         for (const [skill, ms] of Object.entries(msg.cd)) this.hotbar.setCooldown(skill, ms);
         this.refreshHud();
+        this.welcomed = true;
+        this.snapCamera = true;
+        loading.set(0.5, vi.loadingScreen.images(0, 0));
         break;
       case "mon":
         this.upsertMonster(msg.monster);
@@ -886,6 +903,7 @@ export class GameScene extends Phaser.Scene {
           looker.weapon = msg.w;
           looker.outfit = msg.o;
           looker.flight = msg.fl;
+          if (msg.lv !== undefined) looker.lv = msg.lv;
         }
         break;
       }
@@ -918,6 +936,7 @@ export class GameScene extends Phaser.Scene {
       case "transfer":
         // The server closes the socket right after; Net reconnects and the welcome brings the new map.
         this.transferring = true;
+        this.beginLoading(vi.loadingScreen.transferring);
         this.hotbar.setAimNote(null); // a talisman channel that completed ends here
         this.hud.textContent = vi.transferring;
         this.chat.system(vi.chat.transferTo(mapLabel(msg.map)));
@@ -1284,6 +1303,7 @@ export class GameScene extends Phaser.Scene {
       actor.weapon = p.w;
       actor.outfit = p.o;
       actor.flight = p.fl;
+      actor.lv = p.lv;
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
@@ -1306,6 +1326,7 @@ export class GameScene extends Phaser.Scene {
     this.fx.forget(id);
     this.reacts.delete(id);
     this.buffGlows.delete(id);
+    actor.qi?.destroy();
     actor.wview?.destroy();
     actor.view?.destroy();
     actor.body.destroy();
@@ -1649,6 +1670,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Shows the sprite of a player when the manifest has one (and the oval otherwise); plays run or idle facing the way it walks. */
+  /** The qi round a cultivator (see `qi-aura.ts`): level from the character sheet for yourself, from the snapshot for the others; drawn just behind the figure. */
+  private syncQi(a: Actor, now: number, x: number, y: number, depth: number): void {
+    const lv = a.id === this.selfId && this.selfSheet ? this.selfSheet.realm * 10 + this.selfSheet.stage : a.lv;
+    if (lv === undefined) return;
+    const g = (a.qi ??= this.add.graphics());
+    const height = a.view?.alive ? a.view.rise() : 38;
+    g.clear().setDepth(depth - 0.02);
+    drawQiAura(g, x, y, height, now / 1000 + a.id.length * 0.7, qiStyleOf(lv, tuning().theme.realmColors));
+  }
+
   private syncActorView(a: Actor, now: number, x: number, y: number, depth: number, moving: boolean): void {
     if (a.view && !a.view.alive) {
       a.wview?.destroy();
@@ -1744,6 +1775,29 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Puts the loading screen up for a (re)entry: the welcome has to come again and everything in it has to be loaded before the screen goes. */
+  private beginLoading(label: string): void {
+    this.welcomed = false;
+    this.settledFrames = 0;
+    this.loadingSince = performance.now();
+    loading.show(label);
+    loading.set(0.15, label);
+  }
+
+  /** While the loading screen is up: shows how far the sprites are and takes it away once nothing is left to load (or after a while, whatever is missing). */
+  private watchLoading(now: number): void {
+    if (!loading.active) return;
+    if (this.loadingSince === 0) this.loadingSince = now;
+    if (now - this.loadingSince > 15_000) return loading.finish(); // never keep the player out for a slow or failed download
+    if (!this.welcomed) return;
+    const st = this.gfx.loadState();
+    const settled = st.ready && st.pending === 0;
+    const total = st.loaded + st.pending;
+    loading.set(0.5 + 0.45 * (settled ? 1 : total > 0 ? st.loaded / total : 0), settled ? vi.loadingScreen.almost : vi.loadingScreen.images(st.loaded, total));
+    this.settledFrames = settled ? this.settledFrames + 1 : 0;
+    if (this.settledFrames >= 10) loading.finish(); // a few frames after the last atlas: the figures have made their views in that time
+  }
+
   /** About four times a second, every timed buff that is still running lights up its wearer a little; one that ended is forgotten. */
   private tickBuffGlows(now: number): void {
     if (now < this.nextGlowAt || this.buffGlows.size === 0) return;
@@ -1765,11 +1819,16 @@ export class GameScene extends Phaser.Scene {
       this.gfx.sweepIdle(now);
     }
     this.syncNpcViews();
+    this.watchLoading(now);
     this.tickBuffGlows(now);
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
       actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
+      if (this.snapCamera && actor.id === this.selfId) {
+        this.cameras.main.centerOn(actor.body.x, actor.body.y); // the first frame after a welcome: no slide in from the old view
+        this.snapCamera = false;
+      }
       if (actor.cloud) {
         // the flight pháp bảo hovers: a slow bob (out of step between riders); a sword turns to the way it flies and sheds spirit light from its tail
         const bob = Math.sin(now / 340 + actor.id.length * 1.7) * 2.2;
@@ -1797,6 +1856,7 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);
+      this.syncQi(actor, now, s.x, s.y - (actor.mounted ? 8 : 0), depth);
       // The name stands just above the head: a sprite says how tall it is, the oval has a fixed height (a rider is lifted a little).
       const rise = actor.view?.alive ? actor.view.rise() + 6 + (actor.mounted ? 8 : 0) : actor.mounted ? 46 : 38;
       actor.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);

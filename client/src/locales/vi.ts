@@ -3,6 +3,16 @@ import { MAP_NAMES } from "@game/shared";
 /** All player-facing strings live here. Code identifiers stay in English. */
 export const vi = {
   connecting: "Đang kết nối…",
+  loadingScreen: {
+    starting: "Đang khởi động…",
+    connecting: "Đang kết nối máy chủ…",
+    entering: "Đang vào thế giới…",
+    images: (n: number, total: number) => `Đang tải hình ảnh (${n}/${total})…`,
+    almost: "Sắp xong…",
+    ready: "Sẵn sàng",
+    transferring: "Đang chuyển bản đồ…",
+    reconnecting: "Mất kết nối, đang kết nối lại…",
+  },
   connected: (online: number, ping: number, colo: string) =>
     `Đang online: ${online} · Độ trễ: ${ping} ms · Máy chủ: ${colo}`,
   hint: "Chạm / nhấp để di chuyển",
