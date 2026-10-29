@@ -4,7 +4,7 @@
  * be passed to applyTheme in the client). Every value is a CSS colour.
  */
 export interface UiTheme {
-  /** Tag colour of each realm (index = realm id): Luyện Khí, Trúc Cơ, Kim Đan, Nguyên Anh. */
+  /** Tag colour of each realm (index = realm id): Luyện Khí, Trúc Cơ, Kim Đan, Nguyên Anh, Hóa Thần, Luyện Hư. */
   realmColors: readonly string[];
   /** Slot background of each grade (phẩm cấp, index 0..4): Hạ, Trung, Thượng, Địa, Thiên. */
   gradeColors: readonly string[];
@@ -13,7 +13,7 @@ export interface UiTheme {
 }
 
 export const DEFAULT_THEME: UiTheme = {
-  realmColors: ["#8bc34a", "#4fc3f7", "#ffb300", "#e040fb"],
+  realmColors: ["#8bc34a", "#4fc3f7", "#ffb300", "#e040fb", "#ff5252", "#e8f4ff"],
   gradeColors: ["rgba(158, 158, 158, 0.28)", "rgba(76, 175, 80, 0.3)", "rgba(66, 165, 245, 0.32)", "rgba(171, 71, 188, 0.34)", "rgba(255, 179, 0, 0.36)"],
   ui: {
     "ui-text": "#e8e4d8",

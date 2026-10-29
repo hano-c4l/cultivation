@@ -24,6 +24,19 @@ describe("the 2j tuning table", () => {
     expect(upgradeCost(0, 0, 0)!.linhThach).toBe(1); // installed for the game maths too
   });
 
+  it("completes the realm lists of a row stored before the last two realms: an unedited one is replaced in D1, an edited one is padded in memory", async () => {
+    await getTuning(db);
+    const short = JSON.stringify({ ...DEFAULT_TUNING.exp, realms: DEFAULT_TUNING.exp.realms.slice(0, 4).map((r, i) => (i === 0 ? { ...r, expBase: 4321 } : r)) });
+    raw.prepare("UPDATE game_tuning SET value = ? WHERE name = 'exp'").run(short); // nobody edited it (no updated_by): it is the old default
+    raw.prepare("UPDATE game_tuning SET value = ?, updated_by = 'admin' WHERE name = 'theme'").run(JSON.stringify({ ...DEFAULT_TUNING.theme, realmColors: ["#111111", "#222222", "#333333", "#444444"] }));
+    raw.exec("UPDATE config_versions SET version = version + 1 WHERE name = 'tuning'");
+    const t = await getTuning(db, Date.now() + 60_000);
+    expect(t.exp).toEqual(DEFAULT_TUNING.exp);
+    expect(JSON.parse((raw.prepare("SELECT value FROM game_tuning WHERE name = 'exp'").get() as { value: string }).value)).toEqual(DEFAULT_TUNING.exp);
+    expect(t.theme.realmColors).toEqual(["#111111", "#222222", "#333333", "#444444", DEFAULT_TUNING.theme.realmColors[4], DEFAULT_TUNING.theme.realmColors[5]]); // the admin's colours stay, the new realms get the defaults
+    expect(JSON.parse((raw.prepare("SELECT value FROM game_tuning WHERE name = 'theme'").get() as { value: string }).value).realmColors).toHaveLength(4); // and the stored row is not touched
+  });
+
   it("keeps the default of a group that is broken or not JSON", async () => {
     await getTuning(db);
     raw.prepare("UPDATE game_tuning SET value = ? WHERE name = 'bossCone'").run(JSON.stringify({ power: -3 }));

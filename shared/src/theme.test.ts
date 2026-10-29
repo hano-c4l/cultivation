@@ -3,7 +3,7 @@ import { DEFAULT_THEME, parseTheme } from "./theme";
 
 describe("theme", () => {
   it("has a colour per realm and per grade", () => {
-    expect(DEFAULT_THEME.realmColors).toHaveLength(4);
+    expect(DEFAULT_THEME.realmColors).toHaveLength(6);
     expect(DEFAULT_THEME.gradeColors).toHaveLength(5);
   });
 
