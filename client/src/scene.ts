@@ -98,7 +98,7 @@ import { mapLabel, vi } from "./locales/vi";
 import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
 import { GfxKit, ONE_SHOT_MS, type GfxView } from "./gfx/kit";
-import { skillFxOf, weaponEquipped } from "./fx-kinds";
+import { attackAnimOf, skillFxOf, weaponEquipped } from "./fx-kinds";
 import { initPerf } from "./perf-ui";
 import { MapLayer } from "./map-layer";
 
@@ -168,8 +168,10 @@ interface MonsterActor {
   view?: GfxView;
   /** The weapon sprite of a guard (a guard is drawn as a player body holding a weapon, from the tuning `npcLooks`). */
   wview?: GfxView;
-  /** The formation circle under a guard (from the tuning `npcLooks`). */
+  /** The formation circle under a guard (from the tuning `npcLooks`): lit only for a moment when it uses a skill. */
   aura?: Phaser.GameObjects.Container;
+  /** When (performance.now) the aura goes out again. */
+  auraUntil?: number;
   /** A vệ binh: own name and colour, and it is only clicked (attacked) with the PK state on. */
   guard: boolean;
   /** The map boss: red name, big body. */
@@ -236,6 +238,9 @@ export class GameScene extends Phaser.Scene {
   /** The NPCs of the current map: their shape figure, name, and the sprite views that replace the figure. */
   /** Blows just taken, by id: the figure flashes white and is shoved back a little for a moment (applied where its sprite is placed). */
   private reacts = new Map<string, { at: number; ms: number; kx: number; ky: number; push: number }>();
+  /** Timed buffs still running on each actor (skill id -> when it ends, performance.now): they keep a light round the figure. */
+  private buffGlows = new Map<string, Map<string, number>>();
+  private nextGlowAt = 0;
   private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView; aura?: Phaser.GameObjects.Container }> = [];
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
@@ -438,6 +443,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.npcFigures = [];
     this.reacts.clear();
+    this.buffGlows.clear();
     for (const obj of this.mapObjects) obj.destroy();
     this.mapObjects = [];
 
@@ -543,7 +549,6 @@ export class GameScene extends Phaser.Scene {
       if (!f.wview && wkey) f.wview = this.gfx.createView(wkey);
       f.view.play("idle", 0);
       f.view.setTint(hexOf(look.tint));
-      if (look.aura && !f.aura) f.aura = this.makeAura(f.x, f.y + 2, look.aura, 32, 0.45);
       f.view.place(f.x, f.y, f.depth);
       f.wview?.followFrame(f.view);
       f.wview?.place(f.x, f.y, f.depth + 0.02);
@@ -1010,8 +1015,21 @@ export class GameScene extends Phaser.Scene {
       case "fx": {
         const fxKind = skillFxOf(getSkill(msg.skill));
         // A close-combat skill swings; the others are cast. The caster turns to its target (an actor) or to the point the skill goes to.
-        this.playOnce(msg.id, fxKind === "melee" ? "attack" : fxKind === "blink" ? undefined : "cast", msg.to ?? (msg.x !== undefined && msg.y !== undefined ? [msg.x, msg.y] : undefined));
+        const caster = this.actors.get(msg.id)?.weapon ?? (this.monsters.get(msg.id)?.guard ? guardLookOf().weapon : undefined);
+        this.playOnce(msg.id, fxKind === "melee" ? (caster === "thuong" ? "thrust" : "attack") : fxKind === "blink" ? undefined : "cast", msg.to ?? (msg.x !== undefined && msg.y !== undefined ? [msg.x, msg.y] : undefined));
         this.fx.skill(msg.id, msg.skill, msg.to, msg.x !== undefined && msg.y !== undefined ? toScreen(msg.x, msg.y) : undefined, msg.el);
+        const buff = getSkill(msg.skill);
+        if (buff?.kind === "buff" && buff.buff) {
+          const list = this.buffGlows.get(msg.id) ?? new Map<string, number>();
+          list.set(msg.skill, performance.now() + buff.buff.durationMs);
+          this.buffGlows.set(msg.id, list);
+        }
+        break;
+      }
+      case "fx_guard": {
+        const m = this.monsters.get(msg.id);
+        if (m) m.auraUntil = performance.now() + 1800;
+        this.fx.guardSkill(msg.id, msg.skill);
         break;
       }
       case "fx_cone": {
@@ -1278,6 +1296,7 @@ export class GameScene extends Phaser.Scene {
     if (!actor) return;
     this.fx.forget(id);
     this.reacts.delete(id);
+    this.buffGlows.delete(id);
     actor.wview?.destroy();
     actor.view?.destroy();
     actor.body.destroy();
@@ -1438,6 +1457,7 @@ export class GameScene extends Phaser.Scene {
     const m = this.monsters.get(id);
     if (!m) return;
     this.reacts.delete(id);
+    this.buffGlows.delete(id);
     m.wview?.destroy();
     m.view?.destroy();
     m.aura?.destroy();
@@ -1556,7 +1576,7 @@ export class GameScene extends Phaser.Scene {
     const weapon = attacker ? (attacker.guard ? guardLookOf().weapon : undefined) : this.actors.get(msg.from)?.weapon;
     if (!msg.skill && !msg.aoe) {
       this.fx.basic(msg.from, msg.to, !!attacker, weapon);
-      this.playOnce(msg.from, weapon === "cung" ? "cast" : "attack", msg.to); // a bow is drawn with the casting arms (the pack has no archery animation)
+      this.playOnce(msg.from, attackAnimOf(weapon), msg.to);
     }
     if (msg.kind !== "miss") {
       this.playOnce(msg.to, "hit", msg.from);
@@ -1693,8 +1713,13 @@ export class GameScene extends Phaser.Scene {
     if (!m.view.alive) return;
     this.applyReact(m.id, m.view, m.wview, now);
     m.view.place(x, y, depth);
-    if (look?.aura && !m.aura) m.aura = this.makeAura(x, y + 2, look.aura, 46, 0.45);
-    m.aura?.setPosition(x, y + 2);
+    if (look?.aura && now < (m.auraUntil ?? 0)) {
+      if (!m.aura) m.aura = this.makeAura(x, y + 2, look.aura, 46, 0.45);
+      m.aura.setPosition(x, y + 2);
+    } else if (m.aura) {
+      m.aura.destroy();
+      m.aura = undefined;
+    }
     if (look) {
       const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
       if (m.wview && (!m.wview.alive || m.wview.key !== wkey)) {
@@ -1708,6 +1733,19 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** About four times a second, every timed buff that is still running lights up its wearer a little; one that ended is forgotten. */
+  private tickBuffGlows(now: number): void {
+    if (now < this.nextGlowAt || this.buffGlows.size === 0) return;
+    this.nextGlowAt = now + 260;
+    for (const [id, list] of this.buffGlows) {
+      for (const [skill, until] of list) {
+        if (until <= now) list.delete(skill);
+        else this.fx.lingering(id, skill, (until - now) / 1000);
+      }
+      if (list.size === 0) this.buffGlows.delete(id);
+    }
+  }
+
   update(): void {
     const now = performance.now();
     this.fx.update(now);
@@ -1717,6 +1755,7 @@ export class GameScene extends Phaser.Scene {
       this.gfx.sweepIdle(now);
     }
     this.syncNpcViews();
+    this.tickBuffGlows(now);
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);

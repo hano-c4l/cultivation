@@ -158,6 +158,8 @@ export interface Tuning {
   flightLooks: { default: FlightStyle; /** By the element of the worn flight pháp bảo (its id's last part), then by its realm; else `default`. */ byElement?: Record<string, FlightStyle>; byRealm?: Record<string, FlightStyle> };
   /** The ground a plain attack covers besides its target, by weapon family (`none`: bare hands or an unknown family). */
   weaponArea: Record<string, AreaDef>;
+  /** How far (in tiles) a plain attack reaches, by weapon family: the player walks up to this far from the target, then strikes (`none`: bare hands or an unknown family). */
+  weaponReach: Record<string, number>;
   /** The ground a skill covers besides its target, by skill id, then by template (`tram_2` is `tram`), then by gear family (`pb`, `bm`). */
   skillAreas: Record<string, AreaDef>;
   /** How a skill is drawn, by skill id, then template, then gear family: a style name of `SKILL_LOOKS` (a skill with none is drawn by its kind). */
@@ -449,18 +451,19 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     liet_hoa_xa: "snake",
   },
   flightLooks: { default: "sword", byElement: { moc: "lotus", thuy: "cloud", phong: "cloud", bang: "cloud", hoa: "sword", kim: "sword", loi: "sword", tho: "lotus" } },
+  weaponReach: { kiem: 1.8, dao: 1.8, thuong: 3, riu: 1.7, cung: 7, quyen: 1.5, none: 1.6 },
   weaponArea: {
     kiem: { shape: "arc", range: 1.9, deg: 120, maxTargets: 3, pct: 70 },
     dao: { shape: "arc", range: 1.8, deg: 150, maxTargets: 3, pct: 70 },
-    thuong: { shape: "line", range: 3, width: 0.9, maxTargets: 3, pct: 65 },
+    thuong: { shape: "line", range: 3.6, width: 1, maxTargets: 3, pct: 65 },
     riu: { shape: "circle", range: 1.7, at: "self", maxTargets: 4, pct: 60 },
     cung: { shape: "single", range: 0, maxTargets: 1, pct: 100 },
     quyen: { shape: "single", range: 0, maxTargets: 1, pct: 100 },
     none: { shape: "single", range: 0, maxTargets: 1, pct: 100 },
   },
   skillAreas: {
-    tram: { shape: "arc", range: 3.2, deg: 100, maxTargets: 4, pct: 70 },
-    chi: { shape: "line", range: 6, width: 0.9, maxTargets: 3, pct: 70 },
+    tram: { shape: "arc", range: 6, deg: 90, maxTargets: 4, pct: 70 },
+    chi: { shape: "line", range: 9, width: 0.9, maxTargets: 3, pct: 70 },
     ngu_kiem_tram: { shape: "circle", range: 1.8, at: "aim", maxTargets: 4, pct: 70 },
     pb: { shape: "circle", range: 1.5, at: "aim", maxTargets: 3, pct: 60 },
     bm: { shape: "circle", range: 2.5, at: "aim", maxTargets: 5, pct: 80 },
@@ -563,6 +566,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
   flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen), theo hệ của món đang dùng",
+  weaponReach: "Tầm đánh thường theo họ vũ khí (ô): nhân vật đứng cách mục tiêu tối đa chừng này rồi mới ra đòn (cung bắn từ xa, thương dài hơn kiếm)",
   weaponArea: "Vùng chém của đánh thường theo họ vũ khí: quái gần mục tiêu trong vùng cũng bị đánh",
   skillAreas: "Vùng sát thương của kỹ năng tấn công: hình quạt, đường thẳng hay vòng tròn, số mục tiêu tối đa, phần sát thương của mục tiêu phụ",
   skillLooks: "Kiểu hình ảnh của từng kỹ năng (theo mã, mẫu hoặc họ pháp bảo)",
@@ -842,6 +846,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       const styles = (m: unknown): boolean => m === undefined || (obj(m) && Object.keys(m).length <= 40 && Object.entries(m).every(([k, v]) => /^[a-z0-9_]{1,16}$/.test(k) && (FLIGHT_STYLES as readonly unknown[]).includes(v)));
       return (FLIGHT_STYLES as readonly unknown[]).includes(value.default) && styles(value.byElement) && styles(value.byRealm);
     }
+    case "weaponReach":
+      return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && num(v, 0.5, 20));
     case "weaponArea":
     case "skillAreas": {
       const area = (a: unknown): boolean =>

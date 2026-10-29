@@ -1,6 +1,6 @@
 import { getSkill, resetTuning, setTuning, SKILLS } from "@game/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { BASIC_COLOR, BASIC_MELEE_MAX_PX, BUFF_COLOR, ELEMENT_COLOR, basicFxOf, basicProjectileOf, elementStyleOf, skillFxOf, weaponEquipped } from "./fx-kinds";
+import { attackAnimOf, BASIC_COLOR, BASIC_MELEE_MAX_PX, BUFF_COLOR, ELEMENT_COLOR, basicFxOf, basicProjectileOf, elementStyleOf, skillFxOf, weaponEquipped } from "./fx-kinds";
 
 afterEach(() => resetTuning());
 
@@ -51,6 +51,15 @@ describe("element styles", () => {
     expect(new Set(Object.keys(ELEMENT_COLOR).map(elementStyleOf)).size).toBe(Object.keys(ELEMENT_COLOR).length);
     expect(elementStyleOf(undefined)).toBe("plain");
     expect(elementStyleOf("nope")).toBe("plain");
+  });
+});
+
+describe("the body animation of a plain attack", () => {
+  it("a spear thrusts, a bow draws with the casting arms and the rest swing", () => {
+    expect(attackAnimOf("thuong")).toBe("thrust");
+    expect(attackAnimOf("cung")).toBe("cast");
+    expect(attackAnimOf("kiem")).toBe("attack");
+    expect(attackAnimOf(undefined)).toBe("attack");
   });
 });
 

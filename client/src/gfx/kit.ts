@@ -356,7 +356,7 @@ export class GfxKit {
 
   /** The Phaser animation key to play (made on first use); an animation the sprite lacks falls back to `idle`; undefined when it has neither. */
   animFor(spriteKey: string, def: GfxSprite, anim: GfxAnimName, dir: number): string | undefined {
-    const name = def.anims[anim] ? anim : def.anims.idle ? "idle" : undefined;
+    const name = def.anims[anim] ? anim : anim === "thrust" && def.anims.attack ? "attack" : def.anims.idle ? "idle" : undefined; // a sprite without a thrust swings
     if (!name) return undefined;
     const key = animKey(spriteKey, name, dir);
     if (this.scene.anims.exists(key)) return key;
@@ -381,4 +381,4 @@ export class GfxKit {
  * How long each one-shot lasts on screen, in ms. The server alone decides when a hit lands and how often one can be made; these only say how long the
  * picture takes, so they sit under the usual attack gaps and never gate anything. A death stays until the view is dropped.
  */
-export const ONE_SHOT_MS: Readonly<Record<GfxAnimName, number>> = { idle: 0, run: 0, attack: 500, cast: 600, hit: 320, die: Infinity };
+export const ONE_SHOT_MS: Readonly<Record<GfxAnimName, number>> = { idle: 0, run: 0, attack: 500, thrust: 500, cast: 600, hit: 320, die: Infinity };

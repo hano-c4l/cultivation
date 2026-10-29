@@ -68,6 +68,11 @@ export function elementStyleOf(element: string | undefined): ElementStyle {
   return ELEMENT_STYLES.find((e) => e === element) ?? "plain";
 }
 
+/** The body animation of a plain attack: a spear thrusts, a bow is drawn with the casting arms (the pack has no archery animation), the rest swing. */
+export function attackAnimOf(weapon: string | undefined): "attack" | "thrust" | "cast" {
+  return weapon === "thuong" ? "thrust" : weapon === "cung" ? "cast" : "attack";
+}
+
 /** A plain ranged attack of someone holding a bow is an arrow; every other attack from afar is a bolt. */
 export function basicProjectileOf(weapon: string | undefined, byMonster: boolean): "arrow" | "bolt" {
   return !byMonster && weapon === "cung" ? "arrow" : "bolt";

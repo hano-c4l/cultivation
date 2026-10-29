@@ -133,16 +133,22 @@ describe("skills with an area and casts at a point", () => {
     expect(events.find((e) => e.t === "fx")).toMatchObject({ skill: "kim_3", dest: [20.2, 20.2] });
   });
 
-  it("a cast at a point where nothing stands still spends the MP and plays, and a far point is clamped to the reach", () => {
+  it("a cast at a point out of reach first walks to just inside the reach, then falls on the point itself", () => {
     const { sim } = bare();
     const p = player(sim);
     const mp = p.mp;
     sim.queueCast("p1", "chuong_0", null, 0, [60, 20]);
-    const events = sim.tick(0, new Map([["p1", [17, 20]]]));
-    expect(hitsOf(events)).toHaveLength(0);
+    const walk = sim.tick(0, new Map([["p1", [17, 20]]]));
+    expect(walk.some((e) => e.t === "fx")).toBe(false);
+    expect(p.mp).toBe(mp);
+    const req = walk.find((e) => e.t === "path_request") as Extract<SimEvent, { t: "path_request" }>;
+    expect(req.to[0]).toBeGreaterThan(50); // towards the point, standing just inside the skill's reach of it
+    expect(Math.hypot(req.to[0] - 60, req.to[1] - 20)).toBeLessThan(7);
+    const events = sim.tick(600, new Map([["p1", [req.to[0], req.to[1]]]]));
+    expect(hitsOf(events)).toHaveLength(0); // nothing stands there: the cast is spent
     expect(p.mp).toBeLessThan(mp);
     const fx = events.find((e) => e.t === "fx") as Extract<SimEvent, { t: "fx" }>;
-    expect(fx.dest![0]).toBeCloseTo(17 + 4, 5); // chuong_0 reaches 4 tiles
+    expect(fx.dest).toEqual([60, 20]);
   });
 
   it("a skill with no area, cast along a line, hits the first monster on it", () => {
@@ -154,5 +160,105 @@ describe("skills with an area and casts at a point", () => {
     const hits = hitsOf(sim.tick(0, new Map([["p1", [18, 20]]])));
     expect(hits.map((h) => h.to)).toEqual([near.id]);
     expect(behind.hp).toBe(behind.maxHp);
+  });
+});
+
+describe("a fan that starts at the caster", () => {
+  it("a point cast of Cuong Tram walks into the fan's reach and then hits the monster there", () => {
+    const { sim, place } = bare();
+    player(sim);
+    const m = place(0, [27, 20]);
+    sim.queueCast("p1", "tram_0", null, 0, [27, 20]);
+    const walk = sim.tick(0, new Map([["p1", [20, 20]]]));
+    const req = walk.find((e) => e.t === "path_request") as Extract<SimEvent, { t: "path_request" }>;
+    expect(hitsOf(walk)).toHaveLength(0);
+    expect(Math.hypot(req.to[0] - 27, req.to[1] - 20)).toBeLessThan(6);
+    const hits = hitsOf(sim.tick(600, new Map([["p1", [req.to[0], req.to[1]]]])));
+    expect(hits.map((h) => h.to)).toEqual([m.id]);
+  });
+});
+
+describe("reach of the plain attack", () => {
+  it("a bow shoots from far away without walking up", () => {
+    const { sim, place } = bare();
+    player(sim, {}, "cung");
+    const a = place(0, [20, 20]);
+    sim.setTarget("p1", a.id);
+    const events = sim.tick(0, new Map([["p1", [14.5, 20]]]));
+    expect(hitsOf(events).map((h) => h.to)).toEqual([a.id]);
+    expect(events.some((e) => e.t === "path_request")).toBe(false);
+  });
+
+  it("a bow still walks up when the target is beyond its reach, and a sword when it is further than a blade", () => {
+    const { sim, place } = bare();
+    player(sim, {}, "cung");
+    const a = place(0, [30, 20]);
+    sim.setTarget("p1", a.id);
+    const req = sim.tick(0, new Map([["p1", [20, 20]]])).find((e) => e.t === "path_request") as Extract<SimEvent, { t: "path_request" }>;
+    expect(Math.hypot(req.to[0] - 30, req.to[1] - 20)).toBeGreaterThan(5); // stops well short, in bow range
+    const sword = bare();
+    player(sword.sim, {}, "kiem");
+    const b = sword.place(0, [30, 20]);
+    sword.sim.setTarget("p1", b.id);
+    const r2 = sword.sim.tick(0, new Map([["p1", [20, 20]]])).find((e) => e.t === "path_request") as Extract<SimEvent, { t: "path_request" }>;
+    expect(Math.hypot(r2.to[0] - 30, r2.to[1] - 20)).toBeLessThan(1.5);
+  });
+
+  it("a spear reaches further than a sword", () => {
+    const spear = bare();
+    player(spear.sim, {}, "thuong");
+    const a = spear.place(0, [22.8, 20]);
+    spear.sim.setTarget("p1", a.id);
+    expect(hitsOf(spear.sim.tick(0, new Map([["p1", [20, 20]]]))).map((h) => h.to)).toEqual([a.id]);
+    const sword = bare();
+    player(sword.sim, {}, "kiem");
+    const b = sword.place(0, [22.8, 20]);
+    sword.sim.setTarget("p1", b.id);
+    expect(hitsOf(sword.sim.tick(0, new Map([["p1", [20, 20]]])))).toHaveLength(0);
+  });
+});
+
+describe("who a skill's area falls on among players and guards", () => {
+  const stage5 = { stage: 5 };
+  function arena(modeA: 0 | 1 | 2, modeB: 0 | 1 | 2) {
+    const b = bare();
+    const a = b.sim.addPlayer(seed(stage5));
+    a.weapon = "kiem";
+    const q = b.sim.addPlayer(seed({ id: "p2", name: "p2", stage: 5 }));
+    b.sim.setPkMode("p1", modeA);
+    b.sim.setPkMode("p2", modeB);
+    const target = b.place(0, [20, 20]);
+    b.sim.setTarget("p1", target.id);
+    const pos = new Map<string, Vec2>([["p1", [19, 20]], ["p2", [20, 21]]]);
+    return { ...b, a, q, target, pos };
+  }
+  const hurt = (events: SimEvent[], id: string) => events.some((e) => e.t === "hit" && e.from === "p1" && e.to === id);
+
+  it("the normal state hurts the players who are in it too, and spares those who are not", () => {
+    const on = arena(1, 1);
+    expect(hurt(on.sim.tick(0, on.pos), "p2")).toBe(true);
+    const off = arena(1, 0);
+    expect(hurt(off.sim.tick(0, off.pos), "p2")).toBe(false);
+    const none = arena(0, 1);
+    expect(hurt(none.sim.tick(0, none.pos), "p2")).toBe(false);
+  });
+
+  it("the slaughter state hurts everyone, a guard too", () => {
+    const s = arena(2, 0);
+    const guard = [...s.mons.values()].find((m) => m.guard)!;
+    guard.path = [[20, 19]];
+    const events = s.sim.tick(0, s.pos);
+    expect(hurt(events, "p2")).toBe(true);
+    expect(hurt(events, guard.id)).toBe(true);
+    const n = arena(1, 1);
+    const g2 = [...n.mons.values()].find((m) => m.guard)!;
+    g2.path = [[20, 19]];
+    expect(hurt(n.sim.tick(0, n.pos), g2.id)).toBe(false);
+  });
+
+  it("someone being answered in self-defence is hurt by the swing even with the state off", () => {
+    const d = arena(0, 0);
+    d.a.hitBy.set("p2", 0); // p2 hit p1 a moment ago
+    expect(hurt(d.sim.tick(1000, d.pos), "p2")).toBe(true);
   });
 });

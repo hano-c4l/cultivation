@@ -26,6 +26,7 @@
     "idle": { "action": "Idle_Loop", "frames": 4, "loop": true },
     "run": { "action": "Jog_Fwd_Loop", "frames": 8, "loop": true },
     "attack": { "action": "Sword_Attack", "frames": 8, "loop": false, "range": [0.5, 0.83] },
+    "thrust": { "action": "Punch_Cross", "frames": 6, "loop": false },
     "cast": { "action": "Spell_Simple_Shoot", "frames": 6, "loop": false },
     "hit": { "action": "Hit_Chest", "frames": 3, "loop": false },
     "die": { "action": "Death01", "frames": 6, "loop": false }

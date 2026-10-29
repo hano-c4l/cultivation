@@ -1,5 +1,5 @@
 {
-  "version": 64,
+  "version": 72,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -142,6 +142,11 @@
           "fps": 14,
           "loop": false
         },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
         "cast": {
           "frames": 6,
           "fps": 10,
@@ -184,6 +189,11 @@
         "attack": {
           "frames": 8,
           "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
           "loop": false
         },
         "cast": {
@@ -389,7 +399,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 51,
+      "head": 47,
       "anims": {
         "idle": {
           "frames": 4,
@@ -404,6 +414,11 @@
         "attack": {
           "frames": 8,
           "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
           "loop": false
         },
         "cast": {
@@ -433,7 +448,7 @@
         "x": 48,
         "y": 84
       },
-      "head": 51,
+      "head": 46,
       "anims": {
         "idle": {
           "frames": 4,
@@ -448,6 +463,11 @@
         "attack": {
           "frames": 8,
           "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
           "loop": false
         },
         "cast": {
@@ -670,6 +690,11 @@
           "fps": 14,
           "loop": false
         },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
         "cast": {
           "frames": 6,
           "fps": 10,
@@ -712,6 +737,11 @@
         "attack": {
           "frames": 8,
           "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
           "loop": false
         },
         "cast": {
@@ -1201,6 +1231,11 @@
           "fps": 14,
           "loop": false
         },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
         "cast": {
           "frames": 6,
           "fps": 10,
@@ -1243,6 +1278,11 @@
         "attack": {
           "frames": 8,
           "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
           "loop": false
         },
         "cast": {
