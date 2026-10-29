@@ -99,6 +99,7 @@ import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
 import { decide, newAutoMemory, type AutoAction, type AutoMemory, type AutoSettings, type AutoView } from "./auto-brain";
 import { initAuto, type AutoUi } from "./auto-ui";
+import { loadPrimary, savePrimary, type PrimaryChoice } from "./primary-store";
 import { iconButton } from "./icons";
 import { loading } from "./loading-ui";
 import { qiSpawnPoint, qiStyleOf } from "./qi-aura";
@@ -320,6 +321,8 @@ export class GameScene extends Phaser.Scene {
   private selfMaxHp = 0;
   private selfMaxMp = 0;
   private selfDead = false;
+  /** The attack the player chose for the slot in front of the hotbar (null: the plain attack), kept per character in the browser and told to the server at every welcome. */
+  private primary: PrimaryChoice | null = null;
   /** The loading screen: the welcome is in, and for how many frames in a row nothing has been left to load; when it was put up. */
   private welcomed = false;
   private settledFrames = 0;
@@ -361,6 +364,14 @@ export class GameScene extends Phaser.Scene {
       getTarget: () => this.targetId,
       getAim: () => this.aimPoint(),
       getMp: () => this.vitals.getMp(),
+      primary: () => this.primary,
+      setPrimary: (choice) => {
+        this.primary = choice;
+        savePrimary(this.selfSheet?.id ?? null, choice);
+        this.net.send({ t: "primary", skill: choice?.skill ?? "", ...(choice?.el ? { el: choice.el as SpiritualRoot } : {}) });
+      },
+      roots: () => this.selfSheet?.roots ?? [],
+      hasBasic: () => !!this.knownSkills?.includes(BASIC_SKILL_ID),
       contextOf: (skill) => this.skillContext(skill),
       countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
     });
@@ -387,8 +398,6 @@ export class GameScene extends Phaser.Scene {
         }
         return [...by].map(([type, qty]) => ({ type, name: getItemDef(type)?.nameVi ?? type, qty, hp: getItemDef(type)?.healFraction !== undefined, mp: getItemDef(type)?.mpFraction !== undefined }));
       },
-      roots: () => this.selfSheet?.roots ?? [],
-      hasBasic: () => !!this.knownSkills?.includes(BASIC_SKILL_ID),
       onStart: (settings) => this.startAuto(settings),
       onStop: () => this.stopAuto("stopped"),
     });
@@ -836,6 +845,8 @@ export class GameScene extends Phaser.Scene {
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
+        this.primary = loadPrimary(msg.character.id, msg.character.roots);
+        this.net.send({ t: "primary", skill: this.primary?.skill ?? "", ...(this.primary?.el ? { el: this.primary.el as SpiritualRoot } : {}) });
         this.vitals.set(msg.hp, msg.maxHp, { inMs: msg.regenInMs, perSec: REGEN_PER_S });
         this.selfHp = msg.hp;
         this.selfMaxHp = msg.maxHp;
@@ -1890,7 +1901,6 @@ export class GameScene extends Phaser.Scene {
         const def = getSkill(id);
         return def ? effectiveSkill(def, this.skillContext(def)).mpCost : 0;
       },
-      hasBasic: !!this.knownSkills?.includes(BASIC_SKILL_ID),
       bagCount: (type) => bag.reduce((n, it) => (it.type === type ? n + it.qty : n), 0),
       healMsOf: (type) => getItemDef(type)?.healOverMs ?? 0,
     };

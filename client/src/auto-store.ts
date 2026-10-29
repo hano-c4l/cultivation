@@ -26,8 +26,6 @@ export function loadAuto(id: string | null, read: (key: string) => string | null
       potionBelow: clamp(raw.potionBelow, 0, 100, base.potionBelow),
       mpPotion: typeof raw.mpPotion === "string" && /^[a-z0-9_.]{0,60}$/.test(raw.mpPotion) ? raw.mpPotion : "",
       mpPotionBelow: clamp(raw.mpPotionBelow, 0, 100, base.mpPotionBelow),
-      basic: typeof raw.basic === "boolean" ? raw.basic : base.basic,
-      basicElement: typeof raw.basicElement === "string" && /^[a-z]{0,12}$/.test(raw.basicElement) ? raw.basicElement : "",
     };
   } catch {
     return base;

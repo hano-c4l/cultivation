@@ -70,6 +70,15 @@
       #hotbar[hidden] { display: none; }
       #hotbar .hb-note { margin-bottom: 4px; padding: 3px 8px; border-radius: 6px; background: rgba(214, 169, 75, 0.92); color: var(--ui-on-accent); font-weight: 600; max-width: 340px; }
       #hotbar .hb-row { display: flex; gap: 3px; }
+      /* The slot in front of the first one: the attack used when a monster is clicked; its list opens above it. */
+      #hotbar .hb-primary { position: relative; width: 44px; height: 44px; padding: 2px; margin-right: 7px; box-sizing: border-box; border: 1px solid var(--ui-highlight); border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: var(--ui-text); font: inherit; cursor: pointer; }
+      #hotbar .hb-primary .ic { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -17px 0 0 -15px; opacity: 0.9; pointer-events: none; }
+      #hotbar .hb-primary .hb-name { position: absolute; left: 0; right: 0; bottom: 1px; font-size: 9px; text-align: center; }
+      #hotbar .hb-primary-menu { position: absolute; left: 0; bottom: 52px; min-width: 210px; padding: 6px; border-radius: 8px; background: var(--ui-panel); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); }
+      #hotbar .hb-primary-menu[hidden] { display: none; }
+      #hotbar .hb-pm-title { margin: 0 2px 4px; color: var(--ui-muted); font-size: 11px; }
+      #hotbar .hb-pm-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 6px; margin: 2px 0; border: 1px solid transparent; border-radius: 6px; background: rgba(255, 255, 255, 0.05); color: var(--ui-text); font: 12px "Be Vietnam Pro", system-ui, sans-serif; text-align: left; cursor: pointer; }
+      #hotbar .hb-pm-item .ic { width: 22px; height: 22px; flex: none; } #hotbar .hb-pm-item.on { border-color: var(--ui-highlight); background: rgba(214, 169, 75, 0.18); }
       #hotbar .hb-slot { position: relative; width: 44px; height: 44px; padding: 2px; box-sizing: border-box; border: 1px solid var(--ui-border); border-radius: 6px; background: rgba(0, 0, 0, 0.6); color: var(--ui-text); cursor: pointer; overflow: hidden; }
       #hotbar .hb-slot.assigning { border-color: var(--ui-highlight); box-shadow: 0 0 0 1px var(--ui-highlight) inset; } #hotbar .hb-slot.dim { opacity: 0.5; }
       #hotbar .hb-elem { position: absolute; bottom: 2px; left: 2px; margin: 0; width: 9px; height: 9px; }
