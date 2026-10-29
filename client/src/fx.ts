@@ -373,9 +373,9 @@ export class Effects {
     if (area.shape === "single") return;
     const pts = this.areaPts(area, from, aim);
     this.shot(520, 0.62, (g, p) => {
-      g.fillStyle(color, alpha * (1 - p)).lineStyle(2, 0xffffff, Math.min(0.8, alpha * 2.2) * (1 - p)).beginPath().moveTo(pts[0]?.x ?? 0, pts[0]?.y ?? 0);
+      g.fillStyle(color, alpha * (1 - p)).beginPath().moveTo(pts[0]?.x ?? 0, pts[0]?.y ?? 0); // a soft fill only: an outline made the area too loud
       for (const q of pts) g.lineTo(q.x, q.y);
-      g.closePath().fillPath().strokePath();
+      g.closePath().fillPath();
     });
   }
 
@@ -750,9 +750,9 @@ export class Effects {
       const k = fadeIn * fadeOut;
       const pulse = 0.75 + 0.25 * Math.sin(now / 160);
       z.g.clear();
-      z.g.fillStyle(z.color, 0.22 * k * pulse).lineStyle(2, z.color, 0.7 * k).beginPath().moveTo(z.pts[0]?.x ?? 0, z.pts[0]?.y ?? 0);
+      z.g.fillStyle(z.color, 0.22 * k * pulse).beginPath().moveTo(z.pts[0]?.x ?? 0, z.pts[0]?.y ?? 0);
       for (const q of z.pts) z.g.lineTo(q.x, q.y);
-      z.g.closePath().fillPath().strokePath();
+      z.g.closePath().fillPath();
       if (now < z.nextPuff) continue;
       z.nextPuff = now + 110;
       const n = Math.max(2, Math.round(z.area.range * (z.area.shape === "circle" ? 2 : 1.1)));

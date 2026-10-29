@@ -221,6 +221,8 @@ interface PlayerState {
   o?: string;
   /** The look of the worn flight pháp bảo (see `flightStyleOf`); `applyGear` keeps it current. */
   fl?: string;
+  /** The cultivation level, `realm * 10 + stage` (see `PlayerSnapshot.lv`); `syncQi` keeps it current. */
+  lv?: number;
   /** Lock claim id of this connection, kept so the lock can be released after a wake-up. */
   claimId: string;
   mapId: MapId;
@@ -563,6 +565,7 @@ export class MapRoom extends DurableObject<Env> {
         ...(weaponFamily(bagNow.equipped) ? { w: weaponFamily(bagNow.equipped) as string } : {}),
         ...(outfitOf(bagNow.equipped) ? { o: outfitOf(bagNow.equipped) as string } : {}),
         ...(flightLookOf(bagNow.equipped) ? { fl: flightLookOf(bagNow.equipped) as string } : {}),
+        lv: row.realm * 10 + row.stage,
         claimId,
         mapId,
         path: [position],
@@ -1865,7 +1868,7 @@ export class MapRoom extends DurableObject<Env> {
         if (fl) sock.state.fl = fl;
         else delete sock.state.fl;
         sock.ws.serializeAttachment(sock.state);
-        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}), ...(o ? { o } : {}), ...(fl ? { fl } : {}) });
+        this.broadcastAbout([id], { t: "look", id, ...(w ? { w } : {}), ...(o ? { o } : {}), ...(fl ? { fl } : {}), ...(sock.state.lv !== undefined ? { lv: sock.state.lv } : {}) });
       }
     }
     void this.syncMount(id).catch((err) => console.error("mount sync failed", id, err));
@@ -4058,10 +4061,22 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.fl ? { fl: p.fl } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+  }
+
+  /** A character sheet went out (a level, a breakthrough): when the realm or stage changed, everyone who sees the player gets the new look with it. */
+  private syncQi(ws: WebSocket, c: { realm: number; stage: number }): void {
+    const att = ws.deserializeAttachment() as PlayerState | null;
+    if (!att) return;
+    const lv = c.realm * 10 + c.stage;
+    if (att.lv === lv) return;
+    att.lv = lv;
+    ws.serializeAttachment(att);
+    this.broadcastAbout([att.id], { t: "look", id: att.id, ...(att.w ? { w: att.w } : {}), ...(att.o ? { o: att.o } : {}), ...(att.fl ? { fl: att.fl } : {}), lv });
   }
 
   private send(ws: WebSocket, msg: ServerMessage): void {
+    if (msg.t === "stats") this.syncQi(ws, msg.character);
     try {
       ws.send(JSON.stringify(msg));
     } catch {

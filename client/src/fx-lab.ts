@@ -1,17 +1,23 @@
 import Phaser from "phaser";
 import { Effects } from "./fx";
 import { FLIGHT_TEX, ensureFlightTextures } from "./flight-art";
+import { drawQiAura, qiStyleOf } from "./qi-aura";
+import { DEFAULT_THEME } from "@game/shared";
 
 /**
  * A dev-only page (`/fx-lab.html` under `npm run dev -w client`; the build does not include it): two dots stand in for a caster and a target and every
  * skill effect can be fired at will, so effects are tuned by eye without a server, a login or a monster.
  */
+/** Cultivation levels (`realm * 10 + stage`) the `qi` button shows: the first and the last stage of each realm. */
+const LEVELS = [1, 9, 11, 19, 21, 29, 31, 39];
 const caster = { x: 260, y: 420 };
 const target = { x: 560, y: 340 };
 const posOf = (id: string): { x: number; y: number } | null => (id === "me" ? caster : id === "foe" ? target : id === "far" ? { x: 120, y: 300 } : null);
 
 class Lab extends Phaser.Scene {
   fx!: Effects;
+  /** Figures wearing the qi of each level, shown with the `qi` button. */
+  qi: Phaser.GameObjects.Graphics | null = null;
   create(): void {
     this.cameras.main.setBackgroundColor("#2c4a2e");
     for (const p of [caster, target]) this.add.ellipse(p.x, p.y, 36, 16, 0x000000, 0.35);
@@ -49,6 +55,15 @@ class Lab extends Phaser.Scene {
         this.fx.zone(`lab${label}`, id, caster, target, 6000, el);
       });
     }
+    add("qi", () => {
+      // eight levels side by side: the first and last stage of the first four realms
+      this.qi?.destroy();
+      this.qi = this.add.graphics().setDepth(5);
+      LEVELS.forEach((lv, i) => {
+        this.add.rectangle(70 + i * 90, 300 - 20, 14, 36, 0xeeeeee).setDepth(10).setData("qi", true);
+        this.add.text(54 + i * 90, 306, String(lv), { color: "#ddd", fontSize: "11px" }).setData("qi", true);
+      });
+    });
     add("dots", () => {
       // three running effects on one figure for 6 s, each with its own share of the circle
       const ids = ["thuan_0", "cuong_luc_2", "hoi_0"];
@@ -84,6 +99,10 @@ class Lab extends Phaser.Scene {
   }
   update(time: number): void {
     this.fx.update(time);
+    if (this.qi) {
+      this.qi.clear();
+      LEVELS.forEach((lv, i) => drawQiAura(this.qi!, 70 + i * 90, 300, 36, time / 1000, qiStyleOf(lv, DEFAULT_THEME.realmColors)));
+    }
   }
 }
 
