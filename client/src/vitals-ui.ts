@@ -1,5 +1,9 @@
 import { CURRENCIES, EMPTY_WALLET, type Currency, type Wallet } from "@game/shared";
+import { uiIcon, type IconShape } from "./icons";
 import { vi } from "./locales/vi";
+
+/** The picture that stands for each currency (its name is the tooltip). */
+const CURRENCY_ICON: Readonly<Record<Currency, IconShape>> = { linh_thach: "stone", cong_hien: "merit", tien_ngoc: "immortal" };
 
 export interface VitalsUi {
   /** HP now. With `regen`, it keeps regenerating by itself (the server sends no HP updates while the character is in town). */
@@ -56,11 +60,11 @@ export function initVitals(): VitalsUi {
     walletBox.replaceChildren(
       ...CURRENCIES.map((c) => {
         const row = document.createElement("div");
-        const name = document.createElement("span");
-        name.textContent = vi.economy.currency[c];
+        row.title = vi.economy.currency[c]; // the name moved to the tooltip: the icon stands for it
+        row.setAttribute("aria-label", vi.economy.currency[c]);
         const value = document.createElement("b");
         value.textContent = balances[c].toLocaleString("vi-VN");
-        row.append(name, value);
+        row.append(uiIcon(CURRENCY_ICON[c]), value);
         return row;
       }),
     );

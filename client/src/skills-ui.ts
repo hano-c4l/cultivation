@@ -19,7 +19,7 @@ import {
   type SkillStateView,
   type SpiritualRoot,
 } from "@game/shared";
-import { skillIconFor } from "./icons";
+import { iconButton, skillIconFor } from "./icons";
 import { realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
@@ -68,7 +68,8 @@ export function effectText(s: SkillDef, ctx: SkillContext): string {
  * what it does at that strength. Learning and mastery are server side; this only shows what the server sent.
  */
 export function initSkills(deps: { beginAssign: (value: string, label: string) => void; boost: (skill: string) => void; pillCount: () => number }): SkillsUi {
-  const toggle = el("button", undefined, vi.skills.button);
+  const toggle = el("button", undefined, "");
+  iconButton(toggle, "taiji", vi.skills.button);
   toggle.id = "sk-btn";
   toggle.hidden = true;
   const panel = el("div");

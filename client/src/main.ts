@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { api } from "./api";
 import { hideAuth, showAuth, showCharacterCreate, showCharacterList } from "./auth-ui";
+import { iconButton } from "./icons";
 import { vi } from "./locales/vi";
 import { GameScene } from "./scene";
 import { applyTheme } from "./theme";
@@ -62,10 +63,10 @@ async function boot(): Promise<void> {
   hud.textContent = vi.connecting;
 
   const logout = document.getElementById("logout") as HTMLButtonElement;
-  logout.textContent = vi.logout;
+  iconButton(logout, "door", vi.logout);
   logout.hidden = false;
   const switchChar = document.getElementById("switch-char") as HTMLButtonElement;
-  switchChar.textContent = vi.switchCharacter;
+  iconButton(switchChar, "swap", vi.switchCharacter);
   switchChar.hidden = false;
   switchChar.onclick = async () => {
     await api.deselectCharacter();

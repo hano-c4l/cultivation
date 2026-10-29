@@ -1,4 +1,4 @@
-import { iconFor } from "./icons";
+import { iconButton, iconFor } from "./icons";
 import {
   EQUIP_SLOTS,
   equipBlock,
@@ -43,7 +43,8 @@ const ARTIFACT_SLOTS: ReadonlySet<EquipSlot> = new Set<EquipSlot>(["bonded", "fl
  * checks here only grey out what it would refuse and say why.
  */
 export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => BagItem[], isAdmin = false): EquipmentUi {
-  const toggle = el("button", undefined, vi.equip.button);
+  const toggle = el("button", undefined, "");
+  iconButton(toggle, "shield", vi.equip.button);
   toggle.id = "eq-btn";
   toggle.hidden = true;
   const panel = el("div");

@@ -13,7 +13,9 @@ export type IconShape =
   | "sword" | "saber" | "spear" | "axe" | "bow" | "fist"
   | "hat" | "robe" | "bracer" | "ring" | "jade" | "necklace" | "belt" | "boots" | "charm" | "bonded" | "flight"
   | "pill" | "ore" | "book" | "scroll" | "unknown"
-  | "slash" | "bolt" | "fan" | "blink" | "buff" | "heal" | "passive";
+  | "slash" | "bolt" | "fan" | "blink" | "buff" | "heal" | "passive"
+  // the interface: the currencies and the buttons of the windows
+  | "stone" | "merit" | "immortal" | "person" | "shield" | "bag" | "taiji" | "trophy" | "swap" | "door";
 
 export interface IconSpec {
   shape: IconShape;
@@ -86,12 +88,22 @@ const SHAPES: Readonly<Record<IconShape, readonly Part[]>> = {
   blink: [["M4 8 L13 16 L4 24", "a", 3], ["M15 8 L24 16 L15 24", "l", 3]],
   buff: [["M16 16 m-11 0 a11 11 0 1 0 22 0 a11 11 0 1 0 -22 0", "a", 2], ["M16 25 V8 M9 15 L16 8 L23 15", "l", 3]],
   heal: [["M12 5 H20 V12 H27 V20 H20 V27 H12 V20 H5 V12 H12 Z", "a"], ["M13 7 V13 H7", "l", 1]],
+  stone: [["M16 3 L27 11 L22 28 H10 L5 11 Z", "m"], ["M5 11 H27", "l", 1], ["M16 3 L12 11 L16 27 L20 11 Z", "l", 1]],
+  merit: [["M16 16 m-11 0 a11 11 0 1 0 22 0 a11 11 0 1 0 -22 0", "m"], ["M16 16 m-8.5 0 a8.5 8.5 0 1 0 17 0 a8.5 8.5 0 1 0 -17 0", "l", 1], ["M12 12 H20 V20 H12 Z", "d"]],
+  immortal: [["M16 16 m-11 0 a11 11 0 1 0 22 0 a11 11 0 1 0 -22 0", "m"], ["M16 7 Q21 14 16 23 Q11 14 16 7 Z", "l"], ["M8 14 Q14 15 16 23 Q9 23 8 14 Z", "l"], ["M24 14 Q18 15 16 23 Q23 23 24 14 Z", "l"]],
+  person: [["M16 10 m-5.5 0 a5.5 5.5 0 1 0 11 0 a5.5 5.5 0 1 0 -11 0", "m"], ["M5 29 Q5 17 16 17 Q27 17 27 29 Z", "m"], ["M12 22 L16 27 L20 22", "d", 1.2]],
+  shield: [["M16 3 L27 7 V16 Q27 25 16 29 Q5 25 5 16 V7 Z", "m"], ["M16 3 V29", "l", 1], ["M5 14 H27", "l", 1]],
+  bag: [["M8 12 H24 L26 28 H6 Z", "m"], ["M12 12 V9 Q12 4 16 4 Q20 4 20 9 V12", "d", 2], ["M6 18 H26", "d", 1]],
+  taiji: [["M16 16 m-12 0 a12 12 0 1 0 24 0 a12 12 0 1 0 -24 0", "l"], ["M16 4 A12 12 0 0 1 16 28 A6 6 0 0 1 16 16 A6 6 0 0 0 16 4 Z", "d"], ["M16 10 m-1.8 0 a1.8 1.8 0 1 0 3.6 0 a1.8 1.8 0 1 0 -3.6 0", "l"], ["M16 22 m-1.8 0 a1.8 1.8 0 1 0 3.6 0 a1.8 1.8 0 1 0 -3.6 0", "d"]],
+  trophy: [["M9 4 H23 V13 Q23 20 16 21 Q9 20 9 13 Z", "m"], ["M9 7 H4 Q4 14 10 15 M23 7 H28 Q28 14 22 15", "g", 1.6], ["M14 21 H18 V25 H14 Z", "g"], ["M10 25 H22 V29 H10 Z", "g"]],
+  swap: [["M5 11 H24 M24 11 l-5 -5 M24 11 l-5 5", "l", 2.4], ["M27 21 H8 M8 21 l5 -5 M8 21 l5 5", "a", 2.4]],
+  door: [["M7 4 H20 V28 H7 Z", "w"], ["M17 16 m-1.4 0 a1.4 1.4 0 1 0 2.8 0 a1.4 1.4 0 1 0 -2.8 0", "g"], ["M22 16 H30 M30 16 l-4 -4 M30 16 l-4 4", "a", 2]],
   passive: [["M16 3 L19.5 12 L29 12.5 L21.5 18.5 L24 28 L16 22.5 L8 28 L10.5 18.5 L3 12.5 L12.5 12 Z", "a"], ["M16 7 L18 13", "l", 1.2]],
 };
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const FIXED: Readonly<Record<string, string>> = { d: "#3a2f26", l: "rgba(255,255,255,0.75)", w: "#8d6e4a", g: "#e0b84a", p: "#f2e6b8" };
-const MAIN: Readonly<Partial<Record<IconShape, string>>> = { fist: "#e6c4a0", ore: "#9aa7a0", robe: "#7a8fb8", hat: "#b89b6a", jade: "#7fcfa6", pill: "#e0b84a", book: "#8a5a9a", boots: "#7a5a3a", bracer: "#8a8f99", flight: "#cfd8e6" };
+const MAIN: Readonly<Partial<Record<IconShape, string>>> = { stone: "#6fb7ff", merit: "#e0b84a", immortal: "#f4a6d0", person: "#c9d4e6", shield: "#7a8fb8", bag: "#a8794a", trophy: "#e0b84a", fist: "#e6c4a0", ore: "#9aa7a0", robe: "#7a8fb8", hat: "#b89b6a", jade: "#7fcfa6", pill: "#e0b84a", book: "#8a5a9a", boots: "#7a5a3a", bracer: "#8a8f99", flight: "#cfd8e6" };
 const STEEL = "#cfd8dc";
 
 function paint(role: Part[1], shape: IconShape, accent: string): string {
@@ -142,6 +154,19 @@ export function renderIcon(spec: IconSpec): SVGSVGElement {
     cache.set(key, node);
   }
   return node.cloneNode(true) as SVGSVGElement;
+}
+
+/** The icon of an interface element (a currency, the button of a window). */
+export function uiIcon(shape: IconShape): SVGSVGElement {
+  return renderIcon({ shape, element: null, grade: 0 });
+}
+
+/** Turns a text button into an icon button: the words move to the tooltip and the accessible name, so nothing is lost by hovering. */
+export function iconButton(btn: HTMLElement, shape: IconShape, label: string): void {
+  btn.replaceChildren(uiIcon(shape));
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+  btn.classList.add("icon-btn");
 }
 
 /** The icon of an item type (a bag cell, a shop row, the gear window). */
