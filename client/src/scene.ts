@@ -94,6 +94,7 @@ import { initSkills, type SkillsUi } from "./skills-ui";
 import { initInventory, type InventoryUi } from "./inventory-ui";
 import { initVitals, type VitalsUi } from "./vitals-ui";
 import { DEFAULT_CHANNEL } from "./config";
+import { iconButton } from "./icons";
 import { mapLabel, vi } from "./locales/vi";
 import { isMounted, setMounted, wearerOfSheet } from "./wearer";
 import { Net } from "./net";
@@ -198,6 +199,8 @@ interface MonsterActor {
 
 /** How long a killed monster with a sprite stays on screen for its death animation. */
 const DEATH_LINGER_MS = 1600;
+/** How long green dots stay round someone who cast a heal. */
+const HEAL_DOTS_MS = 3000;
 
 /** Time constant (ms) for blending away the offset left by a path correction. */
 const CORRECTION_TAU_MS = 150;
@@ -1019,9 +1022,9 @@ export class GameScene extends Phaser.Scene {
         this.playOnce(msg.id, fxKind === "melee" ? (caster === "thuong" ? "thrust" : "attack") : fxKind === "blink" ? undefined : "cast", msg.to ?? (msg.x !== undefined && msg.y !== undefined ? [msg.x, msg.y] : undefined));
         this.fx.skill(msg.id, msg.skill, msg.to, msg.x !== undefined && msg.y !== undefined ? toScreen(msg.x, msg.y) : undefined, msg.el);
         const buff = getSkill(msg.skill);
-        if (buff?.kind === "buff" && buff.buff) {
+        if ((buff?.kind === "buff" && buff.buff) || buff?.kind === "heal") {
           const list = this.buffGlows.get(msg.id) ?? new Map<string, number>();
-          list.set(msg.skill, performance.now() + buff.buff.durationMs);
+          list.set(msg.skill, performance.now() + (buff?.buff?.durationMs ?? HEAL_DOTS_MS));
           this.buffGlows.set(msg.id, list);
         }
         break;
@@ -1521,8 +1524,7 @@ export class GameScene extends Phaser.Scene {
     const on = isMounted();
     // Always there once in the game, like the other buttons; grey and dead while no flight pháp bảo is worn.
     this.mountBtn.hidden = false;
-    this.mountBtn.textContent = on ? vi.mount.down : vi.mount.up;
-    this.mountBtn.title = this.flightWorn || on ? vi.mount.hint : vi.mount.needFlight;
+    iconButton(this.mountBtn, "flight", `${on ? vi.mount.down : vi.mount.up}: ${this.flightWorn || on ? vi.mount.hint : vi.mount.needFlight}`);
     this.mountBtn.disabled = !this.flightWorn && !on;
     this.mountBtn.classList.toggle("riding", on);
   }
@@ -1738,10 +1740,9 @@ export class GameScene extends Phaser.Scene {
     if (now < this.nextGlowAt || this.buffGlows.size === 0) return;
     this.nextGlowAt = now + 260;
     for (const [id, list] of this.buffGlows) {
-      for (const [skill, until] of list) {
-        if (until <= now) list.delete(skill);
-        else this.fx.lingering(id, skill, (until - now) / 1000);
-      }
+      for (const [skill, until] of list) if (until <= now) list.delete(skill);
+      let slot = 0;
+      for (const [skill, until] of list) this.fx.lingering(id, skill, (until - now) / 1000, slot++, list.size);
       if (list.size === 0) this.buffGlows.delete(id);
     }
   }

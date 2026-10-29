@@ -38,6 +38,7 @@ import {
   type StatKey,
 } from "@game/shared";
 import { getCatalog } from "./constitution-store";
+import { iconButton } from "./icons";
 import { vi } from "./locales/vi";
 import { realmClass } from "./equip-text";
 import { wearerOfSheet } from "./wearer";
@@ -94,7 +95,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
  */
 export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
   const sendAllocate = deps.sendAllocate;
-  const toggle = el("button", undefined, vi.character.button);
+  const toggle = el("button", undefined, "");
+  iconButton(toggle, "person", vi.character.button);
   toggle.id = "char-btn";
   toggle.hidden = true;
   const panel = el("div");

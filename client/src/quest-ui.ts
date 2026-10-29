@@ -12,6 +12,7 @@ import {
   type QuestProgressView,
   type QuestRewards,
 } from "@game/shared";
+import { iconButton } from "./icons";
 import { mapLabel, vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -82,7 +83,8 @@ export function initQuests(send: (msg: ClientMessage) => void, getBag: () => Bag
   tracker.id = "quest-tracker";
   tracker.hidden = true;
   // The character's own quest window (button under the bag button): two tabs, "Đang làm" and "Đã xong".
-  const toggle = el("button", undefined, vi.quests.button);
+  const toggle = el("button", undefined, "");
+  iconButton(toggle, "scroll", vi.quests.button);
   toggle.id = "quest-btn";
   toggle.hidden = true;
   const log = el("div");
