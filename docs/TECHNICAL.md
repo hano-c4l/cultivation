@@ -275,3 +275,10 @@ Các cổng chỉ có ở local (production/preview phải trả 404): `/api/dev
 - Bản đồ vẽ bằng RenderTexture: chỉ mới thử với Canvas, chưa thử WebGL trên thiết bị thật (đặc biệt điện thoại). Có `?renderer=canvas` làm đường lùi.
 - Hình ảnh vật cản và nhân vật còn là placeholder (xem mục 6 trong `docs/TECHNICAL.md`).
 - Tài khoản thử `smoke-*` và `cpu-*@example.test` còn trong D1 preview; production có 2 tài khoản thử do người dùng tự tạo (thông tin đăng nhập do người dùng giữ, không ghi trong repo).
+
+
+## Ghi chú kỹ thuật (2026-10-30, đợt Võ Sư, Hình ảnh, trang phục)
+- **Migration `0057`** (bí tịch khỏi kho thương nhân, hình NPC `master`) và **`0058`** (luật trang phục theo cảnh giới, trang phục NPC và vệ binh): chạy `npm run db:migrate:preview` / `db:migrate:remote` **trước** khi deploy. Các nhóm tuning mới (`dojo`, `rareBooks`, `hatLooks`, `minimap`, `meditation`, `iconLooks`) được gieo tự động lần đầu có người vào game, không cần migration.
+- **Thêm trang phục mới:** tạo cấu hình `tools/render/sprite-config-<bộ>-<nam|nữ>.json` (mở rộng cấu hình tien hoặc ranger, đổi `materials`), `node tools/render/run.mjs <cấu hình> <thư mục ngoài repo>` rồi `node tools/gfx-publish.mjs <thư mục> --demand`; màn admin "Hình ảnh" tự liệt kê bộ mới từ `/gfx/manifest.json`. Một lượt render cả nam và nữ mất vài phút mỗi bộ; trong lúc render, máy chậm nên trang game tải rất lâu.
+- **Admin hình ảnh:** `GET/POST /api/admin/looks` (xem `docs/PHASE3.md`); admin bundle nhập `client/src/icons.ts` và `client/src/hat-art.ts` (chỉ nhập kiểu của Phaser) để xem trước.
+- **Bẫy gặp trong đợt này:** lệnh shell có heredoc chứa dấu nháy lẻ trong chuỗi python đôi khi bị cắt (ghi script ra file bằng công cụ Write rồi chạy); `Phaser` cắt (crop) hình theo tọa độ khung **chưa cắt viền** (`frame.y`, `realWidth`); sửa `server/tsconfig.json` mục `exclude` khi thêm test dùng `test-db`.
