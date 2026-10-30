@@ -10,6 +10,8 @@ export const FLIGHT_TEX: Readonly<Record<FlightStyle, string>> = { plain: "fly_p
 export const DRAGON_SEG = "fly_dragon_seg";
 export const DRAGON_HEAD = "fly_dragon_head";
 export const DRAGON_TAIL = "fly_dragon_tail";
+/** A puff of the cloud the dragon rides on (a few of them, along its body). */
+export const DRAGON_MIST = "fly_dragon_mist";
 /** The colour of the spirit light that trails behind each. */
 export const FLIGHT_GLOW: Readonly<Record<FlightStyle, number>> = { plain: 0x9fe8ff, sword: 0xbfe9ff, cloud: 0xe8f6ff, lotus: 0xffc6e6, phoenix: 0xff9a4a, dragon: 0xffe27a };
 /**
@@ -229,19 +231,18 @@ export function ensureFlightTextures(scene: Phaser.Scene): void {
     c.closePath();
     c.fill();
   });
-  // the dragon's bed (Luyện Hư): a golden glow over a bank of cloud. The dragon itself is made of the parts below, laid out in the scene so that it coils in space.
+  // the dragon's glow (Luyện Hư): a round golden halo only; the banks of cloud under it are separate puffs (DRAGON_MIST) laid out along the body, so they turn with it
   make(scene, FLIGHT_TEX.dragon, 176, 72, (c) => {
-    halo(c, 88, 40, 84, 24, "255,226,122", 0.5);
-    const cloud = (x: number, y: number, r: number): void => {
-      const g = c.createRadialGradient(x, y, 1, x, y, r);
-      g.addColorStop(0, "rgba(255,255,255,0.8)");
-      g.addColorStop(1, "rgba(200,225,255,0)");
-      c.fillStyle = g;
-      c.beginPath();
-      c.arc(x, y, r, 0, Math.PI * 2);
-      c.fill();
-    };
-    for (const [x, y, r] of [[30, 48, 16], [62, 52, 18], [100, 50, 18], [140, 48, 16]] as const) cloud(x, y, r);
+    halo(c, 88, 36, 84, 30, "255,226,122", 0.4);
+  });
+  make(scene, DRAGON_MIST, 56, 36, (c) => {
+    const g = c.createRadialGradient(28, 18, 1, 28, 18, 26);
+    g.addColorStop(0, "rgba(255,255,255,0.75)");
+    g.addColorStop(1, "rgba(200,225,255,0)");
+    c.fillStyle = g;
+    c.beginPath();
+    c.ellipse(28, 18, 26, 16, 0, 0, Math.PI * 2);
+    c.fill();
   });
   // one scale-covered joint of the body: a lit golden ball with a darker belly, a ring of scales and a red spine on top (seen from any side it reads as round)
   make(scene, DRAGON_SEG, 30, 34, (c) => {

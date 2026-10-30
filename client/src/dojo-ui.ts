@@ -56,14 +56,17 @@ export function initDojo(send: (msg: ClientMessage) => void): DojoUi {
       const icon = renderIcon(skillIconSpecOf(def));
       const info = el("div", "dj-info");
       const name = el("div", "dj-name", def ? skillDisplayName(def) : c.skill);
-      const realm = def?.learn?.realm ?? def?.realm;
-      if (realm !== undefined) name.prepend(el("span", `eq-tier ${realmClass(realm)}`, REALMS[realm]?.shortVi ?? ""));
       info.append(name, el("div", "muted", def?.descVi ?? ""), el("div", "dj-price", vi.dojo.price(c.cost.toLocaleString("vi-VN"))));
       const learn = el("button", "", vi.dojo.learn);
       learn.disabled = !c.ok || balance < c.cost;
       learn.title = !c.ok ? vi.dojo.levelLow : balance < c.cost ? vi.dojo.poor : "";
       learn.onclick = () => send({ t: "dojo_learn", npc, skill: c.skill });
-      row.append(icon, info, learn);
+      // The realm tag sits in the top left corner of the skill's icon.
+      const iconBox = el("div", "dj-ic");
+      iconBox.append(icon);
+      const realm = def?.learn?.realm ?? def?.realm;
+      if (realm !== undefined) iconBox.append(el("span", `eq-tier ${realmClass(realm)}`, REALMS[realm]?.shortVi ?? ""));
+      row.append(iconBox, info, learn);
       panel.append(row);
     }
     panel.append(el("div", "muted", vi.dojo.balance(balance.toLocaleString("vi-VN"))));

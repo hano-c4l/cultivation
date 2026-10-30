@@ -108,6 +108,7 @@ const SHAPES: Readonly<Record<IconShape, readonly Part[]>> = {
   door: [["M7 4 H20 V28 H7 Z", "w"], ["M17 16 m-1.4 0 a1.4 1.4 0 1 0 2.8 0 a1.4 1.4 0 1 0 -2.8 0", "g"], ["M22 16 H30 M30 16 l-4 -4 M30 16 l-4 4", "a", 2]],
   // a figure sitting cross-legged with its hands in the lap, a halo behind the head
   meditate: [["M16 9 m-7 0 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0", "l", 1], ["M16 10 m-3.2 0 a3.2 3.2 0 1 0 6.4 0 a3.2 3.2 0 1 0 -6.4 0", "m"], ["M16 14 Q10 15 10 22 L22 22 Q22 15 16 14 Z", "m"], ["M4 26 Q8 22 16 25 Q24 22 28 26 Q22 29 16 27 Q10 29 4 26 Z", "a"], ["M13 21 Q16 23 19 21", "d", 1.2]],
+  menu: [["M5 8 H27", "l", 3], ["M5 16 H27", "l", 3], ["M5 24 H27", "l", 3]],
   passive: [["M16 3 L19.5 12 L29 12.5 L21.5 18.5 L24 28 L16 22.5 L8 28 L10.5 18.5 L3 12.5 L12.5 12 Z", "a"], ["M16 7 L18 13", "l", 1.2]],
 };
 
