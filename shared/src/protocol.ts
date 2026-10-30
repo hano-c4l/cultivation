@@ -11,6 +11,7 @@ import type { Currency, Wallet } from "./economy";
 import type { EnhanceLevelDef } from "./smith";
 import type { Tuning } from "./tuning";
 import type { BrewJobView } from "./alchemy";
+import type { MarketCfg, MarketKind, MarketListingView } from "./market";
 import type { MerchantDef } from "./merchants";
 import type { MapRecipe, NpcSpot } from "./map";
 import type { ItemOverlay } from "./items";
@@ -54,7 +55,7 @@ export const CHAT_TARGET_MAX_LENGTH = 32;
 export type ChatChannel = "world" | "map" | "whisper" | "system";
 
 /** The windows one NPC can open (tabs of the same NPC): buying and selling, the blacksmith's work, brewing pills. */
-export type NpcView = "shop" | "smith" | "brew" | "learn";
+export type NpcView = "shop" | "smith" | "brew" | "learn" | "market";
 export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper", "system"];
 /** How far (tiles) the client-claimed start tile may differ from the server position and still be trusted. */
 export const MAX_DESYNC_TILES = 3;
@@ -145,6 +146,16 @@ export type ClientMessage =
   | { t: "brew_start"; npc: string; recipe: string; /** Batches made in one run (absent: 1). */ count?: number }
   | { t: "brew_collect"; npc: string; job: string }
   | { t: "dojo_learn"; npc: string; skill: string }
+  /** Vạn Bảo Lâu: put the stack at (tab, cell) up for sale, `qty` of it, asking `price` Linh Thạch (an auction: the start price). */
+  | { t: "market_post"; npc: string; kind: MarketKind; tab: number; cell: number; qty: number; price: number }
+  /** Buy a fixed-price listing of this town. */
+  | { t: "market_buy"; npc: string; id: string }
+  /** Bid on an auction listing of this town (the amount is paid now; an outbid bidder gets it back by mail). */
+  | { t: "market_bid"; npc: string; id: string; amount: number }
+  /** Take your own listing down (an auction only while nobody has bid). The item comes back by mail. */
+  | { t: "market_cancel"; npc: string; id: string }
+  /** Announce your own listing to the town (the NPC speaks); costs a fee and needs a high-grade item. */
+  | { t: "market_promote"; npc: string; id: string }
   /** Use the teleport array of a town to go to another main town (the server prices the trip and takes the Linh Thạch when the channel ends). */
   | { t: "waygate_go"; npc: string; to: string }
   /** Buy `qty` of one of the merchant's offers (named by id, priced by the server). */
@@ -362,6 +373,11 @@ export type ServerMessage =
   /** The martial master's courses this character can still take (what is already known is left out), each with its cost in Linh Thạch. */
   | { t: "dojo"; npc: string; courses: Array<{ skill: string; cost: number; ok: boolean }> }
   | { t: "dojo_ok"; skill: string; cost: number }
+  /** Vạn Bảo Lâu's window: every open listing of this town, the numbers (tuning `market`) and whether bids are being taken now. */
+  | { t: "market"; npc: string; listings: MarketListingView[]; cfg: MarketCfg; now: number; open: boolean; tabs: NpcView[] }
+  /** A market action went through (`op` is what was done). */
+  | { t: "market_ok"; op: "post" | "buy" | "bid" | "cancel" | "promote" }
+  | { t: "market_error"; reason: MarketError }
   | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number>; tuning: Tuning; tabs: NpcView[] }
   /** The outcome of a refining: what each stat gained (empty: nothing rose this time). */
   | { t: "smith_refined"; id: string; gains: Record<string, number> }
@@ -378,6 +394,9 @@ export type ServerMessage =
   /** A path item was handed out. */
   | { t: "path_claimed"; path: PathId }
   | { t: "bt_claimed"; item: string }
+
+/** Why a market action was refused. */
+export type MarketError = "far" | "rate" | "invalid" | "funds" | "gone" | "mine" | "low" | "closed" | "limit" | "grade" | "cooldown" | "untradable" | "busy" | "murderer" | "top";
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
@@ -541,7 +560,17 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "npc_open":
       if (!isNpcId(m.npc)) return null;
       if (m.view === undefined) return { t: "npc_open", npc: m.npc };
-      return m.view === "shop" || m.view === "smith" || m.view === "brew" || m.view === "learn" ? { t: "npc_open", npc: m.npc, view: m.view } : null;
+      return m.view === "shop" || m.view === "smith" || m.view === "brew" || m.view === "learn" || m.view === "market" ? { t: "npc_open", npc: m.npc, view: m.view } : null;
+    case "market_post":
+      return isNpcId(m.npc) && (m.kind === "fixed" || m.kind === "auction") && isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999 && isInt(m.price) && m.price >= 1 && m.price <= 1_000_000_000
+        ? { t: "market_post", npc: m.npc, kind: m.kind, tab: m.tab, cell: m.cell, qty: m.qty, price: m.price }
+        : null;
+    case "market_buy":
+    case "market_cancel":
+    case "market_promote":
+      return isNpcId(m.npc) && typeof m.id === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.id) ? { t: m.t, npc: m.npc, id: m.id } : null;
+    case "market_bid":
+      return isNpcId(m.npc) && typeof m.id === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.id) && isInt(m.amount) && m.amount >= 1 && m.amount <= 1_000_000_000 ? { t: "market_bid", npc: m.npc, id: m.id, amount: m.amount } : null;
     case "brew_start":
       return isNpcId(m.npc) && typeof m.recipe === "string" && /^[a-z0-9_]{1,40}$/.test(m.recipe) ? { t: "brew_start", npc: m.npc, recipe: m.recipe, ...(typeof m.count === "number" && Number.isInteger(m.count) && m.count >= 1 && m.count <= 100 ? { count: m.count } : {}) } : null;
     case "dojo_learn":

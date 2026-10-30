@@ -86,6 +86,7 @@ import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { initDojo, type DojoUi } from "./dojo-ui";
+import { initMarket, type MarketUi } from "./market-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
 import { HAT_ORN_TEX, HAT_TEX, ensureHatTextures } from "./hat-art";
@@ -317,6 +318,7 @@ export class GameScene extends Phaser.Scene {
   private channel!: ChannelUi;
   private waygate!: WaygateUi;
   private dojo!: DojoUi;
+  private market!: MarketUi;
   private minimap!: MinimapUi;
   private fx!: Effects;
   private rank!: RankUi;
@@ -457,6 +459,7 @@ export class GameScene extends Phaser.Scene {
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
     this.dojo = initDojo((msg) => this.net.send(msg));
+    this.market = initMarket((msg) => this.net.send(msg), () => this.inventory.list());
     this.minimap = initMinimap();
     ensureFlightTextures(this);
     ensureHatTextures(this);
@@ -701,6 +704,7 @@ export class GameScene extends Phaser.Scene {
     this.quests.close();
     this.waygate.close();
     this.dojo.close();
+      this.market.close();
     this.drawMap();
     this.applyCameraBounds();
   }
@@ -824,10 +828,12 @@ export class GameScene extends Phaser.Scene {
       this.smith.close();
       this.waygate.close();
       this.dojo.close();
+      this.market.close();
       if (npc.kind === "quest") this.quests.open(npc.id);
       else if (npc.kind === "smith") this.smith.open(npc.id);
       else if (npc.kind === "waygate") this.waygate.open(npc.id);
       else if (npc.kind === "master") this.dojo.open(npc.id);
+      else if (npc.kind === "market") this.market.open(npc.id);
       else this.shop.open(npc.id, this.map.id);
       return;
     }
@@ -853,6 +859,7 @@ export class GameScene extends Phaser.Scene {
     this.smith.close();
     this.waygate.close();
     this.dojo.close();
+      this.market.close();
     this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
     const c = toScreen(tx, ty);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
@@ -929,6 +936,7 @@ export class GameScene extends Phaser.Scene {
         this.linhThach = msg.wallet.linh_thach;
         this.waygate.setBalance(this.linhThach);
         this.dojo.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach);
         this.inventory.setBag(msg.bag);
         this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
@@ -1009,6 +1017,7 @@ export class GameScene extends Phaser.Scene {
           this.linhThach = msg.balance;
           this.waygate.setBalance(this.linhThach);
         this.dojo.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach);
         }
         this.vitals.setBalance(msg.currency, msg.balance);
         this.smith.refresh();
@@ -1099,6 +1108,7 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.refresh();
         this.equipment.refresh();
         this.shop.refresh();
+        this.market.refresh();
         this.quests.refresh();
         this.hotbar.refresh();
         this.skillsUi.refresh(); // the pill count
@@ -1238,10 +1248,21 @@ export class GameScene extends Phaser.Scene {
         break;
       case "dojo":
         this.dojo.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach);
         this.dojo.setCourses(msg.npc, msg.courses);
         break;
       case "skill_forgot":
         this.chat.system(vi.skills.forgot(skillDisplayName(getSkill(msg.skill) ?? ({ id: msg.skill, nameVi: msg.skill } as SkillDef))));
+        break;
+      case "market":
+        this.market.setBalance(this.linhThach);
+        this.market.setListings(msg.npc, msg.listings, msg.cfg, msg.now, msg.open);
+        break;
+      case "market_ok":
+        this.market.done(msg.op);
+        break;
+      case "market_error":
+        this.market.fail(msg.reason);
         break;
       case "dojo_ok":
         this.dojo.notify(vi.dojo.learned(skillDisplayName(getSkill(msg.skill) ?? ({ id: msg.skill, nameVi: msg.skill } as SkillDef)), msg.cost.toLocaleString("vi-VN")), true);

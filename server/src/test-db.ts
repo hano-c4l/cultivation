@@ -24,19 +24,26 @@ export function makeDb(): { db: D1Database; raw: DatabaseSync } {
     first: async () => (raw.prepare(sql).get(...(args as never[])) as unknown) ?? null,
     all: async () => ({ results: raw.prepare(sql).all(...(args as never[])) as unknown[] }),
   });
+  // D1 runs one batch at a time; calls that overlap wait their turn, so a test can start two writers at once and see the second meet the first one's result.
+  let queue: Promise<unknown> = Promise.resolve();
+  const runBatch = async (list: ReturnType<typeof stmt>[]) => {
+    raw.exec("BEGIN");
+    try {
+      const out = [];
+      for (const s of list) out.push(await s.all());
+      raw.exec("COMMIT");
+      return out;
+    } catch (err) {
+      raw.exec("ROLLBACK");
+      throw err;
+    }
+  };
   const db = {
     prepare: (sql: string) => stmt(sql),
-    batch: async (list: ReturnType<typeof stmt>[]) => {
-      raw.exec("BEGIN");
-      try {
-        const out = [];
-        for (const s of list) out.push(await s.all());
-        raw.exec("COMMIT");
-        return out;
-      } catch (err) {
-        raw.exec("ROLLBACK");
-        throw err;
-      }
+    batch: (list: ReturnType<typeof stmt>[]) => {
+      const run = queue.then(() => runBatch(list));
+      queue = run.catch(() => undefined);
+      return run;
     },
   } as unknown as D1Database;
   return { db, raw };

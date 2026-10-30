@@ -1,0 +1,279 @@
+import { getItemDef, listingFee, marketTax, type BagItem, type ClientMessage, type MarketCfg, type MarketError, type MarketKind, type MarketListingView } from "@game/shared";
+import { equipLines, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
+import { iconFor } from "./icons";
+import { vi } from "./locales/vi";
+import { registerWindow } from "./window-manager";
+
+export interface MarketUi {
+  /** Opens Vạn Bảo Lâu `npc` (the server answers with the listings of this town). */
+  open(npc: string): void;
+  close(): void;
+  setListings(npc: string, listings: MarketListingView[], cfg: MarketCfg, now: number, open: boolean): void;
+  /** The Linh Thạch the character holds. */
+  setBalance(linhThach: number): void;
+  /** The bag changed: the list of things that can be put up may have too. */
+  refresh(): void;
+  done(op: "post" | "buy" | "bid" | "cancel" | "promote"): void;
+  fail(reason: MarketError): void;
+  isOpen(): boolean;
+}
+
+type Tab = "fixed" | "auction" | "post" | "mine";
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+const fmt = (n: number) => n.toLocaleString("vi-VN");
+
+/** "2 giờ 5 phút", "35 phút", "< 1 phút" for a time left in ms. */
+function leftText(ms: number): string {
+  if (ms <= 0) return vi.market.ending;
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "< 1 phút";
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (days > 0) return `${days} ngày ${hours} giờ`;
+  if (hours > 0) return `${hours} giờ ${mins} phút`;
+  return `${mins} phút`;
+}
+
+/**
+ * Vạn Bảo Lâu's window (the market): the fixed-price and auction listings of this town, putting an item up, and your own listings. It only sends
+ * the wish; the server prices it, takes the money and hands the goods over by mail in one batch.
+ */
+export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagItem[]): MarketUi {
+  const panel = el("div");
+  panel.id = "market-panel";
+  panel.hidden = true;
+  document.body.append(panel);
+  registerWindow("market", panel, 5);
+
+  let npc = "";
+  let tab: Tab = "fixed";
+  let listings: MarketListingView[] = [];
+  let cfg: MarketCfg | null = null;
+  let open = false;
+  /** Server time minus the browser's at the last answer, so the countdowns follow the server clock. */
+  let skew = 0;
+  let balance = 0;
+  let loaded = false;
+  let note: { text: string; ok: boolean } | null = null;
+  /** The bag item chosen to put up, and the form values. */
+  let picked: { tab: number; cell: number } | null = null;
+  let form: { kind: MarketKind; qty: number; price: number } = { kind: "fixed", qty: 1, price: 1000 };
+
+  const nowServer = () => Date.now() + skew;
+
+  const itemName = (type: string, qty: number) => `${getItemDef(type)?.nameVi ?? type}${qty > 1 ? ` x${qty}` : ""}`;
+
+  const itemBlock = (type: string, qty: number, carry: Record<string, unknown>): HTMLElement => {
+    const node = el("div", "mk-item");
+    const name = el("div", "mk-name", itemName(type, qty));
+    name.prepend(iconFor(type));
+    const tag = itemTierTag(type, carry.lv as number | undefined);
+    if (tag) name.prepend(el("span", `eq-tier ${realmClass(itemTierRealm(type, carry.lv as number | undefined))}`, tag));
+    const def = getItemDef(type);
+    const lines = def?.category === "equipment" ? equipLines(type, carry.dur as number | undefined, carry.max as number | undefined, carry.lv as number | undefined, carry.rs as never, carry.en as number | undefined).join(" · ") : (def?.descVi ?? "");
+    node.append(name, el("div", "muted", lines));
+    return node;
+  };
+
+  const button = (text: string, onClick: () => void, disabled = false, title = ""): HTMLButtonElement => {
+    const b = el("button", "", text);
+    b.disabled = disabled;
+    if (title) b.title = title;
+    b.onclick = onClick;
+    return b;
+  };
+
+  const renderBrowse = (kind: MarketKind) => {
+    const list = listings.filter((l) => l.kind === kind && !l.mine);
+    if (kind === "auction") panel.append(el("div", open ? "mk-open" : "mk-shut", open ? vi.market.roundOpen(cfg ? `${cfg.openHour}h-${cfg.closeHour}h` : "") : vi.market.roundShut(cfg ? `${cfg.openHour}h` : "")));
+    if (list.length === 0) panel.append(el("div", "muted", vi.market.none));
+    for (const l of list) {
+      const row = el("div", "mk-row");
+      const info = itemBlock(l.type, l.qty, l.carry);
+      info.append(el("div", "muted", vi.market.seller(l.sellerName)));
+      const side = el("div", "mk-side");
+      if (kind === "fixed") {
+        side.append(el("div", "mk-price", vi.market.price(fmt(l.price))), el("div", "muted", vi.market.left(leftText(l.endsAt - nowServer()))));
+        side.append(button(vi.market.buy, () => send({ t: "market_buy", npc, id: l.id }), balance < l.price, balance < l.price ? vi.market.poor : ""));
+      } else {
+        side.append(
+          el("div", "mk-price", l.topBid > 0 ? vi.market.topBid(fmt(l.topBid), l.topIsMe) : vi.market.startPrice(fmt(l.price))),
+          el("div", "muted", vi.market.left(leftText(l.endsAt - nowServer()))),
+        );
+        const amount = el("input");
+        amount.type = "number";
+        amount.min = String(l.nextBid);
+        amount.value = String(l.nextBid);
+        amount.className = "mk-amount";
+        const bid = button(vi.market.bid, () => send({ t: "market_bid", npc, id: l.id, amount: Math.floor(Number(amount.value)) }), !open || l.topIsMe, !open ? vi.market.errors.closed : l.topIsMe ? vi.market.errors.top : "");
+        side.append(amount, bid);
+      }
+      row.append(info, side);
+      panel.append(row);
+    }
+  };
+
+  const renderPost = () => {
+    panel.append(el("div", "muted", vi.market.postHint));
+    const items = bag().filter((i) => !getItemDef(i.type)?.disabled);
+    if (items.length === 0) panel.append(el("div", "muted", vi.market.bagEmpty));
+    const grid = el("div", "mk-bag");
+    for (const i of items) {
+      const cell = el("button", `mk-cell${picked && picked.tab === i.tab && picked.cell === i.cell ? " on" : ""}`);
+      cell.title = itemName(i.type, i.qty);
+      cell.append(iconFor(i.type));
+      if (i.qty > 1) cell.append(el("span", "mk-qty", String(i.qty)));
+      cell.onclick = () => {
+        picked = { tab: i.tab, cell: i.cell };
+        form = { ...form, qty: i.qty };
+        render();
+      };
+      grid.append(cell);
+    }
+    panel.append(grid);
+    const item = picked ? bag().find((i) => i.tab === picked!.tab && i.cell === picked!.cell) : undefined;
+    if (!item || !cfg) return;
+    const box = el("div", "mk-form");
+    box.append(itemBlock(item.type, item.qty, { ...item }));
+    const kindRow = el("div", "mk-kinds");
+    for (const k of ["fixed", "auction"] as const) {
+      const b = button(k === "fixed" ? vi.market.kindFixed : vi.market.kindAuction, () => {
+        form = { ...form, kind: k };
+        render();
+      });
+      if (form.kind === k) b.classList.add("on");
+      kindRow.append(b);
+    }
+    box.append(kindRow);
+    const qty = el("input");
+    qty.type = "number";
+    qty.min = "1";
+    qty.max = String(item.qty);
+    qty.value = String(Math.min(form.qty, item.qty));
+    qty.disabled = item.qty === 1;
+    qty.oninput = () => (form = { ...form, qty: Math.min(item.qty, Math.max(1, Math.floor(Number(qty.value)) || 1)) });
+    const price = el("input");
+    price.type = "number";
+    price.min = "1";
+    price.max = String(cfg.maxPrice);
+    price.value = String(form.price);
+    const preview = el("div", "muted");
+    const update = () => {
+      const p = Math.min(cfg!.maxPrice, Math.max(1, Math.floor(Number(price.value)) || 1));
+      form = { ...form, price: p };
+      preview.textContent = vi.market.feePreview(fmt(listingFee(cfg!, p)), cfg!.taxPct, fmt(p - marketTax(cfg!, p)));
+    };
+    price.oninput = update;
+    update();
+    const fields = el("div", "mk-fields");
+    const qtyLabel = el("label", "", vi.market.qty);
+    qtyLabel.append(qty);
+    const priceLabel = el("label", "", form.kind === "fixed" ? vi.market.priceLabel : vi.market.startLabel);
+    priceLabel.append(price);
+    fields.append(qtyLabel, priceLabel);
+    const fee = listingFee(cfg, form.price);
+    box.append(
+      fields,
+      preview,
+      button(vi.market.post, () => send({ t: "market_post", npc, kind: form.kind, tab: item.tab, cell: item.cell, qty: Math.min(form.qty, item.qty), price: form.price }), balance < fee, balance < fee ? vi.market.poor : ""),
+    );
+    panel.append(box);
+  };
+
+  const renderMine = () => {
+    const list = listings.filter((l) => l.mine);
+    if (list.length === 0) panel.append(el("div", "muted", vi.market.noneMine));
+    for (const l of list) {
+      const row = el("div", "mk-row");
+      const info = itemBlock(l.type, l.qty, l.carry);
+      info.append(el("div", "muted", `${l.kind === "fixed" ? vi.market.kindFixed : vi.market.kindAuction} · ${vi.market.left(leftText(l.endsAt - nowServer()))}`));
+      const side = el("div", "mk-side");
+      side.append(el("div", "mk-price", l.kind === "fixed" ? vi.market.price(fmt(l.price)) : l.topBid > 0 ? vi.market.topBid(fmt(l.topBid), false) : vi.market.startPrice(fmt(l.price))));
+      const canCancel = l.kind === "fixed" || l.topBid === 0;
+      side.append(button(vi.market.cancel, () => send({ t: "market_cancel", npc, id: l.id }), !canCancel, canCancel ? "" : vi.market.errors.closed));
+      const grade = getItemDef(l.type)?.grade ?? 0;
+      const promoteOk = !!cfg && grade >= cfg.promote.minGrade;
+      side.append(button(vi.market.promote, () => send({ t: "market_promote", npc, id: l.id }), !promoteOk || (cfg ? balance < cfg.promote.fee : true), promoteOk && cfg ? vi.market.promoteHint(fmt(cfg.promote.fee)) : vi.market.errors.grade));
+      row.append(info, side);
+      panel.append(row);
+    }
+  };
+
+  const render = () => {
+    panel.replaceChildren();
+    const head = el("div", "eq-head");
+    const close = el("button", "", "×");
+    close.onclick = () => (panel.hidden = true);
+    head.append(el("b", "", vi.market.title), close);
+    panel.append(head);
+    const tabs = el("div", "mk-tabs");
+    for (const [id, label] of [["fixed", vi.market.tabFixed], ["auction", vi.market.tabAuction], ["post", vi.market.tabPost], ["mine", vi.market.tabMine]] as const) {
+      const b = el("button", id === tab ? "on" : "", label);
+      b.onclick = () => {
+        tab = id;
+        note = null;
+        render();
+      };
+      tabs.append(b);
+    }
+    panel.append(tabs);
+    if (note) panel.append(el("div", note.ok ? "mk-okmsg" : "mk-err", note.text));
+    if (!loaded) panel.append(el("div", "muted", vi.market.loading));
+    else if (tab === "post") renderPost();
+    else if (tab === "mine") renderMine();
+    else renderBrowse(tab);
+    panel.append(el("div", "muted", vi.market.balance(fmt(balance))));
+  };
+
+  return {
+    open(id) {
+      npc = id;
+      listings = [];
+      loaded = false;
+      note = null;
+      picked = null;
+      panel.hidden = false;
+      render();
+      send({ t: "npc_open", npc: id, view: "market" });
+    },
+    close() {
+      panel.hidden = true;
+    },
+    setListings(id, list, config, now, isOpen) {
+      if (id !== npc) return;
+      listings = list;
+      cfg = config;
+      open = isOpen;
+      skew = now - Date.now();
+      loaded = true;
+      if (!form.price) form.price = 1000;
+      if (picked && !bag().some((i) => i.tab === picked!.tab && i.cell === picked!.cell)) picked = null;
+      render();
+    },
+    setBalance(n) {
+      balance = n;
+      if (!panel.hidden) render();
+    },
+    refresh() {
+      if (!panel.hidden && tab === "post") render();
+    },
+    done(op) {
+      note = { text: vi.market.ok[op], ok: true };
+      if (op === "post") picked = null;
+      if (!panel.hidden) render();
+    },
+    fail(reason) {
+      note = { text: vi.market.errors[reason] ?? vi.market.errors.invalid ?? "", ok: false };
+      if (!panel.hidden) render();
+    },
+    isOpen: () => !panel.hidden,
+  };
+}

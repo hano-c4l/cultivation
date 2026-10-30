@@ -158,7 +158,13 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 4g. Icon, NPC, ô bản đồ — làm gần hết (icon SVG; NPC là thân người chơi theo D1; nền, cây, đá, tường có khối); còn icon ở các màn còn là chữ
   - 4h. Tối ưu và đo hiệu năng — làm một phần (bộ nhớ bản đồ giảm khoảng 4 lần, WebP, gỡ atlas khi rảnh, bảng đo `?perf=1`); còn đo thật trên điện thoại
   - 4i. Admin chọn hình có sẵn (không tải ảnh lên) cho vật phẩm, trang bị theo loại, kỹ năng, quái, NPC, bản đồ, trang phục, mũ, bản đồ mini — xong
-- **Giai đoạn 5**: Kinh tế và xã hội (chưa chia hạng mục)
+- **Giai đoạn 5**: Kinh tế và xã hội (`docs/PHASE5.md`; mới thiết kế)
+  - 5a. NPC Vạn Bảo Lâu: bán đứt, đấu giá, tin rao trong thành (làm trước; chỉ Linh Thạch; tin theo từng thành; thuế 10%, phí đăng 2%)
+  - 5b. Giao dịch trực tiếp 2 người (chỉ trong thành an toàn)
+  - 5c. Tông môn (Cống Hiến, kỹ năng tông môn)
+  - 5d. Thú cưỡi
+  - 5e. Nghề phụ (luyện khí)
+  - 5f. Dashboard tổng cung tiền và đơn nạp Tiên Ngọc
 - **Giai đoạn 6**: Hoàn thiện và vận hành (chưa chia hạng mục)
 
 Giai đoạn 5, 6 và các giai đoạn sau sẽ có file `docs/PHASE5.md`, `docs/PHASE6.md`... khi bắt đầu làm.

@@ -198,6 +198,8 @@ import { loadLiveConfig } from "./live-config";
 import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
+import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError } from "@game/shared";
+import { buyFixed, cancelListing, listingViews, placeBid, postListing, promoteListing, settleDue } from "./market";
 
 /** The look of the worn flight pháp bảo (none when nothing is worn there or it is broken): the others draw a rider on it. */
 function flightLookOf(equipped: ReadonlyArray<{ slot: string; type: string; dur?: number }>): string | undefined {
@@ -518,6 +520,11 @@ export class MapRoom extends DurableObject<Env> {
       // The bag and the mail are read here too (before accepting), for the same reason as the wallet.
       const joinedAt = Date.now();
       await deleteExpiredMail(this.env.DB, joinedAt, row.id).catch((err) => console.error("mail sweep failed", err));
+      // Vạn Bảo Lâu: close the listings that ran out of time before the mail is read, so a seller or a winner logging in meets the result.
+      await getTuning(this.env.DB)
+        .then((t) => settleDue(this.env.DB, t.market, joinedAt))
+        .then((ids) => this.notifyMail(ids.filter((x) => x !== row.id)))
+        .catch((err) => console.error("market settle failed", err));
       const [bag, mail] = await Promise.all([
         loadBag(this.env.DB, row.id),
         listMail(this.env.DB, row.id, joinedAt).catch((err) => {
@@ -737,6 +744,12 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleBrew(ws, state, msg);
       case "dojo_learn":
         return this.handleDojoLearn(ws, state, msg);
+      case "market_post":
+      case "market_buy":
+      case "market_bid":
+      case "market_cancel":
+      case "market_promote":
+        return this.handleMarket(ws, state, msg);
       case "waygate_go":
         return void this.startWaygate(ws, state, msg);
       case "npc_open":
@@ -2496,7 +2509,7 @@ export class MapRoom extends DurableObject<Env> {
     const spot = npcNear(this.mapOf(state.mapId), npcId, here.x, here.y);
     if (!spot) return this.send(ws, { t: "inv_error", reason: "far" });
     // Orange and red names (sát nhân over 200) may not deal with any NPC.
-    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, spot.kind === "quest" ? { t: "quest_error", reason: "murderer" } : { t: "inv_error", reason: "murderer" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, spot.kind === "quest" ? { t: "quest_error", reason: "murderer" } : spot.kind === "market" ? { t: "market_error", reason: "murderer" } : { t: "inv_error", reason: "murderer" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
@@ -2509,6 +2522,7 @@ export class MapRoom extends DurableObject<Env> {
         if (spot.kind === "waygate") return this.sendWaygate(ws, state.mapId, npcId);
         if (spot.kind === "alchemist" && msg.view === "brew") return this.sendBrew(ws, id, npcId);
         if (spot.kind === "master") return this.sendDojo(ws, id, npcId);
+        if (spot.kind === "market") return this.sendMarket(ws, id, npcId, state.mapId);
       }
       // The blacksmith and the alchemist deal in goods too when they have a stock (a merchant record under their id): the shop tab of their window.
       if (spot.kind !== "merchant" && spot.kind !== "alchemist" && spot.kind !== "smith") return;
@@ -2728,6 +2742,98 @@ export class MapRoom extends DurableObject<Env> {
       this.sendToCharacter(id, { t: "skill_state", id: skill.id, lv: 0, xp: 0 });
       this.send(ws, { t: "dojo_ok", skill: skill.id, cost: course.cost });
       await this.sendDojo(ws, id, msg.npc);
+    });
+  }
+
+  /** Tells the online characters among `ids` to read their mail again (a market sale, refund or return left them mail). Never throws. */
+  private async notifyMail(ids: readonly string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      await this.env.CHAT_HUB.get(this.env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).notifyMail([...ids]);
+    } catch (err) {
+      console.error("mail notice failed", err);
+    }
+  }
+
+  /** Vạn Bảo Lâu's window: the listings of this town (those that ran out of time are closed first). */
+  private async sendMarket(ws: WebSocket, id: string, npcId: string, town: string): Promise<void> {
+    const cfg = (await getTuning(this.env.DB)).market;
+    const now = Date.now();
+    const settled = await settleDue(this.env.DB, cfg, now);
+    await this.notifyMail(settled.filter((x) => x !== id));
+    if (settled.includes(id)) await this.sendMailList(id); // a sale or a return just left this character mail
+    const listings = await listingViews(this.env.DB, cfg, town, id);
+    this.send(ws, { t: "market", npc: npcId, listings, cfg, now, open: auctionOpen(cfg, now), tabs: npcTabs("market", false) });
+  }
+
+  /**
+   * Vạn Bảo Lâu commands. Each is ONE guarded D1 batch (see market.ts); what the batch hands over (items, proceeds, refunds) arrives by mail, so only
+   * the acting character's own bag changes here (putting a listing up). Same range, queue and rate limit as the other NPCs.
+   */
+  private handleMarket(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "market_post" | "market_buy" | "market_bid" | "market_cancel" | "market_promote" }>): void {
+    const now = Date.now();
+    const fail = (reason: MarketError) => this.send(ws, { t: "market_error", reason });
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return fail("rate");
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "market") return fail("far");
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return fail("murderer");
+    if (state.bt || state.tp) return fail("busy");
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    const town = state.mapId;
+    const sellerName = state.name;
+    void this.bagTask(id, async () => {
+      const cfg = (await getTuning(this.env.DB)).market;
+      const finish = async (op: "post" | "buy" | "bid" | "cancel" | "promote", notify: readonly string[], balance?: number) => {
+        if (balance !== undefined) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance });
+        this.send(ws, { t: "market_ok", op });
+        await this.notifyMail(notify);
+        if (op !== "post" && op !== "promote") await this.sendMailList(id); // the goods or the returned item are already in this character's mail
+        await this.sendMarket(ws, id, msg.npc, town);
+      };
+      try {
+        if (msg.t === "market_post") {
+          const bag = await this.getBag(id);
+          const r = await postListing(this.env.DB, cfg, { sellerId: id, town, kind: msg.kind, bag, tab: msg.tab, cell: msg.cell, qty: msg.qty, price: msg.price, now });
+          if (r.status !== "ok") {
+            if (r.status === "busy") this.bags.delete(id); // the cached bag was stale
+            return fail(r.status);
+          }
+          const next = applyBag({ items: bag.items, equipped: bag.equipped }, r.ops);
+          const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+          this.bags.set(id, after);
+          this.sendBagDelta(id, bag, after);
+          return finish("post", [], r.balance);
+        }
+        if (msg.t === "market_buy") {
+          const r = await buyFixed(this.env.DB, cfg, { buyerId: id, town, id: msg.id, now });
+          if (r.status !== "ok") return fail(r.status);
+          return finish("buy", r.notify.filter((x) => x !== id), r.balance);
+        }
+        if (msg.t === "market_bid") {
+          const r = await placeBid(this.env.DB, cfg, { bidderId: id, town, id: msg.id, amount: msg.amount, now });
+          if (r.status !== "ok") return fail(r.status);
+          return finish("bid", r.notify.filter((x) => x !== id), r.balance);
+        }
+        if (msg.t === "market_cancel") {
+          const r = await cancelListing(this.env.DB, { sellerId: id, town, id: msg.id, now });
+          if (r.status !== "ok") return fail(r.status);
+          return finish("cancel", []);
+        }
+        const r = await promoteListing(this.env.DB, cfg, { sellerId: id, town, id: msg.id, now });
+        if (r.status !== "ok") return fail(r.status);
+        const l = r.listing;
+        const item = `${marketItemDef(l.item_type)?.nameVi ?? l.item_type}${l.qty > 1 ? ` x${l.qty}` : ""}`;
+        const how = l.kind === "auction" ? `đấu giá, khởi điểm ${l.price.toLocaleString("vi-VN")} Linh Thạch` : `bán ${l.price.toLocaleString("vi-VN")} Linh Thạch`;
+        // The NPC speaks, not the player: the sender is the NPC (id `npc:...`), so the line looks different from a player's chat.
+        this.broadcast({ t: "chat", channel: "system", id: `npc:${msg.npc}`, name: spot.name ?? NPC_NAMES_VI[msg.npc] ?? "Vạn Bảo Lâu", text: `${sellerName} rao ${item}: ${how}. Mời quý khách ghé Vạn Bảo Lâu.`, ts: now });
+        return finish("promote", [], r.balance);
+      } catch (err) {
+        console.error("market command failed", id, msg.t, err);
+        fail("busy");
+      }
     });
   }
 

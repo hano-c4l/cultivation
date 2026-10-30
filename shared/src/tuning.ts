@@ -1,6 +1,7 @@
 import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
 import type { AreaDef } from "./area";
 import { DEFAULT_DOJO, validDojo, type DojoCfg } from "./dojo";
+import { DEFAULT_MARKET, validMarket, type MarketCfg } from "./market";
 import { SKILL_LOOKS } from "./skill-looks";
 import { FLIGHT_STYLES, GROUND_STYLES, ICON_PICKABLE, OBSTACLE_STYLES, type FlightStyle, type IconShape, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
 import type { EquipKind } from "./equipment-data";
@@ -159,6 +160,8 @@ export interface Tuning {
   hatLooks: { rules: Array<{ minRealm: number; shape: number }> };
   /** The martial masters' courses: which skill each teaches and for how much Linh Thạch (see dojo.ts). */
   dojo: DojoCfg;
+  /** Vạn Bảo Lâu, the market: tax, listing fee, limits, the auction round and the announcement (see market.ts). */
+  market: MarketCfg;
   /** The chance that a kill drops the book of a rare skill of the realm of the map (see skills-extra.ts): by monster class, and for each item round of the map's boss. */
   rareBooks: { chance: Record<"normal" | "rare1" | "rare2" | "boss", number> };
   /** The outfit drawn on a player's sprite, by the realm of the robe worn: the rule with the highest `minRealm` the robe reaches wins (no robe or no rule: the plain peasant clothes). `outfit` names a sprite variant (`player.<body>.<outfit>`); one without a sprite is drawn as the plain clothes. */
@@ -513,6 +516,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   minimap: { self: "#ffffff", player: "#4da3ff", monster: "#ff4d4d", boss: "#ffd24a", npc: "#4dff7a", portal: "#b9a4ff" },
   hatLooks: { rules: [{ minRealm: 0, shape: 0 }, { minRealm: 1, shape: 1 }, { minRealm: 2, shape: 3 }, { minRealm: 3, shape: 4 }, { minRealm: 4, shape: 7 }, { minRealm: 5, shape: 8 }] },
   dojo: DEFAULT_DOJO,
+  market: DEFAULT_MARKET,
   rareBooks: { chance: { normal: 0.00005, rare1: 0.0008, rare2: 0.003, boss: 0.02 } },
   outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 1, outfit: "scout" }, { minRealm: 2, outfit: "tien" }, { minRealm: 3, outfit: "violet" }, { minRealm: 4, outfit: "crimson" }, { minRealm: 5, outfit: "shadow" }] }, // Kim Đan robes and above: the white xianxia robe
   // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp), ghost (hàn thi ma), snake (rắn). Stand-ins: the boss dragons use the dragon.
@@ -642,6 +646,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       smith: { body: "male", outfit: "sage", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a" },
       alchemist: { body: "female", outfit: "sage", tint: "#bff0c8", aura: "#7dff9c" },
       master: { body: "male", outfit: "ranger", weapon: "kiem", tint: "#e6b8a0", aura: "#e0563a" },
+      market: { body: "female", outfit: "sage", tint: "#e8c8ff", aura: "#c89cff" },
       guard: { body: "male", outfit: "warden", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a" },
     },
     byId: {
@@ -696,6 +701,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   hatLooks: "Hình mũ hiện trên nhân vật theo cảnh giới của mũ đang đội",
   rareBooks: "Bí tịch tuyệt học chỉ rơi từ quái: xác suất mỗi lần hạ quái theo loại quái, và mỗi vòng thưởng của boss",
   dojo: "Võ Sư dạy bí tịch: mỗi võ sư dạy kỹ năng nào và giá học (Linh Thạch)",
+  market: "Vạn Bảo Lâu: thuế, phí đăng bán, giới hạn tin, giờ mở và chốt đấu giá, tin quảng bá",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
   flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen), theo hệ của món đang dùng",
@@ -1050,6 +1056,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return validAlchemy(value);
     case "dojo":
       return validDojo(value);
+    case "market":
+      return validMarket(value);
     case "meditation":
       return num(value.huntRatio, 0, 1) && num(value.secondsPerKill, 1, 600) && int(value.maxSettleSeconds, 10, 3600);
     case "minimap":

@@ -18,6 +18,8 @@ export interface GiftAttachments {
   items: GiftItem[];
   /** The account id of the admin who sent it: the `actor` of the currency entries when it is claimed. */
   by?: string;
+  /** The reason the claimed currency is booked under (its kind picks the group in the totals); absent: `admin_gift`. Set only by the server (the market's proceeds and refunds), never by the admin form. */
+  reason?: string;
 }
 
 export const GIFT_CURRENCIES: readonly Currency[] = ["linh_thach", "cong_hien", "tien_ngoc"];
