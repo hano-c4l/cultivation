@@ -1,0 +1,19 @@
+{
+  "extends": "sprite-config-female.json",
+  "name": "char_warden_female",
+  "spriteKey": "player.female.warden",
+  "source": {
+    "hair": "",
+    "outfit": "outfits/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Ranger.gltf"
+  },
+  "materials": {
+    "MI_Ranger": {
+      "color": [
+        2.6,
+        2.6,
+        3.4
+      ],
+      "texture": true
+    }
+  }
+}

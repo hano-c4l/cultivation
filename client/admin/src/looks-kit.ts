@@ -8,7 +8,7 @@ import { api, h } from "./kit";
  * the row, so a screen loads the groups it needs, edits copies of them and saves them back.
  */
 
-export type LookGroupName = "outfits" | "monsterModels" | "monsterTints" | "mapArt" | "npcLooks" | "flightLooks" | "skillLooks" | "iconLooks";
+export type LookGroupName = "outfits" | "monsterModels" | "monsterTints" | "mapArt" | "npcLooks" | "flightLooks" | "skillLooks" | "iconLooks" | "hatLooks" | "minimap";
 
 interface GroupView {
   group: LookGroupName;

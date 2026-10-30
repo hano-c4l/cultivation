@@ -1,0 +1,19 @@
+{
+  "extends": "sprite-config-female.json",
+  "name": "char_scout_female",
+  "spriteKey": "player.female.scout",
+  "source": {
+    "hair": "",
+    "outfit": "outfits/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Ranger.gltf"
+  },
+  "materials": {
+    "MI_Ranger": {
+      "color": [
+        0.4,
+        1,
+        4
+      ],
+      "texture": true
+    }
+  }
+}

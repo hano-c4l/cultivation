@@ -88,7 +88,7 @@ import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { initDojo, type DojoUi } from "./dojo-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
-import { HAT_TEX, ensureHatTextures } from "./hat-art";
+import { HAT_ORN_TEX, HAT_TEX, ensureHatTextures } from "./hat-art";
 import { DRAGON_HEAD, DRAGON_SEG, DRAGON_TAIL, FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
@@ -191,6 +191,9 @@ interface Actor {
   legs?: Phaser.GameObjects.Ellipse;
   /** The light round a weapon upgraded to +7 or more (a soft blob over the weapon sprite). */
   wglow?: Phaser.GameObjects.Image;
+  /** The front ornament of the hat, carried round it as the figure turns; `hatAng` is the way the head faces now (radians, 0 = towards the camera), eased towards the heading. */
+  hatOrn?: Phaser.GameObjects.Image;
+  hatAng?: number;
   moteAt?: number;
   /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
   flight?: string;
@@ -425,6 +428,7 @@ export class GameScene extends Phaser.Scene {
     this.skillsUi = initSkills({
       beginAssign: (value, label) => this.hotbar.beginAssign(value, label),
       boost: (skill) => this.net.send({ t: "skill_boost", skill }),
+      forget: (skill) => this.net.send({ t: "skill_forget", skill }),
       pillCount: () => this.inventory.list().filter((i) => getItemDef(i.type)?.masteryPills !== undefined).reduce((n, i) => n + i.qty, 0),
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
@@ -1233,6 +1237,9 @@ export class GameScene extends Phaser.Scene {
         this.dojo.setBalance(this.linhThach);
         this.dojo.setCourses(msg.npc, msg.courses);
         break;
+      case "skill_forgot":
+        this.chat.system(vi.skills.forgot(skillDisplayName(getSkill(msg.skill) ?? ({ id: msg.skill, nameVi: msg.skill } as SkillDef))));
+        break;
       case "dojo_ok":
         this.dojo.notify(vi.dojo.learned(skillDisplayName(getSkill(msg.skill) ?? ({ id: msg.skill, nameVi: msg.skill } as SkillDef)), msg.cost.toLocaleString("vi-VN")), true);
         break;
@@ -1491,6 +1498,7 @@ export class GameScene extends Phaser.Scene {
     actor.cloud?.destroy();
     this.clearDragon(actor);
     actor.hat?.destroy();
+    actor.hatOrn?.destroy();
     actor.seat?.destroy();
     actor.legs?.destroy();
     actor.wglow?.destroy();
@@ -1881,7 +1889,7 @@ export class GameScene extends Phaser.Scene {
       a.body.setVisible(false);
     }
     // Meditating: the figure sits (no sitting frames exist: the legs are cropped away, folded legs are drawn over the cut and the body sinks onto them), on a ring of light.
-    const sit = a.sitting === true && !a.mounted;
+    const sit = a.sitting === true; // on the ground or on the flying pháp bảo
     a.view.setSeated(sit);
     a.wview?.setSeated(sit);
     // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
@@ -1922,11 +1930,11 @@ export class GameScene extends Phaser.Scene {
       if (a.id === this.selfId) self = { x: p.x, y: p.y };
       else players.push({ x: p.x, y: p.y });
     }
-    const monsters: Array<{ x: number; y: number; boss: boolean }> = [];
+    const monsters: Array<{ x: number; y: number; boss: boolean; guard: boolean }> = [];
     for (const m of this.monsters.values()) {
-      if (m.guard || m.dyingUntil !== undefined) continue;
+      if (m.dyingUntil !== undefined) continue;
       const p = positionAlongPath(m.path, now - m.startedAt, m.speed);
-      monsters.push({ x: p.x, y: p.y, boss: m.boss });
+      monsters.push({ x: p.x, y: p.y, boss: m.boss, guard: m.guard });
     }
     this.minimap.update({ self, players, monsters }, now);
   }
@@ -1984,7 +1992,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** The ring of light under a meditating figure and the motes of healing that rise round it (green for HP, blue for MP; the others see both). */
-  private syncSeat(a: Actor, now: number, x: number, y: number, depth: number, sit: boolean, _lift: number): void {
+  private syncSeat(a: Actor, now: number, x: number, y: number, depth: number, sit: boolean, lift: number): void {
     if (!sit) {
       if (a.seat) {
         a.seat.destroy();
@@ -1999,7 +2007,7 @@ export class GameScene extends Phaser.Scene {
     // The crossed legs: a robe-coloured mound (a darker knee line in front) where the legs were cut away, a little wider than the body.
     const robe = mixTint(a.lk?.r !== undefined ? (hexOf(robeTintOf(a.lk.r)) ?? 0xd8d0bc) : 0xd8d0bc, 0x30303c, 0.25);
     if (!a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
-    a.legs.setPosition(x, y - 3).setFillStyle(robe).setDepth(depth + 0.01);
+    a.legs.setPosition(x, y - 3 + lift).setFillStyle(robe).setDepth(depth + 0.01);
     if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
     a.seat.setPosition(x, y + 3).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
     if ((a.moteAt ?? 0) > now) return;
@@ -2071,6 +2079,16 @@ export class GameScene extends Phaser.Scene {
       const dir = a.view.dir;
       const sx = HEAD_SIDE[dir] ?? 0;
       const away = dir === 3 || dir === 4 || dir === 5;
+      // The hat turns with the head: its front ornament (a gem, a tuft) rides round the hat to the side the figure faces, and hides behind it when the figure faces
+      // away. The facing eases from one heading to the next, so a diagonal walk never snaps the ornament about.
+      const want = dir * (Math.PI / 4);
+      const have = a.hatAng ?? want;
+      a.hatAng = have + Math.atan2(Math.sin(want - have), Math.cos(want - have)) * 0.3;
+      const fx = -Math.sin(a.hatAng);
+      const fy = Math.cos(a.hatAng);
+      const shape = hatShapeOf(lk.h);
+      if (!a.hatOrn) a.hatOrn = this.add.image(0, 0, HAT_ORN_TEX(shape));
+      if (a.hatOrn.texture.key !== HAT_ORN_TEX(shape)) a.hatOrn.setTexture(HAT_ORN_TEX(shape));
       const base = hexOf(hatTintOf(lk.h)) ?? 0xffffff;
       const dim = away ? 0.85 : 1;
       const tint = (Math.round(((base >> 16) & 255) * dim) << 16) | (Math.round(((base >> 8) & 255) * dim) << 8) | Math.round((base & 255) * dim);
@@ -2081,9 +2099,16 @@ export class GameScene extends Phaser.Scene {
         .setFlipX(false)
         .setScale(HAT_SCALE)
         .setVisible(true);
+      a.hatOrn
+        .setPosition(a.hat.x + fx * 10.5 * HAT_SCALE, a.hat.y - 2 + fy * 4)
+        .setDepth(depth + (fy < -0.25 ? 0.02 : 0.035))
+        .setScale(HAT_SCALE * 1.05)
+        .setVisible(fy > -0.25);
     } else if (a.hat) {
       a.hat.destroy();
       a.hat = undefined;
+      a.hatOrn?.destroy();
+      a.hatOrn = undefined;
     }
     if (moving && !a.mounted && lk?.b !== undefined && Math.random() < 0.12) this.fx.puff("trail", x + (Math.random() - 0.5) * 10, y - 2, 1, hexOf(bootsTintOf(lk.b)) ?? 0xffffff);
   }
@@ -2300,7 +2325,8 @@ export class GameScene extends Phaser.Scene {
         this.cameras.main.centerOn(actor.body.x, actor.body.y); // the first frame after a welcome: no slide in from the old view
         this.snapCamera = false;
       }
-      if (actor.cloud) {
+      if (actor.cloud && !actor.cloud.visible) this.clearDragon(actor); // got off: the dragon's joints go with the cloud
+      if (actor.cloud?.visible) {
         // the flight pháp bảo hovers: a slow bob (out of step between riders); a sword turns to the way it flies and sheds spirit light from its tail
         const bob = Math.sin(now / 340 + actor.id.length * 1.7) * 2.2;
         const fly = actor.fly ?? (actor.fly = { x: s.x, y: s.y, a: 0 });

@@ -28,7 +28,7 @@ export const GLOW_GRAND_FROM = 10;
 export const glowTierOf = (en: number | undefined): 0 | 1 | 2 => (en === undefined || en < GLOW_FROM ? 0 : en >= GLOW_GRAND_FROM ? 2 : 1);
 
 /** The shapes of hat the client draws; the number is how many, so a look number picks one. */
-export const HAT_SHAPES = 6;
+export const HAT_SHAPES = 10;
 
 const setNo = (realm: number, tier: number): number => 1 + realm * STAGES_PER_REALM_FOR_LOOK + Math.max(0, tier - 1);
 
@@ -74,5 +74,17 @@ export function weaponTintOf(w: number): string | undefined {
 export const robeTintOf = (r: number): string | undefined => pick(tuning().gearLooks.robe, r);
 export const hatTintOf = (h: number): string | undefined => pick(tuning().gearLooks.hat, h);
 export const bootsTintOf = (b: number): string | undefined => pick(tuning().gearLooks.boots, b);
-/** The shape (0..HAT_SHAPES-1) of the hat a look number gives. */
-export const hatShapeOf = (h: number): number => (Math.max(1, Math.trunc(h)) - 1) % HAT_SHAPES;
+/** The realm of the set a look number belongs to (`setNo`'s inverse). */
+const realmOfSet = (n: number): number => Math.floor((Math.max(1, Math.trunc(n)) - 1) / STAGES_PER_REALM_FOR_LOOK);
+
+/**
+ * The shape (0..HAT_SHAPES-1) of the hat a look number gives: by the realm of the set, from the tuning `hatLooks` (the rule with the highest `minRealm` the realm reaches
+ * wins, like the outfits); a realm no rule reaches, or a shape the client does not have, wraps round the shapes.
+ */
+export function hatShapeOf(h: number): number {
+  const realm = realmOfSet(h);
+  const rules = tuning().hatLooks?.rules ?? [];
+  let best: { minRealm: number; shape: number } | undefined;
+  for (const r of rules) if (r.minRealm <= realm && (!best || r.minRealm > best.minRealm)) best = r;
+  return (best ? best.shape : Math.max(1, Math.trunc(h)) - 1) % HAT_SHAPES;
+}

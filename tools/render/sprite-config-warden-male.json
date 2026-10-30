@@ -1,0 +1,19 @@
+{
+  "extends": "sprite-config-male.json",
+  "name": "char_warden_male",
+  "spriteKey": "player.male.warden",
+  "source": {
+    "hair": "",
+    "outfit": "outfits/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf"
+  },
+  "materials": {
+    "MI_Ranger": {
+      "color": [
+        2.6,
+        2.6,
+        3.4
+      ],
+      "texture": true
+    }
+  }
+}

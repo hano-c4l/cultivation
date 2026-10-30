@@ -7,6 +7,8 @@ import { HAT_SHAPES } from "@game/shared";
  * and seen from a little above, so a turn of the head never needs a flip or a squash.
  */
 export const HAT_TEX = (shape: number): string => `hat_${shape}`;
+/** The front ornament of a hat shape (see ORN). */
+export const HAT_ORN_TEX = (shape: number): string => `hat_orn_${shape}`;
 
 type Paint = (c: CanvasRenderingContext2D) => void;
 
@@ -92,11 +94,6 @@ const SHAPES: readonly Paint[] = [
     c.closePath();
     c.fill();
     c.stroke();
-    c.fillStyle = "#7fe0b8";
-    c.beginPath();
-    c.ellipse(20, 27.5, 3.4, 2.6, 0, 0, Math.PI * 2);
-    c.fill();
-    c.stroke();
   },
   // 2: a crown: a gold band with five rising points, each tipped with a pearl, a red gem in front
   (c) => {
@@ -125,14 +122,6 @@ const SHAPES: readonly Paint[] = [
       c.fill();
       c.stroke();
     }
-    const gem = c.createRadialGradient(19, 24, 0.5, 20, 25, 4.5);
-    gem.addColorStop(0, "#ffb0a0");
-    gem.addColorStop(1, "#c8202a");
-    c.fillStyle = gem;
-    c.beginPath();
-    c.arc(20, 25, 4, 0, Math.PI * 2);
-    c.fill();
-    c.stroke();
   },
   // 3: a hair crown: a round bun in a gold cap with a jade pin through it level across (the same from both sides)
   (c) => {
@@ -233,21 +222,182 @@ const SHAPES: readonly Paint[] = [
     c.closePath();
     c.fill();
     c.stroke();
-    const gem = c.createRadialGradient(19, 25, 0.5, 20, 27, 5);
-    gem.addColorStop(0, "#d8f6ff");
-    gem.addColorStop(1, "#2a9ae0");
-    c.fillStyle = gem;
+  },
+  // 6: an iron helm: a steel dome with a band, a nose guard and a ridge along the top
+  (c) => {
+    c.lineJoin = "round";
+    c.strokeStyle = INK;
+    c.lineWidth = 1.4;
+    c.fillStyle = lit(c, 8, 4, 32, 4, [[0, "#9aa4b4"], [0.45, "#f0f4fa"], [1, "#8a94a6"]]);
     c.beginPath();
-    c.arc(20, 27, 4.4, 0, Math.PI * 2);
+    c.moveTo(7, 28);
+    c.quadraticCurveTo(6, 6, 20, 5);
+    c.quadraticCurveTo(34, 6, 33, 28);
+    c.quadraticCurveTo(20, 33, 7, 28);
+    c.closePath();
     c.fill();
     c.stroke();
-    c.strokeStyle = "#e8c24a";
+    c.fillStyle = lit(c, 0, 22, 0, 32, [[0, "#c8a24a"], [1, "#7a5a14"]]);
+    c.beginPath();
+    c.moveTo(7, 24);
+    c.quadraticCurveTo(20, 29, 33, 24);
+    c.lineTo(33, 28.5);
+    c.quadraticCurveTo(20, 33.5, 7, 28.5);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.strokeStyle = "rgba(60,60,80,0.7)";
     c.lineWidth = 1.2;
     c.beginPath();
-    c.arc(20, 27, 5.6, 0, Math.PI * 2);
+    c.moveTo(20, 6);
+    c.lineTo(20, 24);
+    c.stroke();
+  },
+  // 7: a lotus crown: a gold band with a ring of pink petals
+  (c) => {
+    c.lineJoin = "round";
+    c.strokeStyle = "#7a3a5a";
+    c.lineWidth = 1.2;
+    for (const [x, h, rot] of [[8, 14, -0.7], [14, 19, -0.3], [20, 22, 0], [26, 19, 0.3], [32, 14, 0.7]] as const) {
+      c.save();
+      c.translate(x, 27);
+      c.rotate(rot);
+      c.fillStyle = lit(c, 0, 0, 0, -h, [[0, "#ffd0e8"], [1, "#fff6fb"]]);
+      c.beginPath();
+      c.moveTo(0, 0);
+      c.quadraticCurveTo(-6, -h * 0.5, 0, -h);
+      c.quadraticCurveTo(6, -h * 0.5, 0, 0);
+      c.fill();
+      c.stroke();
+      c.restore();
+    }
+    c.strokeStyle = "#6a4a0c";
+    c.lineWidth = 1.4;
+    c.fillStyle = lit(c, 0, 24, 0, 33, [[0, "#f6dc7a"], [1, "#b8892a"]]);
+    c.beginPath();
+    c.moveTo(6, 27);
+    c.quadraticCurveTo(20, 23, 34, 27);
+    c.lineTo(33, 32);
+    c.quadraticCurveTo(20, 35, 7, 32);
+    c.closePath();
+    c.fill();
+    c.stroke();
+  },
+  // 8: a dragon crown: a dark gold band with two curved horns and a spine between them
+  (c) => {
+    c.lineJoin = "round";
+    c.lineCap = "round";
+    c.strokeStyle = "#e8e0c0";
+    c.lineWidth = 4;
+    c.beginPath();
+    c.moveTo(11, 26);
+    c.quadraticCurveTo(3, 14, 9, 3);
+    c.moveTo(29, 26);
+    c.quadraticCurveTo(37, 14, 31, 3);
+    c.stroke();
+    c.strokeStyle = "#3b3040";
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(12.5, 26);
+    c.quadraticCurveTo(5, 14, 10.5, 4);
+    c.moveTo(27.5, 26);
+    c.quadraticCurveTo(35, 14, 29.5, 4);
+    c.stroke();
+    c.fillStyle = "#c0382a";
+    c.strokeStyle = INK;
+    c.lineWidth = 1.2;
+    c.beginPath();
+    c.moveTo(16, 26);
+    c.lineTo(20, 10);
+    c.lineTo(24, 26);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.strokeStyle = "#6a4a0c";
+    c.lineWidth = 1.4;
+    c.fillStyle = lit(c, 0, 24, 0, 33, [[0, "#c8a24a"], [1, "#5a4012"]]);
+    c.beginPath();
+    c.moveTo(7, 27);
+    c.quadraticCurveTo(20, 23, 33, 27);
+    c.lineTo(32, 32);
+    c.quadraticCurveTo(20, 35, 8, 32);
+    c.closePath();
+    c.fill();
+    c.stroke();
+  },
+  // 9: a phoenix tiara: a fan of flame feathers rising from a red and gold band
+  (c) => {
+    c.lineJoin = "round";
+    c.strokeStyle = "#7a2a1a";
+    c.lineWidth = 1.2;
+    for (const [rot, len, col] of [[-1, 15, "#ff9a3c"], [-0.55, 21, "#ffcf5a"], [0, 25, "#ff6a3a"], [0.55, 21, "#ffcf5a"], [1, 15, "#ff9a3c"]] as const) {
+      c.save();
+      c.translate(20, 28);
+      c.rotate(rot);
+      c.fillStyle = lit(c, 0, 0, 0, -len, [[0, "#d8302a"], [0.5, col], [1, "#fff0b0"]]);
+      c.beginPath();
+      c.moveTo(0, 0);
+      c.quadraticCurveTo(-5.5, -len * 0.5, 0, -len);
+      c.quadraticCurveTo(5.5, -len * 0.5, 0, 0);
+      c.fill();
+      c.stroke();
+      c.restore();
+    }
+    c.strokeStyle = "#6a4a0c";
+    c.lineWidth = 1.4;
+    c.fillStyle = lit(c, 0, 25, 0, 34, [[0, "#e8483a"], [1, "#8a1a1a"]]);
+    c.beginPath();
+    c.moveTo(8, 28);
+    c.quadraticCurveTo(20, 24, 32, 28);
+    c.lineTo(31, 33);
+    c.quadraticCurveTo(20, 36, 9, 33);
+    c.closePath();
+    c.fill();
     c.stroke();
   },
 ];
+
+/**
+ * The part of a hat that sits at its front (a clasp, a gem, a tuft): drawn apart in its own colours, so the scene can carry it round the hat as the figure turns and
+ * the hat seems to turn with the head. One small picture for each shape.
+ */
+const jewel = (c: CanvasRenderingContext2D, from: string, to: string, edge: string, r = 4): void => {
+  const g = c.createRadialGradient(6, 6, 0.5, 7, 7, r + 1);
+  g.addColorStop(0, from);
+  g.addColorStop(1, to);
+  c.fillStyle = g;
+  c.strokeStyle = edge;
+  c.lineWidth = 1.2;
+  c.beginPath();
+  c.arc(7, 7, r, 0, Math.PI * 2);
+  c.fill();
+  c.stroke();
+};
+const tuft = (c: CanvasRenderingContext2D, fill: string, edge: string): void => {
+  c.fillStyle = fill;
+  c.strokeStyle = edge;
+  c.lineWidth = 1;
+  c.beginPath();
+  c.moveTo(7, 13);
+  c.quadraticCurveTo(0, 8, 4, 1);
+  c.quadraticCurveTo(7, 5, 10, 1);
+  c.quadraticCurveTo(14, 8, 7, 13);
+  c.fill();
+  c.stroke();
+};
+const ORN: readonly Paint[] = [
+  (c) => jewel(c, "#ff9a8a", "#c83a3a", INK, 3.4), // 0: a red tassel knot
+  (c) => jewel(c, "#e8fff4", "#3fb88a", INK, 4), // 1: a jade clasp
+  (c) => jewel(c, "#ffb0a0", "#c8202a", "#6a4a0c", 4.2), // 2: a red gem
+  (c) => jewel(c, "#e8fff4", "#3fb88a", INK, 3.6), // 3: a jade bead
+  (c) => tuft(c, "#ffd36a", "#8a5a14"), // 4: a golden plume
+  (c) => jewel(c, "#d8f6ff", "#2a9ae0", "#e8c24a", 4), // 5: a blue jewel
+  (c) => tuft(c, "#d8302a", "#5a1010"), // 6: a red plume
+  (c) => tuft(c, "#ff9ac8", "#7a3a5a"), // 7: a pink lotus bud
+  (c) => jewel(c, "#ffffff", "#9fd8ff", "#5a7a9a", 4), // 8: a pearl
+  (c) => jewel(c, "#ffd0c0", "#b01820", "#f2c24a", 4.2), // 9: a ruby
+];
+
 
 export function ensureHatTextures(scene: Phaser.Scene): void {
   for (let i = 0; i < HAT_SHAPES; i++) {
@@ -257,5 +407,9 @@ export function ensureHatTextures(scene: Phaser.Scene): void {
     if (!tex) continue;
     SHAPES[i % SHAPES.length]!(tex.getContext());
     tex.refresh();
+    const orn = scene.textures.createCanvas(HAT_ORN_TEX(i), 14, 14);
+    if (!orn) continue;
+    ORN[i % ORN.length]!(orn.getContext());
+    orn.refresh();
   }
 }

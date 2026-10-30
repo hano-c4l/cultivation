@@ -105,6 +105,8 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   const nameOf = (type: string) => getItemDef(type)?.nameVi ?? type;
   const withIcon = (node: HTMLElement, type: string): HTMLElement => {
     node.prepend(iconFor(type));
+    const tag = itemTierTag(type);
+    if (tag) node.prepend(el("span", `eq-tier ${realmClass(itemTierRealm(type))}`, tag)); // the realm of the pill, ore or book
     return node;
   };
 
