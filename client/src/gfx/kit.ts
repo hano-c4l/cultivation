@@ -13,6 +13,9 @@ const IDLE_UNLOAD_MS = 120_000;
  * One sprite on screen, owned by the kit. `alive` turns false when its atlas is unloaded (a map change); the owner then drops it and draws its
  * fallback shape again.
  */
+/** The share of a figure's height that a seated figure loses (the legs, folded away). */
+const SEAT_CUT = 0.36;
+
 export class GfxView {
   alive = true;
   private current = "";
@@ -73,9 +76,36 @@ export class GfxView {
     if (this.sprite.frame.name !== name && this.sprite.texture.has(name)) this.sprite.setFrame(name);
   }
 
-  /** Puts the feet at a screen point. */
+  /** Puts the feet at a screen point. A seated figure (see `setSeated`) is cut off at the thighs and lowered by what was cut. */
   place(x: number, y: number, depth: number): void {
-    this.sprite.setPosition(x + this.ox, y + this.oy).setDepth(depth);
+    let sink = 0;
+    if (this.seated) {
+      const f = this.sprite.frame;
+      this.sprite.setCrop(0, 0, f.realWidth, f.y + f.height * (1 - SEAT_CUT)); // the crop is in the untrimmed frame: `f.y` is the trimmed-off top
+      sink = this.sinkPx();
+    }
+    this.sprite.setPosition(x + this.ox, y + this.oy + sink).setDepth(depth);
+  }
+
+  private seated = false;
+
+  /**
+   * Sits the figure down to meditate: the frames have no sitting pose, so the legs are cropped away (the owner draws folded legs over the cut) and the
+   * upper body is lowered onto them. The crop follows every frame because it is set again at each `place`.
+   */
+  setSeated(on: boolean): void {
+    if (on === this.seated) return;
+    this.seated = on;
+    if (!on) this.sprite.setCrop();
+  }
+
+  /** How far a seated figure sinks, in px (0 when standing); the head, hat and name come down by the same. */
+  sinkPx(): number {
+    return this.seated ? this.fullRise() * SEAT_CUT : 0;
+  }
+
+  private fullRise(): number {
+    return (this.def.head ?? this.def.anchor.y) * this.k * (this.def.scale ?? 1);
   }
 
   private ox = 0;
@@ -115,7 +145,7 @@ export class GfxView {
 
   /** How far above the feet the top of the head is on screen, in px (names and bars stand above it). */
   rise(): number {
-    return (this.def.head ?? this.def.anchor.y) * this.k * (this.def.scale ?? 1);
+    return this.fullRise() - this.sinkPx();
   }
 
   destroy(): void {

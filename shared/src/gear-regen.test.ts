@@ -94,3 +94,13 @@ describe("the basic qi blast by realm", () => {
     expect(getSkill(BASIC_SKILL_ID)!.nameVi).toBe(basicSkillAt(0).nameVi);
   });
 });
+
+describe("upgrade glow", () => {
+  it("starts at +7 and is grander at +10; only the weapon carries it in the look", async () => {
+    const { glowTierOf, gearLookOf: look } = await import("./gear-look");
+    expect([glowTierOf(undefined), glowTierOf(6), glowTierOf(7), glowTierOf(9), glowTierOf(10)]).toEqual([0, 0, 1, 1, 2]);
+    const sword = makeEquipmentId("weapon", "u", 3, 2, 1, "thuy", "kiem");
+    expect(look([{ slot: "weapon", type: sword, en: 6 }])!.e).toBeUndefined();
+    expect(look([{ slot: "weapon", type: sword, en: 10 }])!.e).toBe(10);
+  });
+});

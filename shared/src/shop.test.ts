@@ -4,6 +4,7 @@ import { itemValue, sellPrice, shopCategoryOf, shopDay, shopElementOf, SELL_RATE
 import { findOffer, merchantOffers, merchantPays, setMerchants, DEFAULT_MERCHANTS, validMerchant } from "./merchants";
 import { parseClientMessage } from "./protocol";
 import { getItemDef } from "./items";
+import { bookItemId } from "./skills";
 
 describe("merchant offers", () => {
   it("every offer is a real item with a price and gear is in the buyer's own style", () => {
@@ -198,5 +199,14 @@ describe("merchants as data", () => {
       resetTuning();
     }
     expect(merchantOffers("male", "merchant").find((o) => o.item === "hoi_huyet_dan")!.price).toBe(before);
+  });
+});
+
+describe("selling skill books", () => {
+  it("pays for an unread book by the realm of its skill, and not for the pills of a merchant that takes only pills", () => {
+    resetTuning();
+    expect(itemValue(bookItemId("cuong_than"))).toBeGreaterThan(0);
+    expect(merchantPays("merchant", bookItemId("cuong_than"))).toBeGreaterThan(0);
+    expect(merchantPays("alchemist", bookItemId("cuong_than"))).toBe(0);
   });
 });
