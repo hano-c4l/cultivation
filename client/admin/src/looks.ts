@@ -1,5 +1,6 @@
 import { DEFAULT_TUNING, FLIGHT_STYLES, HAT_SHAPES, GEAR_ELEMENTS, GROUND_STYLES, OBSTACLE_STYLES, WEAPON_TYPES, makeEquipmentId, type EquipKind, type FlightStyle, type GroundStyle, type IconShape, type NpcLook, type ObstacleStyle } from "@game/shared";
 import { iconSpecOf } from "../../src/icons";
+import { paintHat } from "../../src/hat-art";
 import { h } from "./kit";
 import { Looks, iconGrid, iconNode, picker, saveBar, skillLookOptions, spriteChoices, spritePreview, type Opt } from "./looks-kit";
 
@@ -94,7 +95,16 @@ export async function looksPage(): Promise<HTMLElement> {
   // Hats by the realm of the hat worn.
   {
     const value = looks.get<{ rules: Array<{ minRealm: number; shape: number }> }>("hatLooks");
-    const shapes: Opt[] = Array.from({ length: HAT_SHAPES }, (_, i) => ({ value: String(i), label: `${i}. ${HAT_VI[i] ?? "Mũ"}` }));
+    const hatPreview = (shape: number): HTMLElement => {
+      const canvas = h("canvas", { class: "sprite-prev", width: "48", height: "44" });
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.scale(1.2, 1.2);
+        paintHat(shape, ctx);
+      }
+      return canvas;
+    };
+    const shapes: Opt[] = Array.from({ length: HAT_SHAPES }, (_, i) => ({ value: String(i), label: `${i}. ${HAT_VI[i] ?? "Mũ"}`, preview: () => hatPreview(i) }));
     const rules = h("div", null);
     const draw = () =>
       rules.replaceChildren(

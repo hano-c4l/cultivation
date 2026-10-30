@@ -77,6 +77,27 @@ async function boot(): Promise<void> {
     await api.logout();
     location.reload();
   };
+  // The last button of the top bar folds the HUD: only the wallet, this button and the mini map stay (the choice is kept in this browser).
+  const toggle = document.getElementById("hud-toggle") as HTMLButtonElement;
+  const folded = (): boolean => {
+    try {
+      return localStorage.getItem("hud-folded") === "1";
+    } catch {
+      return false;
+    }
+  };
+  const setFolded = (on: boolean): void => {
+    document.body.classList.toggle("hud-folded", on);
+    iconButton(toggle, "menu", on ? vi.hudShow : vi.hudHide);
+    try {
+      localStorage.setItem("hud-folded", on ? "1" : "0");
+    } catch {
+      // storage blocked: the choice holds for this visit
+    }
+  };
+  setFolded(folded());
+  toggle.hidden = false;
+  toggle.onclick = () => setFolded(!document.body.classList.contains("hud-folded"));
   loading.show(); // up until the game has what it needs to look right (the scene finishes it)
   startGame(me.ok && me.data!.account.role === "admin");
 }

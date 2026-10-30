@@ -89,7 +89,7 @@ import { initDojo, type DojoUi } from "./dojo-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
 import { HAT_ORN_TEX, HAT_TEX, ensureHatTextures } from "./hat-art";
-import { DRAGON_HEAD, DRAGON_SEG, DRAGON_TAIL, FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
+import { DRAGON_HEAD, DRAGON_MIST, DRAGON_SEG, DRAGON_TAIL, FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
 /** The flight look an actor rides on: the one its worn pháp bảo gives, else the default. */
@@ -193,6 +193,8 @@ interface Actor {
   wglow?: Phaser.GameObjects.Image;
   /** The front ornament of the hat, carried round it as the figure turns; `hatAng` is the way the head faces now (radians, 0 = towards the camera), eased towards the heading. */
   hatOrn?: Phaser.GameObjects.Image;
+  /** The puffs of cloud under the dragon pháp bảo, laid along its body. */
+  mist?: Phaser.GameObjects.Image[];
   hatAng?: number;
   moteAt?: number;
   /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
@@ -1708,6 +1710,8 @@ export class GameScene extends Phaser.Scene {
 
   private setMeditating(on: boolean): void {
     this.meditating = on;
+    const me = this.actors.get(this.selfId);
+    if (me) me.sitting = on; // the figure sits or stands with the server's answer (the "sit" message only tells the others)
     this.meditateBtn.hidden = false;
     iconButton(this.meditateBtn, "meditate", `${on ? vi.meditate.stand : vi.meditate.sit}: ${vi.meditate.hint}`);
     this.meditateBtn.classList.toggle("sitting", on);
@@ -1745,6 +1749,7 @@ export class GameScene extends Phaser.Scene {
   private applyMounted(on: boolean, announce = false): void {
     if (isMounted() === on) return;
     setMounted(on);
+    if (this.meditating) this.setMeditating(false); // getting on or off stands the character up (the server does the same)
     this.refreshMountBtn();
     this.charPanel.refresh();
     this.equipment.refresh();
@@ -1943,6 +1948,8 @@ export class GameScene extends Phaser.Scene {
     if (!a.dragon) return;
     for (const p of a.dragon) p.destroy();
     a.dragon = undefined;
+    for (const p of a.mist ?? []) p.destroy();
+    a.mist = undefined;
   }
 
   /**
@@ -1957,6 +1964,7 @@ export class GameScene extends Phaser.Scene {
       for (let i = 0; i < JOINTS; i++) parts.push(this.add.image(0, 0, DRAGON_SEG).setOrigin(0.5, 0.65));
       parts.push(this.add.image(0, 0, DRAGON_HEAD).setOrigin(0.3, 0.5));
       a.dragon = parts;
+      a.mist = [0, 1, 2, 3].map(() => this.add.image(0, 0, DRAGON_MIST).setAlpha(0.9));
     }
     // On screen a ground vector is squashed 2:1 vertically; `fwd` runs head-ward, `side` is to the left of it.
     const fwd = { x: Math.cos(ga), y: 0.5 * Math.sin(ga) };
@@ -1969,6 +1977,11 @@ export class GameScene extends Phaser.Scene {
       return { x: cx + fwd.x * length * (t - 0.5) + side.x * sway, y: cy + fwd.y * length * (t - 0.5) + side.y * sway, z: Math.sin(phase * 0.9 - t * 4.1 + 1.2) * 7 * calm + t * 9 };
     };
     const parts = a.dragon;
+    // The cloud bank follows the body: a puff under four places along it, so it turns with the dragon.
+    a.mist?.forEach((puff, k) => {
+      const m = at(0.12 + k * 0.25);
+      puff.setPosition(m.x, m.y + 8).setScale(1.25 + 0.1 * Math.sin(now / 500 + k)).setDepth(depth - 0.002);
+    });
     for (let i = 0; i < JOINTS; i++) {
       const t = i / (JOINTS - 1);
       const p = at(t * 0.92);
@@ -2009,7 +2022,7 @@ export class GameScene extends Phaser.Scene {
     if (!a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
     a.legs.setPosition(x, y - 3 + lift).setFillStyle(robe).setDepth(depth + 0.01);
     if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
-    a.seat.setPosition(x, y + 3).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
+    a.seat.setPosition(x, y + 3 + (a.mounted ? -2 : 0)).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
     if ((a.moteAt ?? 0) > now) return;
     a.moteAt = now + 260 + Math.random() * 200;
     // For yourself the motes show what is coming back: green while HP is below the maximum, blue while MP is.

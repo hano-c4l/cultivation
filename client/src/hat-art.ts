@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import type Phaser from "phaser";
 import { HAT_SHAPES } from "@game/shared";
 
 /**
@@ -398,6 +398,15 @@ const ORN: readonly Paint[] = [
   (c) => jewel(c, "#ffd0c0", "#b01820", "#f2c24a", 4.2), // 9: a ruby
 ];
 
+
+/** Draws one hat (and its front ornament, to the lower right of it) on a 2D canvas: the Admin's preview of a shape. */
+export function paintHat(shape: number, c: CanvasRenderingContext2D): void {
+  SHAPES[shape % SHAPES.length]!(c);
+  c.save();
+  c.translate(W - 8, H - 12);
+  ORN[shape % ORN.length]!(c);
+  c.restore();
+}
 
 export function ensureHatTextures(scene: Phaser.Scene): void {
   for (let i = 0; i < HAT_SHAPES; i++) {

@@ -32,8 +32,8 @@ export const ICON_SHAPES = [
   "pill", "ore", "book", "scroll", "unknown",
   "slash", "bolt", "fan", "blink", "buff", "heal", "passive",
   "pierce", "nova", "lane", "field",
-  "stone", "merit", "immortal", "person", "shield", "bag", "taiji", "trophy", "swap", "door", "meditate",
+  "stone", "merit", "immortal", "person", "shield", "bag", "taiji", "trophy", "swap", "door", "meditate", "menu",
 ] as const;
 export type IconShape = (typeof ICON_SHAPES)[number];
-const INTERFACE_SHAPES: readonly IconShape[] = ["unknown", "stone", "merit", "immortal", "person", "shield", "bag", "taiji", "trophy", "swap", "door", "meditate"];
+const INTERFACE_SHAPES: readonly IconShape[] = ["unknown", "stone", "merit", "immortal", "person", "shield", "bag", "taiji", "trophy", "swap", "door", "meditate", "menu"];
 export const ICON_PICKABLE: readonly IconShape[] = ICON_SHAPES.filter((s) => !INTERFACE_SHAPES.includes(s));

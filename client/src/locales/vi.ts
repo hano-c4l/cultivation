@@ -193,6 +193,8 @@ export const vi = {
       unsellable: "Thương nhân không thu mua món này.",
     } as Record<string, string>,
   },
+  hudShow: "Hiện các nút chức năng",
+  hudHide: "Ẩn các nút chức năng cho gọn",
   skills: {
     button: "Kỹ năng",
     title: "Kỹ năng",
