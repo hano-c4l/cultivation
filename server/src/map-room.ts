@@ -154,6 +154,7 @@ import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } 
 import { getNpcs } from "./npcs";
 import { saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
+import type { SpiritualRoot } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -212,6 +213,8 @@ interface PlayerState {
   id: string;
   /** Meditating (kept with the socket so a rebuilt simulation sits the character down again). */
   med?: boolean;
+  /** The attack chosen to stand in for the plain one (kept with the socket: a rebuilt simulation after sleep would otherwise forget it). */
+  pr?: { skill: string; el?: SpiritualRoot };
   /** When the player's last `mail_refresh` was answered. */
   lastMailRefreshAt?: number;
   /** The account is an admin (set by the Worker when the socket opens; a role change counts from the next connection). */
@@ -742,8 +745,14 @@ export class MapRoom extends DurableObject<Env> {
       case "cast":
         this.standUp(ws, "moved");
         return this.handleCast(ws, state, msg);
-      case "primary":
-        return void this.sim?.setPrimary(state.id, msg.skill, msg.el);
+      case "primary": {
+        const set = this.sim?.setPrimary(state.id, msg.skill, msg.el);
+        const st = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+        if (set && msg.skill) st.pr = { skill: msg.skill, ...(msg.el ? { el: msg.el } : {}) };
+        else delete st.pr;
+        ws.serializeAttachment(st);
+        return;
+      }
       case "hotbar_set":
         return this.handleHotbar(ws, state, msg.slot, msg.v);
       case "hotbar_swap":
@@ -1241,6 +1250,7 @@ export class MapRoom extends DurableObject<Env> {
         const live = present.find((s) => s.id === row.id);
         sim.addPlayer({ ...seedOf(row, bag, skills, catalog), ...(live?.med ? { meditating: true } : {}), satKhi: live?.sk ?? row.sat_khi, hero: live?.ah ?? row.anh_hung, satNhan: live?.sn ?? row.sat_nhan, satNhanAt: live?.snAt ?? Date.now() });
         if (live?.pk) sim.setPkMode(row.id, live.pk);
+        if (live?.pr) sim.setPrimary(row.id, live.pr.skill, live.pr.el);
       }
     } catch (err) {
       this.sim = null; // the next move or attack retries the whole rebuild

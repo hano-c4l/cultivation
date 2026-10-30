@@ -6,6 +6,10 @@ import type { FlightStyle } from "@game/shared";
  * a lotus). Each is wider than tall, seen from a raised angle, and glows a little so it reads as spirit light and not as a prop.
  */
 export const FLIGHT_TEX: Readonly<Record<FlightStyle, string>> = { plain: "fly_plain", sword: "fly_sword", cloud: "fly_cloud", lotus: "fly_lotus", phoenix: "fly_phoenix", dragon: "fly_dragon" };
+/** The pieces the dragon of Luyện Hư is built from (it is laid out joint by joint in the scene). */
+export const DRAGON_SEG = "fly_dragon_seg";
+export const DRAGON_HEAD = "fly_dragon_head";
+export const DRAGON_TAIL = "fly_dragon_tail";
 /** The colour of the spirit light that trails behind each. */
 export const FLIGHT_GLOW: Readonly<Record<FlightStyle, number>> = { plain: 0x9fe8ff, sword: 0xbfe9ff, cloud: 0xe8f6ff, lotus: 0xffc6e6, phoenix: 0xff9a4a, dragon: 0xffe27a };
 /**
@@ -225,7 +229,7 @@ export function ensureFlightTextures(scene: Phaser.Scene): void {
     c.closePath();
     c.fill();
   });
-  // a dragon (Luyện Hư): a long golden serpent in loops, scaled and spined, with a horn, whiskers and a pearl, coiling over a bed of cloud
+  // the dragon's bed (Luyện Hư): a golden glow over a bank of cloud. The dragon itself is made of the parts below, laid out in the scene so that it coils in space.
   make(scene, FLIGHT_TEX.dragon, 176, 72, (c) => {
     halo(c, 88, 40, 84, 24, "255,226,122", 0.5);
     const cloud = (x: number, y: number, r: number): void => {
@@ -237,84 +241,116 @@ export function ensureFlightTextures(scene: Phaser.Scene): void {
       c.arc(x, y, r, 0, Math.PI * 2);
       c.fill();
     };
-    for (const [x, y, r] of [[30, 58, 16], [62, 62, 18], [100, 60, 18], [140, 58, 16]] as const) cloud(x, y, r);
-    // the body: a wave drawn as a thick stroke, then a lighter belly line and scale ticks along it
-    const wave = (t: number): [number, number] => [18 + t * 120, 38 + Math.sin(t * Math.PI * 3) * 14 * (1 - t * 0.35)];
-    const stroke = (w: number, style: string | CanvasGradient, from: number, to: number): void => {
-      c.strokeStyle = style;
-      c.lineWidth = w;
-      c.lineCap = "round";
-      c.beginPath();
-      for (let i = 0; i <= 60; i++) {
-        const t = from + ((to - from) * i) / 60;
-        const [x, y] = wave(t);
-        if (i === 0) c.moveTo(x, y);
-        else c.lineTo(x, y);
-      }
-      c.stroke();
-    };
-    const body = c.createLinearGradient(0, 20, 0, 56);
-    body.addColorStop(0, "#ffe9a0");
-    body.addColorStop(0.5, "#f0b830");
-    body.addColorStop(1, "#b8741a");
-    stroke(15, "#6a3a0c", 0, 1);
-    stroke(12, body, 0, 1);
-    stroke(4, "rgba(255,250,215,0.85)", 0.04, 0.96);
-    for (let i = 1; i < 24; i++) {
-      const t = i / 24;
-      const [x, y] = wave(t);
-      c.strokeStyle = "rgba(110,60,10,0.55)";
-      c.lineWidth = 1.2;
-      c.beginPath();
-      c.moveTo(x, y - 6 + t * 2);
-      c.lineTo(x + 3, y + 6 - t * 2);
-      c.stroke();
-      if (i % 2 === 0) {
-        c.fillStyle = "#e0583a"; // the spine
-        c.beginPath();
-        c.moveTo(x - 2, y - 6);
-        c.lineTo(x + 1, y - 12 + t * 3);
-        c.lineTo(x + 3, y - 6);
-        c.closePath();
-        c.fill();
-      }
-    }
-    // the head at the end of the wave: jaw, horn, eye, whiskers and the pearl it chases
-    const [hx, hy] = wave(1);
-    c.fillStyle = "#f6c64a";
+    for (const [x, y, r] of [[30, 48, 16], [62, 52, 18], [100, 50, 18], [140, 48, 16]] as const) cloud(x, y, r);
+  });
+  // one scale-covered joint of the body: a lit golden ball with a darker belly, a ring of scales and a red spine on top (seen from any side it reads as round)
+  make(scene, DRAGON_SEG, 30, 34, (c) => {
+    c.fillStyle = "#e0583a";
     c.strokeStyle = "#6a3a0c";
-    c.lineWidth = 1.5;
+    c.lineWidth = 1.2;
     c.beginPath();
-    c.moveTo(hx - 8, hy - 8);
-    c.quadraticCurveTo(hx + 14, hy - 14, hx + 28, hy - 2);
-    c.quadraticCurveTo(hx + 14, hy + 8, hx - 8, hy + 8);
+    c.moveTo(10, 11);
+    c.lineTo(15, 1);
+    c.lineTo(20, 11);
     c.closePath();
     c.fill();
     c.stroke();
-    c.strokeStyle = "#e8e0c0";
-    c.lineWidth = 2.5;
-    c.beginPath();
-    c.moveTo(hx - 6, hy - 9);
-    c.quadraticCurveTo(hx - 14, hy - 22, hx - 4, hy - 26);
-    c.stroke();
-    c.strokeStyle = "#ffe9a0";
+    const g = c.createRadialGradient(12, 17, 1, 15, 22, 13);
+    g.addColorStop(0, "#fff3b8");
+    g.addColorStop(0.45, "#f0b830");
+    g.addColorStop(1, "#9a5a14");
+    c.fillStyle = g;
+    c.strokeStyle = "#5a300a";
     c.lineWidth = 1.5;
-    for (const dy of [-3, 4]) {
+    c.beginPath();
+    c.arc(15, 21, 11.5, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+    c.strokeStyle = "rgba(110,60,10,0.5)";
+    c.lineWidth = 1;
+    for (const r of [5, 8.5]) {
       c.beginPath();
-      c.moveTo(hx + 24, hy + dy);
-      c.quadraticCurveTo(hx + 36, hy + dy + (dy > 0 ? 10 : -10), hx + 42, hy + dy + (dy > 0 ? 4 : -4));
+      c.arc(15, 21, r, Math.PI * 0.15, Math.PI * 0.85);
       c.stroke();
     }
+  });
+  // the head, pointing right: jaw, nose, two horns, whiskers, a red eye and the pearl it chases
+  make(scene, DRAGON_HEAD, 76, 50, (c) => {
+    const g = c.createLinearGradient(0, 14, 0, 40);
+    g.addColorStop(0, "#ffe9a0");
+    g.addColorStop(0.55, "#f0b830");
+    g.addColorStop(1, "#a8661a");
+    c.lineJoin = "round";
+    c.strokeStyle = "#e8e0c0"; // horns
+    c.lineWidth = 3;
+    c.lineCap = "round";
+    c.beginPath();
+    c.moveTo(16, 18);
+    c.quadraticCurveTo(8, 6, 16, 2);
+    c.moveTo(24, 16);
+    c.quadraticCurveTo(20, 4, 30, 2);
+    c.stroke();
+    c.fillStyle = g;
+    c.strokeStyle = "#5a300a";
+    c.lineWidth = 1.6;
+    c.beginPath();
+    c.moveTo(6, 20);
+    c.quadraticCurveTo(24, 10, 46, 17);
+    c.quadraticCurveTo(58, 20, 60, 26);
+    c.quadraticCurveTo(56, 33, 44, 33);
+    c.quadraticCurveTo(24, 40, 6, 34);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.strokeStyle = "#5a300a"; // the mouth line and the nostril
+    c.lineWidth = 1.2;
+    c.beginPath();
+    c.moveTo(28, 29);
+    c.quadraticCurveTo(46, 31, 58, 27);
+    c.stroke();
+    c.fillStyle = "#5a300a";
+    c.beginPath();
+    c.arc(54, 21, 1.4, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#fff6d0";
+    c.beginPath();
+    c.ellipse(34, 22, 5, 3.6, -0.2, 0, Math.PI * 2);
+    c.fill();
     c.fillStyle = "#d8302a";
     c.beginPath();
-    c.arc(hx + 8, hy - 3, 2.6, 0, Math.PI * 2);
+    c.arc(35, 22, 2.4, 0, Math.PI * 2);
     c.fill();
-    const pearl = c.createRadialGradient(hx + 52, hy - 8, 0, hx + 52, hy - 8, 8);
-    pearl.addColorStop(0, "#ffffff");
-    pearl.addColorStop(1, "#9fd8ff");
-    c.fillStyle = pearl;
+    c.strokeStyle = "#ffe9a0"; // whiskers
+    c.lineWidth = 1.6;
+    for (const k of [-1, 1]) {
+      c.beginPath();
+      c.moveTo(52, 27 + k * 2);
+      c.quadraticCurveTo(66, 27 + k * 12, 74, 27 + k * 6);
+      c.stroke();
+    }
+    c.fillStyle = "#e0583a"; // the mane behind the head
     c.beginPath();
-    c.arc(hx + 52, hy - 8, 6, 0, Math.PI * 2);
+    c.moveTo(8, 20);
+    c.lineTo(0, 16);
+    c.lineTo(5, 26);
+    c.lineTo(0, 34);
+    c.lineTo(9, 32);
+    c.closePath();
     c.fill();
+  });
+  // the tail's tip: a small curled flame of fin
+  make(scene, DRAGON_TAIL, 30, 20, (c) => {
+    c.fillStyle = "#e0583a";
+    c.strokeStyle = "#6a3a0c";
+    c.lineWidth = 1.2;
+    c.beginPath();
+    c.moveTo(0, 10);
+    c.quadraticCurveTo(12, 0, 28, 2);
+    c.quadraticCurveTo(18, 8, 26, 12);
+    c.quadraticCurveTo(14, 12, 28, 19);
+    c.quadraticCurveTo(10, 20, 0, 10);
+    c.closePath();
+    c.fill();
+    c.stroke();
   });
 }

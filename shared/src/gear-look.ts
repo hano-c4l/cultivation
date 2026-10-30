@@ -10,13 +10,22 @@ import { tuning } from "./tuning";
  *   r   the robe: `1 + realm * 9 + (bậc - 1)`: tints the body sprite, one colour for each set
  *   h   the hat: the same number: its colour, and (modulo the number of shapes) the shape drawn on the head
  *   b   the boots: the same number: the colour of the dust they raise
+ *   e   the upgrade level of the worn weapon when it is +7 or more (7..10): its sprite shines with it (see `glowTierOf`)
  */
 export interface GearLook {
   w?: number;
   r?: number;
   h?: number;
   b?: number;
+  e?: number;
 }
+
+/** From which upgrade level (+N) a piece glows, and from which the glow is the grand one. */
+export const GLOW_FROM = 7;
+export const GLOW_GRAND_FROM = 10;
+
+/** 0: no glow, 1: the glow of +7 to +9, 2: the glow of +10. */
+export const glowTierOf = (en: number | undefined): 0 | 1 | 2 => (en === undefined || en < GLOW_FROM ? 0 : en >= GLOW_GRAND_FROM ? 2 : 1);
 
 /** The shapes of hat the client draws; the number is how many, so a look number picks one. */
 export const HAT_SHAPES = 6;
@@ -24,13 +33,16 @@ export const HAT_SHAPES = 6;
 const setNo = (realm: number, tier: number): number => 1 + realm * STAGES_PER_REALM_FOR_LOOK + Math.max(0, tier - 1);
 
 /** The look of the worn weapon, robe, hat and boots (a broken piece does not count); undefined when none of them is worn. */
-export function gearLookOf(equipped: readonly { slot: string; type: string; dur?: number }[]): GearLook | undefined {
+export function gearLookOf(equipped: readonly { slot: string; type: string; dur?: number; en?: number }[]): GearLook | undefined {
   const out: GearLook = {};
   for (const e of equipped) {
     if (e.dur !== undefined && e.dur <= 0) continue;
     const info = equipmentInfo(e.type);
     if (!info) continue;
-    if (e.slot === "weapon" && info.kind === "weapon") out.w = 1 + info.realm * 10 + (info.element ? ALL_ROOTS.indexOf(info.element as never) + 1 : 0);
+    if (e.slot === "weapon" && info.kind === "weapon") {
+      out.w = 1 + info.realm * 10 + (info.element ? ALL_ROOTS.indexOf(info.element as never) + 1 : 0);
+      if (glowTierOf(e.en) > 0) out.e = e.en;
+    }
     else if (e.slot === "robe" && info.kind === "robe") out.r = setNo(info.realm, info.tier);
     else if (e.slot === "hat" && info.kind === "hat") out.h = setNo(info.realm, info.tier);
     else if (e.slot === "boots" && info.kind === "boots") out.b = setNo(info.realm, info.tier);

@@ -20,6 +20,7 @@ import {
   robeTintOf,
   weaponTintOf,
   type GearLook,
+  glowTierOf,
   type SkillDef,
   type SkillContext,
   skillContextFor,
@@ -86,16 +87,23 @@ import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { Effects } from "./fx";
 import { HAT_TEX, ensureHatTextures } from "./hat-art";
-import { FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
+import { DRAGON_HEAD, DRAGON_SEG, DRAGON_TAIL, FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
 /** The flight look an actor rides on: the one its worn pháp bảo gives, else the default. */
 const actorFlight = (a: { flight?: string }): FlightStyle => ((FLIGHT_STYLES as readonly string[]).includes(a.flight ?? "") ? (a.flight as FlightStyle) : flightStyleOf());
 
 /** Which side of the screen each of the 8 directions of a figure faces: -2 left, 0 toward the camera or away from it, +2 right (see DIRECTION_VECTORS). */
+/** How big a hat picture is drawn on a head (the picture is 40 px wide; a head is about 14 px across on screen). */
+const HAT_SCALE = 0.62;
 const HEAD_SIDE: readonly number[] = [0, -1, -2, -1, 0, 1, 2, 1];
 
 /** `#rrggbb` as a number, or undefined (no tint) when there is none. */
+/** `k` of the way from the colour `a` to the colour `b` (both 0xRRGGBB). */
+const mixTint = (a: number, b: number, k: number): number => {
+  const ch = (shift: number): number => Math.round(((a >> shift) & 255) * (1 - k) + ((b >> shift) & 255) * k);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+};
 const hexOf = (hex: string | undefined): number | undefined => (hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? parseInt(hex.slice(1), 16) : undefined);
 import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
@@ -159,6 +167,8 @@ interface Actor {
   /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
   mounted: boolean;
   cloud?: Phaser.GameObjects.Image;
+  /** The joints, head and tail tip of the dragon pháp bảo (made when the rider's flight is the dragon; head last, tail tip first). */
+  dragon?: Phaser.GameObjects.Image[];
   /** Where the rider was on screen last frame and the way they are heading (radians on screen), so a flying sword points where it flies. */
   fly?: { x: number; y: number; a: number };
   /** The sprite that replaces the oval body when the manifest has one for it (phase 4); the body stays as the camera anchor, hidden. */
@@ -175,6 +185,10 @@ interface Actor {
   /** Meditating: drawn sitting, with a ring of light under it and motes of healing round it. `seat` is the ring, `moteAt` when the next mote rises. */
   sitting?: boolean;
   seat?: Phaser.GameObjects.Container;
+  /** The folded legs drawn over the cut of a seated figure. */
+  legs?: Phaser.GameObjects.Ellipse;
+  /** The light round a weapon upgraded to +7 or more (a soft blob over the weapon sprite). */
+  wglow?: Phaser.GameObjects.Image;
   moteAt?: number;
   /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
   flight?: string;
@@ -1454,8 +1468,11 @@ export class GameScene extends Phaser.Scene {
     actor.label.destroy();
     actor.tag.destroy();
     actor.cloud?.destroy();
+    this.clearDragon(actor);
     actor.hat?.destroy();
     actor.seat?.destroy();
+    actor.legs?.destroy();
+    actor.wglow?.destroy();
     this.actors.delete(id);
   }
 
@@ -1644,6 +1661,7 @@ export class GameScene extends Phaser.Scene {
     actor.mounted = on;
     if (on && !actor.cloud) actor.cloud = this.add.image(0, 0, FLIGHT_TEX[actorFlight(actor)]).setAlpha(0.95);
     actor.cloud?.setVisible(on);
+    if (!on) this.clearDragon(actor);
     if (actor.id === this.selfId && isMounted() !== on) this.applyMounted(on);
   }
 
@@ -1841,10 +1859,10 @@ export class GameScene extends Phaser.Scene {
       a.view = view;
       a.body.setVisible(false);
     }
-    // Meditating: the figure is lower and a little smaller (no sitting frames exist, so the stand-still frame is squashed), on a ring of light.
+    // Meditating: the figure sits (no sitting frames exist: the legs are cropped away, folded legs are drawn over the cut and the body sinks onto them), on a ring of light.
     const sit = a.sitting === true && !a.mounted;
-    a.view.setScale(sit ? 0.86 : 1);
-    a.wview?.setScale(sit ? 0.86 : 1);
+    a.view.setSeated(sit);
+    a.wview?.setSeated(sit);
     // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
     const anim = moving && !a.mounted ? "run" : "idle";
     const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
@@ -1854,20 +1872,75 @@ export class GameScene extends Phaser.Scene {
       a.wview.destroy();
       a.wview = undefined;
     }
-    if (!a.wview && wkey) a.wview = this.gfx.createView(wkey);
+    if (!a.wview && wkey) {
+      a.wview = this.gfx.createView(wkey);
+      a.wview?.setSeated(sit);
+    }
     a.view.play(anim, dir);
     if (a.view.alive) {
       a.wview?.followFrame(a.view);
       this.applyReact(a.id, a.view, a.wview, now);
-      const lift = a.mounted ? -8 : sit ? 5 : 0; // sitting: the feet are lower
-      a.view.place(x, y - (a.mounted ? 8 : 0) + (sit ? 5 : 0), depth);
-      a.wview?.place(x, y - (a.mounted ? 8 : 0) + (sit ? 5 : 0), depth + 0.02);
-      this.applyGearLook(a, x, y - (a.mounted ? 8 : 0) + (sit ? 5 : 0), depth, moving);
+      const lift = a.mounted ? -8 : 0;
+      a.view.place(x, y - (a.mounted ? 8 : 0), depth);
+      a.wview?.place(x, y - (a.mounted ? 8 : 0), depth + 0.02);
+      this.applyGearLook(a, x, y - (a.mounted ? 8 : 0), depth, moving);
       this.syncSeat(a, now, x, y, depth, sit, lift);
     } else {
       a.wview?.destroy();
       a.wview = undefined;
     }
+  }
+
+  private clearDragon(a: Actor): void {
+    if (!a.dragon) return;
+    for (const p of a.dragon) p.destroy();
+    a.dragon = undefined;
+  }
+
+  /**
+   * Lays the dragon out joint by joint along the ground heading `ga`: the body is a chain of round, scale-covered joints on a travelling wave (sideways on the
+   * ground and up and down in the air), so it reads as a coil in space and not as a flat picture turned about; the head leads and raises itself, the tail ends in a fin.
+   * A joint further back is drawn under the ones before it.
+   */
+  private syncDragon(a: Actor, cx: number, cy: number, ga: number, now: number, depth: number, moving: boolean): void {
+    const JOINTS = 15;
+    if (!a.dragon) {
+      const parts: Phaser.GameObjects.Image[] = [this.add.image(0, 0, DRAGON_TAIL)];
+      for (let i = 0; i < JOINTS; i++) parts.push(this.add.image(0, 0, DRAGON_SEG).setOrigin(0.5, 0.65));
+      parts.push(this.add.image(0, 0, DRAGON_HEAD).setOrigin(0.3, 0.5));
+      a.dragon = parts;
+    }
+    // On screen a ground vector is squashed 2:1 vertically; `fwd` runs head-ward, `side` is to the left of it.
+    const fwd = { x: Math.cos(ga), y: 0.5 * Math.sin(ga) };
+    const side = { x: -Math.sin(ga), y: 0.5 * Math.cos(ga) };
+    const length = 150;
+    const phase = now / (moving ? 170 : 300) + a.id.length;
+    const at = (t: number): { x: number; y: number; z: number } => {
+      const calm = 0.35 + 0.65 * (1 - t); // the head holds steady, the tail swings widest
+      const sway = Math.sin(phase - t * 5.2) * 16 * calm;
+      return { x: cx + fwd.x * length * (t - 0.5) + side.x * sway, y: cy + fwd.y * length * (t - 0.5) + side.y * sway, z: Math.sin(phase * 0.9 - t * 4.1 + 1.2) * 7 * calm + t * 9 };
+    };
+    const parts = a.dragon;
+    for (let i = 0; i < JOINTS; i++) {
+      const t = i / (JOINTS - 1);
+      const p = at(t * 0.92);
+      const img = parts[1 + i]!;
+      img.setPosition(p.x, p.y - p.z - 6).setScale(0.55 + 0.5 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.5)).setDepth(depth + t * 0.004);
+    }
+    const tail = at(-0.02);
+    const tailDir = Math.atan2(tail.y - at(0.1).y, tail.x - at(0.1).x);
+    parts[0]!.setPosition(tail.x, tail.y - tail.z - 6).setRotation(tailDir).setFlipY(Math.cos(tailDir) < 0).setDepth(depth - 0.001).setScale(0.8).setOrigin(1, 0.5);
+    const h = at(1);
+    const neck = at(0.9);
+    const headAng = Math.atan2(h.y - neck.y, h.x - neck.x);
+    const left = Math.cos(headAng) < 0;
+    parts[parts.length - 1]!
+      .setPosition(h.x, h.y - h.z - 10)
+      .setRotation(left ? headAng - Math.PI : headAng)
+      .setFlipX(left)
+      .setFlipY(false)
+      .setScale(0.95)
+      .setDepth(depth + 0.006);
   }
 
   /** The ring of light under a meditating figure and the motes of healing that rise round it (green for HP, blue for MP; the others see both). */
@@ -1877,8 +1950,16 @@ export class GameScene extends Phaser.Scene {
         a.seat.destroy();
         a.seat = undefined;
       }
+      if (a.legs) {
+        a.legs.destroy();
+        a.legs = undefined;
+      }
       return;
     }
+    // The crossed legs: a robe-coloured mound (a darker knee line in front) where the legs were cut away, a little wider than the body.
+    const robe = mixTint(a.lk?.r !== undefined ? (hexOf(robeTintOf(a.lk.r)) ?? 0xd8d0bc) : 0xd8d0bc, 0x30303c, 0.25);
+    if (!a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
+    a.legs.setPosition(x, y - 3).setFillStyle(robe).setDepth(depth + 0.01);
     if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
     a.seat.setPosition(x, y + 3).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
     if ((a.moteAt ?? 0) > now) return;
@@ -1894,6 +1975,44 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * A weapon upgraded to +7 or more shines: +7 to +9 breathes a pale blue light and sheds the odd spark, +10 burns gold and violet by turns with a bigger glow and a
+   * stream of sparks. The light is a soft blob over the weapon sprite; the sparks rise from a random point on it. Nothing here is the server's business.
+   */
+  private applyWeaponGlow(a: Actor, depth: number, lk: GearLook | undefined): void {
+    const tier = glowTierOf(lk?.e);
+    const sprite = a.wview?.alive ? a.wview.sprite : undefined;
+    if (tier === 0 || !sprite) {
+      if (a.wglow) {
+        a.wglow.destroy();
+        a.wglow = undefined;
+      }
+      return;
+    }
+    const now = this.time.now;
+    const grand = tier === 2;
+    const wave = 0.5 + 0.5 * Math.sin(now / (grand ? 170 : 300));
+    const colour = grand ? (Math.sin(now / 420) > 0 ? 0xffd54a : 0xd58bff) : 0x8fd8ff;
+    // The weapon's own pixels: the frame is trimmed, so its box sits `frame.x/y` inside the untrimmed picture that the origin is measured on.
+    const f = sprite.frame;
+    const bw = f.width * sprite.scaleX;
+    const bh = f.height * sprite.scaleY;
+    const box = new Phaser.Geom.Rectangle(sprite.x + (f.x - sprite.originX * f.realWidth) * sprite.scaleX, sprite.y + (f.y - sprite.originY * f.realHeight) * sprite.scaleY, bw, bh);
+    if (!a.wglow) a.wglow = this.add.image(0, 0, FX_TEX.glow).setBlendMode(Phaser.BlendModes.ADD);
+    const size = Math.max(box.width, box.height) * (grand ? 2.4 : 1.8) + 8;
+    a.wglow
+      .setPosition(box.centerX, box.centerY)
+      .setDisplaySize(size, size)
+      .setTint(colour)
+      .setAlpha((grand ? 0.4 : 0.25) + wave * (grand ? 0.3 : 0.2))
+      .setDepth(depth + 0.025)
+      .setVisible(true);
+    // The weapon itself brightens with the beat of the light.
+    const base = hexOf(weaponTintOf(lk!.w ?? 1)) ?? 0xffffff;
+    a.wview!.setTint(mixTint(base, colour, (grand ? 0.45 : 0.28) * wave));
+    if (Math.random() < (grand ? 0.3 : 0.07) && box.width > 0) this.fx.puff("mote", box.x + Math.random() * box.width, box.y + Math.random() * box.height, 1, colour);
+  }
+
+  /**
    * What the worn gear adds to a figure: the robe colours the body sprite, the weapon its sprite (by element and realm), the hat is a small shape on the head,
    * the boots raise dust of their colour while the figure runs. The colours come from the tuning (`gearLooks`); a Canvas renderer ignores tints.
    */
@@ -1901,26 +2020,26 @@ export class GameScene extends Phaser.Scene {
     const lk = a.lk;
     a.view?.setTint(lk?.r !== undefined ? hexOf(robeTintOf(lk.r)) : undefined);
     a.wview?.setTint(lk?.w !== undefined ? hexOf(weaponTintOf(lk.w)) : undefined);
+    this.applyWeaponGlow(a, depth, lk);
     if (lk?.h !== undefined && a.view) {
       if (!a.hat) a.hat = this.add.image(0, 0, HAT_TEX(hatShapeOf(lk.h))).setOrigin(0.5, 0.85);
       const key = HAT_TEX(hatShapeOf(lk.h));
       if (a.hat.texture.key !== key) a.hat.setTexture(key);
       // The top of the head is `rise` above the feet (the name stands a few px higher); the picture's bottom edge sits on it.
-      // The hat turns with the head: its side of the screen (-2 left .. +2 right, 0 facing the camera or away from it), and whether the face is hidden (facing away: a little darker and
-      // higher). The two shapes that are not the same on both sides (the bun with its pin, the headband with its ribbons) mirror, the ribbons trailing behind.
+      // Every hat picture is symmetric and seen from above, so it stays put and unflipped whichever way the figure turns (flipping and squashing it per direction made it
+      // flicker on the diagonals); only the head moving a pixel to the side follows the heading, and it is a little darker with the face turned away.
       const dir = a.view.dir;
       const sx = HEAD_SIDE[dir] ?? 0;
       const away = dir === 3 || dir === 4 || dir === 5;
-      const shape = hatShapeOf(lk.h);
       const base = hexOf(hatTintOf(lk.h)) ?? 0xffffff;
-      const dim = away ? 0.8 : 1;
+      const dim = away ? 0.85 : 1;
       const tint = (Math.round(((base >> 16) & 255) * dim) << 16) | (Math.round(((base >> 8) & 255) * dim) << 8) | Math.round((base & 255) * dim);
       a.hat
-        .setPosition(x + sx * 1.5, y - a.view.rise() + 6 - (away ? 1 : 0))
+        .setPosition(x + Math.sign(sx), y - a.view.rise() + 6)
         .setDepth(depth + 0.03)
         .setTint(tint)
-        .setFlipX((shape === 3 && sx < 0) || (shape === 5 && sx > 0))
-        .setScale(Math.abs(sx) === 2 ? 0.78 : 1, 1)
+        .setFlipX(false)
+        .setScale(HAT_SCALE)
         .setVisible(true);
     } else if (a.hat) {
       a.hat.destroy();
@@ -2156,6 +2275,7 @@ export class GameScene extends Phaser.Scene {
         if (actor.cloud.texture.key !== want) actor.cloud.setTexture(want); // another pháp bảo was put on
         const style = actorFlight(actor);
         const turn = FLIGHT_TURNS[style]; // the sword, the phoenix and the dragon face where they fly
+        const dragon = style === "dragon";
         const sword = turn !== undefined;
         const ca = Math.cos(fly.a);
         const sa = Math.sin(fly.a);
@@ -2164,7 +2284,13 @@ export class GameScene extends Phaser.Scene {
         const along = sword ? Math.hypot(Math.cos(ga), 0.5 * Math.sin(ga)) : 1;
         actor.cloud.setPosition(s.x, s.y - 4 + bob).setDepth(10 + pos.x + pos.y - 0.1);
         const big = FLIGHT_SCALE[actorFlight(actor)];
-        actor.cloud.setRotation(turn ? fly.a - turn.points : 0).setFlipY(!!turn?.flip && ca < 0).setScale(turn && turn.points === 0 ? along * big : big, turn && turn.points !== 0 ? along * big : big); // the length lies along the picture's x for a picture that points right, along its y for one that points up
+        if (dragon) {
+          actor.cloud.setRotation(0).setFlipY(false).setScale(big * 0.8);
+          this.syncDragon(actor, s.x, s.y - 4 + bob, ga, now, 10 + pos.x + pos.y - 0.1, pos.moving);
+        } else {
+          this.clearDragon(actor);
+          actor.cloud.setRotation(turn ? fly.a - turn.points : 0).setFlipY(!!turn?.flip && ca < 0).setScale(turn && turn.points === 0 ? along * big : big, turn && turn.points !== 0 ? along * big : big); // the length lies along the picture's x for a picture that points right, along its y for one that points up
+        }
         if (pos.moving && Math.random() < 0.4) this.fx.puff("trail", s.x - (turn ? ca * turn.tail * along : 14), s.y - 4 + bob - (turn ? sa * turn.tail * along : 0), 1, FLIGHT_GLOW[style]);
       }
       const depth = 10 + pos.x + pos.y;

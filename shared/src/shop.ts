@@ -65,7 +65,7 @@ export interface ShopOffer {
   dailyLimit?: number;
 }
 
-/** Value of plain items, of gear kinds and of grades, in Linh Thạch: the tuning `itemValue`. Items without a value cannot be sold (breakthrough pills, path items, skill books). */
+/** Value of plain items, of gear kinds and of grades, in Linh Thạch: the tuning `itemValue`. Items without a value cannot be sold (breakthrough pills, path items); skill books take theirs from the realm they are for. */
 
 /** Full value of an item (gear: at full durability), or 0 when it has no value and is not traded. */
 export function itemValue(type: string): number {
@@ -76,8 +76,19 @@ export function itemValue(type: string): number {
     const v = tuning().itemValue;
     return Math.max(1, Math.round(v.kinds[equip.kind] * (1 + level * v.levelStep) * (v.grades[equip.grade - 1] ?? 1)));
   }
-  return tuning().itemValue.items[type] ?? 0;
+  const items = tuning().itemValue.items;
+  const taught = getItemDef(type)?.teaches;
+  if (taught) {
+    // A skill book (unread: reading uses it up) is worth what its own entry says, else the entry of the realm it is for (`book_realm_N`), else the built-in one.
+    const skill = getSkill(taught);
+    const realm = skill?.learn?.realm ?? skill?.realm ?? 0;
+    return items[type] ?? items[`book_realm_${realm}`] ?? BOOK_VALUE_BY_REALM[Math.min(realm, BOOK_VALUE_BY_REALM.length - 1)] ?? 0;
+  }
+  return items[type] ?? 0;
 }
+
+/** What a skill book is worth by the realm of the skill it teaches, when the tuning has no entry for it (Linh Thạch). */
+export const BOOK_VALUE_BY_REALM: readonly number[] = [200, 2_000, 15_000, 80_000, 300_000, 1_000_000];
 
 /**
  * What the merchant pays for ONE of this item. Worn-down gear is worth proportionally less (`dur`/`max` of the piece).
