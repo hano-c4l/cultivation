@@ -69,21 +69,21 @@ describe("validation", () => {
 
 describe("collision grid", () => {
   it("uses sub-tile cells: a round pillar blocks only part of its tile", () => {
-    // Pillar disc at (18.5, 18.5) r=0.45: the middle is blocked, the tile corner is open ground.
-    expect(pointWalkable(town, 18.5 + T, 18.5 + T)).toBe(false);
-    expect(pointWalkable(town, 18.05 + T, 18.05 + T)).toBe(true);
+    // The blacksmith's disc at (12.6, 19.1) r=0.4: the middle is blocked, the tile corner is open ground.
+    expect(pointWalkable(town, 12.6 + T, 19.1 + T)).toBe(false);
+    expect(pointWalkable(town, 12.05 + T, 19.05 + T)).toBe(true);
     const blocked = Array.from({ length: CELLS_PER_TILE * CELLS_PER_TILE }, (_, i) =>
-      isCellWalkable(town, (18 + T) * CELLS_PER_TILE + (i % CELLS_PER_TILE), (18 + T) * CELLS_PER_TILE + Math.floor(i / CELLS_PER_TILE)),
+      isCellWalkable(town, (12 + T) * CELLS_PER_TILE + (i % CELLS_PER_TILE), (19 + T) * CELLS_PER_TILE + Math.floor(i / CELLS_PER_TILE)),
     ).filter((open) => !open).length;
     expect(blocked).toBeGreaterThan(0);
     expect(blocked).toBeLessThan(CELLS_PER_TILE * CELLS_PER_TILE);
   });
 
   it("body radius keeps clearance: clear just outside the pillar, blocked when the body touches it", () => {
-    // Pillar edge is at x = 18.5 + 0.45 = 18.95 (cells snap to 0.25); a body centred at 19.30 is clear.
-    expect(pointClear(town, 19.3 + T, 18.5 + T)).toBe(true);
-    expect(pointClear(town, 19.1 + T, 18.5 + T)).toBe(false);
-    expect(isStandable(town, 19.3 + T, 18.5 + T)).toBe(true);
+    // The disc edge is at x = 12.6 + 0.4 = 13.0 (cells snap to 0.25); a body centred at 13.30 is clear.
+    expect(pointClear(town, 13.3 + T, 19.1 + T)).toBe(true);
+    expect(pointClear(town, 13.1 + T, 19.1 + T)).toBe(false);
+    expect(isStandable(town, 13.3 + T, 19.1 + T)).toBe(true);
   });
 
   it("a thin non tile-aligned fence blocks movement across it", () => {
@@ -93,10 +93,10 @@ describe("collision grid", () => {
   });
 
   it("clicks on or next to obstacles resolve to the nearest standable point", () => {
-    const p = nearestStandablePoint(town, 18.5 + T, 18.5 + T)!; // inside the pillar
+    const p = nearestStandablePoint(town, 12.6 + T, 19.1 + T)!; // inside the disc
     expect(p).not.toBeNull();
     expect(isStandable(town, p[0], p[1])).toBe(true);
-    expect(Math.hypot(p[0] - 18.5 - T, p[1] - 18.5 - T)).toBeLessThan(1.5);
+    expect(Math.hypot(p[0] - 12.6 - T, p[1] - 19.1 - T)).toBeLessThan(1.5);
     expect(nearestStandablePoint(town, 27.5 + T, 10.5 + T)).toBeNull(); // middle of the pond, nothing standable nearby
   });
 });
@@ -114,8 +114,8 @@ describe("free movement", () => {
   });
 
   it("walks around a round pillar with a short, clear detour", () => {
-    const from: Vec2 = [16.5 + T, 18.5 + T];
-    const to: Vec2 = [20.5 + T, 18.5 + T]; // the pillar at (18.5, 18.5) is in the way
+    const from: Vec2 = [10.6 + T, 19.1 + T];
+    const to: Vec2 = [14.6 + T, 19.1 + T]; // the blacksmith's disc at (12.6, 19.1) is in the way
     const path = findSmoothPath(town, from, to)!;
     expect(path.length).toBeGreaterThan(2);
     expect(path.length).toBeLessThan(6);

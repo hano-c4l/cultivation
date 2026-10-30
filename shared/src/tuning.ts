@@ -2,6 +2,7 @@ import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
 import type { AreaDef } from "./area";
 import { DEFAULT_DOJO, validDojo, type DojoCfg } from "./dojo";
 import { DEFAULT_MARKET, validMarket, type MarketCfg } from "./market";
+import { DEFAULT_TRADE, validTrade, type TradeCfg } from "./trade";
 import { SKILL_LOOKS } from "./skill-looks";
 import { FLIGHT_STYLES, GROUND_STYLES, ICON_PICKABLE, OBSTACLE_STYLES, type FlightStyle, type IconShape, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
 import type { EquipKind } from "./equipment-data";
@@ -162,6 +163,8 @@ export interface Tuning {
   dojo: DojoCfg;
   /** Vạn Bảo Lâu, the market: tax, listing fee, limits, the auction round and the announcement (see market.ts). */
   market: MarketCfg;
+  /** Direct trade between two players: items per side, range, invitation time and the Linh Thạch cap (see trade.ts). */
+  trade: TradeCfg;
   /** The chance that a kill drops the book of a rare skill of the realm of the map (see skills-extra.ts): by monster class, and for each item round of the map's boss. */
   rareBooks: { chance: Record<"normal" | "rare1" | "rare2" | "boss", number> };
   /** The outfit drawn on a player's sprite, by the realm of the robe worn: the rule with the highest `minRealm` the robe reaches wins (no robe or no rule: the plain peasant clothes). `outfit` names a sprite variant (`player.<body>.<outfit>`); one without a sprite is drawn as the plain clothes. */
@@ -171,7 +174,7 @@ export interface Tuning {
   /** The colour a monster sprite is multiplied by, by element (`#rrggbb`), so one model looks different in each element; an element without one is drawn in the model's own colours. */
   monsterTints: Record<string, string>;
   /** How each map is drawn: ground details and the shape of the small obstacles (trees, rocks...), by map id; a map without an entry is drawn plain. */
-  mapArt: { maps: Record<string, { ground: GroundStyle; obstacle: ObstacleStyle; mix?: ObstacleStyle[] }> };
+  mapArt: { maps: Record<string, { ground: GroundStyle; obstacle: ObstacleStyle; mix?: ObstacleStyle[]; big?: "wall" | "house" }> };
   /** How the NPCs look: a player body with an optional outfit and weapon, by NPC id (a trailing number is ignored: `smith2` is `smith`) or else by kind. */
   npcLooks: { byKind: Record<string, NpcLook>; byId: Record<string, NpcLook> };
   /** What a rider of the flight pháp bảo stands on (one look for everyone while the server syncs only "is riding"; a look per item waits for the Admin art screens). */
@@ -517,6 +520,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   hatLooks: { rules: [{ minRealm: 0, shape: 0 }, { minRealm: 1, shape: 1 }, { minRealm: 2, shape: 3 }, { minRealm: 3, shape: 4 }, { minRealm: 4, shape: 7 }, { minRealm: 5, shape: 8 }] },
   dojo: DEFAULT_DOJO,
   market: DEFAULT_MARKET,
+  trade: DEFAULT_TRADE,
   rareBooks: { chance: { normal: 0.00005, rare1: 0.0008, rare2: 0.003, boss: 0.02 } },
   outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 1, outfit: "scout" }, { minRealm: 2, outfit: "tien" }, { minRealm: 3, outfit: "violet" }, { minRealm: 4, outfit: "crimson" }, { minRealm: 5, outfit: "shadow" }] }, // Kim Đan robes and above: the white xianxia robe
   // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp), ghost (hàn thi ma), snake (rắn). Stand-ins: the boss dragons use the dragon.
@@ -627,13 +631,13 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
   mapArt: {
     maps: {
-      town: { ground: "grass", obstacle: "tree", mix: ["tree", "tree", "tree", "bamboo", "bamboo", "bush", "lantern", "rock"] },
+      town: { ground: "grass", obstacle: "tree", big: "house", mix: ["tree", "tree", "bamboo", "bamboo", "bush", "lantern", "jade", "rock"] },
       forest: { ground: "grass", obstacle: "tree", mix: ["tree", "tree", "tree", "bamboo", "bamboo", "bush", "stump", "boulder"] },
       cave: { ground: "stone", obstacle: "pillar", mix: ["pillar", "pillar", "boulder", "jade", "jade", "rock"] },
-      town2: { ground: "stone", obstacle: "rock", mix: ["rock", "lantern", "boulder", "pillar", "jade", "bamboo"] },
+      town2: { ground: "stone", obstacle: "rock", big: "house", mix: ["rock", "lantern", "boulder", "pillar", "jade", "bamboo"] },
       kimdan: { ground: "lava", obstacle: "rock", mix: ["ember", "ember", "rock", "boulder", "pillar"] },
       nguyenanh: { ground: "snow", obstacle: "crystal", mix: ["crystal", "crystal", "jade", "boulder", "pillar"] },
-      town3: { ground: "stone", obstacle: "rock", mix: ["rock", "lantern", "jade", "pillar", "crystal", "bamboo"] },
+      town3: { ground: "stone", obstacle: "rock", big: "house", mix: ["rock", "lantern", "jade", "pillar", "crystal", "bamboo"] },
       hoathan: { ground: "stone", obstacle: "crystal", mix: ["crystal", "pillar", "boulder", "jade", "rock"] },
       luyenhu: { ground: "stone", obstacle: "crystal", mix: ["crystal", "crystal", "pillar", "jade", "boulder"] },
     },
@@ -701,6 +705,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   hatLooks: "Hình mũ hiện trên nhân vật theo cảnh giới của mũ đang đội",
   rareBooks: "Bí tịch tuyệt học chỉ rơi từ quái: xác suất mỗi lần hạ quái theo loại quái, và mỗi vòng thưởng của boss",
   dojo: "Võ Sư dạy bí tịch: mỗi võ sư dạy kỹ năng nào và giá học (Linh Thạch)",
+  trade: "Giao dịch trực tiếp giữa hai người: số món mỗi bên, tầm xa, thời gian mời, trần Linh Thạch",
   market: "Vạn Bảo Lâu: thuế, phí đăng bán, giới hạn tin, giờ mở và chốt đấu giá, tin quảng bá",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
@@ -1002,7 +1007,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "paths":
       return int(value.swapCostBase, 0, 1_000_000_000) && int(value.dropCostBase, 0, 1_000_000_000);
     case "mapArt":
-      return obj(value.maps) && Object.keys(value.maps).length <= 100 && Object.entries(value.maps).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && obj(v) && (GROUND_STYLES as readonly unknown[]).includes(v.ground) && (OBSTACLE_STYLES as readonly unknown[]).includes(v.obstacle) && (v.mix === undefined || (Array.isArray(v.mix) && v.mix.length >= 1 && v.mix.length <= 12 && v.mix.every((s) => (OBSTACLE_STYLES as readonly unknown[]).includes(s)))));
+      return obj(value.maps) && Object.keys(value.maps).length <= 100 && Object.entries(value.maps).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && obj(v) && (GROUND_STYLES as readonly unknown[]).includes(v.ground) && (OBSTACLE_STYLES as readonly unknown[]).includes(v.obstacle) && (v.big === undefined || v.big === "wall" || v.big === "house") && (v.mix === undefined || (Array.isArray(v.mix) && v.mix.length >= 1 && v.mix.length <= 12 && v.mix.every((s) => (OBSTACLE_STYLES as readonly unknown[]).includes(s)))));
     case "npcLooks": {
       const look = (v: unknown): boolean => obj(v) && (v.body === "male" || v.body === "female") && (v.outfit === undefined || (typeof v.outfit === "string" && /^[a-z]{1,16}$/.test(v.outfit))) && (v.weapon === undefined || (typeof v.weapon === "string" && /^[a-z]{1,16}$/.test(v.weapon))) && (v.scale === undefined || num(v.scale, 0.5, 3)) && (v.tint === undefined || (typeof v.tint === "string" && /^#[0-9a-fA-F]{6}$/.test(v.tint))) && (v.aura === undefined || (typeof v.aura === "string" && /^#[0-9a-fA-F]{6}$/.test(v.aura)));
       const table = (t: unknown): boolean => obj(t) && Object.keys(t).length <= 100 && Object.entries(t).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && look(v));
@@ -1058,6 +1063,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return validDojo(value);
     case "market":
       return validMarket(value);
+    case "trade":
+      return validTrade(value);
     case "meditation":
       return num(value.huntRatio, 0, 1) && num(value.secondsPerKill, 1, 600) && int(value.maxSettleSeconds, 10, 3600);
     case "minimap":

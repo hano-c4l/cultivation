@@ -1,4 +1,4 @@
-import { getItemDef, listingFee, marketTax, suggestedBid, type BagItem, type ClientMessage, type MarketCfg, type MarketError, type MarketKind, type MarketListingView } from "@game/shared";
+import { getItemDef, listingFee, marketMaxPrice, marketTax, suggestedBid, type BagItem, type ClientMessage, type MarketCfg, type MarketCurrency, type MarketError, type MarketKind, type MarketListingView } from "@game/shared";
 import { equipLines, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
 import { iconFor } from "./icons";
 import { vi } from "./locales/vi";
@@ -11,8 +11,8 @@ export interface MarketUi {
   setListings(npc: string, listings: MarketListingView[], cfg: MarketCfg, now: number, open: boolean): void;
   /** The market of `town` changed somewhere (another player bought, bid or posted): an open window asks for the list again (`town` absent: any town). */
   invalidate(): void;
-  /** The Linh Thạch the character holds. */
-  setBalance(linhThach: number): void;
+  /** The Linh Thạch and Tiên Ngọc the character holds. */
+  setBalance(linhThach: number, tienNgoc: number): void;
   /** The bag changed: the list of things that can be put up may have too. */
   refresh(): void;
   done(op: "post" | "buy" | "bid" | "cancel" | "promote"): void;
@@ -63,11 +63,15 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
   /** Server time minus the browser's at the last answer, so the countdowns follow the server clock. */
   let skew = 0;
   let balance = 0;
+  let tienNgoc = 0;
+  /** What the character holds of the currency a listing is priced in. */
+  const held = (c: MarketCurrency) => (c === "tien_ngoc" ? tienNgoc : balance);
+  const unitOf = (c: MarketCurrency) => (c === "tien_ngoc" ? vi.market.unitTienNgoc : vi.market.unitLinh);
   let loaded = false;
   let note: { text: string; ok: boolean } | null = null;
   /** The bag item chosen to put up, and the form values. */
   let picked: { tab: number; cell: number } | null = null;
-  let form: { kind: MarketKind; qty: number; price: number } = { kind: "fixed", qty: 1, price: 1000 };
+  let form: { kind: MarketKind; currency: MarketCurrency; qty: number; price: number } = { kind: "fixed", currency: "linh_thach", qty: 1, price: 1000 };
   /** What the player typed in a bid box, by listing: kept while the list refreshes under them, dropped when the top bid moves past it. */
   const typedBid = new Map<string, { value: number; over: number }>();
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -123,11 +127,11 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
       info.append(el("div", "muted", l.mine ? vi.market.mineTag : vi.market.seller(l.sellerName)));
       const side = el("div", "mk-side");
       if (kind === "fixed") {
-        side.append(el("div", "mk-price", vi.market.price(fmt(l.price))), el("div", "muted", vi.market.left(leftText(l.endsAt - nowServer()))));
-        side.append(button(vi.market.buy, () => send({ t: "market_buy", npc, id: l.id }), balance < l.price, balance < l.price ? vi.market.poor : ""));
+        side.append(el("div", "mk-price", vi.market.price(fmt(l.price), unitOf(l.currency))), el("div", "muted", vi.market.left(leftText(l.endsAt - nowServer()))));
+        side.append(button(vi.market.buy, () => send({ t: "market_buy", npc, id: l.id }), held(l.currency) < l.price, held(l.currency) < l.price ? vi.market.poor : ""));
       } else {
         side.append(
-          el("div", "mk-price", l.topBid > 0 ? vi.market.topBid(fmt(l.topBid), l.topIsMe) : vi.market.startPrice(fmt(l.price))),
+          el("div", "mk-price", l.topBid > 0 ? vi.market.topBid(fmt(l.topBid), l.topIsMe, unitOf(l.currency)) : vi.market.startPrice(fmt(l.price), unitOf(l.currency))),
           el("div", "muted", vi.market.left(leftText(l.endsAt - nowServer()))),
         );
         const amount = el("input");
@@ -136,7 +140,7 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
         // The box starts a notch above the top bid (the bidder can still type another amount); a typed amount stays until someone outbids it.
         const typed = typedBid.get(l.id);
         const keep = typed && typed.over === l.topBid && typed.value >= l.nextBid;
-        amount.value = String(keep ? typed.value : cfg ? suggestedBid(cfg, l.price, l.topBid) : l.nextBid);
+        amount.value = String(keep ? typed.value : cfg ? suggestedBid(cfg, l.price, l.topBid, l.currency) : l.nextBid);
         amount.className = "mk-amount";
         amount.oninput = () => typedBid.set(l.id, { value: Math.floor(Number(amount.value)) || 0, over: l.topBid });
         const bid = button(vi.market.bid, () => send({ t: "market_bid", npc, id: l.id, amount: Math.floor(Number(amount.value)) }), !open || l.topIsMe, !open ? vi.market.errors.closed : l.topIsMe ? vi.market.errors.top : "");
@@ -178,7 +182,17 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
       if (form.kind === k) b.classList.add("on");
       kindRow.append(b);
     }
-    box.append(kindRow);
+    // The currency the price is in: a buyer or a bidder pays in the same one.
+    const moneyRow = el("div", "mk-kinds");
+    for (const c of ["linh_thach", "tien_ngoc"] as const) {
+      const b = button(unitOf(c), () => {
+        form = { ...form, currency: c, price: Math.min(form.price, marketMaxPrice(cfg!, c)) };
+        render();
+      });
+      if (form.currency === c) b.classList.add("on");
+      moneyRow.append(b);
+    }
+    box.append(kindRow, moneyRow);
     const qty = el("input");
     qty.type = "number";
     qty.min = "1";
@@ -189,13 +203,13 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
     const price = el("input");
     price.type = "number";
     price.min = "1";
-    price.max = String(cfg.maxPrice);
+    price.max = String(marketMaxPrice(cfg, form.currency));
     price.value = String(form.price);
     const preview = el("div", "muted");
     const update = () => {
-      const p = Math.min(cfg!.maxPrice, Math.max(1, Math.floor(Number(price.value)) || 1));
+      const p = Math.min(marketMaxPrice(cfg!, form.currency), Math.max(1, Math.floor(Number(price.value)) || 1));
       form = { ...form, price: p };
-      preview.textContent = vi.market.feePreview(fmt(listingFee(cfg!, p)), cfg!.taxPct, fmt(p - marketTax(cfg!, p)));
+      preview.textContent = vi.market.feePreview(fmt(listingFee(cfg!, p, form.currency)), cfg!.taxPct, fmt(p - marketTax(cfg!, p)), unitOf(form.currency));
     };
     price.oninput = update;
     update();
@@ -205,11 +219,11 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
     const priceLabel = el("label", "", form.kind === "fixed" ? vi.market.priceLabel : vi.market.startLabel);
     priceLabel.append(price);
     fields.append(qtyLabel, priceLabel);
-    const fee = listingFee(cfg, form.price);
+    const fee = listingFee(cfg, form.price, form.currency);
     box.append(
       fields,
       preview,
-      button(vi.market.post, () => send({ t: "market_post", npc, kind: form.kind, tab: item.tab, cell: item.cell, qty: Math.min(form.qty, item.qty), price: form.price }), balance < fee, balance < fee ? vi.market.poor : ""),
+      button(vi.market.post, () => send({ t: "market_post", npc, kind: form.kind, currency: form.currency, tab: item.tab, cell: item.cell, qty: Math.min(form.qty, item.qty), price: form.price }), held(form.currency) < fee, held(form.currency) < fee ? vi.market.poor : ""),
     );
     panel.append(box);
   };
@@ -222,7 +236,7 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
       const info = itemBlock(l.type, l.qty, l.carry);
       info.append(el("div", "muted", `${l.kind === "fixed" ? vi.market.kindFixed : vi.market.kindAuction} · ${vi.market.left(leftText(l.endsAt - nowServer()))}`));
       const side = el("div", "mk-side");
-      side.append(el("div", "mk-price", l.kind === "fixed" ? vi.market.price(fmt(l.price)) : l.topBid > 0 ? vi.market.topBid(fmt(l.topBid), false) : vi.market.startPrice(fmt(l.price))));
+      side.append(el("div", "mk-price", l.kind === "fixed" ? vi.market.price(fmt(l.price), unitOf(l.currency)) : l.topBid > 0 ? vi.market.topBid(fmt(l.topBid), false, unitOf(l.currency)) : vi.market.startPrice(fmt(l.price), unitOf(l.currency))));
       // An auction cannot be taken back once its round is open (or a bid is in); a listing at night can, until the opening hour.
       const canCancel = l.kind === "fixed" || (l.topBid === 0 && !open);
       side.append(button(vi.market.cancel, () => send({ t: "market_cancel", npc, id: l.id }), !canCancel, canCancel ? "" : vi.market.cancelLocked));
@@ -258,7 +272,7 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
     else if (tab === "post") renderPost();
     else if (tab === "mine") renderMine();
     else renderBrowse(tab);
-    panel.append(el("div", "muted", vi.market.balance(fmt(balance))));
+    panel.append(el("div", "muted", vi.market.balance(fmt(balance), fmt(tienNgoc))));
   };
 
   return {
@@ -286,8 +300,9 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
       if (picked && !bag().some((i) => i.tab === picked!.tab && i.cell === picked!.cell)) picked = null;
       if (tab !== "post") render(); // the post form is left alone while it is being filled in: it does not show the list
     },
-    setBalance(n) {
-      balance = n;
+    setBalance(linh, tn) {
+      balance = linh;
+      tienNgoc = tn;
       if (!panel.hidden) render();
     },
     invalidate() {

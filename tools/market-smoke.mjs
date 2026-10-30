@@ -83,7 +83,7 @@ const linh = (e) => [...e.c.log].reverse().find((m) => m.t === "wallet" && m.cur
 
 // Too far from the spawn.
 let mark = S.c.log.length;
-S.c.send({ t: "market_post", npc: "market", kind: "fixed", tab: 0, cell: 0, qty: 1, price: 1000 });
+S.c.send({ t: "market_post", npc: "market", kind: "fixed", currency: "linh_thach", tab: 0, cell: 0, qty: 1, price: 1000 });
 const far = await S.c.wait((m) => m.t === "market_error", 4000, "far refusal", mark);
 check("a player far from Vạn Bảo Lâu is refused", far.reason === "far", far.reason);
 
@@ -100,7 +100,7 @@ await sleep(400);
 const stack = bagOf(S).find((i) => i.type === "hoi_huyet_dan");
 const before = linh(S);
 mark = S.c.log.length;
-S.c.send({ t: "market_post", npc: "market", kind: "fixed", tab: stack.tab, cell: stack.cell, qty: 4, price: 10000 });
+S.c.send({ t: "market_post", npc: "market", kind: "fixed", currency: "linh_thach", tab: stack.tab, cell: stack.cell, qty: 4, price: 10000 });
 const ok1 = await S.c.wait((m) => m.t === "market_ok" || m.t === "market_error", 5000, "post result", mark);
 check("a fixed listing goes up", ok1.t === "market_ok" && ok1.op === "post", ok1.reason ?? "");
 await sleep(600);
@@ -112,7 +112,7 @@ check("the seller sees it as theirs", after1.listings.length === 1 && after1.lis
 await sleep(400);
 const stack2 = bagOf(S).find((i) => i.type === "hoi_huyet_dan");
 mark = S.c.log.length;
-S.c.send({ t: "market_post", npc: "market", kind: "auction", tab: stack2.tab, cell: stack2.cell, qty: 6, price: 5000 });
+S.c.send({ t: "market_post", npc: "market", kind: "auction", currency: "linh_thach", tab: stack2.tab, cell: stack2.cell, qty: 6, price: 5000 });
 const ok2 = await S.c.wait((m) => m.t === "market_ok" || m.t === "market_error", 5000, "auction post", mark);
 check("an auction listing goes up", ok2.t === "market_ok", ok2.reason ?? "");
 

@@ -11,7 +11,8 @@ import type { Currency, Wallet } from "./economy";
 import type { EnhanceLevelDef } from "./smith";
 import type { Tuning } from "./tuning";
 import type { BrewJobView } from "./alchemy";
-import type { MarketCfg, MarketKind, MarketListingView } from "./market";
+import type { MarketCfg, MarketCurrency, MarketKind, MarketListingView } from "./market";
+import type { TradeEnd, TradeError, TradeSideView } from "./trade";
 import type { MerchantDef } from "./merchants";
 import type { MapRecipe, NpcSpot } from "./map";
 import type { ItemOverlay } from "./items";
@@ -87,6 +88,17 @@ export type ClientMessage =
   | { t: "inv_expand"; price: number }
   /** Claim the item attached to a mail into the bag. */
   | { t: "mail_claim"; id: string }
+  /** Direct trade: ask the player `to` (a character id in this room) to trade. */
+  | { t: "trade_invite"; to: string }
+  /** Direct trade: answer the invitation of `from`. */
+  | { t: "trade_reply"; from: string; accept: boolean }
+  /** Direct trade: put these bag items (by id, whole stacks) and this much Linh Thạch in your side; both sides' locks and agreements are undone. */
+  | { t: "trade_offer"; items: string[]; linh: number; tienNgoc: number }
+  /** Direct trade: lock (or unlock) your side. `rev` is the version of the window you saw: a change in between makes the server refuse. */
+  | { t: "trade_lock"; rev: number; on: boolean }
+  /** Direct trade: agree to the trade as it stands (needs both sides locked). When both agree it happens. */
+  | { t: "trade_confirm"; rev: number }
+  | { t: "trade_cancel" }
   /** Claim every mail in one go (the ones that do not fit stay in the mailbox). */
   | { t: "mail_claim_all" }
   /** Vạn Bảo Lâu: read this town's listings again (the window asks while it is open; cheaper to call than `npc_open`). */
@@ -151,7 +163,7 @@ export type ClientMessage =
   | { t: "brew_collect"; npc: string; job: string }
   | { t: "dojo_learn"; npc: string; skill: string }
   /** Vạn Bảo Lâu: put the stack at (tab, cell) up for sale, `qty` of it, asking `price` Linh Thạch (an auction: the start price). */
-  | { t: "market_post"; npc: string; kind: MarketKind; tab: number; cell: number; qty: number; price: number }
+  | { t: "market_post"; npc: string; kind: MarketKind; currency: MarketCurrency; tab: number; cell: number; qty: number; price: number }
   /** Buy a fixed-price listing of this town. */
   | { t: "market_buy"; npc: string; id: string }
   /** Bid on an auction listing of this town (the amount is paid now; an outbid bidder gets it back by mail). */
@@ -298,6 +310,12 @@ export type ServerMessage =
   | { t: "mail"; mail: MailView[] }
   /** Sent on the chat socket when a gift was sent to the player: the client answers with `mail_refresh` on the game socket. */
   | { t: "mail_new" }
+  /** Someone asks this player to trade (answer with `trade_reply`; `ttlMs` is how long it stands). */
+  | { t: "trade_invite"; from: string; name: string; ttlMs: number }
+  /** The trade window: `rev` changes with every offer; `mine` and `theirs` are the two sides. */
+  | { t: "trade"; rev: number; other: { id: string; name: string }; mine: TradeSideView; theirs: TradeSideView; cfg: { maxItems: number; maxLinh: number; maxTienNgoc: number } }
+  | { t: "trade_end"; reason: TradeEnd }
+  | { t: "trade_error"; reason: TradeError }
   /** Some listing of the town's Vạn Bảo Lâu changed (`town` absent: any town): a window that is open reads the list again. */
   | { t: "market_changed"; town?: string }
   /** The merchant's stock for today: units this character can still buy of each offer that has a daily limit. */
@@ -568,8 +586,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (m.view === undefined) return { t: "npc_open", npc: m.npc };
       return m.view === "shop" || m.view === "smith" || m.view === "brew" || m.view === "learn" || m.view === "market" ? { t: "npc_open", npc: m.npc, view: m.view } : null;
     case "market_post":
-      return isNpcId(m.npc) && (m.kind === "fixed" || m.kind === "auction") && isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999 && isInt(m.price) && m.price >= 1 && m.price <= 1_000_000_000
-        ? { t: "market_post", npc: m.npc, kind: m.kind, tab: m.tab, cell: m.cell, qty: m.qty, price: m.price }
+      return isNpcId(m.npc) && (m.kind === "fixed" || m.kind === "auction") && (m.currency === "linh_thach" || m.currency === "tien_ngoc") && isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999 && isInt(m.price) && m.price >= 1 && m.price <= 1_000_000_000
+        ? { t: "market_post", npc: m.npc, kind: m.kind, currency: m.currency, tab: m.tab, cell: m.cell, qty: m.qty, price: m.price }
         : null;
     case "market_buy":
     case "market_cancel":
@@ -610,6 +628,20 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return typeof m.quest === "string" && /^[a-z0-9_]{1,40}$/.test(m.quest) ? { t: "quest_abandon", quest: m.quest } : null;
     case "mail_refresh":
       return { t: "mail_refresh" };
+    case "trade_invite":
+      return typeof m.to === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.to) ? { t: "trade_invite", to: m.to } : null;
+    case "trade_reply":
+      return typeof m.from === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.from) && typeof m.accept === "boolean" ? { t: "trade_reply", from: m.from, accept: m.accept } : null;
+    case "trade_offer":
+      return Array.isArray(m.items) && m.items.length <= 6 && m.items.every((x) => typeof x === "string" && /^[A-Za-z0-9-]{1,64}$/.test(x)) && isInt(m.linh) && m.linh >= 0 && m.linh <= 1_000_000_000 && isInt(m.tienNgoc) && m.tienNgoc >= 0 && m.tienNgoc <= 1_000_000_000
+        ? { t: "trade_offer", items: m.items as string[], linh: m.linh, tienNgoc: m.tienNgoc }
+        : null;
+    case "trade_lock":
+      return isInt(m.rev) && m.rev >= 0 && typeof m.on === "boolean" ? { t: "trade_lock", rev: m.rev, on: m.on } : null;
+    case "trade_confirm":
+      return isInt(m.rev) && m.rev >= 0 ? { t: "trade_confirm", rev: m.rev } : null;
+    case "trade_cancel":
+      return { t: "trade_cancel" };
     case "mail_claim_all":
       return { t: "mail_claim_all" };
     case "market_list":
