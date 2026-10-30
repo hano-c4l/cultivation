@@ -14,6 +14,7 @@ import { accountDetailPage, accountListPage } from "./accounts";
 import { characterPage } from "./characters";
 import { gearEnhancePage, gearMasterPage, gearSetsPage } from "./gear";
 import { miscPage, tuningPage } from "./misc";
+import { looksPage } from "./looks";
 import { homePage, loginPage, notFoundPage, plannedPage } from "./pages";
 
 const app = document.getElementById("app")!;
@@ -165,6 +166,9 @@ async function render(): Promise<void> {
   } else if (path === "/admin/gifts") {
     title = "Gửi quà";
     content = giftsPage();
+  } else if (path === "/admin/looks") {
+    title = "Hình ảnh";
+    content = looksPage();
   } else if (path === "/admin/realms") {
     title = "Cảnh giới";
     content = tuningPage("realms");

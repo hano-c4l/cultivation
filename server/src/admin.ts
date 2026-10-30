@@ -26,6 +26,7 @@ import { banAccount, getAccountDetail, listAccounts, parseAccountQuery, setTempP
 import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "./maps-admin";
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
+import { listLookGroups, saveLookGroup } from "./looks-admin";
 
 /** Returns the admin's session, or the error response to send (401 anonymous, 403 not an admin). */
 async function requireAdminSession(request: Request, env: Env): Promise<AuthedSession | Response> {
@@ -283,6 +284,22 @@ export async function adminTuning(request: Request, env: Env): Promise<Response>
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, result.error === "version_conflict" ? 409 : result.error === "unknown_group" ? 404 : 400);
   console.log("tuning group saved", session.accountId, body.group);
   return json({ ok: true, changes: result.changes, groups: await listTuningGroups(env.DB, pageOf(body.page)) });
+}
+
+/**
+ * The picture groups of `game_tuning` (GET: each with its value, default and version token; POST `{group, updatedAt, value}` saves one whole, see saveLookGroup).
+ * 409 when someone saved the group since the admin loaded it.
+ */
+export async function adminLooks(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  if (request.method === "GET") return json({ groups: await listLookGroups(env.DB) });
+  const body = await readJson(request, 256 * 1024);
+  if (typeof body?.group !== "string" || typeof body?.updatedAt !== "number") return errorResponse("invalid_body", 400);
+  const result = await saveLookGroup(env.DB, body.group, body.value, body.updatedAt, session.email);
+  if (!result.ok) return json({ error: result.error }, result.error === "version_conflict" ? 409 : result.error === "unknown_group" ? 404 : 400);
+  console.log("look group saved", session.accountId, body.group);
+  return json({ ok: true, changes: result.changes, groups: await listLookGroups(env.DB) });
 }
 
 /**

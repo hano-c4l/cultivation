@@ -116,3 +116,19 @@ th.subhead { padding-top: 12px; color: var(--accent); font-size: 13px; }
 .wide-field { display: flex; margin: 8px 0; }
 .wide-field input, .wide-field textarea { max-width: 560px; }
 .swatch { display: inline-block; width: 22px; height: 22px; margin-left: 6px; border: 1px solid var(--line); border-radius: 4px; vertical-align: middle; }
+
+/* Picture screens (PHASE4 4i) */
+.look-section h3 { margin: 0 0 6px; }
+.look-section h4 { margin: 12px 0 4px; }
+.look-pick { display: inline-flex; align-items: center; gap: 10px; }
+.look-preview { display: inline-flex; align-items: center; min-width: 40px; min-height: 40px; }
+.sprite-prev { width: 64px; height: 64px; background: rgba(0, 0, 0, 0.06); border: 1px solid var(--line); border-radius: 6px; image-rendering: pixelated; }
+.icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; margin: 6px 0; }
+.icon-cell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; }
+.icon-cell small { font-size: 11px; line-height: 1.1; text-align: center; }
+.icon-cell.on { border-color: #d49a1a; box-shadow: 0 0 0 2px #d49a1a inset; background: rgba(212, 154, 26, 0.12); }
+.icon-cell svg { background: rgba(0, 0, 0, 0.08); border-radius: 6px; }
+.look-kind { margin: 4px 0; } .look-kind summary { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.look-rule { align-items: center; }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; margin-top: 6px; }
+input.tiny { width: 56px; }

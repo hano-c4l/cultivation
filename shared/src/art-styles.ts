@@ -21,3 +21,19 @@ export interface NpcLook {
   /** A colour (`#rrggbb`) for the formation circle that turns slowly under the figure. */
   aura?: string;
 }
+
+/**
+ * The drawings an icon can have (client/src/icons.ts draws them). An Admin picks one of these for an item, a skill or a kind of gear; nothing is uploaded.
+ * `ICON_SHAPES` is every drawing; `ICON_PICKABLE` leaves out the ones that belong to the interface (currencies, window buttons).
+ */
+export const ICON_SHAPES = [
+  "sword", "saber", "spear", "axe", "bow", "fist",
+  "hat", "robe", "bracer", "ring", "jade", "necklace", "belt", "boots", "charm", "bonded", "flight",
+  "pill", "ore", "book", "scroll", "unknown",
+  "slash", "bolt", "fan", "blink", "buff", "heal", "passive",
+  "pierce", "nova", "lane", "field",
+  "stone", "merit", "immortal", "person", "shield", "bag", "taiji", "trophy", "swap", "door", "meditate",
+] as const;
+export type IconShape = (typeof ICON_SHAPES)[number];
+const INTERFACE_SHAPES: readonly IconShape[] = ["unknown", "stone", "merit", "immortal", "person", "shield", "bag", "taiji", "trophy", "swap", "door", "meditate"];
+export const ICON_PICKABLE: readonly IconShape[] = ICON_SHAPES.filter((s) => !INTERFACE_SHAPES.includes(s));

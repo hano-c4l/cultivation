@@ -1,3 +1,4 @@
+import { itemIconSection } from "./looks";
 import { api, h, listView, navigate } from "./kit";
 
 /** "Vật phẩm" (PHASE3 3g): the catalogue of plain items (equipment comes from templates) as a list and a form. */
@@ -128,6 +129,8 @@ export function itemEditPage(): HTMLElement {
     const current = id ? data.items.find((i) => i.def.id === id) : undefined;
     if (id && !current) return void root.replaceChildren(h("p", { class: "err" }, "Không tìm thấy vật phẩm."), h("a", { href: "/admin/items" }, "‹ Danh sách"));
     root.replaceChildren(form(data, current));
+    if (current) void itemIconSection(current.def.id).then((node) => root.append(node));
+    else root.append(h("p", { class: "muted" }, "Biểu tượng riêng chọn được sau khi tạo xong (mở lại vật phẩm để chọn)."));
   });
   return root;
 }

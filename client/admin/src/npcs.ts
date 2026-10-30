@@ -1,3 +1,4 @@
+import { npcLookSection } from "./looks";
 import { api, h, listView, navigate } from "./kit";
 
 /**
@@ -162,6 +163,7 @@ export function npcEditPage(): HTMLElement {
     if (id && !current) return void root.replaceChildren(h("p", { class: "err" }, "Không tìm thấy NPC."), h("a", { href: "/admin/npcs" }, "‹ Danh sách"));
     root.replaceChildren(form(data.meta, current));
     if (current?.hasStock) root.append(stockSection(current));
+    if (current && current.kind !== "waygate") void npcLookSection(current.id, current.kind).then((node) => root.append(node));
   });
   return root;
 }

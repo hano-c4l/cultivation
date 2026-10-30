@@ -1,4 +1,4 @@
-import { equipmentInfo, getItemDef, skillLookOf, type SkillDef } from "@game/shared";
+import { equipmentInfo, getItemDef, skillLookOf, tuning, type IconShape, type SkillDef } from "@game/shared";
 import { ELEMENT_COLOR, skillFxOf } from "./fx-kinds";
 
 /**
@@ -8,16 +8,8 @@ import { ELEMENT_COLOR, skillFxOf } from "./fx-kinds";
  * creates gets an icon with no code change; the element colours the accent and the grade tints the disc behind it (`--grade-N`, from the theme tuning).
  */
 
-/** The shapes an icon can have. */
-export type IconShape =
-  | "sword" | "saber" | "spear" | "axe" | "bow" | "fist"
-  | "hat" | "robe" | "bracer" | "ring" | "jade" | "necklace" | "belt" | "boots" | "charm" | "bonded" | "flight"
-  | "pill" | "ore" | "book" | "scroll" | "unknown"
-  | "slash" | "bolt" | "fan" | "blink" | "buff" | "heal" | "passive"
-  // the ways of delivering an attack skill: through a line, round the caster, a lane on the ground, a field on the ground
-  | "pierce" | "nova" | "lane" | "field"
-  // the interface: the currencies and the buttons of the windows
-  | "stone" | "merit" | "immortal" | "person" | "shield" | "bag" | "taiji" | "trophy" | "swap" | "door" | "meditate";
+/** The shapes an icon can have (the list is shared with the Admin that picks them). */
+export type { IconShape };
 
 export interface IconSpec {
   shape: IconShape;
@@ -34,9 +26,12 @@ const KIND_SHAPES: Readonly<Record<string, IconShape>> = {
 
 /** What an item looks like, from its type: gear by kind (weapons by family), anything else by category. An unknown type gets the question-mark box. */
 export function iconSpecOf(type: string): IconSpec {
+  const picked = tuning().iconLooks;
   const eq = equipmentInfo(type);
   if (eq) {
-    const shape = (eq.kind === "weapon" && eq.weaponType ? WEAPON_SHAPES[eq.weaponType] : undefined) ?? KIND_SHAPES[eq.kind] ?? "unknown";
+    // An Admin's choice wins: for this very item, else for its kind of gear (`weapon.kiem` for a weapon family, else `hat`, `robe`...).
+    const own = picked.items[type] ?? (eq.kind === "weapon" && eq.weaponType ? picked.kinds[`weapon.${eq.weaponType}`] : undefined) ?? picked.kinds[eq.kind];
+    const shape = own ?? (eq.kind === "weapon" && eq.weaponType ? WEAPON_SHAPES[eq.weaponType] : undefined) ?? KIND_SHAPES[eq.kind] ?? "unknown";
     return { shape, element: eq.element, grade: eq.grade };
   }
   const def = getItemDef(type);
@@ -45,12 +40,15 @@ export function iconSpecOf(type: string): IconSpec {
   if (def.teaches !== undefined || def.category === "skill_book") shape = "book";
   else if (def.pathItem !== undefined) shape = "scroll";
   else if (def.category === "consumable") shape = "pill";
+  shape = picked.items[type] ?? picked.kinds[`category.${def.category}`] ?? shape;
   return { shape, element: null, grade: def.grade ?? 0 };
 }
 
 /** What a skill looks like: the glyph of its effect (so an Admin's `fx` choice changes it too), in the colour of its element. */
 export function skillIconSpecOf(def: SkillDef | undefined): IconSpec {
   if (!def) return { shape: "unknown", element: null, grade: 0 };
+  const chosen = tuning().iconLooks.skills[def.id];
+  if (chosen) return { shape: chosen, element: def.element ?? null, grade: 0 };
   if (def.kind === "passive") return { shape: "passive", element: def.element ?? null, grade: 0 };
   const look = skillLookOf(def);
   if (def.kind === "attack" && (look === "lance" || look === "nova" || look === "lane" || look === "field")) {

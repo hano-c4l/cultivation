@@ -1,3 +1,6 @@
+import { getSkill } from "@game/shared";
+import { skillIconSpecOf } from "../../src/icons";
+import { skillLookSection } from "./looks";
 import { api, h, listView, navigate } from "./kit";
 
 /** "Kỹ năng" (PHASE3 3h): the skills of the game and the changes admins made to them (name, description, power, cost, cooldown, reach, buff length, effect). */
@@ -115,6 +118,8 @@ export function skillEditPage(): HTMLElement {
     const current = data.skills.find((s) => s.id === id);
     if (!current) return void root.replaceChildren(h("p", { class: "err" }, "Không tìm thấy kỹ năng."), h("a", { href: "/admin/skills" }, "‹ Danh sách"));
     root.replaceChildren(form(data, current));
+    const base = skillIconSpecOf(getSkill(current.id)).shape;
+    void skillLookSection(current.id, Boolean(current.template), base === "unknown" ? "bolt" : base).then((node) => root.append(node));
   });
   return root;
 }
