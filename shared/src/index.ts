@@ -36,6 +36,7 @@ export * from "./element-tuning";
 export * from "./gear-names";
 export * from "./outfit";
 export * from "./art-styles";
+export * from "./dojo";
 export * from "./map-art";
 export * from "./monster-look";
 export * from "./npc-look";

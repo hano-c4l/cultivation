@@ -2,7 +2,7 @@ import { tuning, DEFAULT_TUNING } from "./tuning";
 import type { SkillDef } from "./skills";
 
 /** The drawings a skill can be given (the client has one for each; see `client/src/fx.ts`). */
-export const SKILL_LOOKS = ["spell", "palm", "slash", "finger", "sword", "orb", "great", "aura", "dome", "flames", "wind", "seal", "furnace", "bell", "lotus", "phoenix", "blink", "lance", "nova", "lane", "field", "bolt"] as const;
+export const SKILL_LOOKS = ["spell", "palm", "slash", "finger", "sword", "orb", "great", "aura", "dome", "flames", "wind", "seal", "furnace", "bell", "lotus", "phoenix", "blink", "lance", "nova", "lane", "field", "bolt", "storm", "meteor", "drain", "shock"] as const;
 export type SkillLook = (typeof SKILL_LOOKS)[number];
 
 const templateOf = (id: string): string => id.replace(/_\d+$/, "");

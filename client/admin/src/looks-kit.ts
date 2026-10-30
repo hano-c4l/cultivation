@@ -139,7 +139,7 @@ export function iconGrid(current: IconShape | undefined, defaultShape: IconShape
 
 export const SKILL_LOOK_VI: Readonly<Record<string, string>> = {
   spell: "Niệm phép", palm: "Chưởng", slash: "Chém", finger: "Chỉ", sword: "Kiếm khí", orb: "Quả cầu", great: "Đại chiêu", aura: "Hào quang", dome: "Vòm hộ thể", flames: "Ngọn lửa", wind: "Gió",
-  seal: "Ấn", furnace: "Lò luyện", bell: "Chuông", lotus: "Sen", phoenix: "Phượng hoàng", blink: "Tốc biến", lance: "Xuyên thấu", nova: "Tỏa quanh người", lane: "Vệt cháy", field: "Vùng tồn tại", bolt: "Đạn phóng",
+  seal: "Ấn", furnace: "Lò luyện", bell: "Chuông", lotus: "Sen", phoenix: "Phượng hoàng", blink: "Tốc biến", lance: "Xuyên thấu", nova: "Tỏa quanh người", lane: "Vệt cháy", field: "Vùng tồn tại", bolt: "Đạn phóng", storm: "Bão sét", meteor: "Thiên thạch", drain: "Hút sinh lực", shock: "Đòn kết liễu",
 };
 export const skillLookOptions: readonly Opt[] = SKILL_LOOKS.map((l) => ({ value: l, label: SKILL_LOOK_VI[l] ?? l }));
 

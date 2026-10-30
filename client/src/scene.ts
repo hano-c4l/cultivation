@@ -85,6 +85,8 @@ import { initSmith, type SmithUi } from "./smith-ui";
 import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
+import { initDojo, type DojoUi } from "./dojo-ui";
+import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
 import { HAT_TEX, ensureHatTextures } from "./hat-art";
 import { DRAGON_HEAD, DRAGON_SEG, DRAGON_TAIL, FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
@@ -309,6 +311,8 @@ export class GameScene extends Phaser.Scene {
   private pk!: PkUi;
   private channel!: ChannelUi;
   private waygate!: WaygateUi;
+  private dojo!: DojoUi;
+  private minimap!: MinimapUi;
   private fx!: Effects;
   private rank!: RankUi;
   /** When each player last hit you (performance.now): they show grey to you for 3 minutes unless their name is orange or red. */
@@ -445,6 +449,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
+    this.dojo = initDojo((msg) => this.net.send(msg));
+    this.minimap = initMinimap();
     ensureFlightTextures(this);
     ensureHatTextures(this);
     ensureFxTextures(this);
@@ -682,9 +688,12 @@ export class GameScene extends Phaser.Scene {
     this.recipeKey = JSON.stringify(overrideRecipe(mapId) ?? "");
     this.map = getMap(mapId);
     this.gfx.useMap(mapId);
+    this.minimap.setMap(this.map);
+    this.minimap.show(true);
     this.shop.close();
     this.quests.close();
     this.waygate.close();
+    this.dojo.close();
     this.drawMap();
     this.applyCameraBounds();
   }
@@ -807,9 +816,11 @@ export class GameScene extends Phaser.Scene {
       this.quests.close();
       this.smith.close();
       this.waygate.close();
+      this.dojo.close();
       if (npc.kind === "quest") this.quests.open(npc.id);
       else if (npc.kind === "smith") this.smith.open(npc.id);
       else if (npc.kind === "waygate") this.waygate.open(npc.id);
+      else if (npc.kind === "master") this.dojo.open(npc.id);
       else this.shop.open(npc.id, this.map.id);
       return;
     }
@@ -834,6 +845,7 @@ export class GameScene extends Phaser.Scene {
     this.quests.close();
     this.smith.close();
     this.waygate.close();
+    this.dojo.close();
     this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
     const c = toScreen(tx, ty);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
@@ -909,6 +921,7 @@ export class GameScene extends Phaser.Scene {
         this.vitals.setWallet(msg.wallet);
         this.linhThach = msg.wallet.linh_thach;
         this.waygate.setBalance(this.linhThach);
+        this.dojo.setBalance(this.linhThach);
         this.inventory.setBag(msg.bag);
         this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
@@ -988,6 +1001,7 @@ export class GameScene extends Phaser.Scene {
         if (msg.currency === "linh_thach") {
           this.linhThach = msg.balance;
           this.waygate.setBalance(this.linhThach);
+        this.dojo.setBalance(this.linhThach);
         }
         this.vitals.setBalance(msg.currency, msg.balance);
         this.smith.refresh();
@@ -1214,6 +1228,13 @@ export class GameScene extends Phaser.Scene {
       case "smith":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
         this.smith.setRules(msg.npc, msg.levels, msg.pity, msg.tabs);
+        break;
+      case "dojo":
+        this.dojo.setBalance(this.linhThach);
+        this.dojo.setCourses(msg.npc, msg.courses);
+        break;
+      case "dojo_ok":
+        this.dojo.notify(vi.dojo.learned(skillDisplayName(getSkill(msg.skill) ?? ({ id: msg.skill, nameVi: msg.skill } as SkillDef)), msg.cost.toLocaleString("vi-VN")), true);
         break;
       case "brew":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
@@ -1891,6 +1912,25 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** The dots of the mini map: where everyone is now (the positions the figures are drawn at). */
+  private updateMinimap(now: number): void {
+    if (!this.selfId) return;
+    let self: { x: number; y: number } | null = null;
+    const players: Array<{ x: number; y: number }> = [];
+    for (const a of this.actors.values()) {
+      const p = currentPos(a, now);
+      if (a.id === this.selfId) self = { x: p.x, y: p.y };
+      else players.push({ x: p.x, y: p.y });
+    }
+    const monsters: Array<{ x: number; y: number; boss: boolean }> = [];
+    for (const m of this.monsters.values()) {
+      if (m.guard || m.dyingUntil !== undefined) continue;
+      const p = positionAlongPath(m.path, now - m.startedAt, m.speed);
+      monsters.push({ x: p.x, y: p.y, boss: m.boss });
+    }
+    this.minimap.update({ self, players, monsters }, now);
+  }
+
   private clearDragon(a: Actor): void {
     if (!a.dragon) return;
     for (const p of a.dragon) p.destroy();
@@ -2251,6 +2291,7 @@ export class GameScene extends Phaser.Scene {
     this.watchLoading(now);
     this.tickAuto(now);
     this.tickBuffGlows(now);
+    this.updateMinimap(now);
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);

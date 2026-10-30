@@ -317,11 +317,15 @@ async function constitutionsApi(env: Env): Promise<Response> {
 }
 
 async function leaderboardApi(request: Request, env: Env): Promise<Response> {
-  if (!(await getSession(request, env))) return errorResponse("unauthenticated", 401);
+  const session = await getSession(request, env);
+  if (!session) return errorResponse("unauthenticated", 401);
   try {
-    const board = new URL(request.url).searchParams.get("board") ?? "realm";
+    const params = new URL(request.url).searchParams;
+    const board = params.get("board") ?? "realm";
     if (!isLeaderboard(board)) return errorResponse("invalid_board", 400);
-    return json({ board, rows: await getLeaderboard(env.DB, board) });
+    // Only an admin can ask for the list with the admin accounts in it; for anyone else the flag is ignored.
+    const all = params.get("all") === "1" && session.role === "admin";
+    return json({ board, rows: await getLeaderboard(env.DB, board, Date.now(), all) });
   } catch (err) {
     console.error("leaderboard unavailable", err);
     return errorResponse("unavailable", 503);

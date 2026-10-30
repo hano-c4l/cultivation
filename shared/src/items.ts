@@ -5,7 +5,7 @@ import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
 import { KEEP_LEVEL_ITEM, REFINE_ORES, SMITH_ORES } from "./smith";
-import { BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId } from "./skills";
+import { ALL_BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId } from "./skills";
 import { tuning } from "./tuning";
 
 /**
@@ -54,7 +54,7 @@ export interface ItemDef {
 
 /** One bí tịch per book skill, made from the skill list so a new book skill needs no item entry. */
 const BOOKS: Record<string, ItemDef> = Object.fromEntries(
-  BOOK_SKILLS.map((s) => [
+  ALL_BOOK_SKILLS.map((s) => [
     bookItemId(s.id),
     { id: bookItemId(s.id), nameVi: `Bí Tịch: ${s.nameVi}`, descVi: `Dùng để học kỹ năng ${s.nameVi}.`, category: "skill_book", maxStack: 1, rarity: "epic", grade: 4, teaches: s.id } satisfies ItemDef,
   ]),

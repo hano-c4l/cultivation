@@ -52,6 +52,7 @@ const GROUP_OF_KIND: ReadonlyArray<readonly [string, CurrencyGroup]> = [
   ["monster_drop", "farm"],
   ["shop_buy", "shop"],
   ["brew", "shop"],
+  ["dojo", "shop"],
   ["shop_sell", "shop"],
   ["alchemist_buy", "shop"],
   ["alchemist_sell", "shop"],

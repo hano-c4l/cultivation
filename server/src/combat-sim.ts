@@ -39,6 +39,7 @@ import {
   levelIndex,
   rollEquipmentDrop,
   rollBookDrop,
+  rollRareBook,
   rollPillDrop,
   rollOreDrop,
   rollRefineDrop,
@@ -356,6 +357,7 @@ function derivedCombatant(seed: ProfileSeed & { buffs?: readonly ActiveBuff[]; m
   for (const b of seed.buffs ?? []) {
     if (b.stat === "attack") attack = Math.floor(attack + d.attack * b.pct);
     else if (b.stat === "defense") defense = Math.floor(defense + d.defense * b.pct);
+    else if (b.stat === "crit") crit += b.pct * 100;
     else dodge += b.pct * 100;
   }
   // Passive skills work all the time, at the strength their realm, grade and mastery give them (the same sum the character panel shows).
@@ -1032,6 +1034,13 @@ export class CombatSim {
     p.maxMp = d.maxMp;
     p.mp = fullHeal ? d.maxMp : Math.min(p.mp, d.maxMp);
     this.setRates(p); // the rates that are a share of the maximum follow it
+  }
+
+  /** Health coming back to `p` from a draining skill (rounded, at least 1 once there is anything to give back). */
+  private drainHealth(p: PlayerProfile, amount: number, events: SimEvent[]): void {
+    if (p.dead || amount <= 0 || p.hp >= p.maxHp) return;
+    p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.round(amount)));
+    events.push({ t: "hp", playerId: p.id, hp: p.hp, maxHp: p.maxHp });
   }
 
   /** A skill as this player has it: the basic qi blast grows with the realm (range, power, MP, area), the rest are as they are. */
@@ -1715,9 +1724,12 @@ export class CombatSim {
 
   /** One monster takes the blow (damage, the pull onto the attacker, a kill and everything it pays); `scale` is the share of the damage an extra target takes. */
   private strikeMonster(p: PlayerProfile, m: Monster, mpos: Vec2, now: number, events: SimEvent[], skill: SkillDef | undefined, skillPower: number, skillElement: SpiritualRoot | undefined, scale: number, aoe: boolean, dot = false): number {
-    const attacker = this.attackerFor(p, skill, skillPower, skillElement, scale);
+    // A finishing skill hits harder a target that is already low; a draining one gives part of the damage back as health.
+    const finishing = skill?.execute !== undefined && m.maxHp > 0 && m.hp / m.maxHp < skill.execute.below ? skill.execute.mult : 1;
+    const attacker = this.attackerFor(p, skill, skillPower * finishing, skillElement, scale);
     const hit = computeDamage(attacker, m.combatant, this.rand);
     const applied = Math.min(m.hp, hit.damage);
+    if (skill?.drain && !aoe && !dot) this.drainHealth(p, applied * skill.drain, events);
     m.hp -= applied;
     m.damage.set(p.id, (m.damage.get(p.id) ?? 0) + applied);
     events.push({ t: "hit", from: p.id, to: m.id, kind: hit.kind, damage: hit.damage, hp: m.hp, ...(skill ? { skill: skill.id } : {}), ...(aoe ? { aoe: true as const } : {}), ...(dot ? { dot: true as const } : {}) });
@@ -1774,6 +1786,8 @@ export class CombatSim {
     if (ore) loot.push(ore);
     const refine = rollRefineDrop(this.realm, m.rank, this.rand, dropMult); // two more: the refining ore of this realm
     if (refine) loot.push(refine);
+    const rare = rollRareBook(m.rank, this.realm, this.rand); // two more: a rare book of this realm, very seldom
+    if (rare) loot.push({ item: rare, qty: 1 });
     if (loot.length > 0) events.push({ t: "loot", playerId: winner.id, drops: loot });
     if (stagesGained > 0) events.push({ t: "hp", playerId: winner.id, hp: winner.hp, maxHp: winner.maxHp });
     m.damage.clear();
@@ -1799,13 +1813,15 @@ export class CombatSim {
 
   /** One player takes the blow (`scale`: the share of the damage an extra target takes; `aoe`: it is not the one aimed at). */
   private strikePlayer(p: PlayerProfile, q: PlayerProfile, qpos: Vec2, now: number, events: SimEvent[], skill: SkillDef | undefined, skillPower: number, skillElement: SpiritualRoot | undefined, scale: number, aoe: boolean, dot = false): number {
-    const attacker = this.attackerFor(p, skill, skillPower, skillElement, scale);
+    const finishing = skill?.execute !== undefined && q.maxHp > 0 && q.hp / q.maxHp < skill.execute.below ? skill.execute.mult : 1;
+    const attacker = this.attackerFor(p, skill, skillPower * finishing, skillElement, scale);
     const hit = computeDamage(attacker, q.stats, this.rand);
     // A blow that answers someone who hit first (the automatic retaliation, or a click back by hand) is a defence: it is marked `ret`, it
     // does not make the answerer "grey" to the attacker and it is not counted as striking first when a kill is scored.
     const answering = p.retaliateId === q.id || this.hitRecently(p, q.id);
     if (!answering) q.hitBy.set(p.id, now);
     const applied = Math.min(q.hp, hit.damage);
+    if (skill?.drain && !aoe) this.drainHealth(p, applied * skill.drain, events);
     q.hp = Math.max(0, q.hp - hit.damage);
     this.settleMp(q, now); // regeneration up to this hit is kept
     q.lastHurtAt = now;
@@ -1882,6 +1898,8 @@ export class CombatSim {
       if (ore) loot.push(ore);
       const refine = rollRefineDrop(this.realm, m.rank, this.rand, rw.itemChanceMult);
       if (refine) loot.push(refine);
+      const rare = rollRareBook("boss", this.realm, this.rand); // a little likelier than from a common monster, still rare
+      if (rare) loot.push({ item: rare, qty: 1 });
       for (const drop of loot) {
         const to = pickByShare(shares, this.rand());
         if (to) items.set(to, [...(items.get(to) ?? []), drop]);

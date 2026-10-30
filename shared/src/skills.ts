@@ -4,6 +4,7 @@ import { ALL_ROOTS, SPIRITUAL_ROOTS } from "./character";
 import type { MonsterRank } from "./monsters";
 import type { AreaDef } from "./area";
 import { REALMS } from "./progression-data";
+import { DOJO_SKILLS, RARE_SKILLS } from "./skills-extra";
 import { rateCap, getRootGrade, levelIndex, type Element } from "./progression";
 
 /**
@@ -29,8 +30,8 @@ export function pathSubFactor(): number {
 }
 /** Worn pieces that grant skills while they are on (and not broken): ordinary pháp bảo, the bonded one, the flight one. */
 export type GearSkillSource = "charm" | "bonded" | "flight";
-/** What a buff raises. attack/defense: fraction of the stat; dodge: `power` is a fraction of 100, added as percentage points of dodge chance. */
-export type BuffStat = "attack" | "defense" | "dodge";
+/** What a buff raises. attack/defense: fraction of the stat; dodge and crit: `power` is a fraction of 100, added as percentage points of that chance. */
+export type BuffStat = "attack" | "defense" | "dodge" | "crit";
 /** What a passive skill raises all the time. attack/defense: fraction of the stat; dodge/crit: fraction of 100 as percentage points. */
 export type PassiveStat = "attack" | "defense" | "dodge" | "crit";
 
@@ -70,6 +71,12 @@ export interface SkillDef {
   pathLevel?: number;
   /** Attacks: the effect other players see, when an admin picked one (otherwise the client decides from the template). */
   fx?: SkillFxKind;
+  /** A rare skill: its book is found only (a monster, a boss), never sold or taught. */
+  rare?: boolean;
+  /** Attacks: the share of the damage dealt to the main target that comes back to the caster as health (0.15 = 15%). */
+  drain?: number;
+  /** Attacks: against a target below this share of its health (`below`, 0..1) the blow is multiplied by `mult`. */
+  execute?: { below: number; mult: number };
   /** The area this skill hits, when it is not the one the tuning (`skillAreas`) gives by its id: the realm variants of the basic qi blast carry theirs. */
   area?: AreaDef;
 }
@@ -274,6 +281,8 @@ export const SKILLS: readonly SkillDef[] = [
   { id: "chien_y_lh", nameVi: "Hư Không Chiến Hống", descVi: "Luyện Hư: tiếng gầm xé hư không, tăng vọt công kích trong 25 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 5, grade: 4, mpCost: 190, cooldownMs: 40_000, range: 0, power: 0.7, buff: { stat: "attack", durationMs: 25_000 }, learn: { realm: 5, stage: 7 } },
   { id: "ho_the_kd", nameVi: "Kim Chung Hộ Thể", descVi: "Kim Đan: dựng chuông vàng quanh thân, tăng mạnh phòng thủ trong 20 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 2, grade: 3, mpCost: 50, cooldownMs: 45_000, range: 0, power: 0.5, buff: { stat: "defense", durationMs: 20_000 }, learn: { realm: 2, stage: 3 } },
   { id: "hoi_nguyen_kd", nameVi: "Hồi Nguyên Quyết", descVi: "Kim Đan: vận kim đan chữa thương, hồi nhiều sinh lực. Học từ bí tịch.", kind: "heal", source: "learned", element: null, realm: 2, grade: 3, mpCost: 60, cooldownMs: 30_000, range: 0, power: 0.55, learn: { realm: 2, stage: 5 } },
+  ...DOJO_SKILLS,
+  ...RARE_SKILLS,
   { id: "cuong_than_na", nameVi: "Nguyên Anh Chiến Hống", descVi: "Nguyên Anh: gầm vang chiến ý, tăng mạnh công kích trong 20 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 3, grade: 4, mpCost: 80, cooldownMs: 40_000, range: 0, power: 0.5, buff: { stat: "attack", durationMs: 20_000 }, learn: { realm: 3, stage: 3 } },
 ];
 
@@ -377,7 +386,10 @@ export function isSkillId(v: unknown): v is string {
 }
 
 /** Skills a book can teach. */
-export const BOOK_SKILLS: readonly SkillDef[] = SKILLS.filter((s) => s.source === "learned");
+/** Every skill that has a book (the rare ones too). */
+export const ALL_BOOK_SKILLS: readonly SkillDef[] = SKILLS.filter((s) => s.source === "learned");
+/** The skills the ordinary book drop picks from (the rare ones have their own, much rarer drop: see rollRareBook). */
+export const BOOK_SKILLS: readonly SkillDef[] = ALL_BOOK_SKILLS.filter((s) => s.rare !== true);
 
 /** The item id of the bí tịch that teaches a skill. */
 export function bookItemId(skillId: string): string {
@@ -565,6 +577,19 @@ export function parseHotbar(raw: string | null | undefined): string[] {
 }
 
 /** The chance of a skill book is the tuning `drops.book` (by monster class); it is rolled apart from the loot table (see rollBookDrop). */
+
+/**
+ * A rare book dropped by one kill, or null: `rank` is the monster class or "boss", `realm` the realm of the map; the book is one of the rare skills of that realm.
+ * Draws exactly two numbers (chance, which book) so seeded sequences stay stable.
+ */
+export function rollRareBook(rank: MonsterRank | "boss", realm: number, rand: () => number): string | null {
+  const chance = rand();
+  const pick = rand();
+  if (chance >= tuning().rareBooks.chance[rank]) return null;
+  const pool = ALL_BOOK_SKILLS.filter((s) => s.rare === true && s.learn?.realm === realm);
+  const skill = pool[Math.floor(pick * pool.length)];
+  return skill ? bookItemId(skill.id) : null;
+}
 
 /** A book dropped by one kill, or null. Draws exactly two numbers (chance, which book) so seeded sequences stay stable. */
 export function rollBookDrop(rank: MonsterRank, rand: () => number, chanceMult = 1): string | null {

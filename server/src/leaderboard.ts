@@ -12,14 +12,17 @@ export const LEADERBOARD_SIZE = 50;
 /** Each list is kept this long in each isolate, so a crowd opening the window costs one D1 read per board, not one each. */
 export const LEADERBOARD_TTL_MS = 60_000;
 
-const cache = new Map<Leaderboard, { at: number; rows: RankRow[] }>();
+const cache = new Map<string, { at: number; rows: RankRow[] }>();
 
-export async function realmBoard(db: D1Database): Promise<RankRow[]> {
+/** The condition that leaves admin accounts out (nothing when an admin asks to see everyone). */
+const skipAdmin = (all: boolean): string => (all ? "1 = 1" : "a.role != 'admin'");
+
+export async function realmBoard(db: D1Database, all = false): Promise<RankRow[]> {
   const { results } = await db
     .prepare(
       `SELECT c.name AS name, c.realm AS realm, c.stage AS stage, c.exp AS value
          FROM characters c JOIN accounts a ON a.id = c.account_id
-        WHERE a.role != 'admin' AND c.deleted_at IS NULL
+        WHERE ${skipAdmin(all)} AND c.deleted_at IS NULL
         ORDER BY c.realm DESC, c.stage DESC, c.exp DESC, c.name
         LIMIT ?`,
     )
@@ -28,12 +31,12 @@ export async function realmBoard(db: D1Database): Promise<RankRow[]> {
   return results;
 }
 
-async function wealthBoard(db: D1Database): Promise<RankRow[]> {
+async function wealthBoard(db: D1Database, all: boolean): Promise<RankRow[]> {
   const { results } = await db
     .prepare(
       `SELECT c.name AS name, c.realm AS realm, c.stage AS stage, b.balance AS value
          FROM currency_balances b JOIN characters c ON c.id = b.character_id JOIN accounts a ON a.id = c.account_id
-        WHERE b.currency = 'linh_thach' AND b.balance > 0 AND a.role != 'admin' AND c.deleted_at IS NULL
+        WHERE b.currency = 'linh_thach' AND b.balance > 0 AND ${skipAdmin(all)} AND c.deleted_at IS NULL
         ORDER BY b.balance DESC, c.name
         LIMIT ?`,
     )
@@ -58,14 +61,14 @@ interface WornRow {
  * Power, gear and pháp bảo boards need every character's worn pieces, so they read all non-admin characters with their worn items and rank
  * in code (one query). Fine for a small population; with thousands of characters keep a stored score per character instead.
  */
-async function wornBoard(db: D1Database, board: "power" | "gear" | "artifact"): Promise<RankRow[]> {
+async function wornBoard(db: D1Database, board: "power" | "gear" | "artifact", all: boolean): Promise<RankRow[]> {
   const { results } = await db
     .prepare(
       `SELECT c.id AS id, c.name AS name, c.realm AS realm, c.stage AS stage, c.root_grade AS root_grade, ${STAT_DEFS.map((d) => `c.${d.column} AS ${d.column}`).join(", ")},
               i.item_type AS item_type, i.equip_slot AS equip_slot, i.refine_level AS refine_level
          FROM characters c JOIN accounts a ON a.id = c.account_id
          LEFT JOIN item_instances i ON i.owner_character_id = c.id AND i.equip_slot IS NOT NULL
-        WHERE a.role != 'admin' AND c.deleted_at IS NULL`,
+        WHERE ${skipAdmin(all)} AND c.deleted_at IS NULL`,
     )
     .all<WornRow>();
   const byChar = new Map<string, { row: WornRow; worn: Array<{ type: string; slot: string; refine: number }> }>();
@@ -90,11 +93,13 @@ async function wornBoard(db: D1Database, board: "power" | "gear" | "artifact"): 
   return rows.slice(0, LEADERBOARD_SIZE);
 }
 
-export async function getLeaderboard(db: D1Database, board: Leaderboard = "realm", now = Date.now()): Promise<RankRow[]> {
-  const hit = cache.get(board);
+/** `all` (an admin's request only) puts the admin accounts in the list too. */
+export async function getLeaderboard(db: D1Database, board: Leaderboard = "realm", now = Date.now(), all = false): Promise<RankRow[]> {
+  const key = `${board}${all ? ":all" : ""}`;
+  const hit = cache.get(key);
   if (hit && now - hit.at < LEADERBOARD_TTL_MS) return hit.rows;
-  const rows = board === "realm" ? await realmBoard(db) : board === "wealth" ? await wealthBoard(db) : await wornBoard(db, board);
-  cache.set(board, { at: now, rows });
+  const rows = board === "realm" ? await realmBoard(db, all) : board === "wealth" ? await wealthBoard(db, all) : await wornBoard(db, board, all);
+  cache.set(key, { at: now, rows });
   return rows;
 }
 

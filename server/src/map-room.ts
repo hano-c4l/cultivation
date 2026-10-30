@@ -155,6 +155,7 @@ import { getNpcs } from "./npcs";
 import { saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import type { SpiritualRoot } from "@game/shared";
+import { DEFAULT_MAX_BATCH, coursesOf, scaleBrew } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -730,6 +731,8 @@ export class MapRoom extends DurableObject<Env> {
       case "brew_start":
       case "brew_collect":
         return this.handleBrew(ws, state, msg);
+      case "dojo_learn":
+        return this.handleDojoLearn(ws, state, msg);
       case "waygate_go":
         return void this.startWaygate(ws, state, msg);
       case "npc_open":
@@ -2439,6 +2442,7 @@ export class MapRoom extends DurableObject<Env> {
         if (spot.kind === "smith" && msg.view !== "shop") return this.sendSmith(ws, id, npcId);
         if (spot.kind === "waygate") return this.sendWaygate(ws, state.mapId, npcId);
         if (spot.kind === "alchemist" && msg.view === "brew") return this.sendBrew(ws, id, npcId);
+        if (spot.kind === "master") return this.sendDojo(ws, id, npcId);
       }
       // The blacksmith and the alchemist deal in goods too when they have a stock (a merchant record under their id): the shop tab of their window.
       if (spot.kind !== "merchant" && spot.kind !== "alchemist" && spot.kind !== "smith") return;
@@ -2608,6 +2612,59 @@ export class MapRoom extends DurableObject<Env> {
     this.send(ws, { t: "brew", npc: npcId, jobs, tuning: tune, tabs: npcTabs("alchemist", true), now: Date.now() });
   }
 
+  /** The martial master's window: the courses of this master the character does not have yet, and whether the realm allows each now. */
+  private async sendDojo(ws: WebSocket, id: string, npcId: string): Promise<void> {
+    const [cfg, who] = await Promise.all([getTuning(this.env.DB).then((t) => t.dojo), this.casterOf(id)]);
+    if (!who) return;
+    const courses = coursesOf(cfg, npcId)
+      .map((c) => ({ course: c, skill: getSkill(c.skill) }))
+      .filter((x) => x.skill !== undefined && !who.granted.includes(x.course.skill))
+      .map((x) => ({ skill: x.course.skill, cost: x.course.cost, ok: canLearn(x.skill!, who.realm, who.stage) }));
+    this.send(ws, { t: "dojo", npc: npcId, courses });
+  }
+
+  /** Learning from the master: the fee and the skill row go in ONE batch (a skill already known clashes on the primary key and rolls the fee back too). */
+  private handleDojoLearn(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "dojo_learn" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "master") return this.send(ws, { t: "inv_error", reason: "far" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "inv_error", reason: "murderer" });
+    if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      const cfg = (await getTuning(this.env.DB)).dojo;
+      const course = coursesOf(cfg, msg.npc).find((c) => c.skill === msg.skill);
+      const skill = getSkill(msg.skill);
+      const who = await this.casterOf(id);
+      if (!course || !skill || !who) return this.send(ws, { t: "inv_error", reason: "invalid" });
+      if (who.granted.includes(skill.id)) return this.send(ws, { t: "inv_error", reason: "known" });
+      if (!canLearn(skill, who.realm, who.stage)) return this.send(ws, { t: "inv_error", reason: "level_low" });
+      const insert = this.env.DB.prepare("INSERT INTO character_skills (character_id, skill_id, learned_at, source, realm) VALUES (?, ?, ?, 'learned', ?)").bind(id, skill.id, now, skill.realm);
+      try {
+        if (course.cost > 0) {
+          const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -course.cost, reason: `dojo:${skill.id}`, actor: "system" }, [insert]);
+          if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+          if (r.status !== "applied") return this.send(ws, { t: "inv_error", reason: "busy" });
+          this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+        } else await this.env.DB.batch([insert]);
+      } catch (err) {
+        if (/character_skills|UNIQUE/i.test(String(err))) return this.send(ws, { t: "inv_error", reason: "known" });
+        console.error("dojo learn failed", id, err);
+        return this.send(ws, { t: "inv_error", reason: "busy" });
+      }
+      (await this.getSkillRows(id)).push({ skill_id: skill.id, source: "learned", realm: skill.realm, level: 0, mastery: 0 });
+      this.sim?.addGranted(id, skill.id);
+      this.sendToCharacter(id, { t: "skills", ids: availableSkills([...who.granted, skill.id], who.gear) });
+      this.sendToCharacter(id, { t: "skill_state", id: skill.id, lv: 0, xp: 0 });
+      this.send(ws, { t: "dojo_ok", skill: skill.id, cost: course.cost });
+      await this.sendDojo(ws, id, msg.npc);
+    });
+  }
+
   /** Alchemist commands: start a brewing (materials and Linh Thạch taken now) and collect a finished one. Same checks as the other NPCs. */
   private handleBrew(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "brew_start" | "brew_collect" }>): void {
     const now = Date.now();
@@ -2622,13 +2679,15 @@ export class MapRoom extends DurableObject<Env> {
     const id = state.id;
     void this.bagTask(id, async () => {
       if (msg.t === "brew_collect") return this.brewCollect(ws, id, msg.npc, msg.job);
-      return this.brewStart(ws, id, msg.npc, msg.recipe);
+      return this.brewStart(ws, id, msg.npc, msg.recipe, msg.count ?? 1);
     });
   }
 
-  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string): Promise<void> {
+  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string, count: number): Promise<void> {
     const cfg = (await getTuning(this.env.DB)).alchemy;
-    const recipe = cfg.recipes.find((r) => r.id === recipeId && r.enabled);
+    const base = cfg.recipes.find((r) => r.id === recipeId && r.enabled);
+    if (base && count > (cfg.maxBatch ?? DEFAULT_MAX_BATCH)) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    const recipe = base ? scaleBrew(base, count, cfg) : undefined; // a run of several batches: more of everything, and the time grows less
     const usable = (item: string) => {
       const def = getItemDef(item);
       return def !== undefined && def.disabled !== true;

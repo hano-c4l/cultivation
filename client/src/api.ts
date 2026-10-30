@@ -52,7 +52,7 @@ export const api = {
   me: () => call<Me>("GET", "/api/me"),
   register: (email: string, password: string) => call<{ ok: true }>("POST", "/api/register", { email, password }),
   login: (email: string, password: string) => call<{ ok: true }>("POST", "/api/login", { email, password }),
-  leaderboard: (board: string) => call<{ rows: Array<{ name: string; realm: number; stage: number; value: number }> }>("GET", `/api/leaderboard?board=${board}`),
+  leaderboard: (board: string, all = false) => call<{ rows: Array<{ name: string; realm: number; stage: number; value: number }> }>("GET", `/api/leaderboard?board=${board}${all ? "&all=1" : ""}`),
   logout: () => call<{ ok: true }>("POST", "/api/logout"),
   selectCharacter: (id: string) => call<{ character: PublicCharacter }>("POST", "/api/character/select", { id }),
   deselectCharacter: () => call<{ ok: true }>("POST", "/api/character/deselect"),
