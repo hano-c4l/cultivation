@@ -78,3 +78,17 @@ describe("realm tags and hats", () => {
     expect(shapes.every((s) => s >= 0 && s < HAT_SHAPES)).toBe(true);
   });
 });
+
+describe("meditation EXP", () => {
+  it("grows with the realm and stays below what hunting pays each second", async () => {
+    const { meditationExpPerSecond, killExp } = await import("./combat");
+    let last = 0;
+    for (let realm = 0; realm <= 5; realm++) {
+      const rate = meditationExpPerSecond(realm);
+      expect(rate).toBeGreaterThan(last);
+      last = rate;
+      // hunting: one ordinary kill about every 6 seconds is the slowest a player kills; sitting is a fraction of that
+      expect(rate).toBeLessThan(killExp({ realm, tier: 4, rank: "normal" }, realm, 0) / 6);
+    }
+  });
+});

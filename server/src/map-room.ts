@@ -152,10 +152,10 @@ import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
 import { getNpcs } from "./npcs";
-import { saveMounted, savePkScores } from "./characters";
+import { grantExp, saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import type { SpiritualRoot } from "@game/shared";
-import { DEFAULT_MAX_BATCH, coursesOf, scaleBrew } from "@game/shared";
+import { DEFAULT_MAX_BATCH, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -214,6 +214,8 @@ interface PlayerState {
   id: string;
   /** Meditating (kept with the socket so a rebuilt simulation sits the character down again). */
   med?: boolean;
+  /** When the meditation EXP was last settled (ms); it is settled again at the next tick, at standing up and at leaving. */
+  medAt?: number;
   /** The attack chosen to stand in for the plain one (kept with the socket: a rebuilt simulation after sleep would otherwise forget it). */
   pr?: { skill: string; el?: SpiritualRoot };
   /** When the player's last `mail_refresh` was answered. */
@@ -694,6 +696,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleMove(ws, state, msg);
       case "meditate":
         return this.handleMeditate(ws, state, msg.on);
+      case "med_tick":
+        return void this.settleMeditation(ws, Date.now(), true);
       case "portal":
         this.standUp(ws, "moved");
         return this.handlePortal(ws, state);
@@ -1008,6 +1012,7 @@ export class MapRoom extends DurableObject<Env> {
   private async handleLeave(ws: WebSocket): Promise<void> {
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state) return; // already evicted or never joined
+    if (state.med) await this.settleMeditation(ws, Date.now(), false, state); // the stretch sat before leaving still counts
     this.playerGone(state.id, ws);
     await this.failBreakthroughOnExit(ws, state, "left");
     // Keep the attachment until the save finished: a claim arriving meanwhile must still find this
@@ -1881,8 +1886,18 @@ export class MapRoom extends DurableObject<Env> {
     state.lastMeditateAt = now;
     ws.serializeAttachment(state);
     if (!on) return void this.standUp(ws, "moved", true);
-    if (this.mapOf(state.mapId).safe) return void this.send(ws, { t: "meditating", on: false, reason: "safe" });
     if (state.bt || state.tp || this.isMoving(state)) return void this.send(ws, { t: "meditating", on: false, reason: state.bt || state.tp ? "busy" : "moved" });
+    if (this.mapOf(state.mapId).safe) {
+      // A town has no simulation: the character just sits (it heals there anyway), and the EXP of the sitting is settled by the room.
+      const here = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+      if (here.transferring) return;
+      here.med = true;
+      here.medAt = Date.now();
+      ws.serializeAttachment(here);
+      this.send(ws, { t: "meditating", on: true });
+      this.broadcastAbout([here.id], { t: "sit", id: here.id, on: true });
+      return;
+    }
     try {
       await this.wake(state.mapId);
     } catch (err) {
@@ -1892,6 +1907,7 @@ export class MapRoom extends DurableObject<Env> {
     const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
     if (fresh.transferring || !this.sim?.setMeditating(fresh.id, true, Date.now())) return void this.send(ws, { t: "meditating", on: false, reason: "died" });
     fresh.med = true;
+    fresh.medAt = Date.now();
     ws.serializeAttachment(fresh);
     this.send(ws, { t: "meditating", on: true });
     this.broadcastAbout([fresh.id], { t: "sit", id: fresh.id, on: true });
@@ -1900,13 +1916,61 @@ export class MapRoom extends DurableObject<Env> {
     if (p) this.sendMp(ws, p, Date.now());
   }
 
+  /**
+   * Pays the EXP of the stretch since the last settlement (at most the tuning's `maxSettleSeconds`): through the simulation when the character is in it, else straight
+   * to D1 (a town has none). `keep` leaves the character sitting (a tick); otherwise `state` is the attachment as it was when the character stood up.
+   */
+  private async settleMeditation(ws: WebSocket, now: number, keep: boolean, standing?: PlayerState): Promise<void> {
+    const state = standing ?? (ws.deserializeAttachment() as PlayerState | null);
+    if (!state || state.med !== true || state.medAt === undefined) return;
+    if (keep && now - state.medAt < 15_000) return; // a tick that comes too soon waits
+    const cfg = tuning().meditation;
+    const seconds = Math.min(now - state.medAt, cfg.maxSettleSeconds * 1000) / 1000;
+    const id = state.id;
+    const live = this.sim?.getPlayer(id);
+    let realm = live?.realm;
+    let bonus = live?.expBonus ?? 0;
+    let row: CharacterRow | null = null;
+    if (realm === undefined) {
+      row = await getCharacterById(this.env.DB, id);
+      if (!row) return;
+      realm = row.realm;
+    }
+    const gain = Math.floor(meditationExpPerSecond(realm, bonus) * seconds);
+    if (gain < 1) return;
+    if (keep) {
+      const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+      fresh.medAt = now;
+      ws.serializeAttachment(fresh);
+    }
+    try {
+      if (live && this.sim) {
+        const r = this.sim.addMeditationExp(id, gain);
+        if (!r) return;
+        this.send(ws, { t: "stats", character: sheetOf(live) });
+        if (r.stagesGained > 0) {
+          this.send(ws, { t: "skills", ids: this.sim.skillsOf(live) });
+          this.sendMp(ws, live, now);
+          await this.flushProgress(id);
+        } else await this.ensureSaveAlarm(now);
+      } else {
+        const updated = await grantExp(this.env.DB, id, gain);
+        if (updated) this.send(ws, { t: "stats", character: toCharacterSheet(updated) });
+      }
+    } catch (err) {
+      console.error("meditation exp failed", id, err);
+    }
+  }
+
   /** Stands the character up (a step, an attack, a skill, a hit): the flag, the simulation and the client. `tell` also answers a plain request to stand up. */
   private standUp(ws: WebSocket, reason: "hit" | "moved" | "died", tell = false): void {
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state) return;
     const was = state.med === true;
     if (was) {
+      void this.settleMeditation(ws, Date.now(), false, state); // the stretch just sat counts, even though the character stands up now
       delete state.med;
+      delete state.medAt;
       ws.serializeAttachment(state);
     }
     const stopped = this.sim?.stopMeditation(state.id, Date.now()) === true;

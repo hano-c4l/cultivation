@@ -151,6 +151,8 @@ export interface Tuning {
   boss: { claimTtlMs: number; tier: number; species: Record<string, string | null> };
   /** The alchemist's brewing: how many brewings a character can have at once and the recipes (see alchemy.ts). */
   alchemy: AlchemyCfg;
+  /** Meditation EXP: the share of a kill's EXP per second of hunting that sitting gives (`huntRatio` of one ordinary kill every `secondsPerKill` seconds), and the longest stretch settled at once (a settlement after a longer silence counts only this much). */
+  meditation: { huntRatio: number; secondsPerKill: number; maxSettleSeconds: number };
   /** The colours of the dots on the mini map (`#rrggbb`): yourself, other players, monsters, the boss, the NPCs and guards, and the doors (to other maps, and the teleport arrays). */
   minimap: { self: string; player: string; monster: string; boss: string; npc: string; portal: string };
   /** The shape of hat drawn by the realm of the hat worn: the rule with the highest `minRealm` the realm reaches wins (shapes are numbered from 0, see client/src/hat-art.ts). */
@@ -507,6 +509,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     species: { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang", town3: null, hoathan: "loi_de_long", luyenhu: "hon_don_ma_ton" },
   },
   alchemy: DEFAULT_ALCHEMY,
+  meditation: { huntRatio: 0.12, secondsPerKill: 6, maxSettleSeconds: 120 },
   minimap: { self: "#ffffff", player: "#4da3ff", monster: "#ff4d4d", boss: "#ffd24a", npc: "#4dff7a", portal: "#b9a4ff" },
   hatLooks: { rules: [{ minRealm: 0, shape: 0 }, { minRealm: 1, shape: 1 }, { minRealm: 2, shape: 3 }, { minRealm: 3, shape: 4 }, { minRealm: 4, shape: 7 }, { minRealm: 5, shape: 8 }] },
   dojo: DEFAULT_DOJO,
@@ -688,6 +691,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   roots: "Linh căn: tỉ lệ và thưởng theo phẩm cấp và theo số hệ",
   pathBonuses: "Thưởng chỉ số của từng hướng tu (khi là chủ tu)",
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
+  meditation: "Tu vi khi ngồi thiền: tỉ lệ so với đánh quái (mỗi giây), thời gian một lần hạ quái, và đoạn thiền dài nhất tính một lần",
   minimap: "Màu các chấm trên bản đồ mini: bản thân, người chơi, quái, boss, NPC và vệ binh, cổng",
   hatLooks: "Hình mũ hiện trên nhân vật theo cảnh giới của mũ đang đội",
   rareBooks: "Bí tịch tuyệt học chỉ rơi từ quái: xác suất mỗi lần hạ quái theo loại quái, và mỗi vòng thưởng của boss",
@@ -1046,6 +1050,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return validAlchemy(value);
     case "dojo":
       return validDojo(value);
+    case "meditation":
+      return num(value.huntRatio, 0, 1) && num(value.secondsPerKill, 1, 600) && int(value.maxSettleSeconds, 10, 3600);
     case "minimap":
       return (["self", "player", "monster", "boss", "npc", "portal"] as const).every((k) => typeof value[k] === "string" && /^#[0-9a-fA-F]{6}$/.test(value[k] as string));
     case "hatLooks":

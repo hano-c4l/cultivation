@@ -61,12 +61,10 @@ export function initDojo(send: (msg: ClientMessage) => void): DojoUi {
       learn.disabled = !c.ok || balance < c.cost;
       learn.title = !c.ok ? vi.dojo.levelLow : balance < c.cost ? vi.dojo.poor : "";
       learn.onclick = () => send({ t: "dojo_learn", npc, skill: c.skill });
-      // The realm tag sits in the top left corner of the skill's icon.
-      const iconBox = el("div", "dj-ic");
-      iconBox.append(icon);
+      // The realm tag sits in the top left corner of the whole row.
       const realm = def?.learn?.realm ?? def?.realm;
-      if (realm !== undefined) iconBox.append(el("span", `eq-tier ${realmClass(realm)}`, REALMS[realm]?.shortVi ?? ""));
-      row.append(iconBox, info, learn);
+      if (realm !== undefined) row.append(el("span", `eq-tier ${realmClass(realm)}`, REALMS[realm]?.shortVi ?? ""));
+      row.append(icon, info, learn);
       panel.append(row);
     }
     panel.append(el("div", "muted", vi.dojo.balance(balance.toLocaleString("vi-VN"))));

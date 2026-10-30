@@ -128,6 +128,8 @@ export type ClientMessage =
   | { t: "mount"; on: boolean; fx?: number; fy?: number }
   /** Sit down to meditate (HP and MP regenerate) or stand up again. Walking, attacking or being hit stands the character up. */
   | { t: "meditate"; on: boolean }
+  /** Sent now and then while sitting: the server settles the EXP of the stretch since the last one (it also does at standing up). */
+  | { t: "med_tick" }
   /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
   | { t: "conn_report"; code: number; reason: string; clean: boolean; downMs: number }
   /** Take a path item (a placeholder for the NPC quest): one per path per character. */
@@ -491,6 +493,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "boss_summon" };
     case "bt_cancel":
       return { t: "bt_cancel" };
+    case "med_tick":
+      return { t: "med_tick" };
     case "meditate":
       return typeof m.on === "boolean" ? { t: "meditate", on: m.on } : null;
     case "mount":

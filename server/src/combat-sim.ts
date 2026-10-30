@@ -1036,6 +1036,22 @@ export class CombatSim {
     this.setRates(p); // the rates that are a share of the maximum follow it
   }
 
+  /** EXP from meditation (the room settles it): the same rule as EXP from a kill. Returns how many stages it paid for, or null when the player is not here or dead. */
+  addMeditationExp(id: string, gain: number): { stagesGained: number } | null {
+    const p = this.players.get(id);
+    if (!p || p.dead) return null;
+    const r = applyExp({ realm: p.realm, stage: p.stage, exp: p.exp, potentialPoints: 0 }, gain);
+    p.exp = r.exp;
+    p.expDirty = true;
+    if (r.stagesGained > 0) {
+      p.stage = r.stage;
+      p.pendingPoints += r.potentialPoints;
+      p.potentialPoints += r.potentialPoints;
+      this.recompute(p, true);
+    }
+    return { stagesGained: r.stagesGained };
+  }
+
   /** Health coming back to `p` from a draining skill (rounded, at least 1 once there is anything to give back). */
   private drainHealth(p: PlayerProfile, amount: number, events: SimEvent[]): void {
     if (p.dead || amount <= 0 || p.hp >= p.maxHp) return;
