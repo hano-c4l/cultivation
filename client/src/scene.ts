@@ -342,6 +342,7 @@ export class GameScene extends Phaser.Scene {
   private mountBtn!: HTMLButtonElement;
   private meditateBtn!: HTMLButtonElement;
   private meditating = false;
+  private medTimer: number | undefined;
   private flightWorn = false;
   private ping = 0;
   private pingSentAt = 0;
@@ -1703,13 +1704,15 @@ export class GameScene extends Phaser.Scene {
   /** Sit down to meditate or stand up (V). The server decides; the button follows its answer. */
   private toggleMeditate(): void {
     if (this.transferring || this.selfDead) return;
-    if (!this.meditating && this.map.safe) return void this.chat.system(vi.meditate.reasons.safe!);
     if (!this.meditating) this.stopAuto("manual"); // a hunt and a meditation do not go together
     this.net.send({ t: "meditate", on: !this.meditating });
   }
 
   private setMeditating(on: boolean): void {
     this.meditating = on;
+    // While sitting, the server is told now and then so it can pay the EXP of the stretch (it also pays when the character stands up or leaves).
+    if (this.medTimer !== undefined) window.clearInterval(this.medTimer);
+    this.medTimer = on ? window.setInterval(() => this.net.send({ t: "med_tick" }), 30_000) : undefined;
     const me = this.actors.get(this.selfId);
     if (me) me.sitting = on; // the figure sits or stands with the server's answer (the "sit" message only tells the others)
     this.meditateBtn.hidden = false;
@@ -1914,10 +1917,12 @@ export class GameScene extends Phaser.Scene {
     if (a.view.alive) {
       a.wview?.followFrame(a.view);
       this.applyReact(a.id, a.view, a.wview, now);
-      const lift = a.mounted ? -8 : 0;
-      a.view.place(x, y - (a.mounted ? 8 : 0), depth);
-      a.wview?.place(x, y - (a.mounted ? 8 : 0), depth + 0.02);
-      this.applyGearLook(a, x, y - (a.mounted ? 8 : 0), depth, moving);
+      // A rider stands 8 px above the ground on the pháp bảo; seated, the rider sits a little higher (on the pháp bảo itself, not in it).
+      const ride = a.mounted ? (sit ? 16 : 8) : 0;
+      const lift = -ride;
+      a.view.place(x, y - ride, depth);
+      a.wview?.place(x, y - ride, depth + 0.02);
+      this.applyGearLook(a, x, y - ride, depth, moving);
       this.syncSeat(a, now, x, y, depth, sit, lift);
     } else {
       a.wview?.destroy();
@@ -2020,9 +2025,9 @@ export class GameScene extends Phaser.Scene {
     // The crossed legs: a robe-coloured mound (a darker knee line in front) where the legs were cut away, a little wider than the body.
     const robe = mixTint(a.lk?.r !== undefined ? (hexOf(robeTintOf(a.lk.r)) ?? 0xd8d0bc) : 0xd8d0bc, 0x30303c, 0.25);
     if (!a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
-    a.legs.setPosition(x, y - 3 + lift).setFillStyle(robe).setDepth(depth + 0.01);
+    a.legs.setPosition(x, y + lift - (a.mounted ? 1 : 3)).setFillStyle(robe).setDepth(depth + 0.01);
     if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
-    a.seat.setPosition(x, y + 3 + (a.mounted ? -2 : 0)).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
+    a.seat.setPosition(x, y + 3 + (a.mounted ? lift + 2 : 0)).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
     if ((a.moteAt ?? 0) > now) return;
     a.moteAt = now + 260 + Math.random() * 200;
     // For yourself the motes show what is coming back: green while HP is below the maximum, blue while MP is.
