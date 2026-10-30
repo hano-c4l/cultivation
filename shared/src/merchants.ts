@@ -4,7 +4,6 @@ import { gearStyleOf, type Gender } from "./gender";
 import { getItemDef, itemsGeneration } from "./items";
 import { KEEP_LEVEL_ITEM, keepLevelPrice } from "./smith";
 import { tuningGeneration } from "./tuning";
-import { bookItemId } from "./skills";
 import { SELL_RATE, itemValue, offer, sellPrice, shopCategoryOf, type ShopCategory, type ShopOffer } from "./shop";
 
 /**
@@ -72,28 +71,6 @@ const PLAIN_HIGH: StockRule[] = [
   { id: "hoi_linh_dan", kind: "item", item: "hoi_linh_dan" },
   { id: "dai_hoi_linh_dan", kind: "item", item: "dai_hoi_linh_dan", dailyLimit: 30 },
 ];
-const book = (skill: string, price: number): StockRule => ({ id: bookItemId(skill), kind: "item", item: bookItemId(skill), price });
-/** Skill books (bí tịch), unlimited because a skill can only be learned once: Luyện Khí's two basic ones and the strongest of each element for Trúc Cơ. */
-const BOOKS_LOW: StockRule[] = [book("cuong_than", 2_000), book("ngu_kiem_tram", 3_000), ...SPIRITUAL_ROOTS.map((el) => book(`${el}_3`, 20_000))];
-/** The second town's books: a guard, a heal and a battle cry, and the strongest skill of each element for Kim Đan and for Nguyên Anh. */
-const BOOKS_HIGH: StockRule[] = [
-  book("ho_the_kd", 150_000),
-  book("hoi_nguyen_kd", 200_000),
-  book("cuong_than_na", 1_500_000),
-  ...SPIRITUAL_ROOTS.map((el) => book(`${el}_4`, 300_000)),
-  ...SPIRITUAL_ROOTS.map((el) => book(`${el}_5`, 3_000_000)),
-];
-/** The third town's books: a guard, a heal and a battle cry for Hóa Thần and for Luyện Hư, and the strongest skill of each element for both. */
-const BOOKS_TOP: StockRule[] = [
-  book("ho_the_ht", 15_000_000),
-  book("hoi_than_ht", 20_000_000),
-  book("chien_y_ht", 30_000_000),
-  book("ho_the_lh", 150_000_000),
-  book("hoi_nguyen_lh", 200_000_000),
-  book("chien_y_lh", 300_000_000),
-  ...SPIRITUAL_ROOTS.map((el) => book(`${el}_6`, 30_000_000)),
-  ...SPIRITUAL_ROOTS.map((el) => book(`${el}_7`, 300_000_000)),
-];
 /** The third town's alchemist: the plain pills with big daily limits and the Hóa Thần pills; the Luyện Hư pills are brewed (alchemy.ts). */
 const PLAIN_TOP: StockRule[] = [
   { id: "dai_hoi_huyet_dan", kind: "item", item: "dai_hoi_huyet_dan", dailyLimit: 60 },
@@ -114,7 +91,6 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
     // The merchant deals in a little of everything: the basic pill and the first tier of gear. The alchemist and the blacksmith are the specialists.
     stock: [
       { id: "hoi_huyet_dan", kind: "item", item: "hoi_huyet_dan" },
-      ...BOOKS_LOW,
       { id: "gear_low", kind: "gear", realms: [0, 1], tiers: [1], grade: 1 },
       { id: "ttp_town", kind: "item", item: "ttp_town" },
       { id: "keep_level", kind: "keep_level" },
@@ -129,7 +105,6 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
     buys: null,
     stock: [
       { id: "dai_hoi_huyet_dan", kind: "item", item: "dai_hoi_huyet_dan", dailyLimit: 30 },
-      ...BOOKS_HIGH,
       { id: "gear_high", kind: "gear", realms: [2, 3], tiers: [1], grade: 1 },
       { id: "ttp_town2", kind: "item", item: "ttp_town2" },
       { id: "keep_level", kind: "keep_level" },
@@ -158,7 +133,6 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
     buys: null,
     stock: [
       { id: "than_huyet_dan", kind: "item", item: "than_huyet_dan", dailyLimit: 30 },
-      ...BOOKS_TOP,
       { id: "gear_top", kind: "gear", realms: [4, 5], tiers: [1], grade: 1 },
       { id: "ttp_town3", kind: "item", item: "ttp_town3" },
       { id: "keep_level", kind: "keep_level" },

@@ -79,6 +79,16 @@ export function killExp(source: KillSource, playerRealm: number, expBonusPct: nu
   return expForKill(base, expBonusPct);
 }
 
+/**
+ * EXP a meditating character gains each second: a share (`huntRatio`) of what one ordinary kill on its own realm's map pays, spread over the seconds a kill takes
+ * (`secondsPerKill`). It grows with the realm like the kills do, but stays a fraction of hunting (the tuning `meditation`), so sitting never beats fighting.
+ */
+export function meditationExpPerSecond(realm: number, expBonusPct = 0): number {
+  const m = tuning().meditation;
+  const perKill = killExp({ realm, tier: 4, rank: "normal" }, realm, expBonusPct);
+  return (perKill * m.huntRatio) / Math.max(1, m.secondsPerKill);
+}
+
 /** Weights of a rare monster's reward: share of its HP dealt as damage, plus the last hit. They add up to 1. */
 export const DAMAGE_WEIGHT = 0.7;
 export const LAST_HIT_WEIGHT = 0.3;

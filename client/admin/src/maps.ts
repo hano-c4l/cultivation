@@ -1,3 +1,4 @@
+import { mapArtSection } from "./looks";
 import { CELLS_PER_TILE, buildFromRecipe, type GridOp, type MapRecipe } from "../../../shared/src/map";
 import { mapRouteProblems } from "../../../shared/src/map-route";
 import { api, h, listView, navigate } from "./kit";
@@ -218,6 +219,7 @@ export function mapEditPage(): HTMLElement {
   void api<View>(`/api/admin/maps/recipe?id=${encodeURIComponent(id)}`).then((res) => {
     if (res.status !== 200) return void root.replaceChildren(h("p", { class: "err" }, "Không tìm thấy bản đồ."), h("a", { href: "/admin/maps" }, "‹ Danh sách"));
     root.replaceChildren(form(res.data));
+    void mapArtSection(id).then((node) => root.append(node));
   });
   return root;
 }

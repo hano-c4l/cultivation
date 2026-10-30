@@ -1,4 +1,4 @@
-import { type RollPosition, rollPosition, type RolledStats, resonanceBonus, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
+import { itemRealmOf, type RollPosition, rollPosition, type RolledStats, resonanceBonus, EQUIP_RATE_KEYS, EQUIP_STAT_KEYS, REALMS, resonates, type WearerCtx, refineExpNeeded, refineLevelOf, STAGES_PER_REALM, STAT_DEFS, equipTierTag, equipmentInfo, getItemDef, scaledStats, type EquipStatKey } from "@game/shared";
 import { vi } from "./locales/vi";
 
 /** "+12 Công kích" style text for one stat; rates are percentage points. */
@@ -47,7 +47,10 @@ export function itemTierText(type: string, lv?: number): string | null {
 /** The small tag for a cell or row ("LK1"), or null for items without a realm. */
 export function itemTierTag(type: string, lv?: number): string | null {
   const info = equipmentInfo(type);
-  if (!info) return null;
+  if (!info) {
+    const realm = itemRealmOf(type); // a pill, an ore or a book: the realm alone ("LK")
+    return realm === null ? null : (REALMS[realm]?.shortVi ?? null);
+  }
   if (info.kind === "bonded") {
     const level = refineLevelOf(info, lv);
     return equipTierTag({ realm: Math.floor(level / STAGES_PER_REALM), tier: (level % STAGES_PER_REALM) + 1 });
@@ -58,7 +61,7 @@ export function itemTierTag(type: string, lv?: number): string | null {
 /** The realm index behind itemTierTag (to colour the tag by realm), or null for items without one. */
 export function itemTierRealm(type: string, lv?: number): number | null {
   const info = equipmentInfo(type);
-  if (!info) return null;
+  if (!info) return itemRealmOf(type);
   return info.kind === "bonded" ? Math.floor(refineLevelOf(info, lv) / STAGES_PER_REALM) : info.realm;
 }
 

@@ -187,6 +187,29 @@
       #shop-panel .shop-filters { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0; } #shop-panel .shop-ms { position: relative; } #shop-panel .shop-ms summary { cursor: pointer; padding: 3px 8px; border: 1px solid var(--ui-border); border-radius: 6px; background: #2a3245; list-style: none; user-select: none; }
       #shop-panel .shop-ms-list { position: absolute; z-index: 2; left: 0; top: 100%; min-width: 120px; margin-top: 2px; padding: 4px 8px; border: 1px solid var(--ui-border); border-radius: 6px; background: #1b2130; } #shop-panel .shop-ms-list label { display: block; padding: 2px 0; cursor: pointer; white-space: nowrap; }
       #shop-panel .shop-price { color: var(--ui-highlight); font-variant-numeric: tabular-nums; }
+      /* The mini map: top right, to the left of the column of window buttons. */
+      /* The HUD toggle: the last button of the top bar. Folded, only the wallet, the toggle and the mini map stay; the window buttons and the log out buttons go. */
+      #hud-toggle { padding: 6px 10px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); cursor: pointer; line-height: 0; }
+      #hud-toggle[hidden] { display: none; } #hud-toggle .ic { width: 20px; height: 20px; }
+      body.hud-folded #switch-char, body.hud-folded #logout, body.hud-folded #char-btn, body.hud-folded #eq-btn, body.hud-folded #sk-btn, body.hud-folded #bag-btn, body.hud-folded #quest-btn, body.hud-folded #rank-btn,
+      body.hud-folded #mount-btn, body.hud-folded #meditate-btn, body.hud-folded #auto-btn { display: none !important; }
+      body.hud-folded #minimap { right: 12px !important; }
+      #minimap[hidden] { display: none; }
+      #minimap { position: fixed; right: 60px; top: 48px; z-index: 5; padding: 3px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); pointer-events: none; }
+      #minimap canvas { display: block; max-width: 100%; height: auto; }
+      @media (max-width: 700px) { #minimap { right: 56px; top: 74px; transform: scale(0.8); transform-origin: top right; } }
+      #dojo-panel[hidden] { display: none; }
+      #dojo-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 120px); overflow-y: auto; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 20; }
+      #dojo-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; min-height: 28px; }
+      #dojo-panel button:disabled { opacity: 0.45; cursor: default; }
+      #dojo-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #dojo-panel .eq-head b { flex: 1; font-size: 15px; }
+      #dojo-panel .muted { opacity: 0.65; font-size: 12px; margin: 4px 0; }
+      #dojo-panel .dj-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--ui-border); border-radius: 6px; }
+      #dojo-panel .dj-row { position: relative; padding-left: 14px; }
+      #dojo-panel .dj-row .ic { width: 34px; height: 34px; flex: none; }
+      #dojo-panel .dj-row > .eq-tier { position: absolute; left: 0; top: 0; padding: 1px 5px; border-radius: 6px 0 6px 0; background: rgba(0, 0, 0, 0.65); font-size: 10px; font-weight: 700; line-height: 1.2; pointer-events: none; }
+      #dojo-panel .dj-info { flex: 1; min-width: 0; } #dojo-panel .dj-name { font-weight: 600; } #dojo-panel .dj-price { color: var(--ui-highlight); font-variant-numeric: tabular-nums; }
+      #dojo-panel .dj-ok { color: #7dff9c; margin: 4px 0; } #dojo-panel .dj-err { color: #ff8a8a; margin: 4px 0; }
       #waygate-panel[hidden] { display: none; }
       #waygate-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(340px, calc(100vw - 16px)); padding: 10px; border-radius: 10px; background: var(--ui-panel);
         color: var(--ui-text); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 6; }
@@ -324,6 +347,17 @@
       #eq-panel .eq-name .ic, #eq-panel .eq-opt > .ic { width: 22px; height: 22px; }
       #bag-panel .bag-cell.broken { opacity: 0.45; filter: grayscale(1); }
       #bag-panel .bag-cell.selected { border-color: var(--ui-highlight); box-shadow: 0 0 0 1px var(--ui-highlight) inset; }
+      /* Gear upgraded to +7 or more shines in the bag and the equipment window: a pulsing aura at +7 to +9, a gold-and-violet flame with sparkles at +10. */
+      @keyframes gl7 { 0%, 100% { box-shadow: 0 0 3px 0 rgba(120, 200, 255, 0.55), 0 0 6px 1px rgba(120, 200, 255, 0.25) inset; } 50% { box-shadow: 0 0 9px 2px rgba(150, 225, 255, 0.95), 0 0 9px 2px rgba(150, 225, 255, 0.45) inset; } }
+      @keyframes gl10 { 0% { box-shadow: 0 0 6px 1px #ffd54a, 0 0 10px 2px rgba(255, 213, 74, 0.5) inset; border-color: #ffd54a; } 50% { box-shadow: 0 0 12px 3px #c77dff, 0 0 12px 3px rgba(199, 125, 255, 0.55) inset; border-color: #ff9ae8; } 100% { box-shadow: 0 0 6px 1px #ffd54a, 0 0 10px 2px rgba(255, 213, 74, 0.5) inset; border-color: #ffd54a; } }
+      @keyframes glspark { 0% { transform: translateY(0) scale(0.4); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(-14px) scale(1); opacity: 0; } }
+      #bag-panel .bag-cell.gl7, #eq-panel .eq-row.gl7, #eq-panel .eq-info.gl7 { border-color: #7fd0ff; animation: gl7 1.8s ease-in-out infinite; }
+      #bag-panel .bag-cell.gl10, #eq-panel .eq-row.gl10, #eq-panel .eq-info.gl10 { animation: gl10 1.5s linear infinite; }
+      #bag-panel .bag-cell.gl7::after, #bag-panel .bag-cell.gl10::after { content: "✦"; position: absolute; right: 3px; bottom: 3px; font-size: 9px; line-height: 1; color: #bfe9ff; text-shadow: 0 0 4px #4fc3f7; animation: glspark 1.6s ease-out infinite; pointer-events: none; }
+      #bag-panel .bag-cell.gl10::after { left: 4px; right: auto; top: auto; bottom: 4px; font-size: 11px; color: #fff3a0; text-shadow: 0 0 5px #ffb300, 0 0 8px #c77dff; animation-duration: 1.1s; }
+      #bag-panel .bag-cell.gl10::before { content: "✧"; position: absolute; right: 4px; top: 4px; font-size: 9px; line-height: 1; color: #ffe9ff; text-shadow: 0 0 5px #c77dff; animation: glspark 1.3s ease-out 0.5s infinite; pointer-events: none; z-index: 1; }
+      #eq-panel .eq-row.gl10 .eq-label, #eq-panel .eq-info.gl10 .eq-label { color: #ffe27a; text-shadow: 0 0 6px #c77dff; } #eq-panel .eq-row.gl7 .eq-label { color: #bfe9ff; text-shadow: 0 0 5px #4fc3f7; }
+      @media (prefers-reduced-motion: reduce) { #bag-panel .bag-cell.gl7, #bag-panel .bag-cell.gl10, #eq-panel .gl7, #eq-panel .gl10 { animation: none; } #bag-panel .bag-cell::after, #bag-panel .bag-cell::before { display: none; } }
       #bag-panel .bag-cell.cat-equipment { background: rgba(255, 183, 77, 0.25); }
       #bag-panel .bag-cell.cat-skill_book { background: rgba(171, 71, 188, 0.35); }
       #bag-panel .bag-cell.cat-consumable { background: rgba(229, 57, 53, 0.35); } #bag-panel .bag-cell.cat-material { background: rgba(102, 187, 106, 0.3); }
@@ -414,7 +448,7 @@
     <div id="auth" hidden></div>
     <div id="hud">Đang tải…</div>
     <div id="vitals-wrap"><div id="vitals" hidden><span id="vitals-text"></span><div id="vitals-bar"><div id="vitals-fill"></div></div><span id="vitals-mp-text"></span><div id="vitals-bar"><div id="vitals-mp-fill"></div></div></div><div id="pk-row"></div><div id="buffs" hidden></div></div>
-    <div id="topbar"><div id="wallet" hidden></div><button id="switch-char" hidden></button><button id="logout" hidden></button></div>
+    <div id="topbar"><div id="wallet" hidden></div><button id="switch-char" hidden></button><button id="logout" hidden></button><button id="hud-toggle" hidden></button></div>
     <div id="chat" hidden>
       <div id="chat-tabs"></div>
       <div id="chat-log"></div>

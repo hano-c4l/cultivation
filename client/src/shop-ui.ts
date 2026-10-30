@@ -1,6 +1,8 @@
 import { iconFor } from "./icons";
 import {
   REALMS,
+  DEFAULT_MAX_BATCH,
+  scaleBrew,
   SHOP_CATEGORIES,
   SHOP_SELL_MANY_MAX,
   ALL_ROOTS,
@@ -103,6 +105,8 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   const nameOf = (type: string) => getItemDef(type)?.nameVi ?? type;
   const withIcon = (node: HTMLElement, type: string): HTMLElement => {
     node.prepend(iconFor(type));
+    const tag = itemTierTag(type);
+    if (tag) node.prepend(el("span", `eq-tier ${realmClass(itemTierRealm(type))}`, tag)); // the realm of the pill, ore or book
     return node;
   };
 
@@ -329,6 +333,9 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   /** Local time as the server's clock reads it. */
   const serverNow = () => Date.now() + skewMs;
 
+  /** The number of batches picked for each recipe on the brewing tab. */
+  const batches = new Map<string, number>();
+
   /** The brewing tab: the brewings going (with a countdown and a button to collect) and the recipes the alchemist knows. */
   function renderBrew(): HTMLElement {
     const box = el("div");
@@ -350,16 +357,37 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     const recipes = cfg.recipes.filter((r) => r.enabled && getItemDef(r.output) && !getItemDef(r.output)?.disabled);
     if (recipes.length === 0) box.append(el("div", "muted", vi.brew.noRecipes));
     const countOf = (type: string) => getBag().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0);
-    for (const recipe of recipes) {
+    const maxBatch = cfg.maxBatch ?? DEFAULT_MAX_BATCH;
+    for (const base of recipes) {
+      // A run of several batches: the materials, the Linh Thạch and the pills grow with the number, the time less than that. The number is kept between redraws (the tab redraws every second).
+      const afford = Math.max(1, Math.min(maxBatch, ...base.inputs.map((i) => Math.floor(countOf(i.item) / i.qty))));
+      const n = Math.max(1, Math.min(batches.get(base.id) ?? 1, maxBatch));
+      const recipe = scaleBrew(base, n, cfg);
       const row = el("div", "shop-row");
       const main = el("div");
-      main.append(withIcon(el("div", "shop-name", `${recipe.nameVi} → ${nameOf(recipe.output)} ×${recipe.qty}`), recipe.output));
+      main.append(withIcon(el("div", "shop-name", `${base.nameVi} → ${nameOf(base.output)} ×${recipe.qty}`), base.output));
       const mats = recipe.inputs.map((i) => `${nameOf(i.item)} ${i.qty} (${vi.brew.have(countOf(i.item))})`).join(", ");
       main.append(el("div", "muted", `${mats} · ${vi.brew.cost(recipe.linhThach)} · ${vi.brew.left(recipe.seconds)}`));
+      const step = (to: number) => {
+        batches.set(base.id, Math.max(1, Math.min(maxBatch, to)));
+        render();
+      };
+      const less = el("button", undefined, "−");
+      less.onclick = () => step(n - 1);
+      less.disabled = n <= 1;
+      const more = el("button", undefined, "+");
+      more.onclick = () => step(n + 1);
+      more.disabled = n >= maxBatch;
+      const most = el("button", undefined, vi.brew.most);
+      most.title = vi.brew.mostHint;
+      most.onclick = () => step(afford);
+      const amount = el("span", "brew-count", `${vi.brew.batches}: ${n}`);
       const start = el("button", undefined, vi.brew.start);
       start.disabled = jobs.length >= cfg.maxJobs || recipe.inputs.some((i) => countOf(i.item) < i.qty);
-      start.onclick = () => send({ t: "brew_start", npc, recipe: recipe.id });
-      row.append(main, start);
+      start.onclick = () => send({ t: "brew_start", npc, recipe: base.id, ...(n > 1 ? { count: n } : {}) });
+      const pick = el("div", "brew-pick");
+      pick.append(less, amount, more, most, start);
+      row.append(main, pick);
       box.append(row);
     }
     return box;

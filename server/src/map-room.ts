@@ -152,8 +152,10 @@ import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
 import { getNpcs } from "./npcs";
-import { saveMounted, savePkScores } from "./characters";
+import { grantExp, saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
+import type { SpiritualRoot } from "@game/shared";
+import { DEFAULT_MAX_BATCH, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -212,6 +214,10 @@ interface PlayerState {
   id: string;
   /** Meditating (kept with the socket so a rebuilt simulation sits the character down again). */
   med?: boolean;
+  /** When the meditation EXP was last settled (ms); it is settled again at the next tick, at standing up and at leaving. */
+  medAt?: number;
+  /** The attack chosen to stand in for the plain one (kept with the socket: a rebuilt simulation after sleep would otherwise forget it). */
+  pr?: { skill: string; el?: SpiritualRoot };
   /** When the player's last `mail_refresh` was answered. */
   lastMailRefreshAt?: number;
   /** The account is an admin (set by the Worker when the socket opens; a role change counts from the next connection). */
@@ -690,6 +696,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleMove(ws, state, msg);
       case "meditate":
         return this.handleMeditate(ws, state, msg.on);
+      case "med_tick":
+        return void this.settleMeditation(ws, Date.now(), true);
       case "portal":
         this.standUp(ws, "moved");
         return this.handlePortal(ws, state);
@@ -727,6 +735,8 @@ export class MapRoom extends DurableObject<Env> {
       case "brew_start":
       case "brew_collect":
         return this.handleBrew(ws, state, msg);
+      case "dojo_learn":
+        return this.handleDojoLearn(ws, state, msg);
       case "waygate_go":
         return void this.startWaygate(ws, state, msg);
       case "npc_open":
@@ -742,8 +752,14 @@ export class MapRoom extends DurableObject<Env> {
       case "cast":
         this.standUp(ws, "moved");
         return this.handleCast(ws, state, msg);
-      case "primary":
-        return void this.sim?.setPrimary(state.id, msg.skill, msg.el);
+      case "primary": {
+        const set = this.sim?.setPrimary(state.id, msg.skill, msg.el);
+        const st = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+        if (set && msg.skill) st.pr = { skill: msg.skill, ...(msg.el ? { el: msg.el } : {}) };
+        else delete st.pr;
+        ws.serializeAttachment(st);
+        return;
+      }
       case "hotbar_set":
         return this.handleHotbar(ws, state, msg.slot, msg.v);
       case "hotbar_swap":
@@ -752,6 +768,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleUseType(ws, state, msg.type);
       case "skill_boost":
         return this.handleSkillBoost(ws, state, msg.skill);
+      case "skill_forget":
+        return void this.handleSkillForget(ws, state, msg.skill);
       case "bt_start":
         return this.handleBreakthroughStart(ws, state, msg.pills);
       case "bt_cancel":
@@ -994,6 +1012,7 @@ export class MapRoom extends DurableObject<Env> {
   private async handleLeave(ws: WebSocket): Promise<void> {
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state) return; // already evicted or never joined
+    if (state.med) await this.settleMeditation(ws, Date.now(), false, state); // the stretch sat before leaving still counts
     this.playerGone(state.id, ws);
     await this.failBreakthroughOnExit(ws, state, "left");
     // Keep the attachment until the save finished: a claim arriving meanwhile must still find this
@@ -1241,6 +1260,7 @@ export class MapRoom extends DurableObject<Env> {
         const live = present.find((s) => s.id === row.id);
         sim.addPlayer({ ...seedOf(row, bag, skills, catalog), ...(live?.med ? { meditating: true } : {}), satKhi: live?.sk ?? row.sat_khi, hero: live?.ah ?? row.anh_hung, satNhan: live?.sn ?? row.sat_nhan, satNhanAt: live?.snAt ?? Date.now() });
         if (live?.pk) sim.setPkMode(row.id, live.pk);
+        if (live?.pr) sim.setPrimary(row.id, live.pr.skill, live.pr.el);
       }
     } catch (err) {
       this.sim = null; // the next move or attack retries the whole rebuild
@@ -1866,8 +1886,18 @@ export class MapRoom extends DurableObject<Env> {
     state.lastMeditateAt = now;
     ws.serializeAttachment(state);
     if (!on) return void this.standUp(ws, "moved", true);
-    if (this.mapOf(state.mapId).safe) return void this.send(ws, { t: "meditating", on: false, reason: "safe" });
     if (state.bt || state.tp || this.isMoving(state)) return void this.send(ws, { t: "meditating", on: false, reason: state.bt || state.tp ? "busy" : "moved" });
+    if (this.mapOf(state.mapId).safe) {
+      // A town has no simulation: the character just sits (it heals there anyway), and the EXP of the sitting is settled by the room.
+      const here = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+      if (here.transferring) return;
+      here.med = true;
+      here.medAt = Date.now();
+      ws.serializeAttachment(here);
+      this.send(ws, { t: "meditating", on: true });
+      this.broadcastAbout([here.id], { t: "sit", id: here.id, on: true });
+      return;
+    }
     try {
       await this.wake(state.mapId);
     } catch (err) {
@@ -1877,6 +1907,7 @@ export class MapRoom extends DurableObject<Env> {
     const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
     if (fresh.transferring || !this.sim?.setMeditating(fresh.id, true, Date.now())) return void this.send(ws, { t: "meditating", on: false, reason: "died" });
     fresh.med = true;
+    fresh.medAt = Date.now();
     ws.serializeAttachment(fresh);
     this.send(ws, { t: "meditating", on: true });
     this.broadcastAbout([fresh.id], { t: "sit", id: fresh.id, on: true });
@@ -1885,13 +1916,61 @@ export class MapRoom extends DurableObject<Env> {
     if (p) this.sendMp(ws, p, Date.now());
   }
 
+  /**
+   * Pays the EXP of the stretch since the last settlement (at most the tuning's `maxSettleSeconds`): through the simulation when the character is in it, else straight
+   * to D1 (a town has none). `keep` leaves the character sitting (a tick); otherwise `state` is the attachment as it was when the character stood up.
+   */
+  private async settleMeditation(ws: WebSocket, now: number, keep: boolean, standing?: PlayerState): Promise<void> {
+    const state = standing ?? (ws.deserializeAttachment() as PlayerState | null);
+    if (!state || state.med !== true || state.medAt === undefined) return;
+    if (keep && now - state.medAt < 15_000) return; // a tick that comes too soon waits
+    const cfg = tuning().meditation;
+    const seconds = Math.min(now - state.medAt, cfg.maxSettleSeconds * 1000) / 1000;
+    const id = state.id;
+    const live = this.sim?.getPlayer(id);
+    let realm = live?.realm;
+    let bonus = live?.expBonus ?? 0;
+    let row: CharacterRow | null = null;
+    if (realm === undefined) {
+      row = await getCharacterById(this.env.DB, id);
+      if (!row) return;
+      realm = row.realm;
+    }
+    const gain = Math.floor(meditationExpPerSecond(realm, bonus) * seconds);
+    if (gain < 1) return;
+    if (keep) {
+      const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+      fresh.medAt = now;
+      ws.serializeAttachment(fresh);
+    }
+    try {
+      if (live && this.sim) {
+        const r = this.sim.addMeditationExp(id, gain);
+        if (!r) return;
+        this.send(ws, { t: "stats", character: sheetOf(live) });
+        if (r.stagesGained > 0) {
+          this.send(ws, { t: "skills", ids: this.sim.skillsOf(live) });
+          this.sendMp(ws, live, now);
+          await this.flushProgress(id);
+        } else await this.ensureSaveAlarm(now);
+      } else {
+        const updated = await grantExp(this.env.DB, id, gain);
+        if (updated) this.send(ws, { t: "stats", character: toCharacterSheet(updated) });
+      }
+    } catch (err) {
+      console.error("meditation exp failed", id, err);
+    }
+  }
+
   /** Stands the character up (a step, an attack, a skill, a hit): the flag, the simulation and the client. `tell` also answers a plain request to stand up. */
   private standUp(ws: WebSocket, reason: "hit" | "moved" | "died", tell = false): void {
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!state) return;
     const was = state.med === true;
     if (was) {
+      void this.settleMeditation(ws, Date.now(), false, state); // the stretch just sat counts, even though the character stands up now
       delete state.med;
+      delete state.medAt;
       ws.serializeAttachment(state);
     }
     const stopped = this.sim?.stopMeditation(state.id, Date.now()) === true;
@@ -2429,6 +2508,7 @@ export class MapRoom extends DurableObject<Env> {
         if (spot.kind === "smith" && msg.view !== "shop") return this.sendSmith(ws, id, npcId);
         if (spot.kind === "waygate") return this.sendWaygate(ws, state.mapId, npcId);
         if (spot.kind === "alchemist" && msg.view === "brew") return this.sendBrew(ws, id, npcId);
+        if (spot.kind === "master") return this.sendDojo(ws, id, npcId);
       }
       // The blacksmith and the alchemist deal in goods too when they have a stock (a merchant record under their id): the shop tab of their window.
       if (spot.kind !== "merchant" && spot.kind !== "alchemist" && spot.kind !== "smith") return;
@@ -2598,6 +2678,59 @@ export class MapRoom extends DurableObject<Env> {
     this.send(ws, { t: "brew", npc: npcId, jobs, tuning: tune, tabs: npcTabs("alchemist", true), now: Date.now() });
   }
 
+  /** The martial master's window: the courses of this master the character does not have yet, and whether the realm allows each now. */
+  private async sendDojo(ws: WebSocket, id: string, npcId: string): Promise<void> {
+    const [cfg, who] = await Promise.all([getTuning(this.env.DB).then((t) => t.dojo), this.casterOf(id)]);
+    if (!who) return;
+    const courses = coursesOf(cfg, npcId)
+      .map((c) => ({ course: c, skill: getSkill(c.skill) }))
+      .filter((x) => x.skill !== undefined && !who.granted.includes(x.course.skill))
+      .map((x) => ({ skill: x.course.skill, cost: x.course.cost, ok: canLearn(x.skill!, who.realm, who.stage) }));
+    this.send(ws, { t: "dojo", npc: npcId, courses });
+  }
+
+  /** Learning from the master: the fee and the skill row go in ONE batch (a skill already known clashes on the primary key and rolls the fee back too). */
+  private handleDojoLearn(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "dojo_learn" }>): void {
+    const now = Date.now();
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "master") return this.send(ws, { t: "inv_error", reason: "far" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "inv_error", reason: "murderer" });
+    if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    void this.bagTask(id, async () => {
+      const cfg = (await getTuning(this.env.DB)).dojo;
+      const course = coursesOf(cfg, msg.npc).find((c) => c.skill === msg.skill);
+      const skill = getSkill(msg.skill);
+      const who = await this.casterOf(id);
+      if (!course || !skill || !who) return this.send(ws, { t: "inv_error", reason: "invalid" });
+      if (who.granted.includes(skill.id)) return this.send(ws, { t: "inv_error", reason: "known" });
+      if (!canLearn(skill, who.realm, who.stage)) return this.send(ws, { t: "inv_error", reason: "level_low" });
+      const insert = this.env.DB.prepare("INSERT INTO character_skills (character_id, skill_id, learned_at, source, realm) VALUES (?, ?, ?, 'learned', ?)").bind(id, skill.id, now, skill.realm);
+      try {
+        if (course.cost > 0) {
+          const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -course.cost, reason: `dojo:${skill.id}`, actor: "system" }, [insert]);
+          if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
+          if (r.status !== "applied") return this.send(ws, { t: "inv_error", reason: "busy" });
+          this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance });
+        } else await this.env.DB.batch([insert]);
+      } catch (err) {
+        if (/character_skills|UNIQUE/i.test(String(err))) return this.send(ws, { t: "inv_error", reason: "known" });
+        console.error("dojo learn failed", id, err);
+        return this.send(ws, { t: "inv_error", reason: "busy" });
+      }
+      (await this.getSkillRows(id)).push({ skill_id: skill.id, source: "learned", realm: skill.realm, level: 0, mastery: 0 });
+      this.sim?.addGranted(id, skill.id);
+      this.sendToCharacter(id, { t: "skills", ids: availableSkills([...who.granted, skill.id], who.gear) });
+      this.sendToCharacter(id, { t: "skill_state", id: skill.id, lv: 0, xp: 0 });
+      this.send(ws, { t: "dojo_ok", skill: skill.id, cost: course.cost });
+      await this.sendDojo(ws, id, msg.npc);
+    });
+  }
+
   /** Alchemist commands: start a brewing (materials and Linh Thạch taken now) and collect a finished one. Same checks as the other NPCs. */
   private handleBrew(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "brew_start" | "brew_collect" }>): void {
     const now = Date.now();
@@ -2612,13 +2745,15 @@ export class MapRoom extends DurableObject<Env> {
     const id = state.id;
     void this.bagTask(id, async () => {
       if (msg.t === "brew_collect") return this.brewCollect(ws, id, msg.npc, msg.job);
-      return this.brewStart(ws, id, msg.npc, msg.recipe);
+      return this.brewStart(ws, id, msg.npc, msg.recipe, msg.count ?? 1);
     });
   }
 
-  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string): Promise<void> {
+  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string, count: number): Promise<void> {
     const cfg = (await getTuning(this.env.DB)).alchemy;
-    const recipe = cfg.recipes.find((r) => r.id === recipeId && r.enabled);
+    const base = cfg.recipes.find((r) => r.id === recipeId && r.enabled);
+    if (base && count > (cfg.maxBatch ?? DEFAULT_MAX_BATCH)) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    const recipe = base ? scaleBrew(base, count, cfg) : undefined; // a run of several batches: more of everything, and the time grows less
     const usable = (item: string) => {
       const def = getItemDef(item);
       return def !== undefined && def.disabled !== true;
@@ -3704,6 +3839,37 @@ export class MapRoom extends DurableObject<Env> {
     }
     this.sim?.setPaths(id, after);
     await this.announcePaths(ws, id, rows);
+  }
+
+  /**
+   * Forgets a learned skill (from a book or a master): the row goes, the room's copy and the hotbar follow, the client hears the new list. Only the skills of source
+   * "learned" can be forgotten (the root, path, gear and basic ones are not the player's to drop); the book is not given back, and learning it again costs again.
+   */
+  private async handleSkillForget(ws: WebSocket, state: PlayerState, skillId: string): Promise<void> {
+    const id = state.id;
+    const def = getSkill(skillId);
+    if (!def || def.source !== "learned") return void this.send(ws, { t: "inv_error", reason: "invalid" });
+    const rows = await this.getSkillRows(id);
+    if (!rows.some((r) => r.skill_id === skillId && r.source === "learned")) return void this.send(ws, { t: "inv_error", reason: "invalid" });
+    const current = await this.getHotbar(id);
+    const cleaned = current.map((slot) => (parseSkillSlot(slot)?.id === skillId ? "" : slot));
+    try {
+      await this.env.DB.prepare("DELETE FROM character_skills WHERE character_id = ? AND skill_id = ? AND source = 'learned'").bind(id, skillId).run();
+      if (cleaned.some((slot, i) => slot !== current[i])) {
+        await saveHotbar(this.env.DB, id, cleaned);
+        this.hotbars.set(id, cleaned);
+        this.send(ws, { t: "hotbar", slots: cleaned });
+      }
+    } catch (err) {
+      console.error("skill forget failed", id, err);
+      return void this.send(ws, { t: "inv_error", reason: "busy" });
+    }
+    for (let i = rows.length - 1; i >= 0; i--) if (rows[i]!.skill_id === skillId) rows.splice(i, 1);
+    this.sim?.removeGranted(id, [skillId]);
+    const live = this.sim?.getPlayer(id);
+    const gear = (await this.getBag(id)).equipped;
+    this.send(ws, { t: "skills", ids: live && this.sim ? this.sim.skillsOf(live) : availableSkills(rows.map((r) => r.skill_id), gearSkillIds(gear)) });
+    this.send(ws, { t: "skill_forgot", skill: skillId });
   }
 
   /** After the paths changed: the sheet, the skills and the vitals (maximum MP follows a Thuật tu coming or going). */

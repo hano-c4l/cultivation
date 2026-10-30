@@ -1,4 +1,4 @@
-import { EQUIP_KINDS, SKILLS, WEAPON_TYPES, allItemDefs, makeEquipmentId } from "@game/shared";
+import { DEFAULT_TUNING, EQUIP_KINDS, SKILLS, WEAPON_TYPES, allItemDefs, makeEquipmentId, resetTuning, setTuning } from "@game/shared";
 import { describe, expect, it } from "vitest";
 import { ELEMENT_COLOR } from "./fx-kinds";
 import { iconSpecOf, skillIconSpecOf } from "./icons";
@@ -43,5 +43,20 @@ describe("skill icons", () => {
     expect(skillIconSpecOf(SKILLS.find((s) => s.id === "chi_0")).shape).toBe("bolt");
     expect(skillIconSpecOf(SKILLS.find((s) => s.id === "hoi_0")).shape).toBe("heal");
     expect(skillIconSpecOf(undefined).shape).toBe("unknown");
+  });
+});
+
+describe("icons an Admin chose", () => {
+  it("a choice for the item, for its kind or for the skill wins over what the code derives, and clearing it brings the old icon back", () => {
+    const sword = makeEquipmentId("weapon", "u", 0, 1, 1, "kim", "kiem");
+    const own = DEFAULT_TUNING.iconLooks;
+    setTuning({ iconLooks: { ...own, kinds: { "weapon.kiem": "axe" }, skills: { khi_co_ban: "nova" }, items: { hoi_huyet_dan: "heal" } } });
+    expect(iconSpecOf(sword).shape).toBe("axe");
+    expect(iconSpecOf("hoi_huyet_dan").shape).toBe("heal");
+    expect(skillIconSpecOf(SKILLS.find((s) => s.id === "khi_co_ban")).shape).toBe("nova");
+    setTuning({ iconLooks: own });
+    expect(iconSpecOf(sword).shape).toBe("sword");
+    expect(iconSpecOf("hoi_huyet_dan").shape).toBe("pill");
+    resetTuning();
   });
 });

@@ -5,7 +5,7 @@ import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
 import { KEEP_LEVEL_ITEM, REFINE_ORES, SMITH_ORES } from "./smith";
-import { BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId } from "./skills";
+import { ALL_BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId, getSkill } from "./skills";
 import { tuning } from "./tuning";
 
 /**
@@ -54,7 +54,7 @@ export interface ItemDef {
 
 /** One bí tịch per book skill, made from the skill list so a new book skill needs no item entry. */
 const BOOKS: Record<string, ItemDef> = Object.fromEntries(
-  BOOK_SKILLS.map((s) => [
+  ALL_BOOK_SKILLS.map((s) => [
     bookItemId(s.id),
     { id: bookItemId(s.id), nameVi: `Bí Tịch: ${s.nameVi}`, descVi: `Dùng để học kỹ năng ${s.nameVi}.`, category: "skill_book", maxStack: 1, rarity: "epic", grade: 4, teaches: s.id } satisfies ItemDef,
   ]),
@@ -519,3 +519,26 @@ export const TALISMAN_CAST_MS = 5_000;
 
 /** Minimum time between two potions, per player. Each use is a D1 write. */
 export const POTION_COOLDOWN_MS = 3_000;
+
+/** The realm (REALMS index) the pills with no realm in their data belong to (the healing and MP pills, by the town that sells them). The rest comes from the item itself: see `itemRealmOf`. */
+const PILL_REALM: Readonly<Record<string, number>> = {
+  hoi_huyet_dan: 0, hoi_linh_dan: 0, duong_huyet_dan: 1, linh_nguyen_dan: 1, linh_tuyen_dan: 1, bao_nguyen_dan: 2, bao_linh_dan: 2, dai_hoi_huyet_dan: 3, dai_hoi_linh_dan: 3, thien_ngo_dan: 3, than_huyet_dan: 4, than_linh_dan: 4, hu_huyet_dan: 5, hu_linh_dan: 5,
+};
+const REALM_SUFFIX: Readonly<Record<string, number>> = { lk: 0, tc: 1, kd: 2, na: 3, ht: 4, lh: 5 };
+
+/**
+ * The realm (REALMS index) of an item that is not gear, for the tag next to its name (LK, TC, KD, NA, HT, LH): a skill book is the realm of its skill, a breakthrough
+ * pill the realm it is taken in, an ore (`ren_xx`, `tl_xx`) its realm, the healing pills the realm of the town that sells them. Null for the items that belong to no realm.
+ */
+export function itemRealmOf(type: string): number | null {
+  const def = getItemDef(type);
+  if (!def) return null;
+  if (def.teaches) {
+    const skill = getSkill(def.teaches);
+    return skill?.learn?.realm ?? skill?.realm ?? null;
+  }
+  if (def.breakthroughTo !== undefined) return def.breakthroughTo - 1;
+  const ore = /^(?:ren|tl)_(lk|tc|kd|na|ht|lh)$/.exec(type);
+  if (ore) return REALM_SUFFIX[ore[1]!] ?? null;
+  return PILL_REALM[type] ?? null;
+}

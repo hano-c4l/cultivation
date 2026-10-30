@@ -31,6 +31,7 @@ export function initRank(send: (msg: ClientMessage) => void, isAdmin: boolean): 
   registerWindow("rank", panel, 6);
   let selfName = "";
   let board: Leaderboard = "realm";
+  let showAll = false; // admin only: the list with the admin accounts in it
 
   let combatMap = false;
   let bossHere = false;
@@ -56,6 +57,14 @@ export function initRank(send: (msg: ClientMessage) => void, isAdmin: boolean): 
       };
       head.append(gm);
     }
+    if (isAdmin) {
+      const all = el("button", undefined, showAll ? vi.rank.gmHideAdmins : vi.rank.gmShowAll);
+      all.onclick = () => {
+        showAll = !showAll;
+        void load();
+      };
+      head.append(all);
+    }
     head.append(refresh, close);
     const tabs = el("div", "eq-tabs");
     for (const id of LEADERBOARDS) {
@@ -72,7 +81,7 @@ export function initRank(send: (msg: ClientMessage) => void, isAdmin: boolean): 
   async function load(): Promise<void> {
     draw(vi.rank.loading);
     const asked = board;
-    const r = await api.leaderboard(asked);
+    const r = await api.leaderboard(asked, isAdmin && showAll);
     if (asked !== board) return; // another tab was picked meanwhile
     if (!r.ok || !r.data) return draw(vi.rank.failed);
     if (r.data.rows.length === 0) return draw(vi.rank.empty);

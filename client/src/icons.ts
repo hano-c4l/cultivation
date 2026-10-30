@@ -1,4 +1,4 @@
-import { equipmentInfo, getItemDef, skillLookOf, type SkillDef } from "@game/shared";
+import { equipmentInfo, getItemDef, skillLookOf, tuning, type IconShape, type SkillDef } from "@game/shared";
 import { ELEMENT_COLOR, skillFxOf } from "./fx-kinds";
 
 /**
@@ -8,16 +8,8 @@ import { ELEMENT_COLOR, skillFxOf } from "./fx-kinds";
  * creates gets an icon with no code change; the element colours the accent and the grade tints the disc behind it (`--grade-N`, from the theme tuning).
  */
 
-/** The shapes an icon can have. */
-export type IconShape =
-  | "sword" | "saber" | "spear" | "axe" | "bow" | "fist"
-  | "hat" | "robe" | "bracer" | "ring" | "jade" | "necklace" | "belt" | "boots" | "charm" | "bonded" | "flight"
-  | "pill" | "ore" | "book" | "scroll" | "unknown"
-  | "slash" | "bolt" | "fan" | "blink" | "buff" | "heal" | "passive"
-  // the ways of delivering an attack skill: through a line, round the caster, a lane on the ground, a field on the ground
-  | "pierce" | "nova" | "lane" | "field"
-  // the interface: the currencies and the buttons of the windows
-  | "stone" | "merit" | "immortal" | "person" | "shield" | "bag" | "taiji" | "trophy" | "swap" | "door" | "meditate";
+/** The shapes an icon can have (the list is shared with the Admin that picks them). */
+export type { IconShape };
 
 export interface IconSpec {
   shape: IconShape;
@@ -34,9 +26,12 @@ const KIND_SHAPES: Readonly<Record<string, IconShape>> = {
 
 /** What an item looks like, from its type: gear by kind (weapons by family), anything else by category. An unknown type gets the question-mark box. */
 export function iconSpecOf(type: string): IconSpec {
+  const picked = tuning().iconLooks;
   const eq = equipmentInfo(type);
   if (eq) {
-    const shape = (eq.kind === "weapon" && eq.weaponType ? WEAPON_SHAPES[eq.weaponType] : undefined) ?? KIND_SHAPES[eq.kind] ?? "unknown";
+    // An Admin's choice wins: for this very item, else for its kind of gear (`weapon.kiem` for a weapon family, else `hat`, `robe`...).
+    const own = picked.items[type] ?? (eq.kind === "weapon" && eq.weaponType ? picked.kinds[`weapon.${eq.weaponType}`] : undefined) ?? picked.kinds[eq.kind];
+    const shape = own ?? (eq.kind === "weapon" && eq.weaponType ? WEAPON_SHAPES[eq.weaponType] : undefined) ?? KIND_SHAPES[eq.kind] ?? "unknown";
     return { shape, element: eq.element, grade: eq.grade };
   }
   const def = getItemDef(type);
@@ -45,12 +40,15 @@ export function iconSpecOf(type: string): IconSpec {
   if (def.teaches !== undefined || def.category === "skill_book") shape = "book";
   else if (def.pathItem !== undefined) shape = "scroll";
   else if (def.category === "consumable") shape = "pill";
+  shape = picked.items[type] ?? picked.kinds[`category.${def.category}`] ?? shape;
   return { shape, element: null, grade: def.grade ?? 0 };
 }
 
 /** What a skill looks like: the glyph of its effect (so an Admin's `fx` choice changes it too), in the colour of its element. */
 export function skillIconSpecOf(def: SkillDef | undefined): IconSpec {
   if (!def) return { shape: "unknown", element: null, grade: 0 };
+  const chosen = tuning().iconLooks.skills[def.id];
+  if (chosen) return { shape: chosen, element: def.element ?? null, grade: 0 };
   if (def.kind === "passive") return { shape: "passive", element: def.element ?? null, grade: 0 };
   const look = skillLookOf(def);
   if (def.kind === "attack" && (look === "lance" || look === "nova" || look === "lane" || look === "field")) {
@@ -110,6 +108,7 @@ const SHAPES: Readonly<Record<IconShape, readonly Part[]>> = {
   door: [["M7 4 H20 V28 H7 Z", "w"], ["M17 16 m-1.4 0 a1.4 1.4 0 1 0 2.8 0 a1.4 1.4 0 1 0 -2.8 0", "g"], ["M22 16 H30 M30 16 l-4 -4 M30 16 l-4 4", "a", 2]],
   // a figure sitting cross-legged with its hands in the lap, a halo behind the head
   meditate: [["M16 9 m-7 0 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0", "l", 1], ["M16 10 m-3.2 0 a3.2 3.2 0 1 0 6.4 0 a3.2 3.2 0 1 0 -6.4 0", "m"], ["M16 14 Q10 15 10 22 L22 22 Q22 15 16 14 Z", "m"], ["M4 26 Q8 22 16 25 Q24 22 28 26 Q22 29 16 27 Q10 29 4 26 Z", "a"], ["M13 21 Q16 23 19 21", "d", 1.2]],
+  menu: [["M5 8 H27", "l", 3], ["M5 16 H27", "l", 3], ["M5 24 H27", "l", 3]],
   passive: [["M16 3 L19.5 12 L29 12.5 L21.5 18.5 L24 28 L16 22.5 L8 28 L10.5 18.5 L3 12.5 L12.5 12 Z", "a"], ["M16 7 L18 13", "l", 1.2]],
 };
 

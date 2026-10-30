@@ -1,3 +1,4 @@
+import { speciesLookSection } from "./looks";
 import { api, h, listView, navigate } from "./kit";
 import { tuningPage } from "./misc";
 
@@ -116,6 +117,7 @@ export function speciesEditPage(): HTMLElement {
     const s = data.species.find((x) => x.id === id);
     if (!s) return void root.replaceChildren(h("p", { class: "err" }, "Không tìm thấy loài."), h("a", { href: "/admin/monsters" }, "‹ Danh sách"));
     root.replaceChildren(speciesForm(data, s));
+    void speciesLookSection(s.id).then((node) => root.append(node));
   });
   return root;
 }

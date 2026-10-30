@@ -5,6 +5,7 @@ import {
   equipmentBonus,
   equipmentInfo,
   getItemDef,
+  glowTierOf,
   planRepair,
   repairCost,
   slotKind,
@@ -150,7 +151,8 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
 
     for (const slot of EQUIP_SLOTS.filter((s) => ARTIFACT_SLOTS.has(s) === (tab === "artifact"))) {
       const piece = worn.find((e) => e.slot === slot);
-      const row = el("div", piece ? `eq-row rar-${getItemDef(piece.type)?.rarity ?? "common"}` : "eq-row");
+      const glow = glowTierOf(piece?.en);
+      const row = el("div", piece ? `eq-row rar-${getItemDef(piece.type)?.rarity ?? "common"}${glow === 2 ? " gl10" : glow === 1 ? " gl7" : ""}` : "eq-row");
       row.append(el("span", "eq-slot", vi.equip.slots[slot]));
       // One line per slot: slot, element icon + name, realm/bậc tag, durability, buttons. An empty slot leaves the middle blank.
       const middle = el("div", "eq-name");

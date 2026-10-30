@@ -13,6 +13,7 @@ export const MENU: MenuItem[] = [
   { path: "/admin/npcs", label: "NPC", hint: "Vị trí, tên, cửa hàng, công thức luyện đan", phase: "3k", ready: true },
   { path: "/admin/monsters", label: "Quái / BOSS", hint: "Loài, hạng, bảng rơi, boss, vệ binh", phase: "3j", ready: true },
   { path: "/admin/gear", label: "Trang bị", hint: "Bảng master chỉ số, tên bộ, bảng nâng cấp Thợ Rèn", phase: "3g-b", ready: true },
+  { path: "/admin/looks", label: "Hình ảnh", hint: "Trang phục, pháp bảo phi hành, màu quái, biểu tượng theo loại (chọn từ hình có sẵn)", phase: "4i", ready: true },
   { path: "/admin/items", label: "Vật phẩm", hint: "Đan, nguyên liệu, bí tịch (trang bị: 3g-b)", phase: "3g", ready: true },
   { path: "/admin/skills", label: "Kỹ năng", hint: "Tên, sức mạnh, MP, hồi chiêu, tầm, hiệu ứng", phase: "3h", ready: true },
   { path: "/admin/talents", label: "Thiên phú", hint: "Linh căn, hệ biến dị, thể chất", phase: "3i", ready: true },

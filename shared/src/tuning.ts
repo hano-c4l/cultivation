@@ -1,7 +1,8 @@
 import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
 import type { AreaDef } from "./area";
+import { DEFAULT_DOJO, validDojo, type DojoCfg } from "./dojo";
 import { SKILL_LOOKS } from "./skill-looks";
-import { FLIGHT_STYLES, GROUND_STYLES, OBSTACLE_STYLES, type FlightStyle, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
+import { FLIGHT_STYLES, GROUND_STYLES, ICON_PICKABLE, OBSTACLE_STYLES, type FlightStyle, type IconShape, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
 import type { EquipKind } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import type { PathBonus } from "./paths";
@@ -150,6 +151,16 @@ export interface Tuning {
   boss: { claimTtlMs: number; tier: number; species: Record<string, string | null> };
   /** The alchemist's brewing: how many brewings a character can have at once and the recipes (see alchemy.ts). */
   alchemy: AlchemyCfg;
+  /** Meditation EXP: the share of a kill's EXP per second of hunting that sitting gives (`huntRatio` of one ordinary kill every `secondsPerKill` seconds), and the longest stretch settled at once (a settlement after a longer silence counts only this much). */
+  meditation: { huntRatio: number; secondsPerKill: number; maxSettleSeconds: number };
+  /** The colours of the dots on the mini map (`#rrggbb`): yourself, other players, monsters, the boss, the NPCs and guards, and the doors (to other maps, and the teleport arrays). */
+  minimap: { self: string; player: string; monster: string; boss: string; npc: string; portal: string };
+  /** The shape of hat drawn by the realm of the hat worn: the rule with the highest `minRealm` the realm reaches wins (shapes are numbered from 0, see client/src/hat-art.ts). */
+  hatLooks: { rules: Array<{ minRealm: number; shape: number }> };
+  /** The martial masters' courses: which skill each teaches and for how much Linh Thạch (see dojo.ts). */
+  dojo: DojoCfg;
+  /** The chance that a kill drops the book of a rare skill of the realm of the map (see skills-extra.ts): by monster class, and for each item round of the map's boss. */
+  rareBooks: { chance: Record<"normal" | "rare1" | "rare2" | "boss", number> };
   /** The outfit drawn on a player's sprite, by the realm of the robe worn: the rule with the highest `minRealm` the robe reaches wins (no robe or no rule: the plain peasant clothes). `outfit` names a sprite variant (`player.<body>.<outfit>`); one without a sprite is drawn as the plain clothes. */
   outfits: { rules: Array<{ minRealm: number; outfit: string }> };
   /** Which sprite model draws a species (`monster.<species>` is tried first): species id -> model key (`monster.<model>`). Several species can share one model; a species with neither is drawn as the square. */
@@ -172,6 +183,11 @@ export interface Tuning {
   auto: { radiusMin: number; radiusMax: number; radiusDefault: number; tickMs: number; giveUpMs: number; skipMs: number; potionGapMs: number; castBackoffMs: number };
   /** How a skill is drawn, by skill id, then template, then gear family: a style name of `SKILL_LOOKS` (a skill with none is drawn by its kind). */
   skillLooks: Record<string, string>;
+  /**
+   * The icon an Admin chose from the existing drawings (`ICON_PICKABLE`): `items` by item id, `skills` by skill id, and `kinds` for a whole kind of item: `weapon.<family>`
+   * or a gear kind (`hat`, `robe`...) for gear, `category.<category>` for the rest. Nothing listed: the icon the code derives (client/src/icons.ts).
+   */
+  iconLooks: { items: Record<string, IconShape>; skills: Record<string, IconShape>; kinds: Record<string, IconShape> };
 }
 
 export interface MonsterNumbers {
@@ -347,6 +363,12 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       than_linh_dan: 4_000,
       hu_huyet_dan: 25_000,
       hu_linh_dan: 25_000,
+      book_realm_0: 200,
+      book_realm_1: 2_000,
+      book_realm_2: 15_000,
+      book_realm_3: 80_000,
+      book_realm_4: 300_000,
+      book_realm_5: 1_000_000,
     },
     kinds: { weapon: 40, hat: 20, robe: 30, bracer: 20, ring: 25, jade: 25, necklace: 25, belt: 20, boots: 20, charm: 60, bonded: 150, flight: 150 },
     grades: [1, 2, 4, 8],
@@ -487,7 +509,12 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     species: { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang", town3: null, hoathan: "loi_de_long", luyenhu: "hon_don_ma_ton" },
   },
   alchemy: DEFAULT_ALCHEMY,
-  outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 2, outfit: "tien" }] }, // Kim Đan robes and above: the white xianxia robe
+  meditation: { huntRatio: 0.12, secondsPerKill: 6, maxSettleSeconds: 120 },
+  minimap: { self: "#ffffff", player: "#4da3ff", monster: "#ff4d4d", boss: "#ffd24a", npc: "#4dff7a", portal: "#b9a4ff" },
+  hatLooks: { rules: [{ minRealm: 0, shape: 0 }, { minRealm: 1, shape: 1 }, { minRealm: 2, shape: 3 }, { minRealm: 3, shape: 4 }, { minRealm: 4, shape: 7 }, { minRealm: 5, shape: 8 }] },
+  dojo: DEFAULT_DOJO,
+  rareBooks: { chance: { normal: 0.00005, rare1: 0.0008, rare2: 0.003, boss: 0.02 } },
+  outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 1, outfit: "scout" }, { minRealm: 2, outfit: "tien" }, { minRealm: 3, outfit: "violet" }, { minRealm: 4, outfit: "crimson" }, { minRealm: 5, outfit: "shadow" }] }, // Kim Đan robes and above: the white xianxia robe
   // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp), ghost (hàn thi ma), snake (rắn). Stand-ins: the boss dragons use the dragon.
   monsterModels: {
     doi_u_minh: "bat",
@@ -586,10 +613,13 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     tt_linh_an: "seal", tt_linh_hai: "seal", kt_hop_nhat: "sword", dt_duong_nguyen: "furnace", dt_dan_khi: "furnace", dt_kim_than: "bell", pt_phong_than: "wind",
     kim_3: "lance", kim_4: "nova", moc_4: "field", moc_5: "nova", thuy_3: "lance", thuy_5: "field", hoa_3: "lane", hoa_4: "lance", tho_4: "nova", tho_5: "field", loi_3: "lance", loi_4: "nova", bang_3: "lance", bang_4: "field", bang_5: "nova", phong_3: "lance", phong_4: "nova", phong_5: "field", kt_kiem_khi: "lance", kt_kiem_y: "lance", kt_than_kiem: "lance", kt_lien_hoan: "nova", tt_phap_tran: "field", tt_dai_phap: "nova",
     khi_co_ban: "bolt",
+    hap_huyet: "drain", bao_kich: "flames", diet_ky: "shock", loi_van: "storm", thien_thach: "meteor", huyet_hai: "drain",
+    thon_linh: "drain", pha_quan: "shock", huyet_ma: "drain", cuong_loi: "storm", thien_co: "shock", hap_tinh: "drain", loi_dinh: "storm", cuu_u: "drain", thai_co: "meteor", doat_menh: "shock", hon_don: "nova", vo_thuong: "flames",
     kim_6: "lance", kim_7: "nova", moc_6: "field", moc_7: "nova", thuy_6: "nova", thuy_7: "field", hoa_6: "nova", hoa_7: "lane", tho_6: "field", tho_7: "nova", loi_6: "lance", loi_7: "nova", bang_6: "field", bang_7: "nova", phong_6: "nova", phong_7: "lance",
     ho_the_ht: "bell", ho_the_lh: "bell", chien_y_ht: "flames", chien_y_lh: "flames", hoi_than_ht: "lotus", hoi_nguyen_lh: "lotus",
     hoi: "lotus", hoi_nguyen_kd: "lotus", tt_hoi_linh: "lotus", bm_hoi_sinh: "phoenix", dt_hoi_xuan: "furnace", dt_hoi_duong: "furnace", dt_dai_hoi: "furnace",
   },
+  iconLooks: { items: {}, skills: {}, kinds: {} },
   monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
   mapArt: {
     maps: {
@@ -607,17 +637,18 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   // Xianxia robes for everyone: the white robe `tien`, one colour each by tint, a formation circle in the same colour under the feet.
   npcLooks: {
     byKind: {
-      merchant: { body: "male", outfit: "tien", tint: "#f0d890", aura: "#e6c35a" },
-      quest: { body: "female", outfit: "tien", tint: "#cfe0ff", aura: "#9fc4ff" },
-      smith: { body: "male", outfit: "tien", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a" },
-      alchemist: { body: "female", outfit: "tien", tint: "#bff0c8", aura: "#7dff9c" },
-      guard: { body: "male", outfit: "tien", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a" },
+      merchant: { body: "male", outfit: "sage", tint: "#f0d890", aura: "#e6c35a" },
+      quest: { body: "female", outfit: "sage", tint: "#cfe0ff", aura: "#9fc4ff" },
+      smith: { body: "male", outfit: "sage", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a" },
+      alchemist: { body: "female", outfit: "sage", tint: "#bff0c8", aura: "#7dff9c" },
+      master: { body: "male", outfit: "ranger", weapon: "kiem", tint: "#e6b8a0", aura: "#e0563a" },
+      guard: { body: "male", outfit: "warden", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a" },
     },
     byId: {
-      elder: { body: "male", outfit: "tien", tint: "#fff0c0", aura: "#ffe58a" },
-      path_kiem: { body: "male", outfit: "tien", weapon: "kiem", tint: "#bfe4ff", aura: "#9fe0ff" },
-      path_thuat: { body: "female", outfit: "tien", tint: "#dccbff", aura: "#b99bff" },
-      path_dan: { body: "female", outfit: "tien", tint: "#c6f5c6", aura: "#7dff9c" },
+      elder: { body: "male", outfit: "sage", tint: "#fff0c0", aura: "#ffe58a" },
+      path_kiem: { body: "male", outfit: "sage", weapon: "kiem", tint: "#bfe4ff", aura: "#9fe0ff" },
+      path_thuat: { body: "female", outfit: "sage", tint: "#dccbff", aura: "#b99bff" },
+      path_dan: { body: "female", outfit: "sage", tint: "#c6f5c6", aura: "#7dff9c" },
     },
   },
 };
@@ -660,6 +691,11 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   roots: "Linh căn: tỉ lệ và thưởng theo phẩm cấp và theo số hệ",
   pathBonuses: "Thưởng chỉ số của từng hướng tu (khi là chủ tu)",
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
+  meditation: "Tu vi khi ngồi thiền: tỉ lệ so với đánh quái (mỗi giây), thời gian một lần hạ quái, và đoạn thiền dài nhất tính một lần",
+  minimap: "Màu các chấm trên bản đồ mini: bản thân, người chơi, quái, boss, NPC và vệ binh, cổng",
+  hatLooks: "Hình mũ hiện trên nhân vật theo cảnh giới của mũ đang đội",
+  rareBooks: "Bí tịch tuyệt học chỉ rơi từ quái: xác suất mỗi lần hạ quái theo loại quái, và mỗi vòng thưởng của boss",
+  dojo: "Võ Sư dạy bí tịch: mỗi võ sư dạy kỹ năng nào và giá học (Linh Thạch)",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
   flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen), theo hệ của món đang dùng",
@@ -668,6 +704,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   weaponArea: "Vùng chém của đánh thường theo họ vũ khí: quái gần mục tiêu trong vùng cũng bị đánh",
   skillAreas: "Vùng sát thương của kỹ năng tấn công: hình quạt, đường thẳng hay vòng tròn, số mục tiêu tối đa, phần sát thương của mục tiêu phụ",
   skillLooks: "Kiểu hình ảnh của từng kỹ năng (theo mã, mẫu hoặc họ pháp bảo)",
+  iconLooks: "Biểu tượng chọn riêng cho vật phẩm, kỹ năng hoặc cả một loại trang bị (chọn từ các hình có sẵn)",
   monsterTints: "Màu phủ lên hình quái theo hệ (một mô hình trông khác nhau ở mỗi hệ)",
   monsterModels: "Hình quái: loài quái nào dùng mô hình nào (một mô hình có thể dùng chung cho nhiều loài)",
   mapArt: "Hình bản đồ: kiểu nền và kiểu vật cản nhỏ (cây, đá, cột, tinh thể) của từng bản đồ",
@@ -999,6 +1036,10 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     }
     case "skillLooks":
       return Object.keys(value).length <= 300 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && (SKILL_LOOKS as readonly string[]).includes(v));
+    case "iconLooks": {
+      const table = (t: unknown, key: RegExp): boolean => obj(t) && Object.keys(t).length <= 2000 && Object.entries(t).every(([k, v]) => key.test(k) && (ICON_PICKABLE as readonly unknown[]).includes(v));
+      return table(value.items, /^[A-Za-z0-9_.]{1,80}$/) && table(value.skills, /^[a-z0-9_]{1,24}$/) && table(value.kinds, /^[a-z]{1,24}(\.[a-z_]{1,24})?$/);
+    }
     case "monsterTints":
       return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z]{1,16}$/.test(k) && typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v));
     case "monsterModels":
@@ -1007,6 +1048,18 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit));
     case "alchemy":
       return validAlchemy(value);
+    case "dojo":
+      return validDojo(value);
+    case "meditation":
+      return num(value.huntRatio, 0, 1) && num(value.secondsPerKill, 1, 600) && int(value.maxSettleSeconds, 10, 3600);
+    case "minimap":
+      return (["self", "player", "monster", "boss", "npc", "portal"] as const).every((k) => typeof value[k] === "string" && /^#[0-9a-fA-F]{6}$/.test(value[k] as string));
+    case "hatLooks":
+      return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && int(r.shape, 0, 63));
+    case "rareBooks": {
+      const c = value.chance;
+      return obj(c) && (["normal", "rare1", "rare2", "boss"] as const).every((k) => num(c[k], 0, 1));
+    }
     case "boss": {
       const sp = value.species;
       return int(value.claimTtlMs, 60_000, 30 * 86_400_000) && int(value.tier, 1, 9) && obj(sp) && Object.entries(sp).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && (v === null || (typeof v === "string" && /^[a-z0-9_]{1,40}$/.test(v))));

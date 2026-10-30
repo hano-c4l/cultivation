@@ -630,6 +630,18 @@ export class Effects {
       case "nova":
         if (from) this.nova(from, color, style, lvl, range);
         return !!from;
+      case "storm":
+        if (from) this.storm(from, target ?? from, color, lvl);
+        return !!from;
+      case "meteor":
+        if (from) this.skyRock(target ?? from, color, lvl);
+        return !!from;
+      case "drain":
+        if (from) this.drain(from, target, color);
+        return !!from;
+      case "shock":
+        if (from && target) this.shock(from, target, color, lvl);
+        return !!(from && target);
       case "lane":
       case "field":
         // the lasting part is drawn from the zone message; the cast itself is the spark that lights it
@@ -674,6 +686,109 @@ export class Effects {
       }
     });
     this.later(flight, () => this.layer.ring(tx, ty + 22, color, 0.2, 0.8, 360, 0.6));
+  }
+
+  /** A storm cloud over the aimed point and bolts of lightning that fall from it one after another, each with a flash and a ring where it lands. */
+  private storm(from: P, at: P, color: number, lvl: number): void {
+    this.layer.sigil(from.x, from.y + 2, color, 36, 600, 0.6);
+    const bolts = 5 + Math.round(3 * lvl);
+    this.shot(360 + bolts * 110, FX_DEPTH, (g, p) => {
+      const a = Math.sin(Math.min(1, p) * Math.PI);
+      g.fillStyle(0x3a3a55, 0.55 * a).fillEllipse(at.x, at.y - 120, 190, 56).fillStyle(0x58587a, 0.5 * a).fillEllipse(at.x - 40, at.y - 128, 110, 40).fillEllipse(at.x + 44, at.y - 126, 120, 42);
+    });
+    for (let i = 0; i < bolts; i++) {
+      const bx = at.x + (Math.random() - 0.5) * 120;
+      const by = at.y + (Math.random() - 0.5) * 40;
+      this.later(180 + i * 110, () => {
+        this.shot(200, FX_DEPTH + 0.01, (g, p) => {
+          const k = 1 - p;
+          let x = bx + 12;
+          let y = by - 118;
+          g.lineStyle(5, color, 0.5 * k).beginPath().moveTo(x, y);
+          const pts: Array<[number, number]> = [];
+          for (let s = 1; s <= 6; s++) {
+            x = bx + (s === 6 ? 0 : (Math.random() - 0.5) * 22);
+            y = by - 118 + ((by - (by - 118)) * s) / 6;
+            pts.push([x, y]);
+            g.lineTo(x, y);
+          }
+          g.strokePath().lineStyle(2, 0xffffff, 0.95 * k).beginPath().moveTo(bx + 12, by - 118);
+          for (const [px, py] of pts) g.lineTo(px, py);
+          g.strokePath();
+        });
+        this.layer.glow(bx, by - 6, 0xffffff, 0.6, 1.6, 260, 0.8);
+        this.layer.ring(bx, by, color, 0.2, 0.9, 340, 0.8);
+        this.layer.puff("spark", bx, by - 6, 3, color);
+      });
+    }
+  }
+
+  /** A burning rock falls out of the sky on the aimed point and breaks there: a flash, a ring of dust and flying fragments. */
+  private skyRock(at: P, color: number, lvl: number): void {
+    const fall = 520;
+    const sx = at.x - 150;
+    const sy = at.y - 330;
+    this.shot(fall, FX_DEPTH, (g, p) => {
+      const x = sx + (at.x - sx) * p;
+      const y = sy + (at.y - 6 - sy) * p;
+      for (let k = 1; k <= 7; k++) {
+        const q = Math.max(0, p - k * 0.04);
+        g.fillStyle(color, 0.35 - k * 0.04).fillCircle(sx + (at.x - sx) * q, sy + (at.y - 6 - sy) * q, 16 - k);
+      }
+      g.fillStyle(0x7a4a2a, 1).fillCircle(x, y, 16 + 3 * lvl).fillStyle(color, 0.8).fillCircle(x - 3, y - 3, 10).fillStyle(0xffffff, 0.8).fillCircle(x - 5, y - 5, 4);
+    });
+    this.later(fall, () => {
+      this.layer.glow(at.x, at.y - 8, 0xffffff, 0.9, 4 + lvl, 380, 0.9);
+      this.layer.ring(at.x, at.y, color, 0.4, 3.2, 620, 0.9);
+      this.layer.ring(at.x, at.y, 0xffffff, 0.2, 2, 420, 0.8);
+      this.layer.puff("smoke", at.x, at.y - 6, 6, 0x8a7a6a);
+      this.layer.puff("ember", at.x, at.y - 10, 12, color);
+      const me = this.selfId();
+      const mine = me ? this.posOf(me) : null;
+      if (mine && Math.hypot(mine.x - at.x, mine.y - at.y) < 260) this.scene.cameras.main.shake(180, 0.004);
+    });
+  }
+
+  /** Red wisps pulled out of the target and drawn into the caster (or, with no target, drawn in from all round): life taken. */
+  private drain(from: P, to: P | null, color: number): void {
+    const c = 0xd8304a;
+    this.layer.ring(from.x, from.y + 4, c, 0.3, 1.8, 600, 0.8);
+    const origin = to ?? { x: from.x, y: from.y };
+    const wisps = 9;
+    for (let i = 0; i < wisps; i++) {
+      const a = (i / wisps) * Math.PI * 2;
+      const sx = origin.x + (to ? (Math.random() - 0.5) * 20 : Math.cos(a) * 70);
+      const sy = origin.y - 22 + (to ? (Math.random() - 0.5) * 24 : Math.sin(a) * 35);
+      this.later(i * 45, () =>
+        this.shot(420, FX_DEPTH, (g, p) => {
+          const t = p * p;
+          const x = sx + (from.x - sx) * t + Math.sin(p * 6 + i) * 8 * (1 - p);
+          const y = sy + (from.y - 22 - sy) * t - Math.sin(p * Math.PI) * 14;
+          g.fillStyle(c, 0.8 * (1 - p * 0.5)).fillCircle(x, y, 5 - 2.5 * p).fillStyle(color, 0.35 * (1 - p)).fillCircle(x, y, 9 - 4 * p);
+        }),
+      );
+    }
+    this.later(460, () => this.layer.glow(from.x, from.y - 22, 0xff6a7a, 0.7, 2.4, 360, 0.8));
+  }
+
+  /** A finishing cut: a dark flash on the target and a long white slash across it, with a ring that bursts at the end. */
+  private shock(from: P, to: P, color: number, lvl: number): void {
+    this.layer.glow(to.x, to.y - 24, 0x000000, 0.5, 2.6, 260, 0.55);
+    const ang = Math.atan2(to.y - from.y, to.x - from.x) + 0.9;
+    this.shot(320, FX_DEPTH, (g, p) => {
+      const len = 70 + 40 * lvl;
+      const a = Math.sin(Math.min(1, p) * Math.PI);
+      const cx = to.x;
+      const cy = to.y - 26;
+      const dx = Math.cos(ang) * len * p;
+      const dy = Math.sin(ang) * len * p * 0.6;
+      g.lineStyle(9, color, 0.45 * a).lineBetween(cx - dx, cy - dy, cx + dx, cy + dy);
+      g.lineStyle(3, 0xffffff, 0.95 * a).lineBetween(cx - dx, cy - dy, cx + dx, cy + dy);
+    });
+    this.later(160, () => {
+      this.layer.ring(to.x, to.y, color, 0.3, 1.8, 420, 0.9);
+      this.layer.puff("spark", to.x, to.y - 24, 7, color);
+    });
   }
 
   /** A ring thrown out from the caster: the shock runs out to the edge of the area (`range` tiles), the element's own sparks fly with it. */

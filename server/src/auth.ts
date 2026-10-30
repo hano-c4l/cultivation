@@ -20,7 +20,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminMapCreate, adminMapDelete, adminAccounts, adminAccountDetail, adminAccountAction, adminCharacter, adminCharacterAction, adminGear, adminGearSave } from "./admin";
+import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminMapCreate, adminMapDelete, adminAccounts, adminAccountDetail, adminAccountAction, adminCharacter, adminCharacterAction, adminGear, adminGearSave, adminLooks } from "./admin";
 import { kick } from "./accounts-admin";
 import { getOwnCharacter, grantExp, listCharacters, resolveActiveCharacter, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import { getSetting } from "./settings";
@@ -317,11 +317,15 @@ async function constitutionsApi(env: Env): Promise<Response> {
 }
 
 async function leaderboardApi(request: Request, env: Env): Promise<Response> {
-  if (!(await getSession(request, env))) return errorResponse("unauthenticated", 401);
+  const session = await getSession(request, env);
+  if (!session) return errorResponse("unauthenticated", 401);
   try {
-    const board = new URL(request.url).searchParams.get("board") ?? "realm";
+    const params = new URL(request.url).searchParams;
+    const board = params.get("board") ?? "realm";
     if (!isLeaderboard(board)) return errorResponse("invalid_board", 400);
-    return json({ board, rows: await getLeaderboard(env.DB, board) });
+    // Only an admin can ask for the list with the admin accounts in it; for anyone else the flag is ignored.
+    const all = params.get("all") === "1" && session.role === "admin";
+    return json({ board, rows: await getLeaderboard(env.DB, board, Date.now(), all) });
   } catch (err) {
     console.error("leaderboard unavailable", err);
     return errorResponse("unavailable", 503);
@@ -453,6 +457,9 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     case "GET /api/admin/tuning":
     case "POST /api/admin/tuning":
       return adminTuning(request, env);
+    case "GET /api/admin/looks":
+    case "POST /api/admin/looks":
+      return adminLooks(request, env);
     case "GET /api/admin/constitutions":
     case "POST /api/admin/constitutions":
       return adminConstitutions(request, env);

@@ -1,0 +1,58 @@
+{
+  "extends": "sprite-config-male.json",
+  "name": "char_sage_male",
+  "spriteKey": "player.male.sage",
+  "source": {
+    "hair": "ubc/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Long.gltf"
+  },
+  "materials": {
+    "MI_Peasant": {
+      "color": [
+        1.3,
+        1.4,
+        1.35
+      ]
+    },
+    "MI_Hair_2": {
+      "color": [
+        0.1,
+        0.07,
+        0.07
+      ]
+    },
+    "XianRobe": {
+      "color": [
+        1.4,
+        1.15,
+        0.8
+      ]
+    },
+    "XianTrim": {
+      "color": [
+        0.5,
+        0.9,
+        0.5
+      ]
+    },
+    "XianSash": {
+      "color": [
+        1,
+        0.5,
+        0.25
+      ]
+    }
+  },
+  "generated": {
+    "parts": [
+      "skirt",
+      "top",
+      "sash",
+      "sleeves"
+    ],
+    "robe": "XianRobe",
+    "trim": "XianTrim",
+    "sash": "XianSash",
+    "scale": 1.1,
+    "hemZ": 0.16
+  }
+}

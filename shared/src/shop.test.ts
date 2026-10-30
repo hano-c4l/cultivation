@@ -4,6 +4,8 @@ import { itemValue, sellPrice, shopCategoryOf, shopDay, shopElementOf, SELL_RATE
 import { findOffer, merchantOffers, merchantPays, setMerchants, DEFAULT_MERCHANTS, validMerchant } from "./merchants";
 import { parseClientMessage } from "./protocol";
 import { getItemDef } from "./items";
+import { bookItemId } from "./skills";
+import { DEFAULT_DOJO_COURSES } from "./dojo";
 
 describe("merchant offers", () => {
   it("every offer is a real item with a price and gear is in the buyer's own style", () => {
@@ -68,13 +70,12 @@ describe("tabs, elements, books and the talisman", () => {
     expect(shopElementOf("eq.charm.u.0.1.1.hoa")).toBe("hoa");
   });
 
-  it("sells the basic books, the element books by element, and no breakthrough pill", () => {
-    const books = merchantOffers("female", "merchant").filter((o) => o.category === "book");
-    expect(books.map((o) => o.item)).toEqual(expect.arrayContaining(["bt_cuong_than", "bt_ngu_kiem_tram", "bt_kim_3", "bt_tho_3"]));
-    expect(books.find((o) => o.item === "bt_kim_3")?.element).toBe("kim");
-    expect(books.find((o) => o.item === "bt_cuong_than")?.element).toBeNull();
-    expect(books.every((o) => o.dailyLimit === undefined)).toBe(true);
+  it("sells no books (the martial master teaches them) and no breakthrough pill", () => {
+    for (const npc of ["merchant", "merchant2", "merchant3"]) expect(merchantOffers("female", npc).some((o) => o.category === "book")).toBe(false);
     expect(merchantOffers("male", "merchant").some((o) => o.item.startsWith("bt_pill"))).toBe(false);
+    // ...but every book the merchants sold is a course of a master, at the same price
+    const courses = DEFAULT_DOJO_COURSES.map((c) => `${c.npc}:${c.skill}`);
+    expect(courses).toEqual(expect.arrayContaining(["master:cuong_than", "master:kim_3", "master2:hoa_4", "master2:kim_5", "master3:tho_7"]));
   });
 
   it("the merchant of a town sells that town's talisman only", () => {
@@ -112,8 +113,7 @@ describe("the second town's merchant", () => {
     expect(new Set(gear.map((e) => e!.realm))).toEqual(new Set([2, 3]));
     expect(offers.some((o) => o.item === "dai_hoi_huyet_dan")).toBe(true);
     expect(offers.some((o) => o.item === "linh_nguyen_dan")).toBe(false); // brewed by the alchemist now
-    expect(offers.some((o) => o.item === "bt_hoa_4")).toBe(true);
-    expect(offers.some((o) => o.item === "bt_kim_5")).toBe(true);
+    expect(offers.some((o) => o.category === "book")).toBe(false);
     expect(offers.some((o) => o.item === "ttp_town2")).toBe(true);
     expect(offers.some((o) => o.item === "ttp_town")).toBe(false);
     // The first town sells the gear of Luyện Khí and Trúc Cơ.
@@ -174,7 +174,7 @@ describe("merchants as data", () => {
 
   it("a merchant that buys nothing, or sells only some kinds, can be told from the offers", () => {
     const offers = merchantOffers("male", "merchant");
-    expect(new Set(offers.map((o) => o.category))).toEqual(new Set(["pill", "gear", "artifact", "book", "material"]));
+    expect(new Set(offers.map((o) => o.category))).toEqual(new Set(["pill", "gear", "artifact", "material"]));
   });
 
   it("sells basic gear of the variant elements at 1.5 times the value", () => {
@@ -198,5 +198,14 @@ describe("merchants as data", () => {
       resetTuning();
     }
     expect(merchantOffers("male", "merchant").find((o) => o.item === "hoi_huyet_dan")!.price).toBe(before);
+  });
+});
+
+describe("selling skill books", () => {
+  it("pays for an unread book by the realm of its skill, and not for the pills of a merchant that takes only pills", () => {
+    resetTuning();
+    expect(itemValue(bookItemId("cuong_than"))).toBeGreaterThan(0);
+    expect(merchantPays("merchant", bookItemId("cuong_than"))).toBeGreaterThan(0);
+    expect(merchantPays("alchemist", bookItemId("cuong_than"))).toBe(0);
   });
 });

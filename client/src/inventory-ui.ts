@@ -1,4 +1,4 @@
-import { BAG_CELLS_PER_TAB, BAG_COLS, MAX_BAG_TABS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type SortMode, type WearerCtx } from "@game/shared";
+import { BAG_CELLS_PER_TAB, BAG_COLS, MAX_BAG_TABS, SORT_MIN_GAP_MS, SORT_MODES, equipBlock, getItemDef, glowTierOf, type BagItem, type BagView, equipmentInfo, type CharacterSheet, type ClientMessage, type EquippedItem, type MailView, type SortMode, type WearerCtx } from "@game/shared";
 import { iconButton, iconFor } from "./icons";
 import { describeItem, elementDot, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
 import { vi } from "./locales/vi";
@@ -214,6 +214,8 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
         const def = getItemDef(item.type);
         slot.classList.add(`cat-${def?.category ?? "material"}`, `rar-${def?.rarity ?? "common"}`);
         if (item.dur !== undefined && item.dur <= 0) slot.classList.add("broken");
+        const glow = glowTierOf(item.en);
+        if (glow > 0 && def?.equip) slot.classList.add(glow === 2 ? "gl10" : "gl7"); // +7 and over shine, +10 more so
         slot.title = itemName(item.type);
         slot.append(iconFor(item.type)); // the name shows in the detail box when the cell is tapped (and in the title)
         const tag = itemTierTag(item.type, item.lv);

@@ -54,7 +54,7 @@ export const CHAT_TARGET_MAX_LENGTH = 32;
 export type ChatChannel = "world" | "map" | "whisper" | "system";
 
 /** The windows one NPC can open (tabs of the same NPC): buying and selling, the blacksmith's work, brewing pills. */
-export type NpcView = "shop" | "smith" | "brew";
+export type NpcView = "shop" | "smith" | "brew" | "learn";
 export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper", "system"];
 /** How far (tiles) the client-claimed start tile may differ from the server position and still be trusted. */
 export const MAX_DESYNC_TILES = 3;
@@ -112,6 +112,8 @@ export type ClientMessage =
   | { t: "use_type"; type: string }
   /** Spend one Ngộ Đạo Đan on a skill to raise its mastery. */
   | { t: "skill_boost"; skill: string }
+  /** Forget a skill learned from a book or a master (its mastery goes with it; the book is not given back). */
+  | { t: "skill_forget"; skill: string }
   /** Start a breakthrough with this many pills (the pills and the Linh Thạch are paid now). Moving, fighting or being hit before it ends makes it fail. */
   | { t: "bt_start"; pills: number }
   /** GM only: take the breakthrough pill for the realm to break out of (as many times as wanted). */
@@ -126,6 +128,8 @@ export type ClientMessage =
   | { t: "mount"; on: boolean; fx?: number; fy?: number }
   /** Sit down to meditate (HP and MP regenerate) or stand up again. Walking, attacking or being hit stands the character up. */
   | { t: "meditate"; on: boolean }
+  /** Sent now and then while sitting: the server settles the EXP of the stretch since the last one (it also does at standing up). */
+  | { t: "med_tick" }
   /** Sent once after a reconnect: how the previous socket of this page ended (for the server log; changes nothing). */
   | { t: "conn_report"; code: number; reason: string; clean: boolean; downMs: number }
   /** Take a path item (a placeholder for the NPC quest): one per path per character. */
@@ -138,8 +142,9 @@ export type ClientMessage =
   | { t: "path_drop"; path: PathId }
   /** Talk to an NPC (the server checks the distance); a merchant answers with its stock left. */
   | { t: "npc_open"; npc: string; view?: NpcView }
-  | { t: "brew_start"; npc: string; recipe: string }
+  | { t: "brew_start"; npc: string; recipe: string; /** Batches made in one run (absent: 1). */ count?: number }
   | { t: "brew_collect"; npc: string; job: string }
+  | { t: "dojo_learn"; npc: string; skill: string }
   /** Use the teleport array of a town to go to another main town (the server prices the trip and takes the Linh Thạch when the channel ends). */
   | { t: "waygate_go"; npc: string; to: string }
   /** Buy `qty` of one of the merchant's offers (named by id, priced by the server). */
@@ -333,6 +338,7 @@ export type ServerMessage =
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
   | { t: "skill_state"; id: string; lv: number; xp: number; up?: boolean }
+  | { t: "skill_forgot"; skill: string }
   | { t: "hotbar"; slots: string[] }
   /** MP right now. It then regenerates by `perSec` (fraction of max) per second after `regenInMs` (nothing before that). */
   | { t: "mp"; mp: number; maxMp: number; regenInMs: number; perSec: number }
@@ -353,6 +359,9 @@ export type ServerMessage =
   | { t: "repaired"; cost: number }
   /** The blacksmith's window: the upgrade rules and the extra success chance (percent) each of your pieces has built up from failures. */
   | { t: "brew"; npc: string; jobs: BrewJobView[]; tuning: Tuning; tabs: NpcView[]; now: number }
+  /** The martial master's courses this character can still take (what is already known is left out), each with its cost in Linh Thạch. */
+  | { t: "dojo"; npc: string; courses: Array<{ skill: string; cost: number; ok: boolean }> }
+  | { t: "dojo_ok"; skill: string; cost: number }
   | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number>; tuning: Tuning; tabs: NpcView[] }
   /** The outcome of a refining: what each stat gained (empty: nothing rose this time). */
   | { t: "smith_refined"; id: string; gains: Record<string, number> }
@@ -484,6 +493,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "boss_summon" };
     case "bt_cancel":
       return { t: "bt_cancel" };
+    case "med_tick":
+      return { t: "med_tick" };
     case "meditate":
       return typeof m.on === "boolean" ? { t: "meditate", on: m.on } : null;
     case "mount":
@@ -504,6 +515,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isPathId(m.path) ? { t: "path_drop", path: m.path } : null;
     case "skill_boost":
       return typeof m.skill === "string" && /^[a-z0-9_]{1,32}$/.test(m.skill) ? { t: "skill_boost", skill: m.skill } : null;
+    case "skill_forget":
+      return typeof m.skill === "string" && /^[a-z0-9_]{1,32}$/.test(m.skill) ? { t: "skill_forget", skill: m.skill } : null;
     case "eq_equip": {
       if (!isInt(m.tab) || !isInt(m.cell) || !cellOk(m.tab, m.cell)) return null;
       if (m.slot === undefined) return { t: "eq_equip", tab: m.tab, cell: m.cell };
@@ -528,9 +541,11 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "npc_open":
       if (!isNpcId(m.npc)) return null;
       if (m.view === undefined) return { t: "npc_open", npc: m.npc };
-      return m.view === "shop" || m.view === "smith" || m.view === "brew" ? { t: "npc_open", npc: m.npc, view: m.view } : null;
+      return m.view === "shop" || m.view === "smith" || m.view === "brew" || m.view === "learn" ? { t: "npc_open", npc: m.npc, view: m.view } : null;
     case "brew_start":
-      return isNpcId(m.npc) && typeof m.recipe === "string" && /^[a-z0-9_]{1,40}$/.test(m.recipe) ? { t: "brew_start", npc: m.npc, recipe: m.recipe } : null;
+      return isNpcId(m.npc) && typeof m.recipe === "string" && /^[a-z0-9_]{1,40}$/.test(m.recipe) ? { t: "brew_start", npc: m.npc, recipe: m.recipe, ...(typeof m.count === "number" && Number.isInteger(m.count) && m.count >= 1 && m.count <= 100 ? { count: m.count } : {}) } : null;
+    case "dojo_learn":
+      return isNpcId(m.npc) && typeof m.skill === "string" && /^[a-z0-9_]{1,24}$/.test(m.skill) ? { t: "dojo_learn", npc: m.npc, skill: m.skill } : null;
     case "brew_collect":
       return isNpcId(m.npc) && typeof m.job === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.job) ? { t: "brew_collect", npc: m.npc, job: m.job } : null;
     case "waygate_go":
