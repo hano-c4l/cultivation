@@ -1,4 +1,5 @@
 import { ALL_ROOTS, CURRENCIES, parseRoots, type SpiritualRoot, MUTANT_ROOTS, ROOT_GRADES, SPIRITUAL_ROOTS, equipmentInfo, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, applyOps, type BagOp, maxSkillLevel, skillGrade, refineLevelOf, ENHANCE_MAX, REALMS, type BagItem, type EquippedItem } from "@game/shared";
+import { closeListingsOf } from "./market";
 import { logStatement } from "./admin-log";
 import { applyCurrencyDelta } from "./economy";
 import { commitBagOps, loadBag } from "./inventory";
@@ -464,6 +465,8 @@ export async function deleteCharacter(db: D1Database, admin: string, id: string,
   } catch (err) {
     return mapGuard(err);
   }
+  // Vạn Bảo Lâu: take its open listings down (a standing top bidder is refunded by mail).
+  await closeListingsOf(db, id, now).catch((err) => console.error("market close failed", id, err));
   return { ok: true };
 }
 

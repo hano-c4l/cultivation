@@ -10,6 +10,8 @@ export function npcTabs(kind: NpcSpot["kind"], hasShop: boolean): NpcView[] {
       return ["shop", "brew"];
     case "master":
       return ["learn"];
+    case "market":
+      return ["market"];
     case "smith":
       return hasShop ? ["smith", "shop"] : ["smith"];
     default:

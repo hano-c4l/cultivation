@@ -187,7 +187,10 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
       el.className = `line ch-${line.channel}`;
       const tag = document.createElement("span");
       tag.className = "tag";
-      tag.textContent = `[${vi.chat.channels[line.channel]}] `;
+      // An NPC speaking (its id starts with `npc:`, e.g. Vạn Bảo Lâu announcing a listing): its name replaces the channel tag and the line has its own look.
+      const byNpc = line.channel === "system" && line.id.startsWith("npc:");
+      if (byNpc) el.classList.add("npc");
+      tag.textContent = byNpc ? `[${line.name}] ` : `[${vi.chat.channels[line.channel]}] `;
       el.append(tag);
       const isSelf = line.id === selfId;
       if (line.channel === "system") {

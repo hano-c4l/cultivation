@@ -50,7 +50,7 @@ interface BagRow {
 }
 
 /** Wear, training, rolled-stat and upgrade fields of a row, in the shape the room and the client use. */
-function wearOf(r: { durability: number | null; max_durability: number | null; refine_level?: number | null; refine_exp?: number | null; rolled_stats?: string | null; enhance_level?: number | null }): Carry {
+export function wearOf(r: { durability: number | null; max_durability: number | null; refine_level?: number | null; refine_exp?: number | null; rolled_stats?: string | null; enhance_level?: number | null }): Carry {
   const rs = r.rolled_stats ? parseRolledStats(r.rolled_stats) : undefined;
   return {
     ...(rs ? { rs } : {}),
@@ -87,7 +87,7 @@ export async function loadBag(db: D1Database, characterId: string): Promise<BagS
 }
 
 /** `INSERT INTO inv_guard (ok) SELECT NULL WHERE NOT EXISTS (...)`: throws (NOT NULL) when the row is not as expected. */
-function guard(db: D1Database, characterId: string, id: string, expect: { qty?: number; tab?: number | null; cell?: number | null; slot?: string | null; dur?: number }): D1PreparedStatement {
+export function guard(db: D1Database, characterId: string, id: string, expect: { qty?: number; tab?: number | null; cell?: number | null; slot?: string | null; dur?: number }): D1PreparedStatement {
   const conds = ["id = ?", "owner_character_id = ?"];
   const args: unknown[] = [id, characterId];
   if (expect.qty !== undefined) {

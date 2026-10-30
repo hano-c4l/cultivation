@@ -206,7 +206,7 @@ export async function claimGiftMail(db: D1Database, characterId: string, mailId:
   ];
   for (const currency of GIFT_CURRENCIES) {
     const amount = gift[currency];
-    if (amount) extra.push(...currencyStatements(db, { characterId, currency: currency as Currency, delta: amount, reason: "admin_gift", actor: gift.by ?? "system" }, traceMin, now));
+    if (amount) extra.push(...currencyStatements(db, { characterId, currency: currency as Currency, delta: amount, reason: typeof gift.reason === "string" && /^[a-z_]{1,24}(:[a-z_]{1,24})?$/.test(gift.reason) ? gift.reason : "admin_gift", actor: gift.by ?? "system" }, traceMin, now));
   }
   const res = await commitBagOps(db, characterId, ops, { extra, now });
   if (res !== "ok") return { status: "stale" };

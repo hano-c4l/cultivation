@@ -87,7 +87,7 @@ function field(label: string, ...children: Array<Node | null>): HTMLElement {
 
 function tabs(active: "npcs" | "alchemy" | "numbers"): HTMLElement {
   const link = (href: string, label: string, on: boolean) => h("a", { href, class: on ? "active" : "" }, label);
-  return h("div", { class: "toolbar" }, link("/admin/npcs", "NPC", active === "npcs"), link("/admin/npcs/alchemy", "Công thức luyện đan", active === "alchemy"), link("/admin/npcs/numbers", "Con số (Thợ Rèn, Đạo Sư)", active === "numbers"));
+  return h("div", { class: "toolbar" }, link("/admin/npcs", "NPC", active === "npcs"), link("/admin/npcs/alchemy", "Công thức luyện đan", active === "alchemy"), link("/admin/npcs/numbers", "Con số (Thợ Rèn, Đạo Sư, Vạn Bảo Lâu)", active === "numbers"));
 }
 
 function messageBox(): { msg: HTMLElement; problems: HTMLElement; show: (text: string, cls: string, list?: string[]) => void } {

@@ -484,6 +484,27 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
       { path: `${id}.masteryPct`, label: `${name}: điểm thuần thục`, kind: "num", unit: "%" },
     ]),
   },
+  {
+    group: "market",
+    page: "npcs",
+    title: "Vạn Bảo Lâu: phí, thời hạn, giờ đấu giá",
+    note: "Phí gửi bán thu ngay khi đăng (không hoàn); thuế thu khi bán thành công, trừ vào tiền người bán. Tin bán đứt hết hạn thì đồ về thư người bán. Đấu giá mở từ giờ mở đến giờ chốt mỗi ngày (giờ trong ngày theo múi giờ bên dưới); giờ chốt phải lớn hơn giờ mở.",
+    fields: [
+      { path: "listFeePct", label: "Phí gửi bán (bán đứt và đấu giá): phần trăm giá niêm yết", kind: "int", unit: "%" },
+      { path: "minListFee", label: "Phí gửi bán tối thiểu", kind: "int", unit: "Linh Thạch" },
+      { path: "taxPct", label: "Thuế khi bán thành công (trừ vào tiền người bán)", kind: "int", unit: "%" },
+      { path: "fixedDays", label: "Thời hạn tin bán đứt", kind: "int", unit: "ngày" },
+      { path: "maxListings", label: "Số tin tối đa mỗi nhân vật", kind: "int" },
+      { path: "maxPrice", label: "Giá niêm yết tối đa", kind: "int", unit: "Linh Thạch" },
+      { path: "bidStepPct", label: "Đấu giá: bước giá tối thiểu so với giá cao nhất", kind: "int", unit: "%" },
+      { path: "openHour", label: "Đấu giá: giờ mở nhận giá (0-23)", kind: "int", unit: "giờ" },
+      { path: "closeHour", label: "Đấu giá: giờ chốt (1-24, lớn hơn giờ mở)", kind: "int", unit: "giờ" },
+      { path: "tzHours", label: "Múi giờ: số giờ lệch so với UTC (Việt Nam là 7)", kind: "int", unit: "giờ" },
+      { path: "promote.fee", label: "Tin quảng bá: phí", kind: "int", unit: "Linh Thạch" },
+      { path: "promote.minGrade", label: "Tin quảng bá: phẩm cấp vật phẩm tối thiểu (1-9)", kind: "int" },
+      { path: "promote.cooldownSec", label: "Tin quảng bá: thời gian chờ giữa hai lần của một nhân vật", kind: "int", unit: "giây" },
+    ],
+  },
 ];
 
 export const ADMIN_TUNING_SCREENS: readonly TuningScreenGroup[] = [...BASE_SCREENS, ...MONSTER_SCREENS, ...NPC_SCREENS];

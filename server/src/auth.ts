@@ -1,4 +1,5 @@
 import { applyElementSettings } from "./element-settings";
+import { closeListingsOf } from "./market";
 import {
   SPIRITUAL_ROOTS,
   isGender,
@@ -227,6 +228,10 @@ async function deleteOwnCharacter(request: Request, env: Env): Promise<Response>
   if ((done[0]?.meta?.changes ?? 0) === 0) return errorResponse("not_found", 404);
   // After the batch, so a reconnect of another session is already refused (the character is gone from the account); the room saves it as it leaves.
   await kick(env, character.id);
+  // Vạn Bảo Lâu: take the character's open listings down, so a standing top bidder gets the bid back.
+  await closeListingsOf(env.DB, character.id, now)
+    .then((ids) => (ids.length > 0 ? env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).notifyMail(ids) : undefined))
+    .catch((err) => console.error("market close failed", character.id, err));
   return json({ ok: true });
 }
 
