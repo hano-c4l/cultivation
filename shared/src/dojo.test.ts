@@ -60,3 +60,21 @@ describe("rare skills", () => {
     expect(bookItemId("thon_linh")).toBe("bt_thon_linh");
   });
 });
+
+describe("realm tags and hats", () => {
+  it("gives every book, breakthrough pill and ore a realm, and hats a shape by realm", async () => {
+    const { itemRealmOf } = await import("./items");
+    const { hatShapeOf, HAT_SHAPES } = await import("./gear-look");
+    const { bookItemId } = await import("./skills");
+    expect(itemRealmOf(bookItemId("kim_4"))).toBe(2);
+    expect(itemRealmOf(bookItemId("thon_linh"))).toBe(0);
+    expect(itemRealmOf("bt_pill_3")).toBe(2);
+    expect(itemRealmOf("ren_kd")).toBe(2);
+    expect(itemRealmOf("hoi_huyet_dan")).toBe(0);
+    expect(itemRealmOf("linh_thao")).toBeNull();
+    // the hats: six realms, six different shapes, all drawn
+    const shapes = [0, 1, 2, 3, 4, 5].map((realm) => hatShapeOf(1 + realm * 9));
+    expect(new Set(shapes).size).toBe(6);
+    expect(shapes.every((s) => s >= 0 && s < HAT_SHAPES)).toBe(true);
+  });
+});

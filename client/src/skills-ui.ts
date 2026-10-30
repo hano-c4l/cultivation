@@ -77,7 +77,7 @@ export function effectText(s: SkillDef, ctx: SkillContext): string {
  * and what it learned. Each card shows the skill's realm and grade, its mastery level with the progress to the next one, and
  * what it does at that strength. Learning and mastery are server side; this only shows what the server sent.
  */
-export function initSkills(deps: { beginAssign: (value: string, label: string) => void; boost: (skill: string) => void; pillCount: () => number }): SkillsUi {
+export function initSkills(deps: { beginAssign: (value: string, label: string) => void; boost: (skill: string) => void; pillCount: () => number; forget: (skill: string) => void }): SkillsUi {
   const toggle = el("button", undefined, "");
   iconButton(toggle, "taiji", vi.skills.button);
   toggle.id = "sk-btn";
@@ -177,6 +177,14 @@ export function initSkills(deps: { beginAssign: (value: string, label: string) =
       boost.title = getItemDef("ngo_dao_dan")?.descVi ?? "";
       boost.onclick = () => deps.boost(s.id);
       actions.append(boost);
+    }
+    if (s.source === "learned") {
+      // A skill from a book or a master can be dropped (to free the bar, or to learn it again later): asked twice, because the mastery goes and learning costs again.
+      const forget = el("button", "sk-small sk-forget", vi.skills.forget);
+      forget.onclick = () => {
+        if (window.confirm(vi.skills.forgetAsk(skillDisplayName(s)))) deps.forget(s.id);
+      };
+      actions.append(forget);
     }
     box.append(info, actions);
     return box;

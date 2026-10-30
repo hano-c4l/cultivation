@@ -10,7 +10,7 @@ import { getTuning, resetTuningCache } from "./tuning";
  */
 export const LOOKS_LOG_SCREEN = "Hình ảnh";
 
-export const LOOK_GROUPS = ["outfits", "monsterModels", "monsterTints", "mapArt", "npcLooks", "flightLooks", "skillLooks", "iconLooks"] as const satisfies readonly TuningGroup[];
+export const LOOK_GROUPS = ["outfits", "monsterModels", "monsterTints", "mapArt", "npcLooks", "flightLooks", "skillLooks", "iconLooks", "hatLooks", "minimap"] as const satisfies readonly TuningGroup[];
 export type LookGroup = (typeof LOOK_GROUPS)[number];
 
 export interface LookGroupView {

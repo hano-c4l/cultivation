@@ -764,6 +764,8 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleUseType(ws, state, msg.type);
       case "skill_boost":
         return this.handleSkillBoost(ws, state, msg.skill);
+      case "skill_forget":
+        return void this.handleSkillForget(ws, state, msg.skill);
       case "bt_start":
         return this.handleBreakthroughStart(ws, state, msg.pills);
       case "bt_cancel":
@@ -3773,6 +3775,37 @@ export class MapRoom extends DurableObject<Env> {
     }
     this.sim?.setPaths(id, after);
     await this.announcePaths(ws, id, rows);
+  }
+
+  /**
+   * Forgets a learned skill (from a book or a master): the row goes, the room's copy and the hotbar follow, the client hears the new list. Only the skills of source
+   * "learned" can be forgotten (the root, path, gear and basic ones are not the player's to drop); the book is not given back, and learning it again costs again.
+   */
+  private async handleSkillForget(ws: WebSocket, state: PlayerState, skillId: string): Promise<void> {
+    const id = state.id;
+    const def = getSkill(skillId);
+    if (!def || def.source !== "learned") return void this.send(ws, { t: "inv_error", reason: "invalid" });
+    const rows = await this.getSkillRows(id);
+    if (!rows.some((r) => r.skill_id === skillId && r.source === "learned")) return void this.send(ws, { t: "inv_error", reason: "invalid" });
+    const current = await this.getHotbar(id);
+    const cleaned = current.map((slot) => (parseSkillSlot(slot)?.id === skillId ? "" : slot));
+    try {
+      await this.env.DB.prepare("DELETE FROM character_skills WHERE character_id = ? AND skill_id = ? AND source = 'learned'").bind(id, skillId).run();
+      if (cleaned.some((slot, i) => slot !== current[i])) {
+        await saveHotbar(this.env.DB, id, cleaned);
+        this.hotbars.set(id, cleaned);
+        this.send(ws, { t: "hotbar", slots: cleaned });
+      }
+    } catch (err) {
+      console.error("skill forget failed", id, err);
+      return void this.send(ws, { t: "inv_error", reason: "busy" });
+    }
+    for (let i = rows.length - 1; i >= 0; i--) if (rows[i]!.skill_id === skillId) rows.splice(i, 1);
+    this.sim?.removeGranted(id, [skillId]);
+    const live = this.sim?.getPlayer(id);
+    const gear = (await this.getBag(id)).equipped;
+    this.send(ws, { t: "skills", ids: live && this.sim ? this.sim.skillsOf(live) : availableSkills(rows.map((r) => r.skill_id), gearSkillIds(gear)) });
+    this.send(ws, { t: "skill_forgot", skill: skillId });
   }
 
   /** After the paths changed: the sheet, the skills and the vitals (maximum MP follows a Thuật tu coming or going). */

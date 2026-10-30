@@ -1,4 +1,5 @@
-import { getSkill, skillDisplayName, type ClientMessage } from "@game/shared";
+import { REALMS, getSkill, skillDisplayName, type ClientMessage } from "@game/shared";
+import { realmClass } from "./equip-text";
 import { renderIcon, skillIconSpecOf } from "./icons";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
@@ -54,7 +55,10 @@ export function initDojo(send: (msg: ClientMessage) => void): DojoUi {
       const row = el("div", "dj-row");
       const icon = renderIcon(skillIconSpecOf(def));
       const info = el("div", "dj-info");
-      info.append(el("div", "dj-name", def ? skillDisplayName(def) : c.skill), el("div", "muted", def?.descVi ?? ""), el("div", "dj-price", vi.dojo.price(c.cost.toLocaleString("vi-VN"))));
+      const name = el("div", "dj-name", def ? skillDisplayName(def) : c.skill);
+      const realm = def?.learn?.realm ?? def?.realm;
+      if (realm !== undefined) name.prepend(el("span", `eq-tier ${realmClass(realm)}`, REALMS[realm]?.shortVi ?? ""));
+      info.append(name, el("div", "muted", def?.descVi ?? ""), el("div", "dj-price", vi.dojo.price(c.cost.toLocaleString("vi-VN"))));
       const learn = el("button", "", vi.dojo.learn);
       learn.disabled = !c.ok || balance < c.cost;
       learn.title = !c.ok ? vi.dojo.levelLow : balance < c.cost ? vi.dojo.poor : "";

@@ -1,4 +1,4 @@
-import { DEFAULT_TUNING, FLIGHT_STYLES, GEAR_ELEMENTS, GROUND_STYLES, OBSTACLE_STYLES, WEAPON_TYPES, makeEquipmentId, type EquipKind, type FlightStyle, type GroundStyle, type IconShape, type NpcLook, type ObstacleStyle } from "@game/shared";
+import { DEFAULT_TUNING, FLIGHT_STYLES, HAT_SHAPES, GEAR_ELEMENTS, GROUND_STYLES, OBSTACLE_STYLES, WEAPON_TYPES, makeEquipmentId, type EquipKind, type FlightStyle, type GroundStyle, type IconShape, type NpcLook, type ObstacleStyle } from "@game/shared";
 import { iconSpecOf } from "../../src/icons";
 import { h } from "./kit";
 import { Looks, iconGrid, iconNode, picker, saveBar, skillLookOptions, spriteChoices, spritePreview, type Opt } from "./looks-kit";
@@ -24,6 +24,10 @@ const KIND_VI: Record<string, string> = {
   hat: "Mũ", robe: "Áo", bracer: "Hộ uyển", ring: "Nhẫn", jade: "Ngọc bội", necklace: "Dây chuyền", belt: "Đai lưng", boots: "Giày", charm: "Pháp bảo thường", bonded: "Pháp bảo bản mệnh", flight: "Pháp bảo phi hành",
 };
 const CATEGORY_VI: Record<string, string> = { consumable: "Đan / tiêu hao", material: "Nguyên liệu", skill_book: "Bí tịch" };
+
+const HAT_VI = ["Nón tre", "Khăn nho sinh", "Vương miện", "Búi tóc ngọc trâm", "Mũ lông vũ", "Khăn đầu", "Mũ sắt", "Liên hoa quan", "Long quan", "Phượng quan"];
+const REALM_VI = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh", "Hóa Thần", "Luyện Hư"];
+const NPC_KIND_VI: Record<string, string> = { merchant: "Thương nhân", quest: "NPC nhiệm vụ", smith: "Thợ rèn", alchemist: "Đan sư", master: "Võ sư", guard: "Vệ binh" };
 
 const options = (values: readonly string[], names: Record<string, string>, preview?: (v: string) => (() => HTMLElement | null) | undefined): Opt[] =>
   values.map((v) => {
@@ -72,6 +76,58 @@ export async function looksPage(): Promise<HTMLElement> {
     root.append(
       section("Trang phục theo cảnh giới của áo", "Cảnh giới 0 = Luyện Khí, 1 = Trúc Cơ, 2 = Kim Đan... Luật có số cảnh giới cao nhất mà áo đạt được thì thắng; không mặc áo thì mặc đồ nông dân.", rules, h("div", { class: "toolbar" }, add), saveBar(() => looks.save("outfits", { rules: [...value.rules].sort((a, b) => a.minRealm - b.minRealm) }))),
     );
+  }
+
+  // The colours of the mini map.
+  {
+    const value = looks.get<Record<string, string>>("minimap");
+    const names: Array<[string, string]> = [["self", "Bản thân"], ["player", "Người chơi khác"], ["monster", "Quái"], ["boss", "Boss"], ["npc", "NPC và vệ binh"], ["portal", "Cổng (sang bản đồ khác, Truyền Tống Trận)"]];
+    const rows = names.map(([key, label]) => {
+      const input = h("input", { type: "color" });
+      input.value = /^#[0-9a-fA-F]{6}$/.test(value[key] ?? "") ? value[key]! : "#ffffff";
+      input.addEventListener("input", () => (value[key] = input.value));
+      return row(label, input);
+    });
+    root.append(section("Bản đồ mini", "Màu các chấm trên bản đồ mini ở góc phải trên.", ...rows, saveBar(() => looks.save("minimap", value))));
+  }
+
+  // Hats by the realm of the hat worn.
+  {
+    const value = looks.get<{ rules: Array<{ minRealm: number; shape: number }> }>("hatLooks");
+    const shapes: Opt[] = Array.from({ length: HAT_SHAPES }, (_, i) => ({ value: String(i), label: `${i}. ${HAT_VI[i] ?? "Mũ"}` }));
+    const rules = h("div", null);
+    const draw = () =>
+      rules.replaceChildren(
+        ...value.rules.map((r, i) => {
+          const minRealm = h("input", { type: "number", min: "0", max: "99", step: "1" });
+          minRealm.value = String(r.minRealm);
+          minRealm.addEventListener("input", () => (r.minRealm = Math.max(0, Math.trunc(Number(minRealm.value)) || 0)));
+          const del = h("button", { type: "button" }, "Xóa luật");
+          del.addEventListener("click", () => {
+            value.rules.splice(i, 1);
+            draw();
+          });
+          return h("div", { class: "toolbar look-rule" }, h("span", null, "Mũ từ cảnh giới số"), minRealm, h("span", null, `(${REALM_VI[r.minRealm] ?? "?"}) trở lên đội`), picker(shapes, String(r.shape), null, (v) => (r.shape = Number(v))), del);
+        }),
+      );
+    draw();
+    const add = h("button", { type: "button" }, "+ Thêm luật");
+    add.addEventListener("click", () => {
+      value.rules.push({ minRealm: 0, shape: 0 });
+      draw();
+    });
+    root.append(section("Mũ theo cảnh giới", "Hình mũ hiện trên nhân vật theo cảnh giới của mũ đang đội (màu theo bộ, xem ở \"Chỉ số khác\"). Luật có số cảnh giới cao nhất mà mũ đạt được thì thắng.", rules, h("div", { class: "toolbar" }, add), saveBar(() => looks.save("hatLooks", { rules: [...value.rules].sort((a, b) => a.minRealm - b.minRealm) }))));
+  }
+
+  // The outfit of the NPCs by kind and of the guards.
+  {
+    const value = looks.get<{ byKind: Record<string, NpcLook>; byId: Record<string, NpcLook> }>("npcLooks");
+    const rows = Object.entries(NPC_KIND_VI).map(([kind, name]) => {
+      const look: NpcLook = value.byKind[kind] ?? { body: "male" };
+      value.byKind[kind] = look;
+      return row(name, picker(outfitOptions(choices.outfits), look.outfit ?? "", "(đồ nông dân)", (v) => (v ? (look.outfit = v) : delete look.outfit)));
+    });
+    root.append(section("Trang phục NPC và vệ binh", "Mỗi loại NPC mặc một trang phục; NPC có hình riêng (ở màn sửa NPC) thì thắng. Màu nhuộm và vũ khí giữ như đang có.", ...rows, saveBar(() => looks.save("npcLooks", value))));
   }
 
   // The flight pháp bảo.

@@ -1,15 +1,15 @@
-import { CELLS_PER_TILE, TILE_H, TILE_W, playRectPixels, type MapData } from "@game/shared";
+import { CELLS_PER_TILE, TILE_H, TILE_W, npcsOf, playRectPixels, tuning, type MapData } from "@game/shared";
 
 /**
  * The small map in the top right corner: the play rectangle drawn the way the screen draws it (tiles at ((x - y) * 32, (x + y) * 16)), the blocked ground faintly,
- * the doors to other maps, and dots: yourself (white, ringed), other players (blue), monsters (red), the boss (gold, bigger). Guards and NPCs are left out.
+ * the doors to other maps and the teleport arrays, and dots: yourself (ringed), other players, monsters, the boss (bigger), the NPCs and the guards. The colours are the tuning `minimap`.
  * It only draws what the client already knows; it asks the server for nothing.
  */
 export interface MinimapDots {
   /** Tile positions. */
   self: { x: number; y: number } | null;
   players: Array<{ x: number; y: number }>;
-  monsters: Array<{ x: number; y: number; boss: boolean }>;
+  monsters: Array<{ x: number; y: number; boss: boolean; guard: boolean }>;
 }
 
 export interface MinimapUi {
@@ -20,7 +20,7 @@ export interface MinimapUi {
 
 const MAX_W = 176;
 const MAX_H = 128;
-const COLORS = { ground: "rgba(60, 96, 70, 0.9)", blocked: "rgba(10, 14, 12, 0.85)", frame: "rgba(255, 255, 255, 0.55)", portal: "#b9a4ff", self: "#ffffff", player: "#4da3ff", monster: "#ff4d4d", boss: "#ffd24a" };
+const COLORS = { ground: "rgba(60, 96, 70, 0.9)", blocked: "rgba(10, 14, 12, 0.85)", frame: "rgba(255, 255, 255, 0.55)" };
 /** How often the dots are redrawn (ms): positions only move at walking pace, so ten times a second is plenty. */
 const REDRAW_MS = 100;
 
@@ -96,37 +96,46 @@ export function initMinimap(): MinimapUi {
     update(dots, now) {
       if (!ctx || !map || !base || box.hidden || now - lastDraw < REDRAW_MS) return;
       lastDraw = now;
+      const colors = tuning().minimap;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(base, 0, 0);
-      // The doors to other maps: a violet ring that breathes.
+      // The doors to other maps and the teleport arrays of the towns: a ring that breathes.
       const pulse = 3 + Math.sin(now / 400);
-      for (const portal of map.portals) {
-        const p = project(portal.x + 0.5, portal.y + 0.5);
-        ctx.strokeStyle = COLORS.portal;
+      const ring = (tx: number, ty: number): void => {
+        const p = project(tx, ty);
+        ctx.strokeStyle = colors.portal;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(p.x, p.y, pulse, 0, Math.PI * 2);
         ctx.stroke();
+      };
+      for (const portal of map.portals) ring(portal.x + 0.5, portal.y + 0.5);
+      for (const npc of npcsOf(map)) {
+        if (npc.kind === "waygate") ring(npc.x, npc.y);
+        else {
+          const p = project(npc.x, npc.y);
+          dot(ctx, p.x, p.y, 2.4, colors.npc);
+        }
       }
       for (const m of dots.monsters) {
         if (m.boss) continue;
         const p = project(m.x, m.y);
-        dot(ctx, p.x, p.y, 1.8, COLORS.monster);
+        dot(ctx, p.x, p.y, m.guard ? 2.4 : 1.8, m.guard ? colors.npc : colors.monster);
       }
       for (const o of dots.players) {
         const p = project(o.x, o.y);
-        dot(ctx, p.x, p.y, 2.2, COLORS.player);
+        dot(ctx, p.x, p.y, 2.2, colors.player);
       }
       for (const m of dots.monsters) {
         if (!m.boss) continue;
         const p = project(m.x, m.y);
         dot(ctx, p.x, p.y, 4, "#000000");
-        dot(ctx, p.x, p.y, 3.2, COLORS.boss);
+        dot(ctx, p.x, p.y, 3.2, colors.boss);
       }
       if (dots.self) {
         const p = project(dots.self.x, dots.self.y);
         dot(ctx, p.x, p.y, 3.6, "#000000");
-        dot(ctx, p.x, p.y, 2.8, COLORS.self);
+        dot(ctx, p.x, p.y, 2.8, colors.self);
       }
     },
   };

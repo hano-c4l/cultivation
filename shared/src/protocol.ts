@@ -112,6 +112,8 @@ export type ClientMessage =
   | { t: "use_type"; type: string }
   /** Spend one Ngộ Đạo Đan on a skill to raise its mastery. */
   | { t: "skill_boost"; skill: string }
+  /** Forget a skill learned from a book or a master (its mastery goes with it; the book is not given back). */
+  | { t: "skill_forget"; skill: string }
   /** Start a breakthrough with this many pills (the pills and the Linh Thạch are paid now). Moving, fighting or being hit before it ends makes it fail. */
   | { t: "bt_start"; pills: number }
   /** GM only: take the breakthrough pill for the realm to break out of (as many times as wanted). */
@@ -334,6 +336,7 @@ export type ServerMessage =
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
   | { t: "skill_state"; id: string; lv: number; xp: number; up?: boolean }
+  | { t: "skill_forgot"; skill: string }
   | { t: "hotbar"; slots: string[] }
   /** MP right now. It then regenerates by `perSec` (fraction of max) per second after `regenInMs` (nothing before that). */
   | { t: "mp"; mp: number; maxMp: number; regenInMs: number; perSec: number }
@@ -508,6 +511,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return isPathId(m.path) ? { t: "path_drop", path: m.path } : null;
     case "skill_boost":
       return typeof m.skill === "string" && /^[a-z0-9_]{1,32}$/.test(m.skill) ? { t: "skill_boost", skill: m.skill } : null;
+    case "skill_forget":
+      return typeof m.skill === "string" && /^[a-z0-9_]{1,32}$/.test(m.skill) ? { t: "skill_forget", skill: m.skill } : null;
     case "eq_equip": {
       if (!isInt(m.tab) || !isInt(m.cell) || !cellOk(m.tab, m.cell)) return null;
       if (m.slot === undefined) return { t: "eq_equip", tab: m.tab, cell: m.cell };
