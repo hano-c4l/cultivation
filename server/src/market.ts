@@ -214,14 +214,14 @@ export async function buyFixed(db: D1Database, cfg: MarketCfg, p: { buyerId: str
 export async function placeBid(db: D1Database, cfg: MarketCfg, p: { bidderId: string; town: string; id: string; amount: number; now: number }): Promise<TradeResult> {
   const l = await getListing(db, p.id);
   if (!l || l.status !== "active" || l.town !== p.town || l.kind !== "auction" || l.ends_at <= p.now) return { status: "gone" };
-  if (l.seller_id === p.bidderId) return { status: "mine" };
+  // The seller may bid on their own auction (to buy it back, or to egg others on); the proceeds of a sale to themselves are taxed like any other.
   if (l.top_bidder_id === p.bidderId) return { status: "top" };
   if (!auctionOpen(cfg, p.now)) return { status: "closed" };
   if (p.amount < minNextBid(cfg, l.price, l.top_bid) || p.amount > cfg.maxPrice) return { status: "low" };
   const extra = [
     actorGuard(db, p.bidderId, p.now),
     // The top bid must still be the one the amount was checked against, or two bids of the same size could both win.
-    listingGuard(db, l.id, " AND kind = 'auction' AND town = ? AND top_bid = ? AND ends_at > ? AND seller_id <> ?", [p.town, l.top_bid, p.now, p.bidderId]),
+    listingGuard(db, l.id, " AND kind = 'auction' AND town = ? AND top_bid = ? AND ends_at > ?", [p.town, l.top_bid, p.now]),
     db.prepare("UPDATE market_listings SET top_bid = ?, top_bidder_id = ? WHERE id = ? AND status = 'active'").bind(p.amount, p.bidderId, l.id),
   ];
   if (l.top_bidder_id) extra.push(mailStatement(db, l.top_bidder_id, `Vạn Bảo Lâu: bị vượt giá, hoàn tiền ${nameOf(l.item_type)}`, p.now, { amount: l.top_bid, reason: "market:refund" }));
@@ -236,12 +236,15 @@ export async function placeBid(db: D1Database, cfg: MarketCfg, p: { bidderId: st
   }
 }
 
-/** The seller takes a listing down: a fixed one any time, an auction only while nobody has bid. The item comes back by mail. */
-export async function cancelListing(db: D1Database, p: { sellerId: string; town: string; id: string; now: number }): Promise<{ status: "ok"; notify: string[] } | { status: MarketError }> {
+/**
+ * The seller takes a listing down: a fixed one any time; an auction only while its round is not open (listed at night, taken back before the opening hour). From the
+ * opening hour on, an auction stays until it closes, and goes back to the seller by mail only when nobody bid. The item comes back by mail.
+ */
+export async function cancelListing(db: D1Database, cfg: MarketCfg, p: { sellerId: string; town: string; id: string; now: number }): Promise<{ status: "ok"; notify: string[] } | { status: MarketError }> {
   const l = await getListing(db, p.id);
   if (!l || l.status !== "active" || l.town !== p.town) return { status: "gone" };
   if (l.seller_id !== p.sellerId) return { status: "mine" };
-  if (l.kind === "auction" && l.top_bid > 0) return { status: "closed" };
+  if (l.kind === "auction" && (l.top_bid > 0 || auctionOpen(cfg, p.now))) return { status: "closed" };
   try {
     await db.batch([actorGuard(db, p.sellerId, p.now), listingGuard(db, l.id, " AND top_bid = ?", [l.top_bid]), ...returnStatements(db, l, "cancelled", p.now)]);
     return { status: "ok", notify: [l.seller_id] };

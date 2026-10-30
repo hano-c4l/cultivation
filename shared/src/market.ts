@@ -16,6 +16,8 @@ export interface MarketCfg {
   fixedDays: number;
   /** A new bid must beat the top bid by at least this share (percent), and by at least 1. */
   bidStepPct: number;
+  /** The amount the bid box starts with: the top bid plus this share (percent); the bidder can edit it. Absent in a stored row from before: 10. */
+  bidSuggestPct?: number;
   /** The auction round: bids are taken from `openHour` until `closeHour` (hours of the local day, 0-23); the round closes at `closeHour`. */
   openHour: number;
   closeHour: number;
@@ -34,6 +36,7 @@ export const DEFAULT_MARKET: MarketCfg = {
   maxListings: 10,
   fixedDays: 7,
   bidStepPct: 5,
+  bidSuggestPct: 10,
   openHour: 6,
   closeHour: 21,
   tzHours: 7,
@@ -62,6 +65,7 @@ export function validMarket(v: unknown): v is MarketCfg {
     inRange(c.maxListings, 1, 100) &&
     inRange(c.fixedDays, 1, 90) &&
     inRange(c.bidStepPct, 0, 100) &&
+    (c.bidSuggestPct === undefined || inRange(c.bidSuggestPct, 0, 100)) &&
     inRange(c.openHour, 0, 23) &&
     inRange(c.closeHour, 1, 24) &&
     (c.openHour as number) < (c.closeHour as number) &&
@@ -89,6 +93,13 @@ export function listingFee(cfg: MarketCfg, price: number): number {
 export function minNextBid(cfg: MarketCfg, startPrice: number, topBid: number): number {
   if (topBid <= 0) return startPrice;
   return topBid + Math.max(1, Math.ceil((topBid * cfg.bidStepPct) / 100));
+}
+
+/** The amount a bid box starts with: the start price while nobody has bid, else the top bid raised by `bidSuggestPct` (never under the least next bid, never over the price cap). */
+export function suggestedBid(cfg: MarketCfg, startPrice: number, topBid: number): number {
+  const least = minNextBid(cfg, startPrice, topBid);
+  if (topBid <= 0) return Math.min(least, cfg.maxPrice);
+  return Math.min(cfg.maxPrice, Math.max(least, Math.ceil((topBid * (100 + (cfg.bidSuggestPct ?? 10))) / 100)));
 }
 
 /** Milliseconds since the start of the local day (`tzHours` ahead of UTC) at `now`. */

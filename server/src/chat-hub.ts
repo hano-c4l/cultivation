@@ -169,6 +169,11 @@ export class ChatHub extends DurableObject<Env> {
     for (const id of new Set(characterIds)) for (const ws of this.ctx.getWebSockets(id)) this.send(ws, { t: "mail_new" });
   }
 
+  /** A listing of a town's market changed: every online player is told, and a window that is open reads the list again. Called by a map room over RPC. */
+  async marketChanged(town: string | null): Promise<void> {
+    this.broadcast(town === null ? { t: "market_changed" } : { t: "market_changed", town });
+  }
+
   /** Closes the chat sockets of a character (an admin banned the account). Called by the Worker over RPC. */
   async kick(characterId: string): Promise<void> {
     for (const ws of this.ctx.getWebSockets(characterId)) {

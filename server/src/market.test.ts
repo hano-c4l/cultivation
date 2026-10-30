@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { DEFAULT_MARKET, auctionEndsAt, type MarketCfg } from "@game/shared";
+import { DEFAULT_MARKET, auctionEndsAt, suggestedBid, type MarketCfg } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyCurrencyDelta } from "./economy";
 import { claimGiftMail } from "./gifts";
@@ -195,6 +195,21 @@ describe("auctions", () => {
     expect(mails(B).find((m) => m.amount === 1000)).toBeTruthy(); // refund
   });
 
+  it("the seller can bid on their own auction and buys it back by winning", async () => {
+    const item = giveStack(S, 1);
+    await fund(S, 10_000);
+    await fund(B, 50_000);
+    const { id } = await post("auction", 1, 1000);
+    expect((await placeBid(db, cfg, { bidderId: B, town: TOWN, id, amount: 1000, now: DAY })).status).toBe("ok");
+    expect((await placeBid(db, cfg, { bidderId: S, town: TOWN, id, amount: 1100, now: DAY })).status).toBe("ok");
+    expect(mails(B).find((m) => m.amount === 1000)).toBeTruthy(); // the other bidder is refunded
+    await settleDue(db, cfg, DAY + 11 * HOUR);
+    expect(listing(id).status).toBe("sold");
+    expect(owner(item)).toBe(S);
+    expect(mails(S).find((m) => m.item_id === item)).toBeTruthy();
+    expect(mails(S).find((m) => m.amount === 990)).toBeTruthy(); // 1 100 less the 10% tax
+  });
+
   it("two bids that both saw the same top bid cannot both win (race)", async () => {
     giveStack(S, 1);
     await fund(S, 1000);
@@ -273,12 +288,24 @@ describe("taking a listing down", () => {
     await fund(B, 50_000);
     const fixed = await post("fixed", 1, 1000, { cell: 0 });
     const auction = await post("auction", 1, 1000, { cell: 1 });
-    expect((await cancelListing(db, { sellerId: B, town: TOWN, id: fixed.id, now: DAY })).status).toBe("mine");
-    expect((await cancelListing(db, { sellerId: S, town: TOWN, id: fixed.id, now: DAY })).status).toBe("ok");
+    expect((await cancelListing(db, cfg, { sellerId: B, town: TOWN, id: fixed.id, now: DAY })).status).toBe("mine");
+    expect((await cancelListing(db, cfg, { sellerId: S, town: TOWN, id: fixed.id, now: DAY })).status).toBe("ok");
     expect(listing(fixed.id).status).toBe("cancelled");
     expect(mails(S).find((m) => m.item_id === item)).toBeTruthy();
     await placeBid(db, cfg, { bidderId: B, town: TOWN, id: auction.id, amount: 1000, now: DAY });
-    expect((await cancelListing(db, { sellerId: S, town: TOWN, id: auction.id, now: DAY })).status).toBe("closed");
+    expect((await cancelListing(db, cfg, { sellerId: S, town: TOWN, id: auction.id, now: DAY })).status).toBe("closed");
+  });
+
+  it("an auction cannot be taken back once its round is open, only at night before the opening hour", async () => {
+    giveStack(S, 1, 0);
+    giveStack(S, 1, 1);
+    await fund(S, 5000);
+    const night = DAY + 13 * HOUR; // 23:00
+    const listedAtNight = await post("auction", 1, 1000, { cell: 0, now: night });
+    const listedByDay = await post("auction", 1, 1000, { cell: 1 }); // 10:00, the round is open
+    expect((await cancelListing(db, cfg, { sellerId: S, town: TOWN, id: listedByDay.id, now: DAY })).status).toBe("closed");
+    expect((await cancelListing(db, cfg, { sellerId: S, town: TOWN, id: listedAtNight.id, now: night + 8 * HOUR })).status).toBe("closed"); // 07:00: open
+    expect((await cancelListing(db, cfg, { sellerId: S, town: TOWN, id: listedAtNight.id, now: night + HOUR })).status).toBe("ok"); // 00:00: still closed
   });
 
   it("deleting a character takes all their listings down and refunds the top bidder", async () => {
@@ -369,9 +396,20 @@ describe("items that went through the market stay ordinary items", () => {
     giveStack(S, 10);
     await fund(S, 1000);
     const { id } = await post("fixed", 4, 1000);
-    await cancelListing(db, { sellerId: S, town: TOWN, id, now: DAY });
+    await cancelListing(db, cfg, { sellerId: S, town: TOWN, id, now: DAY });
     const back = mails(S)[0]!;
     expect((await claimMailItem(db, S, back.id, await loadBag(db, S))).status).toBe("claimed"); // merges into the 6 left, deleting the returned row
     expect((await loadBag(db, S)).items.map((i) => i.qty)).toEqual([10]);
+  });
+});
+
+describe("the suggested bid", () => {
+  it("is the start price at first, then the top bid raised by 10% (never under the least next bid)", () => {
+    expect(suggestedBid(cfg, 1000, 0)).toBe(1000);
+    expect(suggestedBid(cfg, 1000, 2000)).toBe(2200);
+    expect(suggestedBid(cfg, 1000, 5)).toBe(6); // 10% would be 5.5 -> 6, and the least next bid is 5 + 1
+    expect(suggestedBid({ ...cfg, bidSuggestPct: 0 }, 1000, 2000)).toBe(2100); // the least next bid (5% step) wins
+    expect(suggestedBid({ ...cfg, bidSuggestPct: undefined }, 1000, 2000)).toBe(2200); // a stored row from before has no such field
+    expect(suggestedBid(cfg, 1000, cfg.maxPrice)).toBe(cfg.maxPrice);
   });
 });

@@ -157,9 +157,10 @@ check("claiming puts it in the bag", bagOf(winner).some((i) => i.type === "hoi_h
 S.c.send({ t: "mail_refresh" });
 const sm = await S.c.wait((m) => m.t === "mail" && m.mail.some((x) => x.gift?.linh_thach === 9000), 5000, "the seller's proceeds");
 const proceeds = sm.mail.find((x) => x.gift?.linh_thach === 9000);
+check("the market mail carries the proceeds", !!proceeds);
 const sBefore = linh(S);
 mark = S.c.log.length;
-S.c.send({ t: "mail_claim", id: proceeds.id });
+S.c.send({ t: "mail_claim_all" }); // "Nhận nhanh": every mail at once
 await S.c.wait((m) => m.t === "wallet" && m.currency === "linh_thach", 5000, "wallet after claim", mark);
 await sleep(300);
 check("the seller is paid 9 000 (10 000 less 10% tax)", linh(S) === sBefore + 9000, `${sBefore} -> ${linh(S)}`);

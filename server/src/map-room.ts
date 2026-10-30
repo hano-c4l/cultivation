@@ -250,6 +250,8 @@ interface PlayerState {
   lastMoveAt: number;
   /** Last bag command, to rate-limit them (each one is a D1 write). */
   lastInvAt?: number;
+  /** Last `market_list` answered (a read only, so it has a lighter limit than the bag commands). */
+  lastMarketListAt?: number;
   /** Last skill / hotbar command, to rate-limit them. */
   lastCastAt?: number;
   lastHotbarAt?: number;
@@ -523,7 +525,10 @@ export class MapRoom extends DurableObject<Env> {
       // Vạn Bảo Lâu: close the listings that ran out of time before the mail is read, so a seller or a winner logging in meets the result.
       await getTuning(this.env.DB)
         .then((t) => settleDue(this.env.DB, t.market, joinedAt))
-        .then((ids) => this.notifyMail(ids.filter((x) => x !== row.id)))
+        .then(async (ids) => {
+          await this.notifyMail(ids.filter((x) => x !== row.id));
+          if (ids.length > 0) await this.marketChanged(null);
+        })
         .catch((err) => console.error("market settle failed", err));
       const [bag, mail] = await Promise.all([
         loadBag(this.env.DB, row.id),
@@ -725,9 +730,12 @@ export class MapRoom extends DurableObject<Env> {
       case "inv_split":
       case "inv_expand":
       case "mail_claim":
+      case "mail_claim_all":
         return this.handleInventory(ws, state, msg);
       case "mail_refresh":
         return this.handleMailRefresh(ws, state);
+      case "market_list":
+        return this.handleMarketList(ws, state, msg.npc);
       case "mount":
         this.standUp(ws, "moved");
         return this.handleMount(ws, state, msg.on, msg.fx !== undefined && msg.fy !== undefined ? [msg.fx, msg.fy] : undefined);
@@ -2176,7 +2184,7 @@ export class MapRoom extends DurableObject<Env> {
     });
   }
 
-  private handleInventory(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "inv_use" | "inv_drop" | "inv_move" | "inv_sort" | "inv_split" | "inv_expand" | "mail_claim" }>): void {
+  private handleInventory(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "inv_use" | "inv_drop" | "inv_move" | "inv_sort" | "inv_split" | "inv_expand" | "mail_claim" | "mail_claim_all" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     if (msg.t === "inv_sort") {
@@ -2192,7 +2200,8 @@ export class MapRoom extends DurableObject<Env> {
     ws.serializeAttachment(state);
     const id = state.id;
     void this.bagTask(id, async () => {
-      if (msg.t === "mail_claim") return this.claimMail(ws, id, msg.id);
+      if (msg.t === "mail_claim") return void (await this.claimMail(ws, id, msg.id));
+      if (msg.t === "mail_claim_all") return this.claimAllMail(ws, id);
       if (msg.t === "inv_expand") return this.buyBagTab(ws, id, msg.price);
       if (msg.t === "inv_move") {
         const res = await this.mutateBag(id, (bag) => {
@@ -2755,12 +2764,34 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  /** Tells every online player that a market changed (`town` null: any), so open windows read their list again. Never throws. */
+  private async marketChanged(town: string | null): Promise<void> {
+    try {
+      await this.env.CHAT_HUB.get(this.env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).marketChanged(town);
+    } catch (err) {
+      console.error("market notice failed", err);
+    }
+  }
+
+  /** A window that is open asks for the list again: only a read, for someone standing at the NPC, at most about once a second. */
+  private handleMarketList(ws: WebSocket, state: PlayerState, npcId: string): void {
+    const now = Date.now();
+    if (now - (state.lastMarketListAt ?? 0) < 700) return;
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(this.mapOf(state.mapId), npcId, here.x, here.y);
+    if (!spot || spot.kind !== "market" || this.satNhanOf(state, now) >= nameTierOrangeFrom()) return;
+    state.lastMarketListAt = now;
+    ws.serializeAttachment(state);
+    void this.sendMarket(ws, state.id, npcId, state.mapId).catch((err) => console.error("market list failed", state.id, err));
+  }
+
   /** Vạn Bảo Lâu's window: the listings of this town (those that ran out of time are closed first). */
   private async sendMarket(ws: WebSocket, id: string, npcId: string, town: string): Promise<void> {
     const cfg = (await getTuning(this.env.DB)).market;
     const now = Date.now();
     const settled = await settleDue(this.env.DB, cfg, now);
     await this.notifyMail(settled.filter((x) => x !== id));
+    if (settled.length > 0) await this.marketChanged(null);
     if (settled.includes(id)) await this.sendMailList(id); // a sale or a return just left this character mail
     const listings = await listingViews(this.env.DB, cfg, town, id);
     this.send(ws, { t: "market", npc: npcId, listings, cfg, now, open: auctionOpen(cfg, now), tabs: npcTabs("market", false) });
@@ -2790,6 +2821,7 @@ export class MapRoom extends DurableObject<Env> {
         if (balance !== undefined) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance });
         this.send(ws, { t: "market_ok", op });
         await this.notifyMail(notify);
+        await this.marketChanged(town);
         if (op !== "post" && op !== "promote") await this.sendMailList(id); // the goods or the returned item are already in this character's mail
         await this.sendMarket(ws, id, msg.npc, town);
       };
@@ -2818,7 +2850,7 @@ export class MapRoom extends DurableObject<Env> {
           return finish("bid", r.notify.filter((x) => x !== id), r.balance);
         }
         if (msg.t === "market_cancel") {
-          const r = await cancelListing(this.env.DB, { sellerId: id, town, id: msg.id, now });
+          const r = await cancelListing(this.env.DB, cfg, { sellerId: id, town, id: msg.id, now });
           if (r.status !== "ok") return fail(r.status);
           return finish("cancel", []);
         }
@@ -3479,7 +3511,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** An admin gift (docs/PHASE3.md 3d): all its currencies and items, or nothing. */
-  private async claimGift(ws: WebSocket, id: string, mailId: string): Promise<void> {
+  private async claimGift(ws: WebSocket | null, id: string, mailId: string): Promise<"ok" | "full" | "fail"> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const bag = await this.getBag(id);
       const r = await claimGiftMail(this.env.DB, id, mailId, bag);
@@ -3493,20 +3525,27 @@ export class MapRoom extends DurableObject<Env> {
           if (gained) this.sendToCharacter(id, { t: "wallet", currency, balance: r.wallet[currency], gained });
         }
         if (r.given.items.length > 0) this.sendToCharacter(id, { t: "loot", items: r.given.items.map((i) => ({ type: i.type, qty: i.qty, mailed: false })) });
-        return this.sendMailList(id);
+        await this.sendMailList(id);
+        return "ok";
       }
       if (r.status === "stale") {
         this.bags.delete(id);
         continue;
       }
-      if (r.status === "bag_full") return this.send(ws, { t: "inv_error", reason: "full" });
+      if (r.status === "bag_full") {
+        if (ws) this.send(ws, { t: "inv_error", reason: "full" });
+        return "full";
+      }
       await this.sendMailList(id);
-      return this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+      if (ws) this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+      return "fail";
     }
-    this.send(ws, { t: "inv_error", reason: "busy" });
+    if (ws) this.send(ws, { t: "inv_error", reason: "busy" });
+    return "fail";
   }
 
-  private async claimMail(ws: WebSocket, id: string, mailId: string): Promise<void> {
+  /** Claims one mail. `ws` null: nothing is said to the player on a refusal (the caller summarises). */
+  private async claimMail(ws: WebSocket | null, id: string, mailId: string): Promise<"ok" | "full" | "fail"> {
     if (mailId.includes(":")) return this.claimGift(ws, id, mailId); // gift mail ids are '<batch>:<character>'; the mails of drops are plain uuids
     for (let attempt = 0; attempt < 2; attempt++) {
       const bag = await this.getBag(id);
@@ -3517,17 +3556,34 @@ export class MapRoom extends DurableObject<Env> {
         this.bags.set(id, after);
         this.sendBagDelta(id, bag, after);
         this.sendToCharacter(id, { t: "loot", items: [{ type: r.type, qty: r.qty, mailed: false }] });
-        return this.sendMailList(id);
+        await this.sendMailList(id);
+        return "ok";
       }
       if (r.status === "stale") {
         this.bags.delete(id);
         continue;
       }
-      if (r.status === "bag_full") return this.send(ws, { t: "inv_error", reason: "full" });
+      if (r.status === "bag_full") {
+        if (ws) this.send(ws, { t: "inv_error", reason: "full" });
+        return "full";
+      }
       await this.sendMailList(id); // expired, already claimed or unknown: show what is really there
-      return this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+      if (ws) this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+      return "fail";
     }
-    this.send(ws, { t: "inv_error", reason: "busy" });
+    if (ws) this.send(ws, { t: "inv_error", reason: "busy" });
+    return "fail";
+  }
+
+  /** "Nhận nhanh": claims every mail in turn (at most 100); mail that does not fit the bag stays, and the player is told once. */
+  private async claimAllMail(ws: WebSocket, id: string): Promise<void> {
+    const mail = (await listMail(this.env.DB, id, Date.now())).slice(0, 100);
+    let full = false;
+    for (const m of mail) {
+      if ((await this.claimMail(null, id, m.id)) === "full") full = true;
+    }
+    if (full) this.send(ws, { t: "inv_error", reason: "full" });
+    else if (mail.length === 0) await this.sendMailList(id);
   }
 
   private async flushProgress(id: string): Promise<void> {

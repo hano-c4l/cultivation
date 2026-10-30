@@ -374,11 +374,20 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
 
   function renderMail(): HTMLElement {
     const box = el("div", "bag-mail");
-    box.append(el("b", undefined, vi.inventory.mailTitle(mail.length)));
+    const head = el("div", "mail-head");
+    head.append(el("b", undefined, vi.inventory.mailTitle(mail.length)));
+    if (mail.length > 0) {
+      // One message claims everything that fits; the server walks the mailbox in order.
+      const all = el("button", "mail-all", vi.inventory.claimAll);
+      all.onclick = () => send({ t: "mail_claim_all" });
+      head.append(all);
+    }
+    box.append(head);
     if (mail.length === 0) {
       box.append(el("div", "muted", vi.inventory.mailEmpty));
       return box;
     }
+    const list = el("div", "mail-list"); // scrolls by itself when there is a lot of mail
     for (const m of mail) {
       const row = el("div", "mail-row");
       const what = m.gift ? giftLine(m.gift) : m.item ? `${itemName(m.item.type)}${m.item.qty > 1 ? ` × ${m.item.qty}` : ""}${m.deadline === null ? ` · ${vi.inventory.noExpiry}` : ""}` : "";
@@ -396,8 +405,9 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
       const claim = el("button", undefined, vi.inventory.claim);
       claim.onclick = () => send({ t: "mail_claim", id: m.id });
       row.append(info, timer, claim);
-      box.append(row);
+      list.append(row);
     }
+    box.append(list);
     return box;
   }
 
