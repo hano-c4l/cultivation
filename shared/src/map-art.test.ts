@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { CELLS_PER_TILE, DEFAULT_TUNING, SMALL_BLOB_CELLS, getMap, guardLookOf, hash2, isCellWalkable, mapArtOf, flightStyleOf, monsterModelOf, monsterTintOf, MONSTERS, npcLookOf, obstacleBlobs, obstacleStyleOf, resetTuning, setTuning, validTuningGroup } from "./index";
+import { CELLS_PER_TILE, DEFAULT_TUNING, bigLookOf, SMALL_BLOB_CELLS, getMap, guardLookOf, hash2, isCellWalkable, mapArtOf, flightStyleOf, monsterModelOf, monsterTintOf, MONSTERS, npcLookOf, obstacleBlobs, obstacleStyleOf, resetTuning, setTuning, validTuningGroup } from "./index";
 
 afterEach(() => resetTuning());
 
@@ -43,10 +43,22 @@ describe("obstacle blobs", () => {
 
 describe("map art and NPC looks", () => {
   it("a map without an entry is drawn plain; the defaults style the maps the code builds", () => {
-    expect(mapArtOf("no_such_map")).toEqual({ ground: "plain", obstacle: "plain", mix: ["plain"] });
+    expect(mapArtOf("no_such_map")).toEqual({ ground: "plain", obstacle: "plain", big: "wall", mix: ["plain"] });
     expect(mapArtOf("forest")).toMatchObject({ ground: "grass", obstacle: "tree" });
     setTuning({ mapArt: { maps: { forest: { ground: "snow", obstacle: "crystal" } } } });
-    expect(mapArtOf("forest")).toEqual({ ground: "snow", obstacle: "crystal", mix: ["crystal"] });
+    expect(mapArtOf("forest")).toEqual({ ground: "snow", obstacle: "crystal", big: "wall", mix: ["crystal"] });
+  });
+
+  it("a map of the game that a stored table does not list is drawn as the code says, and the towns draw their big blocks as houses", () => {
+    setTuning({ mapArt: { maps: { forest: { ground: "grass", obstacle: "tree" } } } }); // a table saved before the later maps existed
+    expect(mapArtOf("town3")).toMatchObject({ ground: "stone", obstacle: "rock", big: "house" });
+    expect(mapArtOf("hoathan").obstacle).toBe("crystal");
+    expect(mapArtOf("forest").big).toBe("wall");
+    expect(bigLookOf({ big: "house" }, { radius: 3, fill: 0.95 })).toBe("house");
+    expect(bigLookOf({ big: "house" }, { radius: 3, fill: 0.79 })).toBe("water"); // a round spot is a pond
+    expect(bigLookOf({ big: "house" }, { radius: 6, fill: 0.5 })).toBe("house"); // a building turned on the diamond grid
+    expect(bigLookOf({ big: "house" }, { radius: 40, fill: 0.5 })).toBe("wall"); // the rim of the map
+    expect(bigLookOf({ big: "wall" }, { radius: 3, fill: 0.95 })).toBe("wall");
   });
 
   it("an NPC look follows id, then id without its number, then kind; a waygate has none", () => {
@@ -76,7 +88,7 @@ describe("map art and NPC looks", () => {
   it("a big spot is never a bush or a stump while the mix has other looks", () => {
     const art = mapArtOf("forest");
     for (let i = 0; i < 200; i++) expect(["bush", "stump"]).not.toContain(obstacleStyleOf(art, { x: i * 1.3, y: i * 0.7, radius: 1.4 }));
-    expect(obstacleStyleOf({ ground: "grass", obstacle: "tree", mix: ["bush"] }, { x: 1, y: 2, radius: 2 })).toBe("bush");
+    expect(obstacleStyleOf({ ground: "grass", obstacle: "tree", mix: ["bush"], big: "wall" }, { x: 1, y: 2, radius: 2 })).toBe("bush");
   });
 
   it("an entry stored before the mix existed gets the default mix of its map; an unknown or plain map stays plain", () => {

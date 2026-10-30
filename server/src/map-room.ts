@@ -198,7 +198,8 @@ import { loadLiveConfig } from "./live-config";
 import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
-import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError } from "@game/shared";
+import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
+import { hasRoomFor, newSession, otherSide, planTrade, setConfirm, setLock, setOffer, sideOf, type TradeSession } from "./trade";
 import { buyFixed, cancelListing, listingViews, placeBid, postListing, promoteListing, settleDue } from "./market";
 
 /** The look of the worn flight pháp bảo (none when nothing is worn there or it is broken): the others draw a rider on it. */
@@ -252,6 +253,8 @@ interface PlayerState {
   lastInvAt?: number;
   /** Last `market_list` answered (a read only, so it has a lighter limit than the bag commands). */
   lastMarketListAt?: number;
+  /** Last change of a trade offer by this player (each one is a stored write). */
+  lastTradeAt?: number;
   /** Last skill / hotbar command, to rate-limit them. */
   lastCastAt?: number;
   lastHotbarAt?: number;
@@ -736,6 +739,13 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleMailRefresh(ws, state);
       case "market_list":
         return this.handleMarketList(ws, state, msg.npc);
+      case "trade_invite":
+      case "trade_reply":
+      case "trade_offer":
+      case "trade_lock":
+      case "trade_confirm":
+      case "trade_cancel":
+        return this.handleTrade(ws, state, msg);
       case "mount":
         this.standUp(ws, "moved");
         return this.handleMount(ws, state, msg.on, msg.fx !== undefined && msg.fy !== undefined ? [msg.fx, msg.fy] : undefined);
@@ -2764,6 +2774,205 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  // ---- Direct trade (docs/PHASE5.md, 5b) -------------------------------------------------------------------------------------------------------------------
+  /** Invitations not answered yet, by the invited character. Memory only: a lost invitation reads as expired. */
+  private tradeInvites = new Map<string, { from: string; name: string; at: number }>();
+  /** Sessions being carried out right now (the offer is frozen while the batch runs). */
+  private tradeRunning = new Set<string>();
+  private tradeChain: Promise<void> = Promise.resolve();
+
+  /** All trade commands of this room run one after another: two messages arriving together cannot overwrite each other's change to the stored session. */
+  private tradeTask(fn: () => Promise<void>): Promise<void> {
+    this.tradeChain = this.tradeChain.then(fn).catch((err) => console.error("trade task failed", err));
+    return this.tradeChain;
+  }
+
+  private async loadTrade(characterId: string): Promise<TradeSession | null> {
+    const sid = await this.ctx.storage.get<string>(`tradeof:${characterId}`);
+    const s = sid ? ((await this.ctx.storage.get<TradeSession>(`trade:${sid}`)) ?? null) : null;
+    // A session that outlived its players (the room was evicted while they trade) must not block them for good: after ten minutes it is forgotten.
+    if (s && Date.now() - s.createdAt > 600_000 && !this.tradeRunning.has(s.id)) {
+      await this.ctx.storage.delete([`trade:${s.id}`, `tradeof:${s.a.id}`, `tradeof:${s.b.id}`]);
+      return null;
+    }
+    return s;
+  }
+
+  private saveTrade(s: TradeSession): Promise<void> {
+    return this.ctx.storage.put({ [`trade:${s.id}`]: s, [`tradeof:${s.a.id}`]: s.id, [`tradeof:${s.b.id}`]: s.id });
+  }
+
+  /** Ends a session: it is forgotten and both players are told why. */
+  private async endTrade(s: TradeSession, reason: TradeEnd): Promise<void> {
+    await this.ctx.storage.delete([`trade:${s.id}`, `tradeof:${s.a.id}`, `tradeof:${s.b.id}`]);
+    for (const id of [s.a.id, s.b.id]) this.sendToCharacter(id, { t: "trade_end", reason });
+  }
+
+  /** A player left the room (any way): the trade and the invitations they were in end. */
+  private tradeLeft(id: string): void {
+    for (const [target, inv] of this.tradeInvites) if (target === id || inv.from === id) this.tradeInvites.delete(target);
+    void this.tradeTask(async () => {
+      const s = await this.loadTrade(id);
+      if (s && !this.tradeRunning.has(s.id)) await this.endTrade(s, "left");
+    });
+  }
+
+  /** Whether the two may trade now: both here, in one safe room, close enough, neither busy or a murderer. Null when they may. */
+  private tradeProblem(aId: string, bId: string, cfg: { range: number }, now: number): TradeError | null {
+    const a = this.socketOf(aId)?.state;
+    const b = this.socketOf(bId)?.state;
+    if (!a || !b || a.transferring || b.transferring) return "invalid";
+    if (a.mapId !== b.mapId || !this.mapOf(a.mapId).safe) return "unsafe";
+    if (a.bt || a.tp || b.bt || b.tp) return "busy";
+    if (this.satNhanOf(a, now) >= nameTierOrangeFrom() || this.satNhanOf(b, now) >= nameTierOrangeFrom()) return "murderer";
+    const pa = positionAlongPath(a.path, now - a.startedAt, a.speed);
+    const pb = positionAlongPath(b.path, now - b.startedAt, b.speed);
+    return Math.hypot(pa.x - pb.x, pa.y - pb.y) > cfg.range ? "far" : null;
+  }
+
+  /** One side's window as both players see it: the items are read from the cached bag of their owner. */
+  private async tradeSideView(side: TradeSession["a"]): Promise<TradeSideView> {
+    const bag = await this.getBag(side.id);
+    const items = side.items.flatMap((id) => {
+      const it = bag.items.find((i) => i.id === id);
+      if (!it) return [];
+      const { id: _id, type, tab: _t, cell: _c, qty, ...carry } = it;
+      return [{ id: it.id, type, qty, carry: carry as Record<string, unknown> }];
+    });
+    return { items, linh: side.linh, tienNgoc: side.tienNgoc, locked: side.locked, confirmed: side.confirmed };
+  }
+
+  private async pushTrade(s: TradeSession, cfg: { maxItems: number; maxLinh: number; maxTienNgoc?: number }): Promise<void> {
+    const [a, b] = await Promise.all([this.tradeSideView(s.a), this.tradeSideView(s.b)]);
+    const nameOf = (id: string) => this.socketOf(id)?.state.name ?? "";
+    const limits = { maxItems: cfg.maxItems, maxLinh: cfg.maxLinh, maxTienNgoc: cfg.maxTienNgoc ?? 10_000_000 };
+    this.sendToCharacter(s.a.id, { t: "trade", rev: s.rev, other: { id: s.b.id, name: nameOf(s.b.id) }, mine: a, theirs: b, cfg: limits });
+    this.sendToCharacter(s.b.id, { t: "trade", rev: s.rev, other: { id: s.a.id, name: nameOf(s.a.id) }, mine: b, theirs: a, cfg: limits });
+  }
+
+  private handleTrade(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "trade_invite" | "trade_reply" | "trade_offer" | "trade_lock" | "trade_confirm" | "trade_cancel" }>): void {
+    const now = Date.now();
+    const me = state.id;
+    const fail = (reason: TradeError) => this.send(ws, { t: "trade_error", reason });
+    if (msg.t === "trade_offer") {
+      if (now - (state.lastTradeAt ?? 0) < 400) return fail("rate");
+      state.lastTradeAt = now;
+      ws.serializeAttachment(state);
+    }
+    void this.tradeTask(async () => {
+      const cfg = (await getTuning(this.env.DB)).trade;
+      const cur = await this.loadTrade(me);
+      if (msg.t === "trade_invite") {
+        if (msg.to === me) return fail("self");
+        if (cur || (await this.loadTrade(msg.to))) return fail("busy");
+        const pending = this.tradeInvites.get(msg.to);
+        if (pending && now - pending.at < cfg.inviteSec * 1000) return fail("busy");
+        const problem = this.tradeProblem(me, msg.to, cfg, now);
+        if (problem) return fail(problem);
+        this.tradeInvites.set(msg.to, { from: me, name: state.name, at: now });
+        this.sendToCharacter(msg.to, { t: "trade_invite", from: me, name: state.name, ttlMs: cfg.inviteSec * 1000 });
+        return;
+      }
+      if (msg.t === "trade_reply") {
+        const inv = this.tradeInvites.get(me);
+        if (!inv || inv.from !== msg.from || now - inv.at > cfg.inviteSec * 1000) {
+          this.tradeInvites.delete(me);
+          return void this.send(ws, { t: "trade_end", reason: "expired" });
+        }
+        this.tradeInvites.delete(me);
+        if (!msg.accept) return void this.sendToCharacter(inv.from, { t: "trade_end", reason: "declined" });
+        if (cur || (await this.loadTrade(inv.from))) return fail("busy");
+        const problem = this.tradeProblem(inv.from, me, cfg, now);
+        if (problem) return fail(problem);
+        const s = newSession(crypto.randomUUID(), inv.from, me, now);
+        await this.saveTrade(s);
+        return this.pushTrade(s, cfg);
+      }
+      if (!cur) return void this.send(ws, { t: "trade_end", reason: "gone" });
+      if (this.tradeRunning.has(cur.id)) return fail("busy");
+      if (msg.t === "trade_cancel") return this.endTrade(cur, "cancelled");
+      const problem = this.tradeProblem(cur.a.id, cur.b.id, cfg, now);
+      if (problem) return this.endTrade(cur, problem === "far" ? "far" : "busy");
+      if (msg.t === "trade_offer") {
+        const bag = await this.getBag(me);
+        const ids = [...new Set(msg.items)];
+        if (ids.length > cfg.maxItems || ids.some((id) => !bag.items.some((i) => i.id === id))) return fail("invalid");
+        if (msg.linh > cfg.maxLinh || msg.tienNgoc > (cfg.maxTienNgoc ?? 10_000_000)) return fail("limit");
+        if (msg.linh > 0 || msg.tienNgoc > 0) {
+          const wallet = await getWallet(this.env.DB, me);
+          if (wallet.linh_thach < msg.linh || wallet.tien_ngoc < msg.tienNgoc) return fail("funds");
+        }
+        setOffer(cur, me, ids, msg.linh, msg.tienNgoc);
+        await this.saveTrade(cur);
+        return this.pushTrade(cur, cfg);
+      }
+      if (msg.rev !== cur.rev) {
+        await this.pushTrade(cur, cfg); // the window the player saw is out of date: show the real one
+        return fail("stale");
+      }
+      if (msg.t === "trade_lock") {
+        if (msg.on) {
+          const mine = sideOf(cur, me)!;
+          const theirs = otherSide(cur, me);
+          const [theirBag, myBag] = await Promise.all([this.getBag(theirs.id), this.getBag(me)]);
+          if (mine.items.some((id) => !myBag.items.some((i) => i.id === id))) return fail("stale");
+          if (!hasRoomFor(theirBag, mine.items.length) || !hasRoomFor(myBag, theirs.items.length)) return fail("full");
+        }
+        setLock(cur, me, msg.on);
+        await this.saveTrade(cur);
+        return this.pushTrade(cur, cfg);
+      }
+      // trade_confirm
+      const both = setConfirm(cur, me);
+      await this.saveTrade(cur);
+      await this.pushTrade(cur, cfg);
+      if (both) await this.runTrade(cur);
+    });
+  }
+
+  /** Carries a trade out: one guarded batch for both players (see trade.ts), run once, on both players' bag queues. */
+  private async runTrade(s: TradeSession): Promise<void> {
+    this.tradeRunning.add(s.id);
+    let outcome: TradeEnd = "stale";
+    try {
+      const [first, second] = [s.a.id, s.b.id].sort();
+      await this.bagTask(first!, () =>
+        this.bagTask(second!, async () => {
+          const now = Date.now();
+          const [bagA, bagB] = await Promise.all([this.getBag(s.a.id), this.getBag(s.b.id)]);
+          const plan = planTrade(this.env.DB, { tradeId: s.id, a: { id: s.a.id, bag: bagA, items: s.a.items, linh: s.a.linh, tienNgoc: s.a.tienNgoc }, b: { id: s.b.id, bag: bagB, items: s.b.items, linh: s.b.linh, tienNgoc: s.b.tienNgoc }, traceMin: await linhThachTraceMin(this.env.DB), now });
+          if (!plan.ok) {
+            outcome = plan.reason === "full" ? "full" : "stale";
+            return;
+          }
+          try {
+            await this.env.DB.batch(plan.statements);
+          } catch (err) {
+            const text = String(err);
+            this.bags.delete(s.a.id);
+            this.bags.delete(s.b.id);
+            if (/CHECK constraint failed/.test(text) && text.includes("balance")) outcome = "funds";
+            else if (!/inv_guard|idx_items_|item_instances\./.test(text)) console.error("trade failed", s.id, err);
+            return;
+          }
+          for (const [id, bag, ops] of [[s.a.id, bagA, plan.opsA], [s.b.id, bagB, plan.opsB]] as const) {
+            const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
+            const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+            this.bags.set(id, after);
+            this.sendBagDelta(id, bag, after);
+            const wallet = await getWallet(this.env.DB, id);
+            this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: wallet.linh_thach });
+            this.sendToCharacter(id, { t: "wallet", currency: "tien_ngoc", balance: wallet.tien_ngoc });
+          }
+          outcome = "done";
+        }),
+      );
+    } finally {
+      this.tradeRunning.delete(s.id);
+    }
+    await this.endTrade(s, outcome);
+  }
+
   /** Tells every online player that a market changed (`town` null: any), so open windows read their list again. Never throws. */
   private async marketChanged(town: string | null): Promise<void> {
     try {
@@ -2817,8 +3026,8 @@ export class MapRoom extends DurableObject<Env> {
     const sellerName = state.name;
     void this.bagTask(id, async () => {
       const cfg = (await getTuning(this.env.DB)).market;
-      const finish = async (op: "post" | "buy" | "bid" | "cancel" | "promote", notify: readonly string[], balance?: number) => {
-        if (balance !== undefined) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance });
+      const finish = async (op: "post" | "buy" | "bid" | "cancel" | "promote", notify: readonly string[], balance?: number, currency: "linh_thach" | "tien_ngoc" = "linh_thach") => {
+        if (balance !== undefined) this.sendToCharacter(id, { t: "wallet", currency, balance });
         this.send(ws, { t: "market_ok", op });
         await this.notifyMail(notify);
         await this.marketChanged(town);
@@ -2828,7 +3037,7 @@ export class MapRoom extends DurableObject<Env> {
       try {
         if (msg.t === "market_post") {
           const bag = await this.getBag(id);
-          const r = await postListing(this.env.DB, cfg, { sellerId: id, town, kind: msg.kind, bag, tab: msg.tab, cell: msg.cell, qty: msg.qty, price: msg.price, now });
+          const r = await postListing(this.env.DB, cfg, { sellerId: id, town, kind: msg.kind, currency: msg.currency, bag, tab: msg.tab, cell: msg.cell, qty: msg.qty, price: msg.price, now });
           if (r.status !== "ok") {
             if (r.status === "busy") this.bags.delete(id); // the cached bag was stale
             return fail(r.status);
@@ -2837,17 +3046,17 @@ export class MapRoom extends DurableObject<Env> {
           const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
           this.bags.set(id, after);
           this.sendBagDelta(id, bag, after);
-          return finish("post", [], r.balance);
+          return finish("post", [], r.balance, r.currency);
         }
         if (msg.t === "market_buy") {
           const r = await buyFixed(this.env.DB, cfg, { buyerId: id, town, id: msg.id, now });
           if (r.status !== "ok") return fail(r.status);
-          return finish("buy", r.notify.filter((x) => x !== id), r.balance);
+          return finish("buy", r.notify.filter((x) => x !== id), r.balance, r.currency);
         }
         if (msg.t === "market_bid") {
           const r = await placeBid(this.env.DB, cfg, { bidderId: id, town, id: msg.id, amount: msg.amount, now });
           if (r.status !== "ok") return fail(r.status);
-          return finish("bid", r.notify.filter((x) => x !== id), r.balance);
+          return finish("bid", r.notify.filter((x) => x !== id), r.balance, r.currency);
         }
         if (msg.t === "market_cancel") {
           const r = await cancelListing(this.env.DB, cfg, { sellerId: id, town, id: msg.id, now });
@@ -2858,7 +3067,8 @@ export class MapRoom extends DurableObject<Env> {
         if (r.status !== "ok") return fail(r.status);
         const l = r.listing;
         const item = `${marketItemDef(l.item_type)?.nameVi ?? l.item_type}${l.qty > 1 ? ` x${l.qty}` : ""}`;
-        const how = l.kind === "auction" ? `đấu giá, khởi điểm ${l.price.toLocaleString("vi-VN")} Linh Thạch` : `bán ${l.price.toLocaleString("vi-VN")} Linh Thạch`;
+        const unit = l.currency === "tien_ngoc" ? "Tiên Ngọc" : "Linh Thạch";
+        const how = l.kind === "auction" ? `đấu giá, khởi điểm ${l.price.toLocaleString("vi-VN")} ${unit}` : `bán ${l.price.toLocaleString("vi-VN")} ${unit}`;
         // The NPC speaks, not the player: the sender is the NPC (id `npc:...`), so the line looks different from a player's chat.
         this.broadcast({ t: "chat", channel: "system", id: `npc:${msg.npc}`, name: spot.name ?? NPC_NAMES_VI[msg.npc] ?? "Vạn Bảo Lâu", text: `${sellerName} rao ${item}: ${how}. Mời quý khách ghé Vạn Bảo Lâu.`, ts: now });
         return finish("promote", [], r.balance);
@@ -4404,6 +4614,7 @@ export class MapRoom extends DurableObject<Env> {
 
   /** A player left the room (closed, kicked or went through a portal): those who knew of them are told, and the records forget them. */
   private playerGone(id: string, ws: WebSocket): void {
+    this.tradeLeft(id);
     this.broadcastAbout([id], { t: "left", id }, ws);
     this.forgetEntity(id);
     this.aoi.delete(id);

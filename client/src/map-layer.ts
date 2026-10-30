@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { CELLS_PER_TILE, TILE_H, TILE_W, hash2, obstacleBlobs, obstacleStyleOf, playRectPixels, type GroundStyle, type MapArt, type MapData, type ObstacleStyle, type Obstacles } from "@game/shared";
+import { CELLS_PER_TILE, TILE_H, TILE_W, bigLookOf, hash2, obstacleBlobs, obstacleStyleOf, playRectPixels, type GroundStyle, type MapArt, type MapData, type ObstacleStyle, type Obstacles } from "@game/shared";
 
 /** Pixel size of one chunk of the map: obstacles are drawn into textures of this size around the camera only (the whole map would take tens of MB). */
 export const CHUNK = 512;
@@ -10,6 +10,8 @@ const DROP_PX = 640;
 const BUILDS_PER_FRAME = 4;
 /** Height (px) of the side faces of walls. */
 const FACE = 6;
+/** The walls of a house stand taller than the plain block of old. */
+const FACE_HOUSE = 14;
 /** The ground pattern of a styled map: 8 x 8 tiles of the 64 x 32 unit, so the patches and details repeat every eight tiles. */
 const GROUND_W = TILE_W * 8;
 const GROUND_H = TILE_H * 8;
@@ -435,6 +437,34 @@ export class MapLayer {
         const p = toScreen(cx / CELLS_PER_TILE, cy / CELLS_PER_TILE);
         const x = p.x - ox;
         const y = p.y - oy;
+        const blob = this.obstacles.blobs[this.obstacles.blobOf[cy * this.cw + cx] as number];
+        const look = flat || !blob ? "wall" : bigLookOf(this.art, blob);
+        const v2 = (px: number, py: number) => new Phaser.Math.Vector2(px, py);
+        if (look === "house") {
+          // a house: walls the colour of plaster (the right face lit, the left in shade) with a door now and then and a lit window, under a tiled roof
+          const face = FACE_HOUSE;
+          if (!this.blocked(cx + 1, cy)) {
+            g.fillStyle(0xe6d6b0, 1).fillPoints([v2(x + half, y + cellH / 2), v2(x, y + cellH), v2(x, y + cellH + face), v2(x + half, y + cellH / 2 + face)], true);
+            if (cy % 16 === 8) g.fillStyle(0x5a301c, 1).fillPoints([v2(x + half, y + cellH / 2 + face * 0.3), v2(x, y + cellH + face * 0.3), v2(x, y + cellH + face), v2(x + half, y + cellH / 2 + face)], true);
+            else if (cy % 8 === 3) g.fillStyle(0xffd27a, 1).fillPoints([v2(x + half, y + cellH / 2 + face * 0.2), v2(x, y + cellH + face * 0.2), v2(x, y + cellH + face * 0.6), v2(x + half, y + cellH / 2 + face * 0.6)], true);
+          }
+          if (!this.blocked(cx, cy + 1)) {
+            g.fillStyle(0xc2b08a, 1).fillPoints([v2(x - half, y + cellH / 2), v2(x, y + cellH), v2(x, y + cellH + face), v2(x - half, y + cellH / 2 + face)], true);
+            if (cx % 16 === 8) g.fillStyle(0x4a2814, 1).fillPoints([v2(x - half, y + cellH / 2 + face * 0.3), v2(x, y + cellH + face * 0.3), v2(x, y + cellH + face), v2(x - half, y + cellH / 2 + face)], true);
+            else if (cx % 8 === 3) g.fillStyle(0xffd27a, 0.9).fillPoints([v2(x - half, y + cellH / 2 + face * 0.2), v2(x, y + cellH + face * 0.2), v2(x, y + cellH + face * 0.6), v2(x - half, y + cellH / 2 + face * 0.6)], true);
+          }
+          // the roof: rows of tiles in two reds, with a ridge along every fourth row
+          const row = ((cx >> 1) + (cy >> 1)) % 2 === 0;
+          g.fillStyle(row ? 0xa04a3a : 0x8a3b2e, 1).fillPoints(diamond(x, y, 1 / CELLS_PER_TILE), true);
+          if (cx % 4 === 0 && cy % 4 === 0) g.fillStyle(0x5e2a20, 1).fillPoints(diamond(x, y, 0.5 / CELLS_PER_TILE), true);
+          continue;
+        }
+        if (look === "water") {
+          // a pond: no walls, a water top with a lighter ripple here and there
+          const ripple = (cx * 7 + cy * 13) % 11 === 0;
+          g.fillStyle(ripple ? 0x7fc1e6 : 0x3f84b8, 1).fillPoints(diamond(x, y, 1 / CELLS_PER_TILE), true);
+          continue;
+        }
         if (!flat) {
           // faces first (the top of the cell below must be able to cover them), on the edges that look down onto walkable ground
           if (!this.blocked(cx + 1, cy)) g.fillStyle(shade(col, 0.55), 1).fillPoints([new Phaser.Math.Vector2(x + half, y + cellH / 2), new Phaser.Math.Vector2(x, y + cellH), new Phaser.Math.Vector2(x, y + cellH + FACE), new Phaser.Math.Vector2(x + half, y + cellH / 2 + FACE)], true);
@@ -442,13 +472,14 @@ export class MapLayer {
         }
         g.fillStyle(flat ? col : shade(col, 1.35), 1).fillPoints(diamond(x, y, 1 / CELLS_PER_TILE), true);
       }
-      const tex = this.scene.add.renderTexture(ox, oy, CHUNK + 2 * half, CHUNK + cellH + FACE).setOrigin(0, 0).setDepth(0.1);
+      const tex = this.scene.add.renderTexture(ox, oy, CHUNK + 2 * half, CHUNK + cellH + FACE_HOUSE).setOrigin(0, 0).setDepth(0.1);
       tex.draw(g, 0, 0);
       g.destroy();
       chunk.wall = tex;
     }
     for (const id of data.blobs) {
       const b = this.obstacles.blobs[id] as { x: number; y: number; radius: number; variant: number };
+      if (this.map.npcs.some((n) => n.kind !== "waygate" && Math.hypot(n.x - b.x, n.y - b.y) < 0.6 && b.radius < 0.6)) continue; // the blocked disc under an NPC: the NPC itself is drawn there
       const p = toScreen(b.x, b.y);
       const key = ensureObstacleTexture(this.scene, obstacleStyleOf(this.art, b), b.variant, this.map.palette.obstacle);
       const img = this.scene.add.image(p.x, p.y + 4, key).setOrigin(0.5, 0.875).setScale(Math.max(0.75, Math.min(2, b.radius / 0.9))).setDepth(10 + b.x + b.y);

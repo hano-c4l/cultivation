@@ -49,9 +49,9 @@ function giveStack(id: string, qty: number, cell = 0, type = PILL): string {
   return itemId;
 }
 
-async function post(kind: "fixed" | "auction", qty: number, price: number, opts: { cell?: number; now?: number } = {}) {
+async function post(kind: "fixed" | "auction", qty: number, price: number, opts: { cell?: number; now?: number; currency?: "linh_thach" | "tien_ngoc" } = {}) {
   const bag = await loadBag(db, S);
-  const r = await postListing(db, cfg, { sellerId: S, town: TOWN, kind, bag, tab: 0, cell: opts.cell ?? 0, qty, price, now: opts.now ?? DAY });
+  const r = await postListing(db, cfg, { sellerId: S, town: TOWN, kind, currency: opts.currency ?? "linh_thach", bag, tab: 0, cell: opts.cell ?? 0, qty, price, now: opts.now ?? DAY });
   if (r.status !== "ok") throw new Error(`post failed: ${r.status}`);
   return r;
 }
@@ -85,7 +85,7 @@ describe("putting a listing up", () => {
   it("refuses without the fee, for more than the stack and over the listing limit, changing nothing", async () => {
     giveStack(S, 3);
     const bag = await loadBag(db, S);
-    const base = { sellerId: S, town: TOWN, kind: "fixed" as const, bag, tab: 0, cell: 0, qty: 3, price: 10_000, now: DAY };
+    const base = { sellerId: S, town: TOWN, kind: "fixed" as const, currency: "linh_thach" as const, bag, tab: 0, cell: 0, qty: 3, price: 10_000, now: DAY };
     expect((await postListing(db, cfg, base)).status).toBe("funds");
     await fund(S, 1000);
     expect((await postListing(db, cfg, { ...base, qty: 4 })).status).toBe("invalid");
@@ -411,5 +411,50 @@ describe("the suggested bid", () => {
     expect(suggestedBid({ ...cfg, bidSuggestPct: 0 }, 1000, 2000)).toBe(2100); // the least next bid (5% step) wins
     expect(suggestedBid({ ...cfg, bidSuggestPct: undefined }, 1000, 2000)).toBe(2200); // a stored row from before has no such field
     expect(suggestedBid(cfg, 1000, cfg.maxPrice)).toBe(cfg.maxPrice);
+  });
+});
+
+describe("listings priced in Tiên Ngọc", () => {
+  const tn = (id: string) => (raw.prepare("SELECT balance FROM currency_balances WHERE character_id = ? AND currency = 'tien_ngoc'").get(id) as { balance: number } | undefined)?.balance ?? 0;
+  const fundTn = (id: string, amount: number) => applyCurrencyDelta(db, { characterId: id, currency: "tien_ngoc", delta: amount, reason: "test", actor: "system", idempotencyKey: `tn:${id}:${n++}` });
+
+  it("charges the fee, the price and the proceeds in Tiên Ngọc, and the sale is claimed as Tiên Ngọc", async () => {
+    giveStack(S, 1);
+    await fundTn(S, 100);
+    await fundTn(B, 1000);
+    const posted = await post("fixed", 1, 500, { currency: "tien_ngoc" });
+    expect(posted.fee).toBe(10); // 2% of 500
+    expect([tn(S), balance(S)]).toEqual([90, 0]); // the fee came out of Tiên Ngọc, not Linh Thạch
+    expect((await buyFixed(db, cfg, { buyerId: B, town: TOWN, id: posted.id, now: DAY })).status).toBe("ok");
+    expect([tn(B), balance(B)]).toEqual([500, 0]);
+    const proceeds = raw.prepare("SELECT id, gift FROM mailbox WHERE character_id = ? AND gift IS NOT NULL").get(S) as { id: string; gift: string };
+    expect(JSON.parse(proceeds.gift)).toMatchObject({ tien_ngoc: 450, reason: "market:sale" }); // 500 less the 10% tax
+    expect((await claimGiftMail(db, S, proceeds.id, await loadBag(db, S))).status).toBe("claimed");
+    expect(tn(S)).toBe(90 + 450);
+    expect(raw.prepare("SELECT currency FROM market_sales").get()).toEqual({ currency: "tien_ngoc" });
+  });
+
+  it("a bidder pays in Tiên Ngọc and a Linh Thạch wallet is no use; the refund is Tiên Ngọc too", async () => {
+    giveStack(S, 1);
+    await fundTn(S, 100);
+    await fund(B, 1_000_000); // plenty of Linh Thạch, no Tiên Ngọc
+    await fundTn(C, 1000);
+    const { id } = await post("auction", 1, 100, { currency: "tien_ngoc" });
+    expect((await placeBid(db, cfg, { bidderId: B, town: TOWN, id, amount: 100, now: DAY })).status).toBe("funds");
+    expect((await placeBid(db, cfg, { bidderId: C, town: TOWN, id, amount: 100, now: DAY })).status).toBe("ok");
+    expect(tn(C)).toBe(900);
+    await fundTn(B, 1000);
+    expect((await placeBid(db, cfg, { bidderId: B, town: TOWN, id, amount: 110, now: DAY })).status).toBe("ok");
+    const refund = raw.prepare("SELECT gift FROM mailbox WHERE character_id = ? AND gift IS NOT NULL").get(C) as { gift: string };
+    expect(JSON.parse(refund.gift)).toMatchObject({ tien_ngoc: 100, reason: "market:refund" });
+  });
+
+  it("the price cap of Tiên Ngọc is its own", async () => {
+    giveStack(S, 1);
+    await fundTn(S, 10_000_000);
+    const bag = await loadBag(db, S);
+    const base = { sellerId: S, town: TOWN, kind: "fixed" as const, bag, tab: 0, cell: 0, qty: 1, now: DAY };
+    expect((await postListing(db, cfg, { ...base, currency: "tien_ngoc", price: (cfg.maxPriceTienNgoc ?? 0) + 1 })).status).toBe("invalid");
+    expect((await postListing(db, cfg, { ...base, currency: "linh_thach", price: (cfg.maxPriceTienNgoc ?? 0) + 1 })).status).toBe("funds"); // allowed as Linh Thạch, but there is none for the fee
   });
 });

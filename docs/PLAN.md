@@ -14,7 +14,7 @@ Trạng thái: **ĐANG THỰC HIỆN** — xem `docs/STATUS.md` (giai đoạn n�
 | Hướng tu | 1 chủ tu + tối đa 2 phụ tu (mỗi phụ tu làm chậm tu vi nhận được, xem mục 9b). Ban đầu: Kiếm tu, Thuật tu, Đan tu; Thể tu và Trận/Phù tu để sau |
 | Tiền tệ | Linh Thạch (giao dịch tự do), Cống Hiến (khóa, từ nhiệm vụ, dùng cho tông môn), Tiên Ngọc (tiền nạp) |
 | Nạp tiền | Có sẵn sổ cái, đơn nạp, trang admin cộng tiền thủ công. **Chưa** nối cổng thanh toán |
-| Giao dịch | Giao dịch trực tiếp 2 người + chợ đăng bán + đấu giá |
+| Giao dịch | Giao dịch trực tiếp 2 người + chợ đăng bán + đấu giá; dùng được cả Linh Thạch và Tiên Ngọc (đổi 2026-10-31, mục 9b) |
 | Hạ tầng | Cloudflare. **Gói áp dụng theo kế hoạch (vận hành thật): Workers Paid.** **Khi phát triển: dùng Workers Free nếu không cần thiết phải nâng.** Nếu một kỹ thuật/công nghệ cần bản Paid thì phải báo người dùng để nâng cấp, không tự giả định (xem mục 2a) |
 | Ngôn ngữ | Giao diện game: tiếng Việt. Code (hàm, biến, comment): tiếng Anh |
 
@@ -103,6 +103,7 @@ Chi tiết kỹ thuật và giá trị nằm ở `docs/PHASE2.md`; đây chỉ l
 - **Phong cách đồ họa tiên hiệp (2026-10-28):** người dùng chốt đồ họa theo phong cách **tiên hiệp** (không phải kiểu Võ Lâm Truyền Kỳ thuần túy như dòng đầu của giai đoạn 4): dùng gói CC0 có sẵn khi hợp, còn lại tự dựng (áo `tien` sinh trong Blender, pháp bảo phi hành kiếm/mây/sen, hiệu ứng trận pháp bát quái, hạt, sét, sen vẽ trên canvas). Trước đó người dùng cũng chốt **tổng dung lượng asset không chặn công việc**: sẽ nâng gói Cloudflare khi cần. Chi tiết và danh sách mục chưa qua lượt tiên hiệp: `docs/PHASE4.md`.
 - **Võ Sư, luyện đan theo lô, tuyệt học, thiền (2026-10-30), chi tiết `docs/PHASE2.md` mục 2p:** bí tịch không còn bán ở thương nhân mà **học ở Võ Sư bằng Linh Thạch** (kỹ năng đã học thì ẩn), bí tịch vẫn rơi từ quái; có **12 bí tịch tuyệt học chỉ rơi** (cực hiếm, boss hơi hơn) và 6 kỹ năng mới ở Võ Sư với cơ chế mới (hút máu, kết liễu, buff chí mạng); Đan Sư luyện **theo lô** (một lần nhiều đan, thời gian tăng chậm hơn số lô); **thiền được cả ở thành và có tu vi** (theo cảnh giới, luôn thấp hơn đánh quái); có nút **quên kỹ năng**; bảng xếp hạng có nút GM hiện cả admin; nhãn cảnh giới LK/TC/KD/NA/HT/LH trên đan, nguyên liệu, bí tịch.
 - **Admin chọn hình (4i) và đợt hoàn thiện đồ họa (2026-10-30), chi tiết `docs/PHASE4.md`:** Admin **chỉ chọn trong hình có sẵn, không tải ảnh lên** (đóng câu hỏi R2); bản đồ mini ở góc phải trên và nút gập HUD; sáu trang phục mới (mỗi cảnh giới một bộ, NPC và vệ binh có bộ riêng); mười hình mũ, mũ xoay theo hướng nhân vật; ngồi thiền có thế ngồi; hiệu ứng +7/+10.
+- **Chợ và giao dịch dùng cả Tiên Ngọc (2026-10-31, sửa luật "Tiên Ngọc là tiền nạp, không giao dịch giữa người chơi" của bản đầu giai đoạn 5):** một tin Vạn Bảo Lâu tính giá bằng Linh Thạch hoặc Tiên Ngọc (người mua, người đấu giá, phí, thuế, tiền hoàn đều bằng loại đó); một giao dịch trực tiếp mang được cả hai loại tiền cùng đồ. Cống Hiến vẫn khóa. Chi tiết `docs/PHASE5.md`.
 - **Giao diện:** thanh buff dưới thanh HP/MP (kỹ năng buff và đan hồi dần, kèm thời gian còn lại); cửa sổ trang bị 2 tab (trang bị / pháp bảo).
 
 ## 10. Các giai đoạn và tiêu chí nghiệm thu
@@ -159,7 +160,7 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 4h. Tối ưu và đo hiệu năng — làm một phần (bộ nhớ bản đồ giảm khoảng 4 lần, WebP, gỡ atlas khi rảnh, bảng đo `?perf=1`); còn đo thật trên điện thoại
   - 4i. Admin chọn hình có sẵn (không tải ảnh lên) cho vật phẩm, trang bị theo loại, kỹ năng, quái, NPC, bản đồ, trang phục, mũ, bản đồ mini — xong
 - **Giai đoạn 5**: Kinh tế và xã hội (`docs/PHASE5.md`; mới thiết kế)
-  - 5a. NPC Vạn Bảo Lâu: bán đứt, đấu giá, tin rao trong thành (làm trước; chỉ Linh Thạch; tin theo từng thành; thuế 10%, phí đăng 2%)
+  - 5a. NPC Vạn Bảo Lâu: mua ngay, đấu giá, tin rao trong thành (làm trước; Linh Thạch hoặc Tiên Ngọc; tin theo từng thành; thuế 10%, phí đăng 2%)
   - 5b. Giao dịch trực tiếp 2 người (chỉ trong thành an toàn)
   - 5c. Tông môn (Cống Hiến, kỹ năng tông môn)
   - 5d. Thú cưỡi

@@ -1,6 +1,6 @@
 /**
  * Vạn Bảo Lâu, the market NPC (docs/PHASE5.md, 5a): the numbers (the tuning group `market`) and the pure rules (tax, fee, the daily auction round).
- * Every town has its own market: a listing is seen and bought only in the town it was put up in. Only Linh Thạch is used. This file has no imports
+ * Every town has its own market: a listing is seen and bought only in the town it was put up in. A listing is priced in Linh Thạch or in Tiên Ngọc. This file has no imports
  * on purpose (the tuning defaults are built from it).
  */
 export interface MarketCfg {
@@ -25,6 +25,9 @@ export interface MarketCfg {
   tzHours: number;
   /** The dearest price a listing can ask, in Linh Thạch. */
   maxPrice: number;
+  /** The same two numbers for a listing priced in Tiên Ngọc (a stored row from before has none: 1 and 10 000 000). */
+  minListFeeTienNgoc?: number;
+  maxPriceTienNgoc?: number;
   /** The town announcement of a listing, sent by the NPC: the least item grade that may be announced, its fee and the least time between two of one character's announcements. */
   promote: { minGrade: number; fee: number; cooldownSec: number };
 }
@@ -41,10 +44,20 @@ export const DEFAULT_MARKET: MarketCfg = {
   closeHour: 21,
   tzHours: 7,
   maxPrice: 1_000_000_000,
+  minListFeeTienNgoc: 1,
+  maxPriceTienNgoc: 10_000_000,
   promote: { minGrade: 3, fee: 50_000, cooldownSec: 60 },
 };
 
 export const MARKET_KINDS = ["fixed", "auction"] as const;
+
+/** The two currencies a listing can be priced in (the buyer or bidder pays in the same one; Cống Hiến is locked and never traded). */
+export const MARKET_CURRENCIES = ["linh_thach", "tien_ngoc"] as const;
+export type MarketCurrency = (typeof MARKET_CURRENCIES)[number];
+export const isMarketCurrency = (v: unknown): v is MarketCurrency => v === "linh_thach" || v === "tien_ngoc";
+
+/** The dearest price a listing can ask in a currency. */
+export const marketMaxPrice = (cfg: MarketCfg, currency: MarketCurrency): number => (currency === "tien_ngoc" ? (cfg.maxPriceTienNgoc ?? 10_000_000) : cfg.maxPrice);
 export type MarketKind = (typeof MARKET_KINDS)[number];
 
 const HOUR_MS = 3_600_000;
@@ -71,6 +84,8 @@ export function validMarket(v: unknown): v is MarketCfg {
     (c.openHour as number) < (c.closeHour as number) &&
     inRange(c.tzHours, -12, 14) &&
     inRange(c.maxPrice, 1, 1_000_000_000) &&
+    (c.minListFeeTienNgoc === undefined || inRange(c.minListFeeTienNgoc, 1, 1_000_000_000)) &&
+    (c.maxPriceTienNgoc === undefined || inRange(c.maxPriceTienNgoc, 1, 1_000_000_000)) &&
     typeof p === "object" &&
     p !== null &&
     inRange(p.minGrade, 1, 9) &&
@@ -85,8 +100,9 @@ export function marketTax(cfg: MarketCfg, price: number): number {
 }
 
 /** The fee charged for putting a listing up asking `price` (the start price of an auction). */
-export function listingFee(cfg: MarketCfg, price: number): number {
-  return Math.max(cfg.minListFee, Math.floor((price * cfg.listFeePct) / 100));
+export function listingFee(cfg: MarketCfg, price: number, currency: MarketCurrency = "linh_thach"): number {
+  const least = currency === "tien_ngoc" ? (cfg.minListFeeTienNgoc ?? 1) : cfg.minListFee;
+  return Math.max(least, Math.floor((price * cfg.listFeePct) / 100));
 }
 
 /** The least bid on an auction: the start price while nobody has bid, else the top bid plus the step. */
@@ -96,10 +112,11 @@ export function minNextBid(cfg: MarketCfg, startPrice: number, topBid: number): 
 }
 
 /** The amount a bid box starts with: the start price while nobody has bid, else the top bid raised by `bidSuggestPct` (never under the least next bid, never over the price cap). */
-export function suggestedBid(cfg: MarketCfg, startPrice: number, topBid: number): number {
+export function suggestedBid(cfg: MarketCfg, startPrice: number, topBid: number, currency: MarketCurrency = "linh_thach"): number {
   const least = minNextBid(cfg, startPrice, topBid);
-  if (topBid <= 0) return Math.min(least, cfg.maxPrice);
-  return Math.min(cfg.maxPrice, Math.max(least, Math.ceil((topBid * (100 + (cfg.bidSuggestPct ?? 10))) / 100)));
+  const cap = marketMaxPrice(cfg, currency);
+  if (topBid <= 0) return Math.min(least, cap);
+  return Math.min(cap, Math.max(least, Math.ceil((topBid * (100 + (cfg.bidSuggestPct ?? 10))) / 100)));
 }
 
 /** Milliseconds since the start of the local day (`tzHours` ahead of UTC) at `now`. */
@@ -131,6 +148,8 @@ export function fixedEndsAt(cfg: MarketCfg, createdAt: number): number {
 export interface MarketListingView {
   id: string;
   kind: MarketKind;
+  /** What the price is in: the buyer or bidder pays in the same currency. */
+  currency: MarketCurrency;
   sellerName: string;
   /** True: the character looking is the seller (no buying, a cancel button instead). */
   mine: boolean;

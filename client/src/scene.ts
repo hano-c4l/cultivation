@@ -87,6 +87,7 @@ import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { initDojo, type DojoUi } from "./dojo-ui";
 import { initMarket, type MarketUi } from "./market-ui";
+import { initTrade, type TradeUi } from "./trade-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
 import { HAT_ORN_TEX, HAT_TEX, ensureHatTextures } from "./hat-art";
@@ -282,7 +283,10 @@ function applyTrack(actor: Actor, path: Vec2[], startedAt: number, speed: number
 }
 
 /** Radius (tiles) of the teleport array drawn on the ground and of the click that opens it. */
-const WAYGATE_RADIUS = 1.3;
+/** The teleport array is a wide circle on the ground (tiles): a click anywhere in it walks the character to its middle, and standing in the middle opens its window. */
+const WAYGATE_RADIUS = 2.6;
+/** How close to the middle of the array the character must stand for its window to open by itself after the walk. */
+const WAYGATE_CENTER_REACH = 0.7;
 export class GameScene extends Phaser.Scene {
   private gfx!: GfxKit;
   private map: MapData = getMap("town");
@@ -313,12 +317,17 @@ export class GameScene extends Phaser.Scene {
   private shop!: ShopUi;
   private smith!: SmithUi;
   private linhThach = 0;
+  private tienNgoc = 0;
   private quests!: QuestUi;
   private pk!: PkUi;
   private channel!: ChannelUi;
   private waygate!: WaygateUi;
+  /** The teleport array the character is walking to the middle of (its window opens on arrival). */
+  private pendingWaygate: NpcSpot | null = null;
+  private waygateWatch: Phaser.Time.TimerEvent | null = null;
   private dojo!: DojoUi;
   private market!: MarketUi;
+  private trade!: TradeUi;
   private minimap!: MinimapUi;
   private fx!: Effects;
   private rank!: RankUi;
@@ -460,6 +469,7 @@ export class GameScene extends Phaser.Scene {
     this.waygate = initWaygate((msg) => this.net.send(msg));
     this.dojo = initDojo((msg) => this.net.send(msg));
     this.market = initMarket((msg) => this.net.send(msg), () => this.inventory.list());
+    this.trade = initTrade((msg) => this.net.send(msg), () => this.inventory.list(), (text, ok) => this.chat.system(text, ok ? "info" : "warning"));
     this.minimap = initMinimap();
     ensureFlightTextures(this);
     ensureHatTextures(this);
@@ -790,6 +800,14 @@ export class GameScene extends Phaser.Scene {
     }
     // With the PK state on (or against a player who hit you in the last 3 minutes: self-defence), a click on another player attacks them
     // (the server checks the rules and says why when it refuses).
+    // In a safe map a click on another player offers a trade instead (nobody can be attacked there).
+    if (this.map.safe) {
+      const other = this.pickPlayer(world.x, world.y, true);
+      if (other) {
+        this.trade.askTo(other, this.actors.get(other)?.label.text ?? "");
+        return;
+      }
+    }
     const player = !this.map.safe ? this.pickPlayer(world.x, world.y) : null;
     const picked = player ?? this.pickMonster(world.x, world.y);
     if (picked) {
@@ -821,6 +839,28 @@ export class GameScene extends Phaser.Scene {
     const self = this.actors.get(this.selfId);
     if (!self) return;
     const here = currentPos(self, performance.now());
+    if (npc.kind === "waygate" && Math.hypot(here.x - npc.x, here.y - npc.y) > WAYGATE_CENTER_REACH) {
+      // The array: step into the middle of the circle (not beside it), and its window opens when the character arrives.
+      this.sendWalk(Math.round(npc.x * 100) / 100, Math.round(npc.y * 100) / 100);
+      this.pendingWaygate = npc;
+      this.waygateWatch?.remove(); // one watcher at a time: a second click must not leave the first one running
+      const watch: Phaser.Time.TimerEvent = this.time.addEvent({
+        delay: 120,
+        repeat: 80,
+        callback: () => {
+          const me = this.actors.get(this.selfId);
+          if (this.pendingWaygate !== npc || !me) return void watch.remove();
+          const p = currentPos(me, performance.now());
+          if (Math.hypot(p.x - npc.x, p.y - npc.y) <= WAYGATE_CENTER_REACH) {
+            this.pendingWaygate = null;
+            watch.remove();
+            this.talkTo(npc);
+          }
+        },
+      });
+      this.waygateWatch = watch;
+      return;
+    }
     if (Math.hypot(here.x - npc.x, here.y - npc.y) <= NPC_INTERACT_RADIUS - 0.4) {
       // One NPC window at a time (both would otherwise open on the same spot).
       this.shop.close();
@@ -853,6 +893,7 @@ export class GameScene extends Phaser.Scene {
     if (now - this.lastMoveSentAt < MIN_MOVE_INTERVAL_MS + 20) return;
     const from = this.predictSelfMove(tx, ty);
     if (!from) return;
+    this.pendingWaygate = null; // a new walk cancels the one that was going to open the teleport array
     this.lastMoveSentAt = now;
     this.shop.close(); // walking away from an NPC closes its window
     this.quests.close();
@@ -934,9 +975,10 @@ export class GameScene extends Phaser.Scene {
         this.autoUi.show(true);
         this.vitals.setWallet(msg.wallet);
         this.linhThach = msg.wallet.linh_thach;
+        this.tienNgoc = msg.wallet.tien_ngoc;
         this.waygate.setBalance(this.linhThach);
         this.dojo.setBalance(this.linhThach);
-        this.market.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach, this.tienNgoc);
         this.inventory.setBag(msg.bag);
         this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
@@ -1017,7 +1059,11 @@ export class GameScene extends Phaser.Scene {
           this.linhThach = msg.balance;
           this.waygate.setBalance(this.linhThach);
         this.dojo.setBalance(this.linhThach);
-        this.market.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach, this.tienNgoc);
+        }
+        if (msg.currency === "tien_ngoc") {
+          this.tienNgoc = msg.balance;
+          this.market.setBalance(this.linhThach, this.tienNgoc);
         }
         this.vitals.setBalance(msg.currency, msg.balance);
         this.smith.refresh();
@@ -1109,6 +1155,7 @@ export class GameScene extends Phaser.Scene {
         this.equipment.refresh();
         this.shop.refresh();
         this.market.refresh();
+        this.trade.refresh();
         this.quests.refresh();
         this.hotbar.refresh();
         this.skillsUi.refresh(); // the pill count
@@ -1248,14 +1295,26 @@ export class GameScene extends Phaser.Scene {
         break;
       case "dojo":
         this.dojo.setBalance(this.linhThach);
-        this.market.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach, this.tienNgoc);
         this.dojo.setCourses(msg.npc, msg.courses);
         break;
       case "skill_forgot":
         this.chat.system(vi.skills.forgot(skillDisplayName(getSkill(msg.skill) ?? ({ id: msg.skill, nameVi: msg.skill } as SkillDef))));
         break;
+      case "trade_invite":
+        this.trade.invited(msg.from, msg.name, msg.ttlMs);
+        break;
+      case "trade":
+        this.trade.show(msg);
+        break;
+      case "trade_end":
+        this.trade.end(msg.reason);
+        break;
+      case "trade_error":
+        this.trade.error(msg.reason);
+        break;
       case "market":
-        this.market.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach, this.tienNgoc);
         this.market.setListings(msg.npc, msg.listings, msg.cfg, msg.now, msg.open);
         break;
       case "market_ok":
@@ -1797,14 +1856,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** The player drawn under a click, other than yourself (used with the PK switch on). */
-  private pickPlayer(wx: number, wy: number): string | null {
+  private pickPlayer(wx: number, wy: number, anyone = false): string | null {
     const now = performance.now();
     let best: string | null = null;
     let bestD = MONSTER_PICK_PX;
     for (const a of this.actors.values()) {
       if (a.id === this.selfId) continue;
       const hitAt = this.hitMeAt.get(a.id);
-      if (this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < grayWindowMs())) continue;
+      if (!anyone && this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < grayWindowMs())) continue;
       const pos = currentPos(a, now);
       const s = toScreen(pos.x, pos.y);
       const d = Math.hypot(s.x - wx, s.y - 20 - wy);

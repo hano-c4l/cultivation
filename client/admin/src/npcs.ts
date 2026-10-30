@@ -31,7 +31,7 @@ interface Meta {
 
 type Rule =
   | { id: string; kind: "item"; item: string; price?: number; currency?: "tien_ngoc"; dailyLimit?: number }
-  | { id: string; kind: "gear"; realms: number[]; tiers: number[]; grade: number; elements?: string[]; priceMult?: number }
+  | { id: string; kind: "gear"; realms: number[]; tiers: number[]; grade: number; elements?: string[]; priceMult?: number; kinds?: string[] }
   | { id: string; kind: "keep_level" };
 
 interface MerchantView {
@@ -248,8 +248,9 @@ function ruleRow(rule: Rule, items: MerchantView["meta"]["items"], elements: str
   const grade = num(rule.kind === "gear" ? rule.grade : 1, { min: "1", max: "4", step: "1" });
   const els = text(rule.kind === "gear" && rule.elements ? rule.elements.join(",") : "", { size: "14", placeholder: `hệ (trống: ngũ hành); ${elements.join(",")}` });
   const mult = num(rule.kind === "gear" ? rule.priceMult : undefined, { min: "0.01", step: "any", placeholder: "nhân giá" });
+  const kinds = text(rule.kind === "gear" && rule.kinds ? rule.kinds.join(",") : "", { size: "12", placeholder: "loại (trống: đồ thường); bonded,flight,charm", title: "bonded: pháp bảo bản mệnh, flight: pháp bảo phi hành, charm: pháp bảo thường. Để trống: giáp, vũ khí và pháp bảo thường như cũ." });
   const itemBox = h("span", { class: "toolbar" }, item, list, price, h("label", { class: "radio" }, tienNgoc, "Tiên Ngọc"), daily);
-  const gearBox = h("span", { class: "toolbar" }, h("span", null, "CG:"), realms, h("span", null, "Bậc:"), tiers, h("span", null, "Phẩm:"), grade, els, mult);
+  const gearBox = h("span", { class: "toolbar" }, h("span", null, "CG:"), realms, h("span", null, "Bậc:"), tiers, h("span", null, "Phẩm:"), grade, els, mult, kinds);
   const sync = () => {
     itemBox.hidden = kind.value !== "item";
     gearBox.hidden = kind.value !== "gear";
@@ -265,7 +266,8 @@ function ruleRow(rule: Rule, items: MerchantView["meta"]["items"], elements: str
     if (kind.value === "gear") {
       const elList = els.value.split(",").map((t) => t.trim()).filter(Boolean);
       const pm = opt(mult);
-      return { id: id.value.trim(), kind: "gear", realms: ints(realms.value), tiers: ints(tiers.value), grade: Number(grade.value), ...(elList.length ? { elements: elList } : {}), ...(pm !== undefined ? { priceMult: pm } : {}) };
+      const kindList = kinds.value.split(",").map((t) => t.trim()).filter(Boolean);
+      return { id: id.value.trim(), kind: "gear", realms: ints(realms.value), tiers: ints(tiers.value), grade: Number(grade.value), ...(elList.length ? { elements: elList } : {}), ...(pm !== undefined ? { priceMult: pm } : {}), ...(kindList.length ? { kinds: kindList } : {}) };
     }
     const p = opt(price);
     const d = opt(daily);

@@ -198,6 +198,18 @@
       #minimap { position: fixed; right: 60px; top: 48px; z-index: 5; padding: 3px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); pointer-events: none; }
       #minimap canvas { display: block; max-width: 100%; height: auto; }
       @media (max-width: 700px) { #minimap { right: 56px; top: 74px; transform: scale(0.8); transform-origin: top right; } }
+      #trade-panel[hidden], #trade-prompt[hidden] { display: none; }
+      #trade-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(620px, calc(100vw - 16px)); max-height: calc(100vh - 100px); overflow-y: auto; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 21; }
+      #trade-prompt { position: fixed; left: 50%; top: 90px; transform: translateX(-50%); padding: 10px 14px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 22; text-align: center; }
+      #trade-panel button, #trade-prompt button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; min-height: 28px; }
+      #trade-panel button:disabled { opacity: 0.45; cursor: default; }
+      #trade-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #trade-panel .eq-head b { flex: 1; font-size: 15px; }
+      #trade-panel .muted { opacity: 0.65; font-size: 12px; margin: 4px 0; } #trade-panel .tr-note { color: #ffd27a; margin: 4px 0; }
+      #trade-panel .tr-cols { display: flex; gap: 10px; flex-wrap: wrap; } #trade-panel .tr-col { flex: 1; min-width: 240px; padding: 6px; border: 1px solid var(--ui-border); border-radius: 6px; } #trade-panel .tr-h { font-weight: 700; margin-bottom: 4px; }
+      #trade-panel .tr-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; } #trade-panel .tr-item { flex: 1; min-width: 0; } #trade-panel .tr-name { display: flex; align-items: center; gap: 6px; font-weight: 600; } #trade-panel .tr-name .ic { width: 26px; height: 26px; flex: none; }
+      #trade-panel .tr-linh { display: block; margin: 6px 0; } #trade-panel .tr-linh input { width: 130px; margin-left: 4px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--ui-border); background: transparent; color: inherit; font: inherit; }
+      #trade-panel .tr-bag { display: flex; flex-wrap: wrap; gap: 4px; } #trade-panel .tr-cell { position: relative; width: 36px; height: 36px; padding: 2px; background: transparent; border: 1px solid var(--ui-border); } #trade-panel .tr-cell .ic { width: 100%; height: 100%; } #trade-panel .tr-qty { position: absolute; right: 2px; bottom: 0; font-size: 10px; text-shadow: 0 0 2px #000; }
+      #trade-panel .tr-bar, #trade-prompt .tr-bar { display: flex; gap: 8px; justify-content: center; margin-top: 8px; } #trade-panel .tr-cancel { background: transparent; color: var(--ui-text); border: 1px solid var(--ui-border); }
       #market-panel[hidden] { display: none; }
       #market-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(520px, calc(100vw - 16px)); max-height: calc(100vh - 100px); overflow-y: auto; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 20; }
       #market-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; min-height: 28px; }

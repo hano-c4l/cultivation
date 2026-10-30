@@ -459,6 +459,23 @@ const LUYENHU_SIZE = LUYENHU_RECT.halfW + 2 * LUYENHU_RECT.halfH;
 
 /** Placeholder maps. Later maps will be authored in Tiled and baked into this same shape. */
 
+/**
+ * Where the town NPCs stand (tile units before the town offset). The teleport array is the middle of the town; the five NPCs people come for stand round it about 8 tiles
+ * away, spread out, and the three hướng tu masters and the martial master are scattered over the rest of the plaza instead of standing in one cluster.
+ */
+const TOWN_NPC_AT: Readonly<Record<string, readonly [number, number]>> = {
+  waygate: [20.5, 20.5],
+  merchant: [27.4, 16.5],
+  elder: [17.2, 13.2],
+  smith: [12.6, 19.1],
+  alchemist: [18.8, 28.3],
+  market: [27.4, 24.5],
+  master: [33.5, 8],
+  path_kiem: [6.5, 14],
+  path_thuat: [36, 30.5],
+  path_dan: [14, 36],
+};
+
 /** What both towns share: the first town grid was a 40 x 40 diamond; its layout is kept as it was, moved to the middle of the new grid (tile offset 25). */
 const TOWN_OFFSET = 25;
 function townGround(g: Grid): void {
@@ -466,15 +483,10 @@ function townGround(g: Grid): void {
   g.disc(27.5 + o, 10.5 + o, 3.6, false); // round pond
   g.chamfered(8 + o, 22 + o, 15.5 + o, 27.5 + o, 1.0, false); // building with cut corners
   g.chamfered(22 + o, 28 + o, 28.5 + o, 32.5 + o, 0.8, false); // building with cut corners
-  for (const [x, y] of [[18.5, 18.5], [21.5, 18.5], [18.5, 21.5], [21.5, 21.5]] as const) g.disc(x + o, y + o, 0.45, false); // pillars
   g.rect(10 + o, 10 + o, 16.5 + o, 10.3 + o, false); // thin fence, not tile aligned
   g.rect(33 + o, 20 + o, 33.3 + o, 28.5 + o, false); // thin fence, not tile aligned
-  g.disc(23.5 + o, 17.5 + o, 0.4, false); // the merchant's stall: nobody stands on the NPC
-  g.disc(16.5 + o, 17.5 + o, 0.4, false); // the quest giver
-  g.disc(27.5 + o, 17.5 + o, 0.4, false); // the alchemist
-  g.disc(30.5 + o, 17.5 + o, 0.4, false); // the martial master (võ sư)
-  g.disc(34.5 + o, 17.5 + o, 0.4, false); // Vạn Bảo Lâu, the market
-  for (const x of [22.5, 25.5, 28.5]) g.disc(x + o, 24.5 + o, 0.4, false); // the three hướng tu masters
+  // Nobody stands on an NPC: a small blocked disc under each one.
+  for (const [id, [x, y]] of Object.entries(TOWN_NPC_AT)) if (id !== "waygate") g.disc(x + o, y + o, 0.4, false);
   // New ground around it: buildings in the four corners of the rectangle and a few more pillars.
   g.srect(-40, -17, -30, -9, false);
   g.srect(28, -18, 38, -10, false);
@@ -507,16 +519,16 @@ function buildTown(): MapData {
     realm: null,
     portals: [{ ...gate, toMap: "forest", toX: arrive[0], toY: arrive[1] }],
     npcs: [
-      { id: "merchant", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
-      { id: "elder", kind: "quest", x: 16.5 + o, y: 17.5 + o },
-      { id: "smith", kind: "smith", x: 15.5 + o, y: 20.5 + o },
-      { id: "alchemist", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
-      { id: "master", kind: "master", x: 30.5 + o, y: 17.5 + o },
-      { id: "market", kind: "market", x: 34.5 + o, y: 17.5 + o },
-      { id: "waygate", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
-      { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
-      { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
-      { id: "path_dan", kind: "quest", x: 28.5 + o, y: 24.5 + o },
+      { id: "merchant", kind: "merchant", x: TOWN_NPC_AT.merchant![0] + o, y: TOWN_NPC_AT.merchant![1] + o },
+      { id: "elder", kind: "quest", x: TOWN_NPC_AT.elder![0] + o, y: TOWN_NPC_AT.elder![1] + o },
+      { id: "smith", kind: "smith", x: TOWN_NPC_AT.smith![0] + o, y: TOWN_NPC_AT.smith![1] + o },
+      { id: "alchemist", kind: "alchemist", x: TOWN_NPC_AT.alchemist![0] + o, y: TOWN_NPC_AT.alchemist![1] + o },
+      { id: "master", kind: "master", x: TOWN_NPC_AT.master![0] + o, y: TOWN_NPC_AT.master![1] + o },
+      { id: "market", kind: "market", x: TOWN_NPC_AT.market![0] + o, y: TOWN_NPC_AT.market![1] + o },
+      { id: "waygate", kind: "waygate", x: TOWN_NPC_AT.waygate![0] + o, y: TOWN_NPC_AT.waygate![1] + o },
+      { id: "path_kiem", kind: "quest", x: TOWN_NPC_AT.path_kiem![0] + o, y: TOWN_NPC_AT.path_kiem![1] + o },
+      { id: "path_thuat", kind: "quest", x: TOWN_NPC_AT.path_thuat![0] + o, y: TOWN_NPC_AT.path_thuat![1] + o },
+      { id: "path_dan", kind: "quest", x: TOWN_NPC_AT.path_dan![0] + o, y: TOWN_NPC_AT.path_dan![1] + o },
     ],
   };
 }
@@ -557,17 +569,17 @@ function buildTown2(): MapData {
       { ...nguyen, toMap: "nguyenanh", toX: toNguyen[0], toY: toNguyen[1] },
     ],
     npcs: [
-      { id: "merchant2", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
-      { id: "elder2", kind: "quest", x: 16.5 + o, y: 17.5 + o },
-      { id: "smith2", kind: "smith", x: 15.5 + o, y: 20.5 + o },
-      { id: "alchemist2", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
-      { id: "master2", kind: "master", x: 30.5 + o, y: 17.5 + o },
-      { id: "market2", kind: "market", x: 34.5 + o, y: 17.5 + o },
-      { id: "waygate2", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
+      { id: "merchant2", kind: "merchant", x: TOWN_NPC_AT.merchant![0] + o, y: TOWN_NPC_AT.merchant![1] + o },
+      { id: "elder2", kind: "quest", x: TOWN_NPC_AT.elder![0] + o, y: TOWN_NPC_AT.elder![1] + o },
+      { id: "smith2", kind: "smith", x: TOWN_NPC_AT.smith![0] + o, y: TOWN_NPC_AT.smith![1] + o },
+      { id: "alchemist2", kind: "alchemist", x: TOWN_NPC_AT.alchemist![0] + o, y: TOWN_NPC_AT.alchemist![1] + o },
+      { id: "master2", kind: "master", x: TOWN_NPC_AT.master![0] + o, y: TOWN_NPC_AT.master![1] + o },
+      { id: "market2", kind: "market", x: TOWN_NPC_AT.market![0] + o, y: TOWN_NPC_AT.market![1] + o },
+      { id: "waygate2", kind: "waygate", x: TOWN_NPC_AT.waygate![0] + o, y: TOWN_NPC_AT.waygate![1] + o },
       // The same three masters as the first town, with the same ids: their quests and rewards are the same wherever they stand.
-      { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
-      { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
-      { id: "path_dan", kind: "quest", x: 28.5 + o, y: 24.5 + o },
+      { id: "path_kiem", kind: "quest", x: TOWN_NPC_AT.path_kiem![0] + o, y: TOWN_NPC_AT.path_kiem![1] + o },
+      { id: "path_thuat", kind: "quest", x: TOWN_NPC_AT.path_thuat![0] + o, y: TOWN_NPC_AT.path_thuat![1] + o },
+      { id: "path_dan", kind: "quest", x: TOWN_NPC_AT.path_dan![0] + o, y: TOWN_NPC_AT.path_dan![1] + o },
     ],
   };
 }
@@ -608,17 +620,17 @@ function buildTown3(): MapData {
       { ...luyen, toMap: "luyenhu", toX: toLuyen[0], toY: toLuyen[1] },
     ],
     npcs: [
-      { id: "merchant3", kind: "merchant", x: 23.5 + o, y: 17.5 + o },
-      { id: "elder3", kind: "quest", x: 16.5 + o, y: 17.5 + o },
-      { id: "smith3", kind: "smith", x: 15.5 + o, y: 20.5 + o },
-      { id: "alchemist3", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
-      { id: "master3", kind: "master", x: 30.5 + o, y: 17.5 + o },
-      { id: "market3", kind: "market", x: 34.5 + o, y: 17.5 + o },
-      { id: "waygate3", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
+      { id: "merchant3", kind: "merchant", x: TOWN_NPC_AT.merchant![0] + o, y: TOWN_NPC_AT.merchant![1] + o },
+      { id: "elder3", kind: "quest", x: TOWN_NPC_AT.elder![0] + o, y: TOWN_NPC_AT.elder![1] + o },
+      { id: "smith3", kind: "smith", x: TOWN_NPC_AT.smith![0] + o, y: TOWN_NPC_AT.smith![1] + o },
+      { id: "alchemist3", kind: "alchemist", x: TOWN_NPC_AT.alchemist![0] + o, y: TOWN_NPC_AT.alchemist![1] + o },
+      { id: "master3", kind: "master", x: TOWN_NPC_AT.master![0] + o, y: TOWN_NPC_AT.master![1] + o },
+      { id: "market3", kind: "market", x: TOWN_NPC_AT.market![0] + o, y: TOWN_NPC_AT.market![1] + o },
+      { id: "waygate3", kind: "waygate", x: TOWN_NPC_AT.waygate![0] + o, y: TOWN_NPC_AT.waygate![1] + o },
       // The same three masters as the other towns, with the same ids.
-      { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
-      { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
-      { id: "path_dan", kind: "quest", x: 28.5 + o, y: 24.5 + o },
+      { id: "path_kiem", kind: "quest", x: TOWN_NPC_AT.path_kiem![0] + o, y: TOWN_NPC_AT.path_kiem![1] + o },
+      { id: "path_thuat", kind: "quest", x: TOWN_NPC_AT.path_thuat![0] + o, y: TOWN_NPC_AT.path_thuat![1] + o },
+      { id: "path_dan", kind: "quest", x: TOWN_NPC_AT.path_dan![0] + o, y: TOWN_NPC_AT.path_dan![1] + o },
     ],
   };
 }
