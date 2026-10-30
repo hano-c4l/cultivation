@@ -1,4 +1,4 @@
-import { getItemDef, listingFee, marketTax, type BagItem, type ClientMessage, type MarketCfg, type MarketError, type MarketKind, type MarketListingView } from "@game/shared";
+import { getItemDef, listingFee, marketTax, suggestedBid, type BagItem, type ClientMessage, type MarketCfg, type MarketError, type MarketKind, type MarketListingView } from "@game/shared";
 import { equipLines, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
 import { iconFor } from "./icons";
 import { vi } from "./locales/vi";
@@ -9,6 +9,8 @@ export interface MarketUi {
   open(npc: string): void;
   close(): void;
   setListings(npc: string, listings: MarketListingView[], cfg: MarketCfg, now: number, open: boolean): void;
+  /** The market of `town` changed somewhere (another player bought, bid or posted): an open window asks for the list again (`town` absent: any town). */
+  invalidate(): void;
   /** The Linh Thạch the character holds. */
   setBalance(linhThach: number): void;
   /** The bag changed: the list of things that can be put up may have too. */
@@ -66,6 +68,26 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
   /** The bag item chosen to put up, and the form values. */
   let picked: { tab: number; cell: number } | null = null;
   let form: { kind: MarketKind; qty: number; price: number } = { kind: "fixed", qty: 1, price: 1000 };
+  /** What the player typed in a bid box, by listing: kept while the list refreshes under them, dropped when the top bid moves past it. */
+  const typedBid = new Map<string, { value: number; over: number }>();
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastAsk = 0;
+
+  /** Asks the server for the list again (at most about once a second; the server limits it too). */
+  const ask = () => {
+    if (panel.hidden || !npc) return;
+    const wait = 900 - (Date.now() - lastAsk);
+    if (wait > 0) {
+      if (!refreshTimer) refreshTimer = setTimeout(() => ((refreshTimer = null), ask()), wait);
+      return;
+    }
+    lastAsk = Date.now();
+    send({ t: "market_list", npc });
+  };
+  // A fallback for a missed push, and it keeps the countdowns honest.
+  setInterval(() => {
+    if (!panel.hidden && document.visibilityState === "visible") ask();
+  }, 15_000);
 
   const nowServer = () => Date.now() + skew;
 
@@ -92,13 +114,13 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
   };
 
   const renderBrowse = (kind: MarketKind) => {
-    const list = listings.filter((l) => l.kind === kind && !l.mine);
+    const list = listings.filter((l) => l.kind === kind && (kind === "auction" || !l.mine));
     if (kind === "auction") panel.append(el("div", open ? "mk-open" : "mk-shut", open ? vi.market.roundOpen(cfg ? `${cfg.openHour}h-${cfg.closeHour}h` : "") : vi.market.roundShut(cfg ? `${cfg.openHour}h` : "")));
     if (list.length === 0) panel.append(el("div", "muted", vi.market.none));
     for (const l of list) {
       const row = el("div", "mk-row");
       const info = itemBlock(l.type, l.qty, l.carry);
-      info.append(el("div", "muted", vi.market.seller(l.sellerName)));
+      info.append(el("div", "muted", l.mine ? vi.market.mineTag : vi.market.seller(l.sellerName)));
       const side = el("div", "mk-side");
       if (kind === "fixed") {
         side.append(el("div", "mk-price", vi.market.price(fmt(l.price))), el("div", "muted", vi.market.left(leftText(l.endsAt - nowServer()))));
@@ -111,8 +133,12 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
         const amount = el("input");
         amount.type = "number";
         amount.min = String(l.nextBid);
-        amount.value = String(l.nextBid);
+        // The box starts a notch above the top bid (the bidder can still type another amount); a typed amount stays until someone outbids it.
+        const typed = typedBid.get(l.id);
+        const keep = typed && typed.over === l.topBid && typed.value >= l.nextBid;
+        amount.value = String(keep ? typed.value : cfg ? suggestedBid(cfg, l.price, l.topBid) : l.nextBid);
         amount.className = "mk-amount";
+        amount.oninput = () => typedBid.set(l.id, { value: Math.floor(Number(amount.value)) || 0, over: l.topBid });
         const bid = button(vi.market.bid, () => send({ t: "market_bid", npc, id: l.id, amount: Math.floor(Number(amount.value)) }), !open || l.topIsMe, !open ? vi.market.errors.closed : l.topIsMe ? vi.market.errors.top : "");
         side.append(amount, bid);
       }
@@ -197,8 +223,9 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
       info.append(el("div", "muted", `${l.kind === "fixed" ? vi.market.kindFixed : vi.market.kindAuction} · ${vi.market.left(leftText(l.endsAt - nowServer()))}`));
       const side = el("div", "mk-side");
       side.append(el("div", "mk-price", l.kind === "fixed" ? vi.market.price(fmt(l.price)) : l.topBid > 0 ? vi.market.topBid(fmt(l.topBid), false) : vi.market.startPrice(fmt(l.price))));
-      const canCancel = l.kind === "fixed" || l.topBid === 0;
-      side.append(button(vi.market.cancel, () => send({ t: "market_cancel", npc, id: l.id }), !canCancel, canCancel ? "" : vi.market.errors.closed));
+      // An auction cannot be taken back once its round is open (or a bid is in); a listing at night can, until the opening hour.
+      const canCancel = l.kind === "fixed" || (l.topBid === 0 && !open);
+      side.append(button(vi.market.cancel, () => send({ t: "market_cancel", npc, id: l.id }), !canCancel, canCancel ? "" : vi.market.cancelLocked));
       const grade = getItemDef(l.type)?.grade ?? 0;
       const promoteOk = !!cfg && grade >= cfg.promote.minGrade;
       side.append(button(vi.market.promote, () => send({ t: "market_promote", npc, id: l.id }), !promoteOk || (cfg ? balance < cfg.promote.fee : true), promoteOk && cfg ? vi.market.promoteHint(fmt(cfg.promote.fee)) : vi.market.errors.grade));
@@ -221,6 +248,7 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
         tab = id;
         note = null;
         render();
+        ask(); // the list may have moved on while another tab was showing
       };
       tabs.append(b);
     }
@@ -256,11 +284,14 @@ export function initMarket(send: (msg: ClientMessage) => void, bag: () => BagIte
       loaded = true;
       if (!form.price) form.price = 1000;
       if (picked && !bag().some((i) => i.tab === picked!.tab && i.cell === picked!.cell)) picked = null;
-      render();
+      if (tab !== "post") render(); // the post form is left alone while it is being filled in: it does not show the list
     },
     setBalance(n) {
       balance = n;
       if (!panel.hidden) render();
+    },
+    invalidate() {
+      ask();
     },
     refresh() {
       if (!panel.hidden && tab === "post") render();

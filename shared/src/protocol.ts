@@ -87,6 +87,10 @@ export type ClientMessage =
   | { t: "inv_expand"; price: number }
   /** Claim the item attached to a mail into the bag. */
   | { t: "mail_claim"; id: string }
+  /** Claim every mail in one go (the ones that do not fit stay in the mailbox). */
+  | { t: "mail_claim_all" }
+  /** Vạn Bảo Lâu: read this town's listings again (the window asks while it is open; cheaper to call than `npc_open`). */
+  | { t: "market_list"; npc: string }
   /** Ask for the mail list again (a gift was sent while the player is online); the server answers with `mail` and limits how often. */
   | { t: "mail_refresh" }
   /** Wear the bag item at (tab, cell). Without `slot` the server picks the first empty slot of its kind (or replaces the first). */
@@ -294,6 +298,8 @@ export type ServerMessage =
   | { t: "mail"; mail: MailView[] }
   /** Sent on the chat socket when a gift was sent to the player: the client answers with `mail_refresh` on the game socket. */
   | { t: "mail_new" }
+  /** Some listing of the town's Vạn Bảo Lâu changed (`town` absent: any town): a window that is open reads the list again. */
+  | { t: "market_changed"; town?: string }
   /** The merchant's stock for today: units this character can still buy of each offer that has a daily limit. */
   | { t: "shop"; npc: string; left: Record<string, number>; tuning: Tuning; merchant: MerchantDef; tabs: NpcView[] }
   /** A trade went through: `total` Linh Thạch paid (buy) or received (sell). */
@@ -604,6 +610,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return typeof m.quest === "string" && /^[a-z0-9_]{1,40}$/.test(m.quest) ? { t: "quest_abandon", quest: m.quest } : null;
     case "mail_refresh":
       return { t: "mail_refresh" };
+    case "mail_claim_all":
+      return { t: "mail_claim_all" };
+    case "market_list":
+      return isNpcId(m.npc) ? { t: "market_list", npc: m.npc } : null;
     case "mail_claim":
       return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:
