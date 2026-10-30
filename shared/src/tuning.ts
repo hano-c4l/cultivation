@@ -1,7 +1,7 @@
 import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
 import type { AreaDef } from "./area";
 import { SKILL_LOOKS } from "./skill-looks";
-import { FLIGHT_STYLES, GROUND_STYLES, OBSTACLE_STYLES, type FlightStyle, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
+import { FLIGHT_STYLES, GROUND_STYLES, ICON_PICKABLE, OBSTACLE_STYLES, type FlightStyle, type IconShape, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
 import type { EquipKind } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import type { PathBonus } from "./paths";
@@ -172,6 +172,11 @@ export interface Tuning {
   auto: { radiusMin: number; radiusMax: number; radiusDefault: number; tickMs: number; giveUpMs: number; skipMs: number; potionGapMs: number; castBackoffMs: number };
   /** How a skill is drawn, by skill id, then template, then gear family: a style name of `SKILL_LOOKS` (a skill with none is drawn by its kind). */
   skillLooks: Record<string, string>;
+  /**
+   * The icon an Admin chose from the existing drawings (`ICON_PICKABLE`): `items` by item id, `skills` by skill id, and `kinds` for a whole kind of item: `weapon.<family>`
+   * or a gear kind (`hat`, `robe`...) for gear, `category.<category>` for the rest. Nothing listed: the icon the code derives (client/src/icons.ts).
+   */
+  iconLooks: { items: Record<string, IconShape>; skills: Record<string, IconShape>; kinds: Record<string, IconShape> };
 }
 
 export interface MonsterNumbers {
@@ -596,6 +601,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     ho_the_ht: "bell", ho_the_lh: "bell", chien_y_ht: "flames", chien_y_lh: "flames", hoi_than_ht: "lotus", hoi_nguyen_lh: "lotus",
     hoi: "lotus", hoi_nguyen_kd: "lotus", tt_hoi_linh: "lotus", bm_hoi_sinh: "phoenix", dt_hoi_xuan: "furnace", dt_hoi_duong: "furnace", dt_dai_hoi: "furnace",
   },
+  iconLooks: { items: {}, skills: {}, kinds: {} },
   monsterTints: { kim: "#ffe27a", moc: "#8fe08f", thuy: "#7ab8ff", hoa: "#ff8a6a", tho: "#d2a878", loi: "#b89cff", bang: "#a4f0ff", phong: "#a6ebd9" },
   mapArt: {
     maps: {
@@ -674,6 +680,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   weaponArea: "Vùng chém của đánh thường theo họ vũ khí: quái gần mục tiêu trong vùng cũng bị đánh",
   skillAreas: "Vùng sát thương của kỹ năng tấn công: hình quạt, đường thẳng hay vòng tròn, số mục tiêu tối đa, phần sát thương của mục tiêu phụ",
   skillLooks: "Kiểu hình ảnh của từng kỹ năng (theo mã, mẫu hoặc họ pháp bảo)",
+  iconLooks: "Biểu tượng chọn riêng cho vật phẩm, kỹ năng hoặc cả một loại trang bị (chọn từ các hình có sẵn)",
   monsterTints: "Màu phủ lên hình quái theo hệ (một mô hình trông khác nhau ở mỗi hệ)",
   monsterModels: "Hình quái: loài quái nào dùng mô hình nào (một mô hình có thể dùng chung cho nhiều loài)",
   mapArt: "Hình bản đồ: kiểu nền và kiểu vật cản nhỏ (cây, đá, cột, tinh thể) của từng bản đồ",
@@ -1005,6 +1012,10 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     }
     case "skillLooks":
       return Object.keys(value).length <= 300 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && (SKILL_LOOKS as readonly string[]).includes(v));
+    case "iconLooks": {
+      const table = (t: unknown, key: RegExp): boolean => obj(t) && Object.keys(t).length <= 2000 && Object.entries(t).every(([k, v]) => key.test(k) && (ICON_PICKABLE as readonly unknown[]).includes(v));
+      return table(value.items, /^[A-Za-z0-9_.]{1,80}$/) && table(value.skills, /^[a-z0-9_]{1,24}$/) && table(value.kinds, /^[a-z]{1,24}(\.[a-z_]{1,24})?$/);
+    }
     case "monsterTints":
       return Object.keys(value).length <= 20 && Object.entries(value).every(([k, v]) => /^[a-z]{1,16}$/.test(k) && typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v));
     case "monsterModels":
