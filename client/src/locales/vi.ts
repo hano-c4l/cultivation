@@ -394,7 +394,7 @@ export const vi = {
       invalid: "Mục tiêu không hợp lệ.",
     } as Record<string, string>,
   },
-  npcs: { merchant: "Thương nhân", smith: "Thợ Rèn", elder: "Trưởng Lão", merchant2: "Thương nhân", smith2: "Thợ Rèn", elder2: "Trưởng Lão", waygate: "Truyền Tống Trận", waygate2: "Truyền Tống Trận", merchant3: "Thương nhân", smith3: "Thợ Rèn", elder3: "Trưởng Lão", alchemist3: "Đan Sư", waygate3: "Truyền Tống Trận", path_kiem: "Kiếm Đạo Sư", path_thuat: "Thuật Đạo Sư", path_dan: "Đan Đạo Sư" } as Record<string, string>,
+  npcs: { merchant: "Thương nhân", smith: "Thợ Rèn", elder: "Trưởng Lão", merchant2: "Thương nhân", smith2: "Thợ Rèn", elder2: "Trưởng Lão", waygate: "Truyền Tống Trận", waygate2: "Truyền Tống Trận", merchant3: "Thương nhân", smith3: "Thợ Rèn", elder3: "Trưởng Lão", alchemist3: "Đan Sư", master: "Võ Sư", master2: "Võ Sư", master3: "Võ Sư", waygate3: "Truyền Tống Trận", path_kiem: "Kiếm Đạo Sư", path_thuat: "Thuật Đạo Sư", path_dan: "Đan Đạo Sư" } as Record<string, string>,
   quests: {
     title: "Nhiệm vụ",
     none: "Hiện chưa có nhiệm vụ nào để nhận hay đang làm.",
@@ -461,6 +461,18 @@ export const vi = {
     balance: (n: string) => `Bạn có ${n} Linh Thạch.`,
     channelName: "Truyền Tống Trận",
   },
+  dojo: {
+    title: "Võ Sư",
+    hint: "Học kỹ năng cao cấp bằng Linh Thạch. Kỹ năng đã học không còn hiện ở đây.",
+    loading: "Đang tải...",
+    none: "Bạn đã học hết những gì võ sư này dạy.",
+    learn: "Học",
+    price: (n: string) => `Học phí: ${n} Linh Thạch`,
+    levelLow: "Chưa đủ cảnh giới để học kỹ năng này.",
+    poor: "Không đủ Linh Thạch.",
+    balance: (n: string) => `Linh Thạch hiện có: ${n}`,
+    learned: (name: string, cost: string) => `Đã học ${name} (${cost} Linh Thạch).`,
+  },
   /** The tabs of an NPC that does more than one thing (the blacksmith: upgrading and trading; the alchemist: trading and brewing). */
   npcTabs: { shop: "Mua/bán", smith: "Cường hóa", brew: "Luyện đan" } as Record<string, string>,
   brew: {
@@ -469,6 +481,9 @@ export const vi = {
     recipes: "Công thức",
     noRecipes: "Đan sư chưa có công thức nào.",
     collect: "Nhận",
+    batches: "Số lô",
+    most: "Tối đa",
+    mostHint: "Số lô nhiều nhất mà nguyên liệu trong túi đủ",
     start: "Luyện",
     ready: "Đã xong",
     left: (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)} giờ ${Math.floor((s % 3600) / 60)} phút` : s >= 60 ? `${Math.floor(s / 60)} phút ${s % 60} giây` : `${s} giây`),
@@ -578,6 +593,8 @@ export const vi = {
   rank: {
     button: "Xếp hạng",
     bossTag: "Boss",
+    gmShowAll: "GM · Hiện cả admin",
+    gmHideAdmins: "GM · Ẩn admin",
     gmSummon: "GM · Gọi boss",
     gmRemove: "GM · Tắt boss",
     title: "Bảng xếp hạng",

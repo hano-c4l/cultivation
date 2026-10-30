@@ -21,7 +21,21 @@ export interface BrewRecipe {
 export interface AlchemyCfg {
   /** Brewings one character can have going (waiting or ready to collect) at once. */
   maxJobs: number;
+  /** Most batches of a recipe one brewing can make at once (absent: `DEFAULT_MAX_BATCH`). */
+  maxBatch?: number;
+  /** Each batch after the first adds this share of the recipe's time (absent: `DEFAULT_BATCH_TIME_STEP`): a brewing of n batches takes `seconds * (1 + (n - 1) * step)`, so a big run costs less time per pill. */
+  batchTimeStep?: number;
   recipes: BrewRecipe[];
+}
+
+export const DEFAULT_MAX_BATCH = 10;
+export const DEFAULT_BATCH_TIME_STEP = 0.3;
+
+/** What a brewing of `n` batches of `recipe` takes and makes: materials, Linh Thạch and the result grow with n, the time less than that. */
+export function scaleBrew(recipe: BrewRecipe, n: number, cfg: Pick<AlchemyCfg, "maxBatch" | "batchTimeStep">): BrewRecipe {
+  const k = Math.max(1, Math.min(cfg.maxBatch ?? DEFAULT_MAX_BATCH, Math.trunc(n) || 1));
+  const step = cfg.batchTimeStep ?? DEFAULT_BATCH_TIME_STEP;
+  return { ...recipe, qty: recipe.qty * k, inputs: recipe.inputs.map((i) => ({ ...i, qty: i.qty * k })), linhThach: recipe.linhThach * k, seconds: Math.max(1, Math.round(recipe.seconds * (1 + (k - 1) * step))) };
 }
 
 export const DEFAULT_ALCHEMY: AlchemyCfg = {
@@ -66,7 +80,7 @@ export function validBrewRecipe(r: unknown): r is BrewRecipe {
 /** Whether a whole `alchemy` group is well formed (structure only; whether the items exist is checked when an admin saves). */
 export function validAlchemy(v: unknown): v is AlchemyCfg {
   if (!isObj(v)) return false;
-  return isInt(v.maxJobs, 1, 20) && Array.isArray(v.recipes) && v.recipes.length <= 200 && v.recipes.every(validBrewRecipe) && new Set((v.recipes as BrewRecipe[]).map((r) => r.id)).size === v.recipes.length;
+  return isInt(v.maxJobs, 1, 20) && (v.maxBatch === undefined || isInt(v.maxBatch, 1, 100)) && (v.batchTimeStep === undefined || (typeof v.batchTimeStep === "number" && v.batchTimeStep >= 0 && v.batchTimeStep <= 5)) && Array.isArray(v.recipes) && v.recipes.length <= 200 && v.recipes.every(validBrewRecipe) && new Set((v.recipes as BrewRecipe[]).map((r) => r.id)).size === v.recipes.length;
 }
 
 /** One brewing as the client sees it. */

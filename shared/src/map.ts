@@ -41,7 +41,7 @@ export interface Portal {
 export interface NpcSpot {
   id: string;
   /** What the NPC does: sells and buys (merchant), gives quests (quest), upgrades gear (smith), sells and brews pills (alchemist) or carries one to another town (waygate: a teleport array drawn on the ground, nothing to stand beside). */
-  kind: "merchant" | "quest" | "smith" | "waygate" | "alchemist";
+  kind: "merchant" | "quest" | "smith" | "waygate" | "alchemist" | "master";
   /** Position in tile units (continuous). */
   x: number;
   y: number;
@@ -64,13 +64,16 @@ export const NPC_NAMES_VI: Readonly<Record<string, string>> = {
   merchant3: "Thương nhân",
   smith3: "Thợ Rèn",
   alchemist3: "Đan Sư",
+  master: "Võ Sư",
+  master2: "Võ Sư",
+  master3: "Võ Sư",
   elder3: "Trưởng Lão",
   waygate3: "Truyền Tống Trận",
   path_kiem: "Kiếm Đạo Sư",
   path_thuat: "Thuật Đạo Sư",
   path_dan: "Đan Đạo Sư",
 };
-export const NPC_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "waygate", "alchemist"];
+export const NPC_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "waygate", "alchemist", "master"];
 
 /** How close (tiles) a player must be for the server to accept a command to an NPC. */
 export const NPC_INTERACT_RADIUS = 3;
@@ -466,6 +469,7 @@ function townGround(g: Grid): void {
   g.disc(23.5 + o, 17.5 + o, 0.4, false); // the merchant's stall: nobody stands on the NPC
   g.disc(16.5 + o, 17.5 + o, 0.4, false); // the quest giver
   g.disc(27.5 + o, 17.5 + o, 0.4, false); // the alchemist
+  g.disc(30.5 + o, 17.5 + o, 0.4, false); // the martial master (võ sư)
   for (const x of [22.5, 25.5, 28.5]) g.disc(x + o, 24.5 + o, 0.4, false); // the three hướng tu masters
   // New ground around it: buildings in the four corners of the rectangle and a few more pillars.
   g.srect(-40, -17, -30, -9, false);
@@ -503,6 +507,7 @@ function buildTown(): MapData {
       { id: "elder", kind: "quest", x: 16.5 + o, y: 17.5 + o },
       { id: "smith", kind: "smith", x: 15.5 + o, y: 20.5 + o },
       { id: "alchemist", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
+      { id: "master", kind: "master", x: 30.5 + o, y: 17.5 + o },
       { id: "waygate", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
       { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
       { id: "path_thuat", kind: "quest", x: 25.5 + o, y: 24.5 + o },
@@ -551,6 +556,7 @@ function buildTown2(): MapData {
       { id: "elder2", kind: "quest", x: 16.5 + o, y: 17.5 + o },
       { id: "smith2", kind: "smith", x: 15.5 + o, y: 20.5 + o },
       { id: "alchemist2", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
+      { id: "master2", kind: "master", x: 30.5 + o, y: 17.5 + o },
       { id: "waygate2", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
       // The same three masters as the first town, with the same ids: their quests and rewards are the same wherever they stand.
       { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
@@ -600,6 +606,7 @@ function buildTown3(): MapData {
       { id: "elder3", kind: "quest", x: 16.5 + o, y: 17.5 + o },
       { id: "smith3", kind: "smith", x: 15.5 + o, y: 20.5 + o },
       { id: "alchemist3", kind: "alchemist", x: 27.5 + o, y: 17.5 + o },
+      { id: "master3", kind: "master", x: 30.5 + o, y: 17.5 + o },
       { id: "waygate3", kind: "waygate", x: 20.5 + o, y: 20.5 + o },
       // The same three masters as the other towns, with the same ids.
       { id: "path_kiem", kind: "quest", x: 22.5 + o, y: 24.5 + o },
@@ -740,7 +747,7 @@ const BUILDERS: Readonly<Record<string, () => MapData>> = {
 const built = new Map<MapId, MapData>();
 
 /** Every NPC id on any map (quests name their giver and talk targets from this set; a test checks it against the maps). */
-export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "alchemist", "alchemist2", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2", "merchant3", "elder3", "smith3", "alchemist3", "waygate3"]);
+export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "alchemist", "alchemist2", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2", "merchant3", "elder3", "smith3", "alchemist3", "waygate3", "master", "master2", "master3"]);
 
 /**
  * A map as data (what D1 keeps and the admin edits): everything about a map except its NPCs (their own table) and its monster groups (monsters.ts). Building one

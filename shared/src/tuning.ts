@@ -1,5 +1,6 @@
 import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
 import type { AreaDef } from "./area";
+import { DEFAULT_DOJO, validDojo, type DojoCfg } from "./dojo";
 import { SKILL_LOOKS } from "./skill-looks";
 import { FLIGHT_STYLES, GROUND_STYLES, ICON_PICKABLE, OBSTACLE_STYLES, type FlightStyle, type IconShape, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
 import type { EquipKind } from "./equipment-data";
@@ -150,6 +151,10 @@ export interface Tuning {
   boss: { claimTtlMs: number; tier: number; species: Record<string, string | null> };
   /** The alchemist's brewing: how many brewings a character can have at once and the recipes (see alchemy.ts). */
   alchemy: AlchemyCfg;
+  /** The martial masters' courses: which skill each teaches and for how much Linh Thạch (see dojo.ts). */
+  dojo: DojoCfg;
+  /** The chance that a kill drops the book of a rare skill of the realm of the map (see skills-extra.ts): by monster class, and for each item round of the map's boss. */
+  rareBooks: { chance: Record<"normal" | "rare1" | "rare2" | "boss", number> };
   /** The outfit drawn on a player's sprite, by the realm of the robe worn: the rule with the highest `minRealm` the robe reaches wins (no robe or no rule: the plain peasant clothes). `outfit` names a sprite variant (`player.<body>.<outfit>`); one without a sprite is drawn as the plain clothes. */
   outfits: { rules: Array<{ minRealm: number; outfit: string }> };
   /** Which sprite model draws a species (`monster.<species>` is tried first): species id -> model key (`monster.<model>`). Several species can share one model; a species with neither is drawn as the square. */
@@ -498,6 +503,8 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     species: { town: null, forest: "huyet_lang_vuong", cave: "quy_vuong", town2: null, kimdan: "hoa_long_vuong", nguyenanh: "bang_hoang", town3: null, hoathan: "loi_de_long", luyenhu: "hon_don_ma_ton" },
   },
   alchemy: DEFAULT_ALCHEMY,
+  dojo: DEFAULT_DOJO,
+  rareBooks: { chance: { normal: 0.00005, rare1: 0.0008, rare2: 0.003, boss: 0.02 } },
   outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 2, outfit: "tien" }] }, // Kim Đan robes and above: the white xianxia robe
   // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp), ghost (hàn thi ma), snake (rắn). Stand-ins: the boss dragons use the dragon.
   monsterModels: {
@@ -597,6 +604,8 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     tt_linh_an: "seal", tt_linh_hai: "seal", kt_hop_nhat: "sword", dt_duong_nguyen: "furnace", dt_dan_khi: "furnace", dt_kim_than: "bell", pt_phong_than: "wind",
     kim_3: "lance", kim_4: "nova", moc_4: "field", moc_5: "nova", thuy_3: "lance", thuy_5: "field", hoa_3: "lane", hoa_4: "lance", tho_4: "nova", tho_5: "field", loi_3: "lance", loi_4: "nova", bang_3: "lance", bang_4: "field", bang_5: "nova", phong_3: "lance", phong_4: "nova", phong_5: "field", kt_kiem_khi: "lance", kt_kiem_y: "lance", kt_than_kiem: "lance", kt_lien_hoan: "nova", tt_phap_tran: "field", tt_dai_phap: "nova",
     khi_co_ban: "bolt",
+    hap_huyet: "drain", bao_kich: "flames", diet_ky: "shock", loi_van: "storm", thien_thach: "meteor", huyet_hai: "drain",
+    thon_linh: "drain", pha_quan: "shock", huyet_ma: "drain", cuong_loi: "storm", thien_co: "shock", hap_tinh: "drain", loi_dinh: "storm", cuu_u: "drain", thai_co: "meteor", doat_menh: "shock", hon_don: "nova", vo_thuong: "flames",
     kim_6: "lance", kim_7: "nova", moc_6: "field", moc_7: "nova", thuy_6: "nova", thuy_7: "field", hoa_6: "nova", hoa_7: "lane", tho_6: "field", tho_7: "nova", loi_6: "lance", loi_7: "nova", bang_6: "field", bang_7: "nova", phong_6: "nova", phong_7: "lance",
     ho_the_ht: "bell", ho_the_lh: "bell", chien_y_ht: "flames", chien_y_lh: "flames", hoi_than_ht: "lotus", hoi_nguyen_lh: "lotus",
     hoi: "lotus", hoi_nguyen_kd: "lotus", tt_hoi_linh: "lotus", bm_hoi_sinh: "phoenix", dt_hoi_xuan: "furnace", dt_hoi_duong: "furnace", dt_dai_hoi: "furnace",
@@ -623,6 +632,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       quest: { body: "female", outfit: "tien", tint: "#cfe0ff", aura: "#9fc4ff" },
       smith: { body: "male", outfit: "tien", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a" },
       alchemist: { body: "female", outfit: "tien", tint: "#bff0c8", aura: "#7dff9c" },
+      master: { body: "male", outfit: "ranger", weapon: "kiem", tint: "#e6b8a0", aura: "#e0563a" },
       guard: { body: "male", outfit: "tien", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a" },
     },
     byId: {
@@ -672,6 +682,8 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   roots: "Linh căn: tỉ lệ và thưởng theo phẩm cấp và theo số hệ",
   pathBonuses: "Thưởng chỉ số của từng hướng tu (khi là chủ tu)",
   boss: "Boss bản đồ: thời hạn giữ, bậc trả thưởng, loài của từng bản đồ",
+  rareBooks: "Bí tịch tuyệt học chỉ rơi từ quái: xác suất mỗi lần hạ quái theo loại quái, và mỗi vòng thưởng của boss",
+  dojo: "Võ Sư dạy bí tịch: mỗi võ sư dạy kỹ năng nào và giá học (Linh Thạch)",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
   flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen), theo hệ của món đang dùng",
@@ -1024,6 +1036,12 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit));
     case "alchemy":
       return validAlchemy(value);
+    case "dojo":
+      return validDojo(value);
+    case "rareBooks": {
+      const c = value.chance;
+      return obj(c) && (["normal", "rare1", "rare2", "boss"] as const).every((k) => num(c[k], 0, 1));
+    }
     case "boss": {
       const sp = value.species;
       return int(value.claimTtlMs, 60_000, 30 * 86_400_000) && int(value.tier, 1, 9) && obj(sp) && Object.entries(sp).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && (v === null || (typeof v === "string" && /^[a-z0-9_]{1,40}$/.test(v))));
