@@ -94,6 +94,8 @@ export type ClientMessage =
   | { t: "trade_reply"; from: string; accept: boolean }
   /** Direct trade: put these bag items (by id, whole stacks) and this much Linh Thạch in your side; both sides' locks and agreements are undone. */
   | { t: "trade_offer"; items: string[]; linh: number; tienNgoc: number }
+  /** Direct trade: put `qty` of the bag item `id` in your side (a part of a stack is split off first); undoes the locks like an offer. */
+  | { t: "trade_add"; id: string; qty: number }
   /** Direct trade: lock (or unlock) your side. `rev` is the version of the window you saw: a change in between makes the server refuse. */
   | { t: "trade_lock"; rev: number; on: boolean }
   /** Direct trade: agree to the trade as it stands (needs both sides locked). When both agree it happens. */
@@ -636,6 +638,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return Array.isArray(m.items) && m.items.length <= 6 && m.items.every((x) => typeof x === "string" && /^[A-Za-z0-9-]{1,64}$/.test(x)) && isInt(m.linh) && m.linh >= 0 && m.linh <= 1_000_000_000 && isInt(m.tienNgoc) && m.tienNgoc >= 0 && m.tienNgoc <= 1_000_000_000
         ? { t: "trade_offer", items: m.items as string[], linh: m.linh, tienNgoc: m.tienNgoc }
         : null;
+    case "trade_add":
+      return typeof m.id === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.id) && isInt(m.qty) && m.qty >= 1 && m.qty <= 1_000_000 ? { t: "trade_add", id: m.id, qty: m.qty } : null;
     case "trade_lock":
       return isInt(m.rev) && m.rev >= 0 && typeof m.on === "boolean" ? { t: "trade_lock", rev: m.rev, on: m.on } : null;
     case "trade_confirm":
