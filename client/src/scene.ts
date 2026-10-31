@@ -286,8 +286,10 @@ function applyTrack(actor: Actor, path: Vec2[], startedAt: number, speed: number
 /** Radius (tiles) of the teleport array drawn on the ground and of the click that opens it. */
 /** The teleport array is a wide circle on the ground (tiles): a click anywhere in it walks the character to its middle, and standing in the middle opens its window. */
 /** A player clicked in a safe map: the character walks up to PLAYER_MENU_STAND tiles from them, and the menu opens within PLAYER_MENU_REACH. */
-const PLAYER_MENU_REACH = 3.2;
-const PLAYER_MENU_STAND = 2.2;
+const PLAYER_MENU_REACH = 2.3;
+const PLAYER_MENU_STAND = 2;
+/** An NPC is walked up to about this far (not to its side), so a crowd does not hide it. */
+const NPC_STAND = 2;
 const WAYGATE_RADIUS = 2.6;
 /** How close to the middle of the array the character must stand for its window to open by itself after the walk. */
 const WAYGATE_CENTER_REACH = 0.7;
@@ -329,7 +331,7 @@ export class GameScene extends Phaser.Scene {
   /** The teleport array the character is walking to the middle of (its window opens on arrival). */
   private playerMenu!: PlayerMenu;
   /** A player the character is walking up to, to open the menu of what can be done with them. */
-  private pendingPlayer: { id: string; at: { x: number; y: number } } | null = null;
+  private pendingPlayer: { id: string } | null = null;
   private playerWatch: Phaser.Time.TimerEvent | null = null;
   private pendingWaygate: NpcSpot | null = null;
   private waygateWatch: Phaser.Time.TimerEvent | null = null;
@@ -815,10 +817,7 @@ export class GameScene extends Phaser.Scene {
       const other = this.pickPlayer(world.x, world.y, true);
       if (other) {
         this.stopAuto("manual");
-        const ev = pointer.event as MouseEvent | TouchEvent | undefined;
-        const touch = ev && "changedTouches" in ev ? ev.changedTouches[0] : undefined;
-        const rect = this.game.canvas.getBoundingClientRect();
-        this.approachPlayer(other, { x: touch?.clientX ?? (ev as MouseEvent | undefined)?.clientX ?? rect.left + pointer.x, y: touch?.clientY ?? (ev as MouseEvent | undefined)?.clientY ?? rect.top + pointer.y });
+        this.approachPlayer(other);
         return;
       }
     }
@@ -896,7 +895,7 @@ export class GameScene extends Phaser.Scene {
     const dx = here.x - npc.x;
     const dy = here.y - npc.y;
     const len = Math.hypot(dx, dy) || 1;
-    const spot = nearestStandablePoint(this.map, npc.x + (dx / len) * 1.5, npc.y + (dy / len) * 1.5, 2);
+    const spot = nearestStandablePoint(this.map, npc.x + (dx / len) * NPC_STAND, npc.y + (dy / len) * NPC_STAND, 1);
     if (spot) this.sendWalk(Math.round(spot[0] * 100) / 100, Math.round(spot[1] * 100) / 100);
   }
 
@@ -904,14 +903,14 @@ export class GameScene extends Phaser.Scene {
    * A click on another player (in a safe map): the character walks up to a short distance from them, and then the menu of what can be done with
    * them opens (so nobody trades from across the map). Already close: it opens at once.
    */
-  private approachPlayer(id: string, at: { x: number; y: number }): void {
+  private approachPlayer(id: string): void {
     const self = this.actors.get(this.selfId);
     const other = this.actors.get(id);
     if (!self || !other) return;
     const open = () => {
       const target = this.actors.get(id);
       if (!target) return;
-      this.playerMenu.show(target.label.text, [{ label: vi.playerMenu.trade, run: () => this.net.send({ t: "trade_invite", to: id }) }], at);
+      this.playerMenu.show(target.label.text, [{ label: vi.playerMenu.trade, run: () => this.net.send({ t: "trade_invite", to: id }) }]);
     };
     const near = (): boolean => {
       const a = this.actors.get(this.selfId);
@@ -930,7 +929,7 @@ export class GameScene extends Phaser.Scene {
     const spot = nearestStandablePoint(this.map, there.x + ((here.x - there.x) / len) * PLAYER_MENU_STAND, there.y + ((here.y - there.y) / len) * PLAYER_MENU_STAND, 2);
     if (!spot) return open();
     this.sendWalk(Math.round(spot[0] * 100) / 100, Math.round(spot[1] * 100) / 100);
-    const mark = { id, at };
+    const mark = { id };
     this.pendingPlayer = mark;
     this.playerWatch?.remove(); // one watcher at a time
     const watch: Phaser.Time.TimerEvent = this.time.addEvent({

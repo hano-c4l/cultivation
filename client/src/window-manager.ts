@@ -18,6 +18,8 @@ const MARGIN = 8;
 const TOP = 56;
 const wins: Win[] = [];
 let lastOpened: Win | null = null;
+/** The window opened or touched last: Esc closes this one. */
+let active: Win | null = null;
 
 const isOpen = (w: Win) => !w.el.hidden;
 const openSorted = () => wins.filter(isOpen).sort((a, b) => a.order - b.order);
@@ -58,10 +60,15 @@ function makeRoom(fresh: Win): void {
 export function registerWindow(id: string, el: HTMLElement, order: number): void {
   const w: Win = { id, el, order, wasOpen: !el.hidden };
   wins.push(w);
+  el.classList.add("win"); // the CSS keeps the header of a window with a scroll bar in place (see index.html)
+  el.addEventListener("pointerdown", () => {
+    active = w;
+  }, true);
   new MutationObserver(() => {
     const open = isOpen(w);
     if (open && !w.wasOpen) {
       lastOpened = w;
+      active = w;
       w.wasOpen = true;
       makeRoom(w);
     } else if (!open) {
@@ -75,6 +82,26 @@ export function registerWindow(id: string, el: HTMLElement, order: number): void
 export function closeAllWindows(): void {
   for (const w of wins) if (isOpen(w)) w.el.hidden = true;
 }
+
+/** Closes a window the way its own close button does (so a window that must tidy up first, like a trade, does), or just hides it. */
+function closeWindow(w: Win): void {
+  const buttons = [...w.el.querySelectorAll<HTMLButtonElement>(":scope > [class$='head'] button")];
+  const x = buttons.reverse().find((b) => b.textContent === "×" || b.textContent === "✕");
+  if (x) x.click();
+  else w.el.hidden = true;
+}
+
+// Esc closes the window that was opened or touched last (the typing box handles its own Esc).
+window.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape" || ev.defaultPrevented) return;
+  const t = ev.target as HTMLElement | null;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+  const w = active && isOpen(active) ? active : [...wins].reverse().find(isOpen);
+  if (!w) return;
+  closeWindow(w);
+  if (isOpen(w)) w.el.hidden = true; // a close button that asks first (a confirmation) must not trap Esc
+  active = null;
+});
 
 window.addEventListener("resize", () => {
   if (lastOpened && isOpen(lastOpened)) makeRoom(lastOpened);
