@@ -13,7 +13,7 @@ import type { Tuning } from "./tuning";
 import type { BrewJobView } from "./alchemy";
 import type { MarketCfg, MarketCurrency, MarketKind, MarketListingView } from "./market";
 import type { TradeEnd, TradeError, TradeSideView } from "./trade";
-import { SECT_APPOINTABLE, type SectError, type SectListItem, type SectRole, type SectView } from "./sect";
+import { SECT_APPOINTABLE, type SectError, type SectListItem, type SectRole, type SectVaultItemView, type SectView } from "./sect";
 import type { MerchantDef } from "./merchants";
 import type { MapRecipe, NpcSpot } from "./map";
 import type { ItemOverlay } from "./items";
@@ -121,7 +121,8 @@ export type ClientMessage =
   | { t: "sect_role"; id: string; role: SectRole }
   /** Sect: hand the leadership to a member (the leader becomes a deputy). */
   | { t: "sect_transfer"; id: string }
-  | { t: "sect_disband" }
+  /** Sect (leader): close the sect and divide its fund and warehouse: all to the leader, or by cống hiến. */
+  | { t: "sect_disband"; mode: "leader" | "share" }
   | { t: "sect_notice"; text: string }
   /** Sect: give Linh Thạch to the sect (cống hiến, the fund and the exp grow). */
   | { t: "sect_donate"; amount: number }
@@ -133,6 +134,18 @@ export type ClientMessage =
   | { t: "sect_weekly_set"; amounts: number[] }
   /** Sect: buy a line of the sect shop with cống hiến (the player must stand by a sect NPC, `npc`). */
   | { t: "sect_buy"; npc: string; item: string }
+  /** Sect: ask for the warehouse list (the Kho tab and the shelf of the shop). */
+  | { t: "sect_vault" }
+  /** Sect: put `qty` of a bag item in the warehouse (it earns cống hiến if the leader's list takes it). */
+  | { t: "sect_put"; id: string; qty: number }
+  /** Sect (leader): take a warehouse stack out, to a member (the leader included) by mail. */
+  | { t: "sect_take"; id: string; to: string }
+  /** Sect (leader): put a warehouse stack on the shop shelf for Linh Thạch or cống hiến, or take it off the shelf (`currency` null). */
+  | { t: "sect_shelf"; id: string; currency: "linh_thach" | "cong_hien" | null; price: number }
+  /** Sect: buy a shelf stack (by mail; the player must stand by a sect NPC, `npc`). */
+  | { t: "sect_shelf_buy"; npc: string; id: string }
+  /** Sect (leader): what the warehouse takes: a percent for each kind of item and the lowest grade. */
+  | { t: "sect_accept"; cats: Record<string, number>; minGrade: number }
   /** Claim every mail in one go (the ones that do not fit stay in the mailbox). */
   | { t: "mail_claim_all" }
   /** Vạn Bảo Lâu: read this town's listings again (the window asks while it is open; cheaper to call than `npc_open`). */
@@ -355,6 +368,7 @@ export type ServerMessage =
   /** The player's sect (null: none) and, when it is none, when they may join one. */
   | { t: "sect"; view: SectView | null; cooldownUntil: number }
   | { t: "sect_dir"; sects: SectListItem[] }
+  | { t: "sect_vault"; items: SectVaultItemView[] }
   | { t: "sect_error"; reason: SectError }
   /** Someone invites this player to a sect. */
   | { t: "sect_invite"; from: string; name: string; sect: string; ttlMs: number }
@@ -709,7 +723,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "sect_transfer":
       return isId(m.id) ? { t: "sect_transfer", id: m.id } : null;
     case "sect_disband":
-      return { t: "sect_disband" };
+      return m.mode === "leader" || m.mode === "share" ? { t: "sect_disband", mode: m.mode } : null;
     case "sect_notice":
       return typeof m.text === "string" && m.text.length <= 400 ? { t: "sect_notice", text: m.text } : null;
     case "sect_donate":
@@ -720,6 +734,23 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "sect_weekly" };
     case "sect_weekly_set":
       return Array.isArray(m.amounts) && m.amounts.length === 6 && m.amounts.every((n) => isInt(n) && n >= 0 && n <= 1_000_000_000) ? { t: "sect_weekly_set", amounts: m.amounts as number[] } : null;
+    case "sect_vault":
+      return { t: "sect_vault" };
+    case "sect_put":
+      return isId(m.id) && isInt(m.qty) && m.qty >= 1 && m.qty <= 1_000_000 ? { t: "sect_put", id: m.id, qty: m.qty } : null;
+    case "sect_take":
+      return isId(m.id) && isId(m.to) ? { t: "sect_take", id: m.id, to: m.to } : null;
+    case "sect_shelf":
+      return isId(m.id) && (m.currency === null || m.currency === "linh_thach" || m.currency === "cong_hien") && isInt(m.price) && m.price >= 0 && m.price <= 1_000_000_000 ? { t: "sect_shelf", id: m.id, currency: m.currency, price: m.price } : null;
+    case "sect_shelf_buy":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && isId(m.id) ? { t: "sect_shelf_buy", npc: m.npc, id: m.id } : null;
+    case "sect_accept": {
+      const cats = m.cats;
+      if (typeof cats !== "object" || cats === null || Array.isArray(cats) || !isInt(m.minGrade) || m.minGrade < 1 || m.minGrade > 9) return null;
+      const entries = Object.entries(cats as Record<string, unknown>);
+      if (entries.length > 8 || !entries.every(([k, v]) => /^[a-z_]{1,16}$/.test(k) && isInt(v) && v >= 0 && v <= 1000)) return null;
+      return { t: "sect_accept", cats: Object.fromEntries(entries) as Record<string, number>, minGrade: m.minGrade };
+    }
     case "sect_buy":
       return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.item === "string" && /^[A-Za-z0-9_.]{1,80}$/.test(m.item) ? { t: "sect_buy", npc: m.npc, item: m.item } : null;
     case "trade_lock":

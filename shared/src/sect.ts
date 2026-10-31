@@ -23,6 +23,29 @@ export interface SectLevelCfg {
   costLinh: number;
 }
 
+export interface SectVaultCfg {
+  /** How many stacks the warehouse holds, by sect level (index = level - 1; a level past the table uses the last). */
+  slots: number[];
+  /** Cống hiến a deposited item is worth per piece, by the item's grade (index = grade - 1). */
+  pointsByGrade: number[];
+  /** Percent by rarity (common, uncommon, rare, epic) that scales those points. */
+  rarityPct: number[];
+  /** The most percent the leader can set for a kind of item (the leader's own percent scales the points; 0 refuses the kind). */
+  catMax: number;
+  /** Sect exp a point of deposited cống hiến brings. */
+  expPerPoint: number;
+  /** The most cống hiến a member can earn from deposits in one day (Việt Nam time): an item deposited beyond it is taken for nothing. */
+  dailyCap: number;
+}
+
+/** What the leader lets the warehouse take: a percent per kind of item (0 or missing: refused) and the lowest grade. Nothing is taken until the leader sets it. */
+export interface SectAccept {
+  cats: Record<string, number>;
+  minGrade: number;
+}
+
+export const VAULT_CATEGORIES = ["equipment", "skill_book", "consumable", "material"] as const;
+
 /** One line of the sect's shop: what it sells for cống hiến. */
 export interface SectShopItem {
   item: string;
@@ -73,6 +96,10 @@ export interface SectCfg {
    * Linh Thạch and the items the system puts into a sect's fund and warehouse (sect quests, 5c-4); 100 is as the tables say.
    */
   balance: { upgradeCostPct: number; incomePct: number };
+  /** The sect warehouse (5c-3). */
+  vault: SectVaultCfg;
+  /** How a closing sect divides its fund and warehouse when the leader chooses "by cống hiến": the share of the whole sect's cống hiến, of the leader and of the deputies (sum 100). */
+  disband: { poolPct: number; leaderPct: number; deputyPct: number };
   /** The total cống hiến earned (`contribution_total`) at which a disciple becomes nội môn and then tinh anh. */
   autoRanks: { inner: number; elite: number };
 }
@@ -103,6 +130,15 @@ export const DEFAULT_SECT: SectCfg = {
   weeklyMax: [2000, 5000, 10_000, 20_000, 50_000, 100_000],
   upgradeRank: SECT_RANK.deputy,
   balance: { upgradeCostPct: 100, incomePct: 100 },
+  vault: {
+    slots: [60, 100, 160, 240, 360],
+    pointsByGrade: [1, 2, 4, 8, 15, 30, 60, 120, 250],
+    rarityPct: [100, 150, 250, 400],
+    catMax: 150,
+    expPerPoint: 1,
+    dailyCap: 3000,
+  },
+  disband: { poolPct: 60, leaderPct: 30, deputyPct: 10 },
   autoRanks: { inner: 500, elite: 5000 },
   shop: [
     { item: "hoi_huyet_dan", cost: 10, qty: 1, minLevel: 1, minRank: 0 },
@@ -113,6 +149,11 @@ export const DEFAULT_SECT: SectCfg = {
 
 function inRange(v: unknown, lo: number, hi: number): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi;
+}
+
+function validVault(v: Record<string, unknown>): boolean {
+  const list = (a: unknown, len: number | null, lo: number, hi: number) => Array.isArray(a) && (len === null ? a.length >= 1 && a.length <= 30 : a.length === len) && a.every((n) => inRange(n, lo, hi));
+  return list(v.slots, null, 1, 100_000) && list(v.pointsByGrade, 9, 0, 1_000_000) && list(v.rarityPct, 4, 0, 10_000) && inRange(v.catMax, 1, 1000) && inRange(v.expPerPoint, 0, 1000) && inRange(v.dailyCap, 0, 1_000_000_000);
 }
 
 export function validSect(v: unknown): v is SectCfg {
@@ -154,6 +195,15 @@ export function validSect(v: unknown): v is SectCfg {
     c.balance !== null &&
     inRange((c.balance as Record<string, unknown>).upgradeCostPct, 1, 1000) &&
     inRange((c.balance as Record<string, unknown>).incomePct, 0, 1000) &&
+    typeof c.vault === "object" &&
+    c.vault !== null &&
+    validVault(c.vault as Record<string, unknown>) &&
+    typeof c.disband === "object" &&
+    c.disband !== null &&
+    inRange((c.disband as Record<string, unknown>).poolPct, 0, 100) &&
+    inRange((c.disband as Record<string, unknown>).leaderPct, 0, 100) &&
+    inRange((c.disband as Record<string, unknown>).deputyPct, 0, 100) &&
+    ((c.disband as Record<string, number>).poolPct as number) + ((c.disband as Record<string, number>).leaderPct as number) + ((c.disband as Record<string, number>).deputyPct as number) === 100 &&
     typeof c.autoRanks === "object" &&
     c.autoRanks !== null &&
     inRange((c.autoRanks as Record<string, unknown>).inner, 1, 1_000_000_000) &&
@@ -190,6 +240,105 @@ export const sectLevelOf = (cfg: SectCfg, level: number): SectLevelCfg => cfg.le
 /** The most members at a level (a level past the table uses the last row). */
 export const sectMaxMembers = (cfg: SectCfg, level: number): number => cfg.levels[Math.min(Math.max(1, level), cfg.levels.length) - 1]?.maxMembers ?? 1;
 
+/** The most stacks the warehouse holds at a level. */
+export const vaultSlotsOf = (cfg: SectCfg, level: number): number => cfg.vault.slots[Math.min(Math.max(1, level), cfg.vault.slots.length) - 1] ?? 0;
+
+/**
+ * The cống hiến `qty` of an item is worth to the warehouse as `accept` stands, or 0 when it is not taken (a kind the leader did not allow, a grade below the
+ * lowest, or too little to count). Per piece: the points of its grade, scaled by its rarity and by the leader's percent for its kind.
+ */
+export function vaultPoints(cfg: SectCfg, accept: SectAccept, def: { category: string; grade: number; rarity: string } | undefined, qty: number): number {
+  if (!def || qty < 1) return 0;
+  const pct = Math.min(accept.cats[def.category] ?? 0, cfg.vault.catMax);
+  if (pct <= 0 || def.grade < accept.minGrade) return 0;
+  const base = cfg.vault.pointsByGrade[Math.min(Math.max(1, def.grade), cfg.vault.pointsByGrade.length) - 1] ?? 0;
+  const rarity = cfg.vault.rarityPct[["common", "uncommon", "rare", "epic"].indexOf(def.rarity)] ?? 100;
+  return Math.floor((base * qty * rarity * pct) / 10_000);
+}
+
+/** The percent of the closing sect's fund and warehouse each member gets when the leader divides it by cống hiến. Sums to 100. */
+export function disbandShares(cfg: SectCfg, members: Array<{ id: string; rank: number; total: number }>): Map<string, number> {
+  const out = new Map<string, number>();
+  const leader = members.find((m) => m.rank >= SECT_RANK.leader);
+  const deputies = members.filter((m) => m.rank === SECT_RANK.deputy);
+  const sum = members.reduce((n, m) => n + m.total, 0);
+  const d = cfg.disband;
+  for (const m of members) {
+    const weight = sum > 0 ? m.total / sum : 1 / Math.max(1, members.length); // nobody earned anything: equal shares
+    let pct = (d.poolPct * weight);
+    if (m === leader) pct += d.leaderPct + (deputies.length === 0 ? d.deputyPct : 0);
+    if (m.rank === SECT_RANK.deputy) pct += d.deputyPct / deputies.length;
+    out.set(m.id, pct);
+  }
+  return out;
+}
+
+/** The Linh Thạch each member gets from `fund` by their percent of `shares` (rounded down; what is left over goes to `rest`). */
+export function splitLinh(fund: number, shares: ReadonlyMap<string, number>, rest: string): Map<string, number> {
+  const out = new Map<string, number>();
+  let given = 0;
+  for (const [id, pct] of shares) {
+    const n = Math.max(0, Math.floor((fund * pct) / 100));
+    out.set(id, n);
+    given += n;
+  }
+  out.set(rest, (out.get(rest) ?? 0) + (fund - given));
+  return out;
+}
+
+/** One piece of a stack that goes to one member. */
+export interface StackPiece {
+  to: string;
+  qty: number;
+}
+
+/**
+ * Who gets what when a sect's warehouse is divided by `shares` (percent per member). Stacks of one piece (gear, a book) go whole to the member whose claim has the most left;
+ * a stack of several is split by quantity: each member gets about their remaining claim of the stack (rounded down, the pieces left over to the biggest fractions), so the
+ * totals end close to the percents. Stacks are done the most valuable first; `value` is the whole stack's worth. `fallback` takes everything when there are no shares.
+ */
+export function assignPieces(items: ReadonlyArray<{ id: string; value: number; qty: number }>, shares: ReadonlyMap<string, number>, fallback: string): Map<string, StackPiece[]> {
+  const out = new Map<string, StackPiece[]>();
+  if (shares.size === 0) {
+    for (const i of items) out.set(i.id, [{ to: fallback, qty: i.qty }]);
+    return out;
+  }
+  const total = items.reduce((n, i) => n + i.value, 0);
+  const left = new Map([...shares].map(([id, pct]) => [id, (total * pct) / 100] as const));
+  const ids = [...left.keys()].sort();
+  for (const item of [...items].sort((a, b) => b.value - a.value || a.id.localeCompare(b.id))) {
+    if (item.qty <= 1) {
+      let best = ids[0] as string;
+      for (const id of ids) if ((left.get(id) ?? 0) > (left.get(best) ?? 0)) best = id;
+      out.set(item.id, [{ to: best, qty: item.qty }]);
+      left.set(best, (left.get(best) ?? 0) - item.value);
+      continue;
+    }
+    // split by quantity: in proportion to what each member still has coming (those who are owed nothing more get none)
+    const want = ids.map((id) => Math.max(0, left.get(id) ?? 0));
+    const sum = want.reduce((a, b) => a + b, 0);
+    const exact = want.map((w) => (sum > 0 ? (item.qty * w) / sum : item.qty / ids.length));
+    const qty = exact.map((x) => Math.floor(x));
+    let rest = item.qty - qty.reduce((a, b) => a + b, 0);
+    const order = exact.map((x, i) => i).sort((i, j) => (exact[j] as number) - Math.floor(exact[j] as number) - ((exact[i] as number) - Math.floor(exact[i] as number)) || i - j);
+    for (const i of order) {
+      if (rest <= 0) break;
+      qty[i] = (qty[i] as number) + 1;
+      rest--;
+    }
+    const pieces: StackPiece[] = [];
+    ids.forEach((id, i) => {
+      const q = qty[i] as number;
+      if (q > 0) {
+        pieces.push({ to: id, qty: q });
+        left.set(id, (left.get(id) ?? 0) - (item.value * q) / item.qty);
+      }
+    });
+    out.set(item.id, pieces);
+  }
+  return out;
+}
+
 /** What the sect window shows for the sect the player is in. */
 export interface SectMemberView {
   id: string;
@@ -225,6 +374,23 @@ export interface SectView {
   weekly: number[];
   weeklyPay: number;
   weeklyClaimed: boolean;
+  /** How many stacks the warehouse holds now and at most, and what it takes (only the leader needs the last). */
+  vaultCount: number;
+  vaultSlots: number;
+  accept: SectAccept;
+  /** The cống hiến this player can still earn from deposits today. */
+  vaultToday: number;
+}
+
+/** One stack in the warehouse (sent when the Kho tab opens). */
+export interface SectVaultItemView {
+  id: string;
+  type: string;
+  qty: number;
+  by: string;
+  carry: Record<string, unknown>;
+  /** On the shop shelf: for what. */
+  shelf?: { currency: "linh_thach" | "cong_hien"; price: number };
 }
 
 /** A line of the list of sects to apply to. */
@@ -264,7 +430,9 @@ export type SectError =
   | "claimed"
   | "item"
   | "poor"
-  | "bag";
+  | "bag"
+  | "value"
+  | "vault_full";
 
 /** The lines the sect says in its own channel (the server sends them; Vietnamese, like the boss announcements). */
 export const SECT_SAY = {

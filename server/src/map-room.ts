@@ -199,7 +199,8 @@ import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
 import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
-import { acceptInvite, answerRequest, applyTo, claimWeekly, contributionOf, cooldownUntil, createSect, donate, setWeekly, shopCheck, shopPayStatements, upgradeSect, disbandSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
+import { buyShelf, disbandSect, putItem, setAccept, setShelf, takeItem, vaultViews } from "./sect-vault";
+import { acceptInvite, answerRequest, applyTo, claimWeekly, contributionOf, cooldownUntil, createSect, donate, setWeekly, shopCheck, shopPayStatements, upgradeSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
 import { hasRoomFor, newSession, otherSide, planTrade, setConfirm, setLock, setOffer, sideOf, type TradeSession } from "./trade";
 import { buyFixed, cancelListing, listingViews, placeBid, postListing, promoteListing, settleDue } from "./market";
 
@@ -775,6 +776,12 @@ export class MapRoom extends DurableObject<Env> {
       case "sect_weekly":
       case "sect_weekly_set":
       case "sect_buy":
+      case "sect_vault":
+      case "sect_put":
+      case "sect_take":
+      case "sect_shelf":
+      case "sect_shelf_buy":
+      case "sect_accept":
         return this.handleSect(ws, state, msg);
       case "mount":
         this.standUp(ws, "moved");
@@ -2970,14 +2977,68 @@ export class MapRoom extends DurableObject<Env> {
           return;
         }
         case "sect_disband": {
-          const res = await disbandSect(this.env.DB, cfg, { actorId: me, now });
+          const res = await disbandSect(this.env.DB, cfg, { actorId: me, mode: msg.mode, now });
           if (!res.ok) return fail(res.reason);
           await this.sectTell(
             res.members.map((x): [string, null] => [x, null]),
             { ids: res.members, text: SECT_SAY.disband(res.name) },
             res.members,
           );
+          await this.notifyMail(res.recipients); // the Linh Thạch and the stacks of the sect arrive by mail
           return;
+        }
+        case "sect_vault": {
+          const mine = await memberOf(this.env.DB, me);
+          return void this.send(ws, { t: "sect_vault", items: mine ? await vaultViews(this.env.DB, mine.sect_id) : [] });
+        }
+        case "sect_put": {
+          await this.bagTask(me, async () => {
+            const bag = await this.getBag(me);
+            const res = await putItem(this.env.DB, cfg, { characterId: me, bag, itemId: msg.id, qty: msg.qty, now });
+            if (!res.ok) {
+              if (res.reason === "busy") this.bags.delete(me); // the cached bag was stale
+              return fail(res.reason);
+            }
+            const next = applyBag({ items: bag.items, equipped: bag.equipped }, res.ops);
+            const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+            this.bags.set(me, after);
+            this.sendBagDelta(me, bag, after);
+            await refresh(res.sectId, []);
+            await this.sendSect(ws, me, cfg, now);
+            this.send(ws, { t: "sect_vault", items: await vaultViews(this.env.DB, res.sectId) });
+          });
+          return;
+        }
+        case "sect_take": {
+          const res = await takeItem(this.env.DB, { actorId: me, itemId: msg.id, to: msg.to, now });
+          if (!res.ok) return fail(res.reason);
+          await this.notifyMail([msg.to]);
+          await refresh(res.sectId, []);
+          return void this.send(ws, { t: "sect_vault", items: await vaultViews(this.env.DB, res.sectId) });
+        }
+        case "sect_shelf": {
+          const res = await setShelf(this.env.DB, { actorId: me, itemId: msg.id, currency: msg.currency, price: msg.price, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, []);
+          return void this.send(ws, { t: "sect_vault", items: await vaultViews(this.env.DB, res.sectId) });
+        }
+        case "sect_shelf_buy": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          const res = await buyShelf(this.env.DB, { buyerId: me, itemId: msg.id, now });
+          if (!res.ok) return fail(res.reason);
+          await sendWallets(res.balance);
+          await this.sendMailList(me); // the stack is in this player's mail
+          await refresh(res.sectId, []);
+          await this.sendSect(ws, me, cfg, now);
+          return void this.send(ws, { t: "sect_vault", items: await vaultViews(this.env.DB, res.sectId) });
+        }
+        case "sect_accept": {
+          const res = await setAccept(this.env.DB, cfg, { actorId: me, cats: msg.cats, minGrade: msg.minGrade, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, []);
+          return this.sendSect(ws, me, cfg, now);
         }
         case "sect_donate": {
           const res = await donate(this.env.DB, cfg, { characterId: me, amount: msg.amount, now });

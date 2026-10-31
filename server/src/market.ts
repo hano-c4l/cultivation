@@ -51,7 +51,7 @@ const nameOf = (type: string): string => getItemDef(type)?.nameVi ?? type;
  * ':' sends the claim down the gift path, which creates the currency under the given reason when the player claims it), because the plain `currency` columns of a
  * mail are not offered to players in the game.
  */
-function mailStatement(db: D1Database, to: string, subject: string, now: number, att: { amount?: number; currency?: MarketCurrency; itemId?: string; reason?: "market:sale" | "market:refund" }): D1PreparedStatement {
+export function mailStatement(db: D1Database, to: string, subject: string, now: number, att: { amount?: number; currency?: MarketCurrency; itemId?: string; reason?: "market:sale" | "market:refund" }): D1PreparedStatement {
   const amount = att.amount ?? 0;
   const gift = amount > 0 ? JSON.stringify({ [att.currency ?? "linh_thach"]: amount, items: [], reason: att.reason ?? "market:sale" }) : null;
   return db

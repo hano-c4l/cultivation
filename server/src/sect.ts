@@ -1,7 +1,8 @@
-import { SECT_RANK, earnedRank, sectLevelOf, upgradeCostOf, sectMaxMembers, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
+import { SECT_RANK, VAULT_CATEGORIES, earnedRank, sectLevelOf, upgradeCostOf, sectMaxMembers, vaultSlotsOf, type SectAccept, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
 import { applyCurrencyDelta } from "./economy";
 import { filterChat } from "./chat";
 import { actorGuard } from "./market";
+import { closeSectReturning } from "./sect-vault";
 
 /**
  * The players' sects (docs/PHASE5.md, 5c-1). The state crosses every map and channel, so no map room can serialize it: every change is ONE D1 batch whose
@@ -11,6 +12,28 @@ import { actorGuard } from "./market";
 export type SectResult<T = object> = ({ ok: true } & T) | { ok: false; reason: SectError };
 
 const HOUR_MS = 3_600_000;
+
+/** The Việt Nam day a time falls in (the daily cap of deposits counts by it). */
+export const vnDay = (now: number): number => Math.floor((now + 7 * HOUR_MS) / (24 * HOUR_MS));
+
+/** What the warehouse of a sect takes, as the leader set it (nothing until set; a percent never above the Admin's cap). */
+export function acceptOf(cfg: SectCfg, json: string): SectAccept {
+  let parsed: { cats?: unknown; minGrade?: unknown } = {};
+  try {
+    parsed = json ? JSON.parse(json) : {};
+  } catch {
+    parsed = {};
+  }
+  const cats: Record<string, number> = {};
+  if (typeof parsed.cats === "object" && parsed.cats !== null) {
+    for (const k of VAULT_CATEGORIES) {
+      const n = (parsed.cats as Record<string, unknown>)[k];
+      if (typeof n === "number" && Number.isInteger(n) && n > 0) cats[k] = Math.min(n, cfg.vault.catMax);
+    }
+  }
+  const grade = parsed.minGrade;
+  return { cats, minGrade: typeof grade === "number" && Number.isInteger(grade) && grade >= 1 && grade <= 9 ? grade : 1 };
+}
 const DAY_MS = 24 * HOUR_MS;
 
 interface MemberRow {
@@ -20,6 +43,8 @@ interface MemberRow {
   contribution: number;
   contribution_total: number;
   joined_at: number;
+  vault_day: number;
+  vault_points: number;
 }
 
 interface SectRow {
@@ -32,6 +57,7 @@ interface SectRow {
   notice: string;
   /** JSON array of what each rank is paid a week (empty: nothing). */
   weekly: string;
+  accept: string;
   created_at: number;
 }
 
@@ -294,26 +320,6 @@ export async function transferLeader(db: D1Database, p: { actorId: string; targe
   return failed ? { ok: false, reason: failed } : { ok: true, sectId: me.sect_id };
 }
 
-/** The leader closes the sect: everyone leaves with the wait, the sect goes. (The fund and the warehouse come with 5c-2 and 5c-3: they are divided here.) */
-export async function disbandSect(db: D1Database, cfg: SectCfg, p: { actorId: string; now: number }): Promise<SectResult<{ sectId: string; members: string[]; name: string }>> {
-  const me = await memberOf(db, p.actorId);
-  if (!me) return { ok: false, reason: "no_sect" };
-  if (me.rank < SECT_RANK.leader) return { ok: false, reason: "perm" };
-  const sect = await sectById(db, me.sect_id);
-  if (!sect) return { ok: false, reason: "gone" };
-  const members = (await db.prepare("SELECT character_id FROM sect_members WHERE sect_id = ?").bind(sect.id).all<{ character_id: string }>()).results.map((r) => r.character_id);
-  const failed = await run(db, [
-    guard(db, "NOT EXISTS (SELECT 1 FROM sects WHERE id = ? AND leader_id = ?)", sect.id, p.actorId),
-    // a member that joined since the read is covered too: the cooldown is written from the table itself
-    db.prepare("INSERT OR REPLACE INTO sect_cooldown (character_id, until) SELECT character_id, ? FROM sect_members WHERE sect_id = ?").bind(p.now + cfg.rejoinHours * HOUR_MS, sect.id),
-    db.prepare("DELETE FROM sect_requests WHERE sect_id = ?").bind(sect.id),
-    db.prepare("DELETE FROM sect_members WHERE sect_id = ?").bind(sect.id),
-    db.prepare("DELETE FROM sects WHERE id = ?").bind(sect.id),
-    logStatement(db, sect.id, p.actorId, "disband", null, sect.name, p.now),
-  ]);
-  return failed ? { ok: false, reason: failed } : { ok: true, sectId: sect.id, members, name: sect.name };
-}
-
 export async function setNotice(db: D1Database, cfg: SectCfg, p: { actorId: string; text: unknown; now: number }): Promise<SectResult<{ sectId: string }>> {
   const me = await memberOf(db, p.actorId);
   if (!me) return { ok: false, reason: "no_sect" };
@@ -355,7 +361,7 @@ export async function succeedIdleLeader(db: D1Database, cfg: SectCfg, sectId: st
  * A character is being deleted: a member leaves without the wait; a leader hands the sect on (as above, whoever is highest) or, with nobody left, the sect closes.
  * Applications go either way.
  */
-export async function removeCharacter(db: D1Database, characterId: string, now: number): Promise<void> {
+export async function removeCharacter(db: D1Database, cfg: SectCfg, characterId: string, now: number): Promise<void> {
   const me = await memberOf(db, characterId);
   await db.prepare("DELETE FROM sect_requests WHERE character_id = ?").bind(characterId).run();
   await db.prepare("DELETE FROM sect_cooldown WHERE character_id = ?").bind(characterId).run();
@@ -374,12 +380,8 @@ export async function removeCharacter(db: D1Database, characterId: string, now: 
     ]);
     return;
   }
-  await db.batch([
-    db.prepare("DELETE FROM sect_requests WHERE sect_id = ?").bind(me.sect_id),
-    db.prepare("DELETE FROM sect_members WHERE sect_id = ?").bind(me.sect_id),
-    db.prepare("DELETE FROM sects WHERE id = ?").bind(me.sect_id),
-    logStatement(db, me.sect_id, characterId, "removed", null, "disband", now),
-  ]);
+  // nobody is left: the stacks of the warehouse go back to those who put them in, and the sect closes
+  await closeSectReturning(db, cfg, { sectId: me.sect_id, actor: characterId, now });
 }
 
 /** The week a time falls in: weeks start on Monday 0:00 in the cfg time zone (Việt Nam, UTC+7), counted from the first Monday of 1970. */
@@ -443,6 +445,10 @@ export async function sectView(db: D1Database, cfg: SectCfg, characterId: string
     weekly,
     weeklyPay: weekly[me.rank] ?? 0,
     weeklyClaimed: claimed,
+    vaultCount: (await db.prepare("SELECT COUNT(*) AS n FROM sect_vault WHERE sect_id = ?").bind(sect.id).first<{ n: number }>())?.n ?? 0,
+    vaultSlots: vaultSlotsOf(cfg, sect.level),
+    accept: acceptOf(cfg, sect.accept),
+    vaultToday: Math.max(0, cfg.vault.dailyCap - (me.vault_day === vnDay(now) ? me.vault_points : 0)),
     members: rows.map((r) => ({ id: r.id, name: r.name, rank: r.rank, lv: r.lv, online: online.has(r.id), joinedAt: r.joined_at, total: r.total })),
     requests,
     contribution: me.contribution,

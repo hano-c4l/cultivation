@@ -2,7 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_SECT, scaledIncome, type SectCfg } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetSettingsCache } from "./settings";
-import { acceptInvite, answerRequest, applyTo, claimWeekly, contributionOf, cooldownUntil, createSect, disbandSect, donate, inviteProblem, kickMember, leaveSect, memberOf, removeCharacter, sectDirectory, sectNameOf, sectView, setNotice, setRole, setWeekly, shopCheck, shopPayStatements, succeedIdleLeader, transferLeader, upgradeSect, validateSectName, weekOf } from "./sect";
+import { acceptInvite, answerRequest, applyTo, claimWeekly, contributionOf, cooldownUntil, createSect, donate, inviteProblem, kickMember, leaveSect, memberOf, removeCharacter, sectDirectory, sectNameOf, sectView, setNotice, setRole, setWeekly, shopCheck, shopPayStatements, succeedIdleLeader, transferLeader, upgradeSect, validateSectName, weekOf } from "./sect";
+import { disbandSect } from "./sect-vault";
 import { makeDb } from "./test-db";
 
 const cfg: SectCfg = { ...DEFAULT_SECT, createFee: 1000, levels: [{ maxMembers: 4, expNeed: 100, costLinh: 1000 }, { maxMembers: 8, expNeed: 0, costLinh: 0 }] };
@@ -168,8 +169,8 @@ describe("closing and the end of a member", () => {
     const id = await found();
     seat(A, id);
     seat(B, id, 4);
-    expect(await disbandSect(db, cfg, { actorId: A, now: NOW })).toEqual({ ok: false, reason: "perm" });
-    const r = await disbandSect(db, cfg, { actorId: L, now: NOW });
+    expect(await disbandSect(db, cfg, { actorId: A, mode: "leader", now: NOW })).toEqual({ ok: false, reason: "perm" });
+    const r = await disbandSect(db, cfg, { actorId: L, mode: "leader", now: NOW });
     expect(r).toMatchObject({ ok: true, name: "Thanh Van" });
     expect((r as { members: string[] }).members.sort()).toEqual([A, B, L]);
     expect(raw.prepare("SELECT COUNT(*) AS n FROM sects").get()).toEqual({ n: 0 });
@@ -192,12 +193,12 @@ describe("closing and the end of a member", () => {
     const id = await found();
     seat(A, id);
     seat(B, id, 3);
-    await removeCharacter(db, A, NOW);
+    await removeCharacter(db, cfg, A, NOW);
     expect(await memberOf(db, A)).toBeNull();
     expect(await cooldownUntil(db, A)).toBe(0);
-    await removeCharacter(db, L, NOW);
+    await removeCharacter(db, cfg, L, NOW);
     expect(await rankOf(B)).toBe(5);
-    await removeCharacter(db, B, NOW);
+    await removeCharacter(db, cfg, B, NOW);
     expect(raw.prepare("SELECT COUNT(*) AS n FROM sects").get()).toEqual({ n: 0 });
   });
 });

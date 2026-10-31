@@ -1,6 +1,7 @@
 import { applyElementSettings } from "./element-settings";
 import { closeListingsOf } from "./market";
 import { removeCharacter as removeSectMember } from "./sect";
+import { getTuning } from "./tuning";
 import {
   SPIRITUAL_ROOTS,
   isGender,
@@ -234,7 +235,7 @@ async function deleteOwnCharacter(request: Request, env: Env): Promise<Response>
     .then((ids) => (ids.length > 0 ? env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).notifyMail(ids) : undefined))
     .catch((err) => console.error("market close failed", character.id, err));
   // Sect: a member leaves without the wait; a leader hands the sect on (or it closes when nobody is left).
-  await removeSectMember(env.DB, character.id, now).catch((err) => console.error("sect removal failed", character.id, err));
+  await removeSectMember(env.DB, (await getTuning(env.DB)).sect, character.id, now).catch((err) => console.error("sect removal failed", character.id, err));
   return json({ ok: true });
 }
 
