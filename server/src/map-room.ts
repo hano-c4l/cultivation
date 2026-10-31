@@ -147,7 +147,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { SECT_RANK, SECT_ROLE_NAMES, SECT_SAY, type SectError, type Tuning, bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
@@ -199,6 +199,7 @@ import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
 import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
+import { acceptInvite, answerRequest, applyTo, cooldownUntil, createSect, disbandSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
 import { hasRoomFor, newSession, otherSide, planTrade, setConfirm, setLock, setOffer, sideOf, type TradeSession } from "./trade";
 import { buyFixed, cancelListing, listingViews, placeBid, postListing, promoteListing, settleDue } from "./market";
 
@@ -226,6 +227,11 @@ interface PlayerState {
   /** The account is an admin (set by the Worker when the socket opens; a role change counts from the next connection). */
   admin?: boolean;
   name: string;
+  /** The name of the sect (drawn above the name); `syncSectLabel` keeps it current. */
+  sc?: string;
+  /** When the last sect command was answered (they read and write D1). */
+  lastSectAt?: number;
+  lastSectReadAt?: number;
   /** Drawn with the female body (from the gender at join; it never changes while connected). */
   female?: boolean;
   /** The weapon family in the hand, as the others see it (a broken weapon counts as none); `applyGear` keeps it current. */
@@ -533,6 +539,7 @@ export class MapRoom extends DurableObject<Env> {
           if (ids.length > 0) await this.marketChanged(null);
         })
         .catch((err) => console.error("market settle failed", err));
+      const sectName = await sectNameOf(this.env.DB, row.id).catch(() => undefined);
       const [bag, mail] = await Promise.all([
         loadBag(this.env.DB, row.id),
         listMail(this.env.DB, row.id, joinedAt).catch((err) => {
@@ -589,6 +596,7 @@ export class MapRoom extends DurableObject<Env> {
         snAt: Date.now(),
         ah: row.anh_hung,
         name: row.name,
+        ...(sectName ? { sc: sectName } : {}),
         ...(bodyOf(row.gender) === "female" ? { female: true } : {}),
         ...(weaponFamily(bagNow.equipped) ? { w: weaponFamily(bagNow.equipped) as string } : {}),
         ...(outfitOf(bagNow.equipped) ? { o: outfitOf(bagNow.equipped) as string } : {}),
@@ -747,6 +755,20 @@ export class MapRoom extends DurableObject<Env> {
       case "trade_confirm":
       case "trade_cancel":
         return this.handleTrade(ws, state, msg);
+      case "sect_get":
+      case "sect_list":
+      case "sect_create":
+      case "sect_apply":
+      case "sect_answer":
+      case "sect_invite":
+      case "sect_reply":
+      case "sect_leave":
+      case "sect_kick":
+      case "sect_role":
+      case "sect_transfer":
+      case "sect_disband":
+      case "sect_notice":
+        return this.handleSect(ws, state, msg);
       case "mount":
         this.standUp(ws, "moved");
         return this.handleMount(ws, state, msg.on, msg.fx !== undefined && msg.fy !== undefined ? [msg.fx, msg.fy] : undefined);
@@ -2775,6 +2797,194 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  // ---- Sects (docs/PHASE5.md, 5c-1) ------------------------------------------------------------------------------------------------------------------------
+  /** Invitations to a sect not answered yet, by the invited character. Memory only: a lost invitation reads as expired. */
+  private sectInvites = new Map<string, { from: string; name: string; sect: string; at: number }>();
+
+  private chatHub() {
+    return this.env.CHAT_HUB.get(this.env.CHAT_HUB.idFromName("global"), { locationHint: "apac" });
+  }
+
+  /** The name above a player follows the sect they are in now: read, and told to everyone who sees the player when it changed. */
+  private async syncSectLabel(id: string): Promise<void> {
+    const sock = this.socketOf(id);
+    if (!sock) return;
+    const name = await sectNameOf(this.env.DB, id).catch(() => undefined);
+    if (sock.state.sc === name) return;
+    this.patchState(sock.ws, (s) => {
+      if (name) s.sc = name;
+      else delete s.sc;
+    });
+    this.broadcastAbout([id], { t: "sect_label", id, ...(name ? { sc: name } : {}) });
+  }
+
+  /** Tells the characters (online anywhere) that their sect changed, and puts a line in their sect channel; each entry is a character and the sect they are in now (null: none). */
+  private async sectTell(entries: Array<[string, string | null]>, say?: { ids: string[]; text: string }, affected: string[] = []): Promise<void> {
+    try {
+      const hub = this.chatHub();
+      if (say) await hub.sectSay(say.ids, say.text);
+      await hub.sectChanged(entries, affected);
+    } catch (err) {
+      console.error("sect notify failed", err);
+    }
+    await Promise.all(entries.map(([id]) => this.syncSectLabel(id)));
+  }
+
+  /** The sect window for this player (their sect and the wait before another), after the leader's absence is settled. */
+  private async sendSect(ws: WebSocket, id: string, cfg: Tuning["sect"], now: number): Promise<void> {
+    const mine = await memberOf(this.env.DB, id);
+    // A leader away for a long time hands the sect on, found out when another member opens it (never by the leader coming back, and never while the leader is online).
+    const leaderId = mine && mine.rank < SECT_RANK.leader ? (await sectById(this.env.DB, mine.sect_id))?.leader_id : undefined;
+    const leaderOnline = leaderId ? (await this.chatHub().onlineOf([leaderId]).catch(() => [leaderId])).length > 0 : true;
+    if (mine && !leaderOnline) {
+      const next = await succeedIdleLeader(this.env.DB, cfg, mine.sect_id, now);
+      if (next) {
+        const ids = await memberIds(this.env.DB, mine.sect_id);
+        const name = (await this.env.DB.prepare("SELECT name FROM characters WHERE id = ?").bind(next).first<{ name: string }>())?.name ?? "";
+        await this.sectTell(ids.map((x): [string, string] => [x, mine.sect_id]), { ids, text: SECT_SAY.succeed(name) });
+      }
+    }
+    const view = await sectView(this.env.DB, cfg, id, new Set());
+    if (view) {
+      const online = await this.chatHub().onlineOf(view.members.map((m) => m.id)).catch(() => [] as string[]);
+      const set = new Set(online);
+      for (const m of view.members) m.online = set.has(m.id);
+    }
+    this.send(ws, { t: "sect", view, cooldownUntil: view ? 0 : await cooldownUntil(this.env.DB, id) });
+    // A player with no sect is shown the sects to apply to along with it (one read of the window instead of two).
+    if (!view) this.send(ws, { t: "sect_dir", sects: await sectDirectory(this.env.DB, cfg, id) });
+    await this.syncSectLabel(id);
+  }
+
+  private handleSect(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: `sect_${string}` }>): void {
+    const now = Date.now();
+    const me = state.id;
+    // Reads and writes have a gap each (a write waits 300 ms for the last write, a read 250 ms for the last read).
+    const reads = msg.t === "sect_get" || msg.t === "sect_list";
+    if (now - (reads ? (state.lastSectReadAt ?? 0) : (state.lastSectAt ?? 0)) < (reads ? 250 : 300)) return reads ? undefined : this.send(ws, { t: "sect_error", reason: "rate" }); // a read that comes too soon is dropped without a word (the client asks again on its own)
+    if (reads) state.lastSectReadAt = now;
+    else state.lastSectAt = now;
+    ws.serializeAttachment(state);
+    const fail = (reason: SectError) => this.send(ws, { t: "sect_error", reason });
+    void (async () => {
+      const cfg = (await getTuning(this.env.DB)).sect;
+      const nameOf = async (id: string) => (await this.env.DB.prepare("SELECT name FROM characters WHERE id = ?").bind(id).first<{ name: string }>())?.name ?? "";
+      /** After a change in the sect: its members read it again; `gone` are those who are in none now. */
+      const refresh = async (sectId: string, gone: string[], say?: string, affected: string[] = []) => {
+        const ids = await memberIds(this.env.DB, sectId);
+        await this.sectTell([...ids.map((x): [string, string | null] => [x, sectId]), ...gone.map((x): [string, string | null] => [x, null])], say ? { ids: [...ids, ...gone], text: say } : undefined, [...gone, ...affected]);
+      };
+      switch (msg.t) {
+        case "sect_get":
+          return this.sendSect(ws, me, cfg, now);
+        case "sect_list":
+          return void this.send(ws, { t: "sect_dir", sects: await sectDirectory(this.env.DB, cfg, me) });
+        case "sect_create": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          const res = await createSect(this.env.DB, cfg, { leaderId: me, name: msg.name, now });
+          if (!res.ok) return fail(res.reason);
+          const wallet = await getWallet(this.env.DB, me).catch(() => null);
+          if (wallet) this.send(ws, { t: "wallet", currency: "linh_thach", balance: wallet.linh_thach });
+          await this.sectTell([[me, res.id]], undefined, [me]);
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_apply": {
+          const res = await applyTo(this.env.DB, cfg, { characterId: me, sectId: msg.sect, on: msg.on, now });
+          if (!res.ok) return fail(res.reason);
+          if (msg.on) await refresh(msg.sect, []); // those who approve read their window again
+          return void this.send(ws, { t: "sect_dir", sects: await sectDirectory(this.env.DB, cfg, me) });
+        }
+        case "sect_answer": {
+          const res = await answerRequest(this.env.DB, cfg, { actorId: me, applicantId: msg.id, ok: msg.ok, now });
+          if (!res.ok) return fail(res.reason);
+          const mine = await memberOf(this.env.DB, me);
+          if (mine) await refresh(mine.sect_id, [], msg.ok ? SECT_SAY.joined(await nameOf(msg.id)) : undefined, msg.ok ? [msg.id] : []);
+          return;
+        }
+        case "sect_invite": {
+          const target = this.socketOf(msg.to);
+          const mine = this.socketOf(me);
+          if (!target || !mine || msg.to === me) return fail("gone");
+          const [ax, ay] = this.hereOf(mine.state, now);
+          const [bx, by] = this.hereOf(target.state, now);
+          if (mine.state.mapId !== target.state.mapId || Math.hypot(ax - bx, ay - by) > cfg.inviteRange) return fail("far");
+          const problem = await inviteProblem(this.env.DB, cfg, me, msg.to, now);
+          if (problem) return fail(problem);
+          const sect = await memberOf(this.env.DB, me);
+          const pending = this.sectInvites.get(msg.to);
+          if (pending && now - pending.at < cfg.inviteSec * 1000) return fail("busy");
+          this.sectInvites.set(msg.to, { from: me, name: state.name, sect: sect!.sect_id, at: now });
+          this.send(target.ws, { t: "sect_invite", from: me, name: state.name, sect: (await sectNameOf(this.env.DB, me)) ?? "", ttlMs: cfg.inviteSec * 1000 });
+          return;
+        }
+        case "sect_reply": {
+          const inv = this.sectInvites.get(me);
+          if (!inv || inv.from !== msg.from || now - inv.at > cfg.inviteSec * 1000) {
+            this.sectInvites.delete(me);
+            return fail("gone");
+          }
+          this.sectInvites.delete(me);
+          if (!msg.accept) return;
+          const res = await acceptInvite(this.env.DB, cfg, { sectId: inv.sect, inviterId: inv.from, characterId: me, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(inv.sect, [], SECT_SAY.joined(state.name), [me]);
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_leave": {
+          const res = await leaveSect(this.env.DB, cfg, { characterId: me, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [me], SECT_SAY.left(state.name));
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_kick": {
+          const res = await kickMember(this.env.DB, cfg, { actorId: me, targetId: msg.id, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [msg.id], SECT_SAY.kicked(await nameOf(msg.id), state.name), [msg.id]);
+          return;
+        }
+        case "sect_role": {
+          const res = await setRole(this.env.DB, cfg, { actorId: me, targetId: msg.id, role: msg.role, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [], SECT_SAY.role(await nameOf(msg.id), SECT_ROLE_NAMES[msg.role]), [msg.id]);
+          return;
+        }
+        case "sect_transfer": {
+          const res = await transferLeader(this.env.DB, { actorId: me, targetId: msg.id, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [], SECT_SAY.transfer(state.name, await nameOf(msg.id)), [me, msg.id]);
+          return;
+        }
+        case "sect_disband": {
+          const res = await disbandSect(this.env.DB, cfg, { actorId: me, now });
+          if (!res.ok) return fail(res.reason);
+          await this.sectTell(
+            res.members.map((x): [string, null] => [x, null]),
+            { ids: res.members, text: SECT_SAY.disband(res.name) },
+            res.members,
+          );
+          return;
+        }
+        case "sect_notice": {
+          const res = await setNotice(this.env.DB, cfg, { actorId: me, text: msg.text, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, []);
+          return;
+        }
+      }
+    })().catch((err) => {
+      console.error("sect command failed", msg.t, err);
+      fail("busy");
+    });
+  }
+
+  /** Where a player stands now. */
+  private hereOf(state: PlayerState, now: number): [number, number] {
+    const p = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    return [p.x, p.y];
+  }
+
   // ---- Direct trade (docs/PHASE5.md, 5b) -------------------------------------------------------------------------------------------------------------------
   /** Invitations not answered yet, by the invited character. Memory only: a lost invitation reads as expired. */
   private tradeInvites = new Map<string, { from: string; name: string; at: number }>();
@@ -4641,6 +4851,7 @@ export class MapRoom extends DurableObject<Env> {
   /** A player left the room (closed, kicked or went through a portal): those who knew of them are told, and the records forget them. */
   private playerGone(id: string, ws: WebSocket): void {
     this.tradeLeft(id);
+    for (const [target, inv] of this.sectInvites) if (target === id || inv.from === id) this.sectInvites.delete(target);
     this.broadcastAbout([id], { t: "left", id }, ws);
     this.forgetEntity(id);
     this.aoi.delete(id);
@@ -4730,7 +4941,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.lk ? { lk: p.lk } : {}), ...(p.med ? { med: true as const } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.lk ? { lk: p.lk } : {}), ...(p.med ? { med: true as const } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}), ...(p.sc ? { sc: p.sc } : {}) };
   }
 
   /** A character sheet went out (a level, a breakthrough): when the realm or stage changed, everyone who sees the player gets the new look with it. */

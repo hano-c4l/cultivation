@@ -13,6 +13,7 @@ import type { Tuning } from "./tuning";
 import type { BrewJobView } from "./alchemy";
 import type { MarketCfg, MarketCurrency, MarketKind, MarketListingView } from "./market";
 import type { TradeEnd, TradeError, TradeSideView } from "./trade";
+import { SECT_APPOINTABLE, type SectError, type SectListItem, type SectRole, type SectView } from "./sect";
 import type { MerchantDef } from "./merchants";
 import type { MapRecipe, NpcSpot } from "./map";
 import type { ItemOverlay } from "./items";
@@ -51,13 +52,13 @@ export const CHAT_TARGET_MAX_LENGTH = 32;
 
 /**
  * Where a chat line goes: everyone online (world), the sender's map room (map), one named player (whisper), or an
- * announcement to everyone shown in the system tab (system, only accepted from admins).
+ * announcement to everyone shown in the system tab (system, only accepted from admins), or the members of the sender's sect (sect).
  */
-export type ChatChannel = "world" | "map" | "whisper" | "system";
+export type ChatChannel = "world" | "map" | "whisper" | "system" | "sect";
 
 /** The windows one NPC can open (tabs of the same NPC): buying and selling, the blacksmith's work, brewing pills. */
 export type NpcView = "shop" | "smith" | "brew" | "learn" | "market";
-export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper", "system"];
+export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper", "system", "sect"];
 /** How far (tiles) the client-claimed start tile may differ from the server position and still be trusted. */
 export const MAX_DESYNC_TILES = 3;
 /** Minimum gap between stat allocations; each one is a D1 write. */
@@ -101,6 +102,27 @@ export type ClientMessage =
   /** Direct trade: agree to the trade as it stands (needs both sides locked). When both agree it happens. */
   | { t: "trade_confirm"; rev: number }
   | { t: "trade_cancel" }
+  /** Sect: ask for the player's own sect (and the wait before joining another), refreshed whenever the window opens. */
+  | { t: "sect_get" }
+  /** Sect: the list of sects open to applications. */
+  | { t: "sect_list" }
+  /** Sect: found one (the player must stand by a sect NPC, `npc`). */
+  | { t: "sect_create"; npc: string; name: string }
+  /** Sect: apply to join (or withdraw the application). */
+  | { t: "sect_apply"; sect: string; on: boolean }
+  /** Sect: accept or turn down the application of `id`. */
+  | { t: "sect_answer"; id: string; ok: boolean }
+  /** Sect: invite a player standing near. */
+  | { t: "sect_invite"; to: string }
+  /** Sect: answer the invitation of `from`. */
+  | { t: "sect_reply"; from: string; accept: boolean }
+  | { t: "sect_leave" }
+  | { t: "sect_kick"; id: string }
+  | { t: "sect_role"; id: string; role: SectRole }
+  /** Sect: hand the leadership to a member (the leader becomes a deputy). */
+  | { t: "sect_transfer"; id: string }
+  | { t: "sect_disband" }
+  | { t: "sect_notice"; text: string }
   /** Claim every mail in one go (the ones that do not fit stay in the mailbox). */
   | { t: "mail_claim_all" }
   /** Vạn Bảo Lâu: read this town's listings again (the window asks while it is open; cheaper to call than `npc_open`). */
@@ -266,6 +288,8 @@ export interface PlayerSnapshot {
   lk?: GearLook;
   /** The cultivation level, `realm * 10 + stage`: it sets the colour and strength of the qi drawn round the figure. */
   lv?: number;
+  /** The name of the sect the player is in, left out for none: drawn above the name. */
+  sc?: string;
 }
 
 export type ServerMessage =
@@ -318,6 +342,16 @@ export type ServerMessage =
   | { t: "trade"; rev: number; other: { id: string; name: string }; mine: TradeSideView; theirs: TradeSideView; cfg: { maxItems: number; maxLinh: number; maxTienNgoc: number } }
   | { t: "trade_end"; reason: TradeEnd }
   | { t: "trade_error"; reason: TradeError }
+  /** The player's sect (null: none) and, when it is none, when they may join one. */
+  | { t: "sect"; view: SectView | null; cooldownUntil: number }
+  | { t: "sect_dir"; sects: SectListItem[] }
+  | { t: "sect_error"; reason: SectError }
+  /** Someone invites this player to a sect. */
+  | { t: "sect_invite"; from: string; name: string; sect: string; ttlMs: number }
+  /** Something about the player's sect changed (comes on the chat socket). `you`: it is about this player (they joined, left, were sent away or appointed): read it again at once; otherwise only a window that is open needs to. */
+  | { t: "sect_changed"; you?: true }
+  /** The sect shown above a player changed (left out: none). */
+  | { t: "sect_label"; id: string; sc?: string }
   /** Some listing of the town's Vạn Bảo Lâu changed (`town` absent: any town): a window that is open reads the list again. */
   | { t: "market_changed"; town?: string }
   /** The merchant's stock for today: units this character can still buy of each offer that has a daily limit. */
@@ -423,6 +457,8 @@ export type ServerMessage =
 
 /** Why a market action was refused. */
 export type MarketError = "far" | "rate" | "invalid" | "funds" | "gone" | "mine" | "low" | "closed" | "limit" | "grade" | "cooldown" | "untradable" | "busy" | "murderer" | "top";
+
+const isId = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9-]{1,64}$/.test(v);
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
@@ -640,6 +676,32 @@ export function parseClientMessage(raw: string): ClientMessage | null {
         : null;
     case "trade_add":
       return typeof m.id === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.id) && isInt(m.qty) && m.qty >= 1 && m.qty <= 1_000_000 ? { t: "trade_add", id: m.id, qty: m.qty } : null;
+    case "sect_get":
+      return { t: "sect_get" };
+    case "sect_list":
+      return { t: "sect_list" };
+    case "sect_create":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.name === "string" && m.name.length <= 60 ? { t: "sect_create", npc: m.npc, name: m.name } : null;
+    case "sect_apply":
+      return isId(m.sect) && typeof m.on === "boolean" ? { t: "sect_apply", sect: m.sect, on: m.on } : null;
+    case "sect_answer":
+      return isId(m.id) && typeof m.ok === "boolean" ? { t: "sect_answer", id: m.id, ok: m.ok } : null;
+    case "sect_invite":
+      return isId(m.to) ? { t: "sect_invite", to: m.to } : null;
+    case "sect_reply":
+      return isId(m.from) && typeof m.accept === "boolean" ? { t: "sect_reply", from: m.from, accept: m.accept } : null;
+    case "sect_leave":
+      return { t: "sect_leave" };
+    case "sect_kick":
+      return isId(m.id) ? { t: "sect_kick", id: m.id } : null;
+    case "sect_role":
+      return isId(m.id) && typeof m.role === "string" && (SECT_APPOINTABLE as readonly string[]).includes(m.role) ? { t: "sect_role", id: m.id, role: m.role as SectRole } : null;
+    case "sect_transfer":
+      return isId(m.id) ? { t: "sect_transfer", id: m.id } : null;
+    case "sect_disband":
+      return { t: "sect_disband" };
+    case "sect_notice":
+      return typeof m.text === "string" && m.text.length <= 400 ? { t: "sect_notice", text: m.text } : null;
     case "trade_lock":
       return isInt(m.rev) && m.rev >= 0 && typeof m.on === "boolean" ? { t: "trade_lock", rev: m.rev, on: m.on } : null;
     case "trade_confirm":

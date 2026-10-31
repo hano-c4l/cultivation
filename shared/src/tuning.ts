@@ -2,6 +2,7 @@ import { DEFAULT_ALCHEMY, validAlchemy, type AlchemyCfg } from "./alchemy";
 import type { AreaDef } from "./area";
 import { DEFAULT_DOJO, validDojo, type DojoCfg } from "./dojo";
 import { DEFAULT_MARKET, validMarket, type MarketCfg } from "./market";
+import { DEFAULT_SECT, validSect, type SectCfg } from "./sect";
 import { DEFAULT_TRADE, validTrade, type TradeCfg } from "./trade";
 import { SKILL_LOOKS } from "./skill-looks";
 import { FLIGHT_STYLES, GROUND_STYLES, ICON_PICKABLE, OBSTACLE_STYLES, type FlightStyle, type IconShape, type GroundStyle, type NpcLook, type ObstacleStyle } from "./art-styles";
@@ -165,6 +166,8 @@ export interface Tuning {
   market: MarketCfg;
   /** Direct trade between two players: items per side, range, invitation time and the Linh Thạch cap (see trade.ts). */
   trade: TradeCfg;
+  /** The players' sects: founding, members, roles and the wait before joining another (see sect.ts). */
+  sect: SectCfg;
   /** The chance that a kill drops the book of a rare skill of the realm of the map (see skills-extra.ts): by monster class, and for each item round of the map's boss. */
   rareBooks: { chance: Record<"normal" | "rare1" | "rare2" | "boss", number> };
   /** The outfit drawn on a player's sprite, by the realm of the robe worn: the rule with the highest `minRealm` the robe reaches wins (no robe or no rule: the plain peasant clothes). `outfit` names a sprite variant (`player.<body>.<outfit>`); one without a sprite is drawn as the plain clothes. */
@@ -521,6 +524,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   dojo: DEFAULT_DOJO,
   market: DEFAULT_MARKET,
   trade: DEFAULT_TRADE,
+  sect: DEFAULT_SECT,
   rareBooks: { chance: { normal: 0.00005, rare1: 0.0008, rare2: 0.003, boss: 0.02 } },
   outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 1, outfit: "scout" }, { minRealm: 2, outfit: "tien" }, { minRealm: 3, outfit: "violet" }, { minRealm: 4, outfit: "crimson" }, { minRealm: 5, outfit: "shadow" }] }, // Kim Đan robes and above: the white xianxia robe
   // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp), ghost (hàn thi ma), snake (rắn). Stand-ins: the boss dragons use the dragon.
@@ -651,6 +655,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
       alchemist: { body: "female", outfit: "sage", tint: "#bff0c8", aura: "#7dff9c" },
       master: { body: "male", outfit: "ranger", weapon: "kiem", tint: "#e6b8a0", aura: "#e0563a" },
       market: { body: "female", outfit: "sage", tint: "#e8c8ff", aura: "#c89cff" },
+      sect: { body: "male", outfit: "sage", tint: "#9ad8c0", aura: "#6fe0b0" },
       guard: { body: "male", outfit: "warden", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a" },
     },
     byId: {
@@ -705,6 +710,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   hatLooks: "Hình mũ hiện trên nhân vật theo cảnh giới của mũ đang đội",
   rareBooks: "Bí tịch tuyệt học chỉ rơi từ quái: xác suất mỗi lần hạ quái theo loại quái, và mỗi vòng thưởng của boss",
   dojo: "Võ Sư dạy bí tịch: mỗi võ sư dạy kỹ năng nào và giá học (Linh Thạch)",
+  sect: "Tông môn: điều kiện và phí lập, tên, số thành viên theo cấp, quyền của chức vụ, thời gian chờ sau khi rời",
   trade: "Giao dịch trực tiếp giữa hai người: số món mỗi bên, tầm xa, thời gian mời, trần Linh Thạch",
   market: "Vạn Bảo Lâu: thuế, phí đăng bán, giới hạn tin, giờ mở và chốt đấu giá, tin quảng bá",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
@@ -1065,6 +1071,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return validMarket(value);
     case "trade":
       return validTrade(value);
+    case "sect":
+      return validSect(value);
     case "meditation":
       return num(value.huntRatio, 0, 1) && num(value.secondsPerKill, 1, 600) && int(value.maxSettleSeconds, 10, 3600);
     case "minimap":

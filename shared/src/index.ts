@@ -39,6 +39,7 @@ export * from "./art-styles";
 export * from "./dojo";
 export * from "./market";
 export * from "./trade";
+export * from "./sect";
 export * from "./map-art";
 export * from "./monster-look";
 export * from "./npc-look";

@@ -88,6 +88,7 @@ import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { initDojo, type DojoUi } from "./dojo-ui";
 import { initMarket, type MarketUi } from "./market-ui";
 import { initPlayerMenu, type PlayerMenu } from "./player-menu";
+import { initSect, type SectUi } from "./sect-ui";
 import { initTrade, type TradeUi } from "./trade-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
@@ -169,6 +170,8 @@ interface Actor {
   /** The "PK" tag after the name: brown for PK, red for Đồ sát (hidden when off). */
   tag: Phaser.GameObjects.Text;
   pk: PkMode;
+  /** The sect name drawn above the name (made when the player is in a sect). */
+  sectTag?: Phaser.GameObjects.Text;
   /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
   mounted: boolean;
   cloud?: Phaser.GameObjects.Image;
@@ -338,6 +341,7 @@ export class GameScene extends Phaser.Scene {
   private dojo!: DojoUi;
   private market!: MarketUi;
   private trade!: TradeUi;
+  private sect!: SectUi;
   private minimap!: MinimapUi;
   private fx!: Effects;
   private rank!: RankUi;
@@ -491,6 +495,7 @@ export class GameScene extends Phaser.Scene {
     void this.gfx.init();
     if (new URLSearchParams(location.search).get("perf") === "1") initPerf(this.game, this, () => ({ ...this.gfx.stats(), players: this.actors.size, monsters: this.monsters.size }));
     this.rank = initRank((msg) => this.net.send(msg), this.registry.get("isAdmin") === true);
+    this.sect = initSect((msg) => this.net.send(msg), (text, ok) => this.chat.system(text, ok ? "info" : "warning"), () => this.linhThach, () => this.selfId);
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
       startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
@@ -887,6 +892,10 @@ export class GameScene extends Phaser.Scene {
       else if (npc.kind === "waygate") this.waygate.open(npc.id);
       else if (npc.kind === "master") this.dojo.open(npc.id);
       else if (npc.kind === "market") this.market.open(npc.id);
+      else if (npc.kind === "sect") {
+        this.sect.setNpc(npc.id);
+        this.sect.open();
+      }
       else this.shop.open(npc.id, this.map.id);
       return;
     }
@@ -910,7 +919,7 @@ export class GameScene extends Phaser.Scene {
     const open = () => {
       const target = this.actors.get(id);
       if (!target) return;
-      this.playerMenu.show(target.label.text, [{ label: vi.playerMenu.trade, run: () => this.net.send({ t: "trade_invite", to: id }) }]);
+      this.playerMenu.show(target.label.text, [{ label: vi.playerMenu.trade, run: () => this.net.send({ t: "trade_invite", to: id }) }, ...(this.sect.canInvite() ? [{ label: vi.playerMenu.sectInvite, run: () => this.net.send({ t: "sect_invite", to: id }) }] : [])]);
     };
     const near = (): boolean => {
       const a = this.actors.get(this.selfId);
@@ -1020,6 +1029,7 @@ export class GameScene extends Phaser.Scene {
         this.smith.setSheet(msg.character);
         this.quests.setSheet(msg.character);
         this.rank.show(msg.character.name);
+        this.sect.show();
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
@@ -1365,6 +1375,21 @@ export class GameScene extends Phaser.Scene {
       case "trade_invite":
         this.trade.invited(msg.from, msg.name, msg.ttlMs);
         break;
+      case "sect":
+        this.sect.onSect(msg.view, msg.cooldownUntil);
+        break;
+      case "sect_dir":
+        this.sect.onDir(msg.sects);
+        break;
+      case "sect_error":
+        this.sect.onError(msg.reason);
+        break;
+      case "sect_invite":
+        this.sect.invited(msg.from, msg.name, msg.sect, msg.ttlMs);
+        break;
+      case "sect_label":
+        this.setActorSect(msg.id, msg.sc);
+        break;
       case "trade":
         this.trade.show(msg);
         break;
@@ -1567,6 +1592,11 @@ export class GameScene extends Phaser.Scene {
       this.market.invalidate();
       return;
     }
+    if (msg.t === "sect_changed") {
+      // The sect changed. About this player: read it again at once (the menu of a player and the name above the head follow it). About the others: only an open window needs the new list.
+      if (msg.you || this.sect.isOpen()) this.net.send({ t: "sect_get" });
+      return;
+    }
     if (msg.t === "mail_new") {
       // A gift was sent to this player: read the mail list again from the game socket and say so.
       this.net.send({ t: "mail_refresh" });
@@ -1619,6 +1649,7 @@ export class GameScene extends Phaser.Scene {
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
+      this.setActorSect(p.id, p.sc);
       this.setActorMounted(actor, p.mounted === true);
       this.recolorName(actor, now);
       if (isNew) {
@@ -1643,6 +1674,7 @@ export class GameScene extends Phaser.Scene {
     actor.body.destroy();
     actor.label.destroy();
     actor.tag.destroy();
+    actor.sectTag?.destroy();
     actor.cloud?.destroy();
     this.clearDragon(actor);
     actor.hat?.destroy();
@@ -1824,6 +1856,19 @@ export class GameScene extends Phaser.Scene {
     const hitAt = this.hitMeAt.get(actor.id);
     // hitMeAt holds performance.now() values; displayColor compares against the same clock.
     return displayColor(nameTier(sn), actor.id === this.selfId ? undefined : hitAt, now);
+  }
+
+  /** The name of the sect over a player's name (made when there is one, gone when there is none). */
+  private setActorSect(id: string, name: string | undefined): void {
+    const actor = this.actors.get(id);
+    if (!actor) return;
+    if (!name) {
+      actor.sectTag?.destroy();
+      actor.sectTag = undefined;
+      return;
+    }
+    if (!actor.sectTag) actor.sectTag = this.add.text(0, 0, name, { fontFamily: FONT, fontSize: "11px", color: "#9ad8c0", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setResolution(2);
+    else actor.sectTag.setText(name);
   }
 
   /** The tag after another player's name: "PK" in brown (PK) or red (Đồ sát). Not shown on yourself. */
@@ -2531,6 +2576,7 @@ export class GameScene extends Phaser.Scene {
       const rise = actor.view?.alive ? actor.view.rise() + 6 + (actor.mounted ? 8 : 0) : actor.mounted ? 46 : 38;
       actor.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);
       if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - rise - 1).setDepth(depth + 0.1);
+      actor.sectTag?.setPosition(s.x, s.y - rise - actor.label.height + 1).setDepth(depth + 0.1);
     }
 
     for (const m of this.monsters.values()) {

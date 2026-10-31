@@ -41,7 +41,7 @@ export interface Portal {
 export interface NpcSpot {
   id: string;
   /** What the NPC does: sells and buys (merchant), gives quests (quest), upgrades gear (smith), sells and brews pills (alchemist) or carries one to another town (waygate: a teleport array drawn on the ground, nothing to stand beside). */
-  kind: "merchant" | "quest" | "smith" | "waygate" | "alchemist" | "master" | "market";
+  kind: "merchant" | "quest" | "smith" | "waygate" | "alchemist" | "master" | "market" | "sect";
   /** Position in tile units (continuous). */
   x: number;
   y: number;
@@ -70,13 +70,16 @@ export const NPC_NAMES_VI: Readonly<Record<string, string>> = {
   market: "Vạn Bảo Lâu",
   market2: "Vạn Bảo Lâu",
   market3: "Vạn Bảo Lâu",
+  sect: "Tông Môn",
+  sect2: "Tông Môn",
+  sect3: "Tông Môn",
   elder3: "Trưởng Lão",
   waygate3: "Truyền Tống Trận",
   path_kiem: "Kiếm Đạo Sư",
   path_thuat: "Thuật Đạo Sư",
   path_dan: "Đan Đạo Sư",
 };
-export const NPC_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "waygate", "alchemist", "master", "market"];
+export const NPC_KINDS: readonly NpcSpot["kind"][] = ["merchant", "quest", "smith", "waygate", "alchemist", "master", "market", "sect"];
 
 /** How close (tiles) a player must be for the server to accept a command to an NPC. */
 export const NPC_INTERACT_RADIUS = 3;
@@ -470,6 +473,7 @@ const TOWN_NPC_AT: Readonly<Record<string, readonly [number, number]>> = {
   smith: [12.6, 19.1],
   alchemist: [18.8, 28.3],
   market: [27.4, 24.5],
+  sect: [33.5, 22.5],
   master: [33.5, 8],
   path_kiem: [6.5, 14],
   path_thuat: [36, 30.5],
@@ -525,6 +529,7 @@ function buildTown(): MapData {
       { id: "alchemist", kind: "alchemist", x: TOWN_NPC_AT.alchemist![0] + o, y: TOWN_NPC_AT.alchemist![1] + o },
       { id: "master", kind: "master", x: TOWN_NPC_AT.master![0] + o, y: TOWN_NPC_AT.master![1] + o },
       { id: "market", kind: "market", x: TOWN_NPC_AT.market![0] + o, y: TOWN_NPC_AT.market![1] + o },
+      { id: "sect", kind: "sect", x: TOWN_NPC_AT.sect![0] + o, y: TOWN_NPC_AT.sect![1] + o },
       { id: "waygate", kind: "waygate", x: TOWN_NPC_AT.waygate![0] + o, y: TOWN_NPC_AT.waygate![1] + o },
       { id: "path_kiem", kind: "quest", x: TOWN_NPC_AT.path_kiem![0] + o, y: TOWN_NPC_AT.path_kiem![1] + o },
       { id: "path_thuat", kind: "quest", x: TOWN_NPC_AT.path_thuat![0] + o, y: TOWN_NPC_AT.path_thuat![1] + o },
@@ -575,6 +580,7 @@ function buildTown2(): MapData {
       { id: "alchemist2", kind: "alchemist", x: TOWN_NPC_AT.alchemist![0] + o, y: TOWN_NPC_AT.alchemist![1] + o },
       { id: "master2", kind: "master", x: TOWN_NPC_AT.master![0] + o, y: TOWN_NPC_AT.master![1] + o },
       { id: "market2", kind: "market", x: TOWN_NPC_AT.market![0] + o, y: TOWN_NPC_AT.market![1] + o },
+      { id: "sect2", kind: "sect", x: TOWN_NPC_AT.sect![0] + o, y: TOWN_NPC_AT.sect![1] + o },
       { id: "waygate2", kind: "waygate", x: TOWN_NPC_AT.waygate![0] + o, y: TOWN_NPC_AT.waygate![1] + o },
       // The same three masters as the first town, with the same ids: their quests and rewards are the same wherever they stand.
       { id: "path_kiem", kind: "quest", x: TOWN_NPC_AT.path_kiem![0] + o, y: TOWN_NPC_AT.path_kiem![1] + o },
@@ -626,6 +632,7 @@ function buildTown3(): MapData {
       { id: "alchemist3", kind: "alchemist", x: TOWN_NPC_AT.alchemist![0] + o, y: TOWN_NPC_AT.alchemist![1] + o },
       { id: "master3", kind: "master", x: TOWN_NPC_AT.master![0] + o, y: TOWN_NPC_AT.master![1] + o },
       { id: "market3", kind: "market", x: TOWN_NPC_AT.market![0] + o, y: TOWN_NPC_AT.market![1] + o },
+      { id: "sect3", kind: "sect", x: TOWN_NPC_AT.sect![0] + o, y: TOWN_NPC_AT.sect![1] + o },
       { id: "waygate3", kind: "waygate", x: TOWN_NPC_AT.waygate![0] + o, y: TOWN_NPC_AT.waygate![1] + o },
       // The same three masters as the other towns, with the same ids.
       { id: "path_kiem", kind: "quest", x: TOWN_NPC_AT.path_kiem![0] + o, y: TOWN_NPC_AT.path_kiem![1] + o },
@@ -766,7 +773,7 @@ const BUILDERS: Readonly<Record<string, () => MapData>> = {
 const built = new Map<MapId, MapData>();
 
 /** Every NPC id on any map (quests name their giver and talk targets from this set; a test checks it against the maps). */
-export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "alchemist", "alchemist2", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2", "merchant3", "elder3", "smith3", "alchemist3", "waygate3", "master", "master2", "master3", "market", "market2", "market3"]);
+export const MAPS_NPC_IDS: ReadonlySet<string> = new Set(["merchant", "elder", "smith", "alchemist", "alchemist2", "path_kiem", "path_thuat", "path_dan", "merchant2", "elder2", "smith2", "waygate", "waygate2", "merchant3", "elder3", "smith3", "alchemist3", "waygate3", "master", "master2", "master3", "market", "market2", "market3", "sect", "sect2", "sect3"]);
 
 /**
  * A map as data (what D1 keeps and the admin edits): everything about a map except its NPCs (their own table) and its monster groups (monsters.ts). Building one

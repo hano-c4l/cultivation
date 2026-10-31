@@ -24,6 +24,9 @@ interface ChatSocket {
   systemTimes: number[];
   /** Taken from the account role when the socket opened; a role change applies from the next connection. */
   admin: boolean;
+  /** The sect of the character (its chat channel), read when the socket opened and kept current by `sectChanged`. */
+  sect?: string;
+  sectTimes?: number[];
 }
 
 /** Close code sent to an older chat socket of the same character; the client must not reconnect after it. */
@@ -75,7 +78,8 @@ export class ChatHub extends DurableObject<Env> {
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server, [id]);
     const admin = request.headers.get("x-char-admin") === "1";
-    const attachment: ChatSocket = { id, name, worldTimes: this.worldByChar.get(id) ?? [], whisperTimes: [], systemTimes: [], admin };
+    const sect = await this.env.DB.prepare("SELECT sect_id FROM sect_members WHERE character_id = ?").bind(id).first<{ sect_id: string }>().catch(() => null);
+    const attachment: ChatSocket = { id, name, worldTimes: this.worldByChar.get(id) ?? [], whisperTimes: [], systemTimes: [], admin, ...(sect ? { sect: sect.sect_id } : {}) };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -100,6 +104,24 @@ export class ChatHub extends DurableObject<Env> {
       return;
     }
     const text = filterChat(msg.text);
+    if (msg.channel === "sect") {
+      // The members of the sender's sect; a character in none has no such channel.
+      if (!self.sect) return this.send(ws, { t: "chat_error", reason: "forbidden" });
+      const times = checkChatRate(self.sectTimes ?? [], now, { burst: CHAT_BURST, windowMs: CHAT_WINDOW_MS, minGapMs: CHAT_MIN_GAP_MS });
+      if (!times) return this.send(ws, { t: "chat_error", reason: "rate" });
+      self.sectTimes = times;
+      ws.serializeAttachment(self);
+      const line = JSON.stringify({ t: "chat", channel: "sect", id: self.id, name: self.name, text, ts: now } satisfies ServerMessage);
+      for (const other of this.ctx.getWebSockets()) {
+        if ((other.deserializeAttachment() as ChatSocket | null)?.sect !== self.sect) continue;
+        try {
+          other.send(line);
+        } catch {
+          // Socket already closing; ignore.
+        }
+      }
+      return;
+    }
     if (msg.channel === "world") {
       // Both records may be missing part of the history (a new socket, or the hub slept), so use their union.
       const history = [...new Set([...(this.worldByChar.get(self.id) ?? []), ...self.worldTimes])].sort((a, b) => a - b);
@@ -172,6 +194,32 @@ export class ChatHub extends DurableObject<Env> {
   /** A listing of a town's market changed: every online player is told, and a window that is open reads the list again. Called by a map room over RPC. */
   async marketChanged(town: string | null): Promise<void> {
     this.broadcast(town === null ? { t: "market_changed" } : { t: "market_changed", town });
+  }
+
+  /** Which of these characters have a chat socket (are online). Called by a map room over RPC. */
+  async onlineOf(ids: string[]): Promise<string[]> {
+    return [...new Set(ids)].filter((id) => this.ctx.getWebSockets(id).length > 0);
+  }
+
+  /** The sect of these characters changed (null: they have none now): the chat channel follows, and their client reads the sect again. Called by a map room over RPC. */
+  async sectChanged(entries: Array<[string, string | null]>, affected: string[] = []): Promise<void> {
+    const you = new Set(affected);
+    for (const [id, sect] of entries) {
+      for (const ws of this.ctx.getWebSockets(id)) {
+        const s = ws.deserializeAttachment() as ChatSocket | null;
+        if (!s) continue;
+        if (sect) s.sect = sect;
+        else delete s.sect;
+        ws.serializeAttachment(s);
+        this.send(ws, you.has(id) ? { t: "sect_changed", you: true } : { t: "sect_changed" });
+      }
+    }
+  }
+
+  /** A line from the sect itself (someone joined, left, was appointed...), shown in the sect channel of these characters. Called by a map room over RPC. */
+  async sectSay(ids: string[], text: string): Promise<void> {
+    const line: ServerMessage = { t: "chat", channel: "sect", id: "system", name: "", text, ts: Date.now() };
+    for (const id of new Set(ids)) for (const ws of this.ctx.getWebSockets(id)) this.send(ws, line);
   }
 
   /** Closes the chat sockets of a character (an admin banned the account). Called by the Worker over RPC. */

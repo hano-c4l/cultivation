@@ -162,7 +162,7 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
 - **Giai đoạn 5**: Kinh tế và xã hội (`docs/PHASE5.md`; mới thiết kế)
   - 5a. NPC Vạn Bảo Lâu: mua ngay, đấu giá, tin rao trong thành (làm trước; Linh Thạch hoặc Tiên Ngọc; tin theo từng thành; thuế 10%, phí đăng 2%)
   - 5b. Giao dịch trực tiếp 2 người (chỉ trong thành an toàn)
-  - 5c. Tông môn (Cống Hiến, kỹ năng tông môn)
+  - 5c. Tông môn do người chơi lập (Cống Hiến, kỹ năng tông môn, kho dùng chung, nhiệm vụ, xếp hạng); Cống Hiến là điểm riêng của từng thành viên tông môn; chia 5c-1 lõi, 5c-2 điểm cống hiến và cấp, 5c-3 kho, 5c-4 nhiệm vụ và xếp hạng; thiết kế ở `docs/PHASE5.md`
   - 5d. Thú cưỡi
   - 5e. Nghề phụ (luyện khí)
   - 5f. Dashboard tổng cung tiền và đơn nạp Tiên Ngọc
