@@ -184,6 +184,32 @@ if (pills && herbs) {
   check("the leader takes the last stack out", !!emptied);
 }
 
+// Daily tasks: hand in the items at the NPC, the fund and cống hiến grow, a second hand-in past the limit is refused; the ranking lists the sect.
+await give(pa.id, "thu_cot", 40);
+await sleep(3000);
+const bagA = new Map();
+for (const m of A.g.log) if (m.t === "inv") { if (m.full) bagA.clear(); for (const i of m.items) bagA.set(i.id, i); for (const id of m.removed) bagA.delete(id); }
+check("the leader holds the bones", [...bagA.values()].some((i) => i.type === "thu_cot"));
+const cong0 = [...A.g.log].reverse().find((m) => m.t === "wallet" && m.currency === "cong_hien")?.balance ?? 0;
+for (let k = 0; k < 2; k++) {
+  await sleep(500);
+  m0 = A.g.log.length;
+  A.g.send({ t: "sect_task", npc: "sect", id: "hunt_bone" });
+  const done = await A.g.wait((m) => m.t === "sect" && m.view?.taskDone?.hunt_bone === k + 1, 6000, `task ${k + 1}`, m0).catch(() => null);
+  check(`hand-in ${k + 1} of the bone task goes through`, !!done, done ? `${done.view.fund}` : "no view");
+}
+await sleep(500);
+m0 = A.g.log.length;
+A.g.send({ t: "sect_task", npc: "sect", id: "hunt_bone" });
+const over = await A.g.wait((m) => m.t === "sect_error", 4000, "past the limit", m0).catch(() => null);
+check("a third one the same day is refused", over?.reason === "limit", over?.reason);
+const cong1 = [...A.g.log].reverse().find((m) => m.t === "wallet" && m.currency === "cong_hien")?.balance ?? 0;
+check("and the cống hiến of two hand-ins came (2 x 25)", cong1 - cong0 === 50, `${cong1 - cong0}`);
+await sleep(500);
+A.g.send({ t: "sect_rank" });
+const ranks = await A.g.wait((m) => m.t === "sect_ranks", 4000, "the ranking").catch(() => null);
+check("the ranking lists the sect and where it stands", !!ranks && ranks.sects.length >= 1 && ranks.mine >= 1, ranks ? `${ranks.mine}` : "none");
+
 // Role, application, kick.
 await sleep(400);
 m0 = A.g.log.length;

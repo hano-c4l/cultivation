@@ -177,7 +177,7 @@ function view(c: View, online: boolean, items: Array<{ id: string; nameVi: strin
   const gGrade = sel(["1", "2", "3", "4"], (v) => `phẩm ${v}`);
   const gElement = sel(["", ...GEAR_ELEMENTS], (v) => v || "không hệ");
   const gWeapon = sel(WEAPON_TYPES);
-  const gQty = num(Number(pick.gearQty) || 1, { min: "1", max: "50" });
+  const gQty = num(Number(pick.gearQty) || 1, { min: "1", max: "45" });
   gQty.style.width = "4em";
   const gCode = h("input", { type: "text", placeholder: "mã trang bị, ví dụ eq.charm.u.3.9.4.moc", size: "34" });
   const gWeaponBox = h("span", null, gWeapon);

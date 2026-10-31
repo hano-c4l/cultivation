@@ -19,7 +19,7 @@ import { getItemOverlays } from "./items-live";
 export const CHARACTER_LOG_SCREEN = "Nhân vật";
 export const REVIEW_MS = 30 * 60_000;
 /** The most pieces of gear one "add" puts in the bag. */
-export const MAX_GEAR_AT_ONCE = 50;
+export const MAX_GEAR_AT_ONCE = 45; // one statement a piece plus the guards and the log: a D1 batch holds 50
 
 interface Row {
   id: string;

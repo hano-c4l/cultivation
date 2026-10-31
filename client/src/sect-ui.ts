@@ -1,4 +1,4 @@
-import { REALMS, SECT_RANK, SECT_ROLE_NAMES, VAULT_CATEGORIES, getItemDef, roleOfRank, tuning, vaultPoints, type BagItem, type ClientMessage, type SectError, type SectListItem, type SectRole, type SectVaultItemView, type SectView } from "@game/shared";
+import { REALMS, SECT_RANK, SECT_ROLE_NAMES, VAULT_CATEGORIES, getItemDef, roleOfRank, tuning, vaultPoints, type BagItem, type ClientMessage, type SectError, type SectListItem, type SectRankItem, type SectRole, type SectVaultItemView, type SectView } from "@game/shared";
 import { iconButton, iconFor } from "./icons";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
@@ -14,6 +14,7 @@ export interface SectUi {
   onDir(sects: SectListItem[]): void;
   /** The warehouse list the server sent. */
   onVault(items: SectVaultItemView[]): void;
+  onRanks(sects: SectRankItem[], mine: number | null): void;
   onError(reason: SectError): void;
   /** Someone invites this player. */
   invited(from: string, name: string, sect: string, ttlMs: number): void;
@@ -63,7 +64,8 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
   let dir: SectListItem[] = [];
   let loaded = false;
   let npc: string | null = null;
-  let tab: "members" | "requests" | "shop" | "weekly" | "vault" = "members";
+  let tab: "members" | "requests" | "shop" | "weekly" | "vault" | "tasks" | "rank" = "members";
+  let ranks: { sects: SectRankItem[]; mine: number | null } | null = null;
   let vaultItems: SectVaultItemView[] | null = null;
   let putId = "";
   let putQty = 1;
@@ -158,7 +160,8 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
     const money = el("div", "sect-box");
     money.append(el("div", undefined, vi.sect.fundLine(fmt(v.fund), fmt(v.exp), v.expNeed > 0 ? fmt(v.expNeed) : null)));
     if (v.expNeed > 0 && v.myRank >= c.upgradeRank) {
-      const up = el("button", undefined, vi.sect.upgrade(v.level + 1, fmt(v.expNeed), fmt(v.costLinh)));
+      const costItems = (c.levels[v.level - 1]?.costItems ?? []).map((x) => `${x.qty} ${getItemDef(x.item)?.nameVi ?? x.item}`).join(", ");
+      const up = el("button", undefined, vi.sect.upgrade(v.level + 1, fmt(v.expNeed), fmt(v.costLinh)) + (costItems ? vi.sect.upgradeItems(costItems) : ""));
       up.disabled = v.exp < v.expNeed || v.fund < v.costLinh;
       up.onclick = () => send({ t: "sect_upgrade" });
       money.append(up);
@@ -215,6 +218,7 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
       b.onclick = () => {
         tab = id;
         if (id === "vault" || id === "shop") send({ t: "sect_vault" });
+        if (id === "rank") send({ t: "sect_rank" });
         render();
       };
       tabs.append(b);
@@ -223,6 +227,8 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
     if (canApprove) mk("requests", vi.sect.tabRequests(v.requests.length));
     mk("shop", vi.sect.tabShop);
     mk("vault", vi.sect.tabVault(v.vaultCount, v.vaultSlots));
+    mk("tasks", vi.sect.tabTasks);
+    mk("rank", vi.sect.tabRank);
     if (v.myRank >= c.perms.appoint) mk("weekly", vi.sect.tabWeekly);
     panel.append(tabs);
     if (tab === "shop") {
@@ -262,6 +268,37 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
       }
     } else if (tab === "vault") {
       renderVault(v);
+    } else if (tab === "tasks") {
+      panel.append(el("div", "muted", vi.sect.tasksHint));
+      const held = (type: string) => bag().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0);
+      for (const t of c.tasks) {
+        const done = v.taskDone[t.id] ?? 0;
+        const def = getItemDef(t.item);
+        const row = el("div", "sect-item");
+        const info = el("div", "sect-info");
+        const vaultText = t.reward.vault ? `${getItemDef(t.reward.vault.item)?.nameVi ?? t.reward.vault.item} x${t.reward.vault.qty}` : null;
+        info.append(el("b", undefined, t.name), el("div", "muted", vi.sect.taskNeed(def?.nameVi ?? t.item, t.qty, held(t.item))), el("div", "muted", vi.sect.taskReward(t.reward.contribution, t.reward.exp, fmt(t.reward.fundLinh), fmt(t.reward.memberLinh), vaultText)));
+        const go = el("button", undefined, vi.sect.taskGo(done, t.perDay));
+        go.disabled = done >= t.perDay || v.level < t.minLevel || held(t.item) < t.qty;
+        go.onclick = () => {
+          if (!npc) return notify(vi.sect.errors.npc ?? "", false);
+          send({ t: "sect_task", npc, id: t.id });
+        };
+        row.append(info, go);
+        panel.append(row);
+      }
+    } else if (tab === "rank") {
+      if (!ranks) panel.append(el("div", "muted", vi.sect.loading));
+      else {
+        if (ranks.mine !== null) panel.append(el("div", "tr-note", vi.sect.yourPlace(ranks.mine)));
+        ranks.sects.forEach((s, i) => {
+          const row = el("div", "sect-item");
+          const info = el("div", "sect-info");
+          info.append(el("b", undefined, `${i + 1}. ${s.name}`), el("span", "muted", ` · ${vi.sect.level(s.level)} · ${vi.sect.memberCount(s.members)} · ${vi.sect.leaderIs(s.leader)} · ${vi.sect.expShort(fmt(s.exp))}`));
+          row.append(info);
+          panel.append(row);
+        });
+      }
     } else if (tab === "weekly" && v.myRank >= c.perms.appoint) {
       panel.append(el("div", "muted", vi.sect.weeklyHint));
       const draft = weeklyDraft ?? v.weekly;
@@ -533,6 +570,10 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
     onDir(sects) {
       dir = sects;
       loaded = true;
+      render();
+    },
+    onRanks(sects, mine) {
+      ranks = { sects, mine };
       render();
     },
     onVault(items) {

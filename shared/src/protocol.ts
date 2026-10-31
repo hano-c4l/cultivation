@@ -13,7 +13,7 @@ import type { Tuning } from "./tuning";
 import type { BrewJobView } from "./alchemy";
 import type { MarketCfg, MarketCurrency, MarketKind, MarketListingView } from "./market";
 import type { TradeEnd, TradeError, TradeSideView } from "./trade";
-import { SECT_APPOINTABLE, type SectError, type SectListItem, type SectRole, type SectVaultItemView, type SectView } from "./sect";
+import { SECT_APPOINTABLE, type SectError, type SectListItem, type SectRankItem, type SectRole, type SectVaultItemView, type SectView } from "./sect";
 import type { MerchantDef } from "./merchants";
 import type { MapRecipe, NpcSpot } from "./map";
 import type { ItemOverlay } from "./items";
@@ -136,6 +136,10 @@ export type ClientMessage =
   | { t: "sect_buy"; npc: string; item: string }
   /** Sect: ask for the warehouse list (the Kho tab and the shelf of the shop). */
   | { t: "sect_vault" }
+  /** Sect: hand in the items of a daily task (the player must stand by a sect NPC, `npc`). */
+  | { t: "sect_task"; npc: string; id: string }
+  /** Sect: the ranking of the sects. */
+  | { t: "sect_rank" }
   /** Sect: put `qty` of a bag item in the warehouse (it earns cống hiến if the leader's list takes it). */
   | { t: "sect_put"; id: string; qty: number }
   /** Sect (leader): take a warehouse stack out, to a member (the leader included) by mail. */
@@ -369,6 +373,7 @@ export type ServerMessage =
   | { t: "sect"; view: SectView | null; cooldownUntil: number }
   | { t: "sect_dir"; sects: SectListItem[] }
   | { t: "sect_vault"; items: SectVaultItemView[] }
+  | { t: "sect_ranks"; sects: SectRankItem[]; mine: number | null }
   | { t: "sect_error"; reason: SectError }
   /** Someone invites this player to a sect. */
   | { t: "sect_invite"; from: string; name: string; sect: string; ttlMs: number }
@@ -736,6 +741,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return Array.isArray(m.amounts) && m.amounts.length === 6 && m.amounts.every((n) => isInt(n) && n >= 0 && n <= 1_000_000_000) ? { t: "sect_weekly_set", amounts: m.amounts as number[] } : null;
     case "sect_vault":
       return { t: "sect_vault" };
+    case "sect_task":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.id === "string" && /^[a-z0-9_]{1,24}$/.test(m.id) ? { t: "sect_task", npc: m.npc, id: m.id } : null;
+    case "sect_rank":
+      return { t: "sect_rank" };
     case "sect_put":
       return isId(m.id) && isInt(m.qty) && m.qty >= 1 && m.qty <= 1_000_000 ? { t: "sect_put", id: m.id, qty: m.qty } : null;
     case "sect_take":

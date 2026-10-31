@@ -13,6 +13,20 @@ export type SectResult<T = object> = ({ ok: true } & T) | { ok: false; reason: S
 
 const HOUR_MS = 3_600_000;
 
+/**
+ * What earning cống hiến does, in one place: the member's balance and total grow, a disciple, nội môn or tinh anh takes the rank their total reaches (an elder and above
+ * are appointed and stay), and the sect gets `exp`. Used by a donation, a deposit and a task.
+ */
+export function earnStatements(db: D1Database, cfg: SectCfg, characterId: string, sectId: string, points: number, exp: number): D1PreparedStatement[] {
+  return [
+    db.prepare("UPDATE sect_members SET contribution = contribution + ?, contribution_total = contribution_total + ? WHERE character_id = ?").bind(points, points, characterId),
+    db
+      .prepare("UPDATE sect_members SET rank = CASE WHEN contribution_total >= ? THEN ? WHEN contribution_total >= ? THEN ? ELSE rank END WHERE character_id = ? AND rank < ?")
+      .bind(cfg.autoRanks.elite, SECT_RANK.elite, cfg.autoRanks.inner, SECT_RANK.inner, characterId, SECT_RANK.elder),
+    db.prepare("UPDATE sects SET exp = exp + ? WHERE id = ?").bind(exp, sectId),
+  ];
+}
+
 /** The Việt Nam day a time falls in (the daily cap of deposits counts by it). */
 export const vnDay = (now: number): number => Math.floor((now + 7 * HOUR_MS) / (24 * HOUR_MS));
 
@@ -58,6 +72,8 @@ interface SectRow {
   /** JSON array of what each rank is paid a week (empty: nothing). */
   weekly: string;
   accept: string;
+  income_day: number;
+  income_today: number;
   created_at: number;
 }
 
@@ -448,6 +464,7 @@ export async function sectView(db: D1Database, cfg: SectCfg, characterId: string
     vaultCount: (await db.prepare("SELECT COUNT(*) AS n FROM sect_vault WHERE sect_id = ?").bind(sect.id).first<{ n: number }>())?.n ?? 0,
     vaultSlots: vaultSlotsOf(cfg, sect.level),
     accept: acceptOf(cfg, sect.accept),
+    taskDone: Object.fromEntries(((await db.prepare("SELECT task_id, n FROM sect_task_log WHERE character_id = ? AND day = ?").bind(characterId, vnDay(now)).all<{ task_id: string; n: number }>()).results).map((r) => [r.task_id, r.n])),
     vaultToday: Math.max(0, cfg.vault.dailyCap - (me.vault_day === vnDay(now) ? me.vault_points : 0)),
     members: rows.map((r) => ({ id: r.id, name: r.name, rank: r.rank, lv: r.lv, online: online.has(r.id), joinedAt: r.joined_at, total: r.total })),
     requests,
@@ -484,10 +501,8 @@ export async function donate(db: D1Database, cfg: SectCfg, p: { characterId: str
   try {
     const res = await applyCurrencyDelta(db, { characterId: p.characterId, currency: "linh_thach", delta: -amount, reason: "sect:donate", actor: "system" }, [
       guard(db, "NOT EXISTS (SELECT 1 FROM sect_members WHERE character_id = ? AND sect_id = ?)", p.characterId, me.sect_id),
-      db.prepare("UPDATE sects SET fund = fund + ?, exp = exp + ? WHERE id = ?").bind(amount, exp, me.sect_id),
-      db.prepare("UPDATE sect_members SET contribution = contribution + ?, contribution_total = contribution_total + ? WHERE character_id = ?").bind(points, points, p.characterId),
-      // nội môn and tinh anh are earned: a disciple, nội môn or tinh anh takes the rank their total reaches (an elder and above are appointed and stay)
-      db.prepare("UPDATE sect_members SET rank = CASE WHEN contribution_total >= ? THEN ? WHEN contribution_total >= ? THEN ? ELSE rank END WHERE character_id = ? AND rank < ?").bind(cfg.autoRanks.elite, SECT_RANK.elite, cfg.autoRanks.inner, SECT_RANK.inner, p.characterId, SECT_RANK.elder),
+      db.prepare("UPDATE sects SET fund = fund + ? WHERE id = ?").bind(amount, me.sect_id),
+      ...earnStatements(db, cfg, p.characterId, me.sect_id, points, exp),
       logStatement(db, me.sect_id, p.characterId, "donate", null, `${amount}`, p.now),
     ]);
     if (res.status === "insufficient") return { ok: false, reason: "funds" };
@@ -499,7 +514,41 @@ export async function donate(db: D1Database, cfg: SectCfg, p: { characterId: str
   }
 }
 
-/** A rank that may raises the sect to the next level, paying the sect exp and the Linh Thạch of its fund. */
+/**
+ * The statements that use up `costs` from the warehouse (stacks that are not on the shelf, the smallest first): a stack used whole goes (item and vault row), a stack used in part
+ * keeps its row with less and its points scaled down. Each stack is pinned to the quantity it had when read, so a take or a shelf buy at the same moment makes the batch throw.
+ * Null when the warehouse does not hold enough or more than 20 stacks would be touched.
+ */
+async function vaultUse(db: D1Database, sectId: string, costs: ReadonlyArray<{ item: string; qty: number }>): Promise<D1PreparedStatement[] | null> {
+  const statements: D1PreparedStatement[] = [];
+  let touched = 0;
+  for (const cost of costs) {
+    const rows = (
+      await db.prepare("SELECT item_id, depositor_id, qty, points FROM sect_vault WHERE sect_id = ? AND item_type = ? AND shelf_currency IS NULL ORDER BY qty ASC, item_id").bind(sectId, cost.item).all<{ item_id: string; depositor_id: string; qty: number; points: number }>()
+    ).results;
+    let left = cost.qty;
+    for (const row of rows) {
+      if (left <= 0) break;
+      const take = Math.min(row.qty, left);
+      left -= take;
+      touched++;
+      statements.push(guard(db, "NOT EXISTS (SELECT 1 FROM sect_vault WHERE item_id = ? AND sect_id = ? AND qty = ? AND shelf_currency IS NULL)", row.item_id, sectId, row.qty));
+      if (take === row.qty) {
+        statements.push(db.prepare("DELETE FROM item_instances WHERE id = ? AND owner_character_id = ? AND cell IS NULL AND equip_slot IS NULL").bind(row.item_id, row.depositor_id), db.prepare("DELETE FROM sect_vault WHERE item_id = ?").bind(row.item_id));
+      } else {
+        const rest = row.qty - take;
+        statements.push(
+          db.prepare("UPDATE item_instances SET qty = ? WHERE id = ? AND owner_character_id = ?").bind(rest, row.item_id, row.depositor_id),
+          db.prepare("UPDATE sect_vault SET qty = ?, points = ? WHERE item_id = ?").bind(rest, Math.floor((row.points * rest) / row.qty), row.item_id),
+        );
+      }
+    }
+    if (left > 0) return null;
+  }
+  return touched <= 14 ? statements : null; // 3 statements a stack and 4 more in the upgrade: at most 46 of the 50 a batch may hold
+}
+
+/** A rank that may raises the sect to the next level, paying the sect exp, the Linh Thạch of its fund and the items of its warehouse. */
 export async function upgradeSect(db: D1Database, cfg: SectCfg, p: { actorId: string; now: number }): Promise<SectResult<{ sectId: string; level: number }>> {
   const me = await memberOf(db, p.actorId);
   if (!me) return { ok: false, reason: "no_sect" };
@@ -510,9 +559,12 @@ export async function upgradeSect(db: D1Database, cfg: SectCfg, p: { actorId: st
   const need = { expNeed: sectLevelOf(cfg, sect.level).expNeed, costLinh: upgradeCostOf(cfg, sect.level) };
   if (sect.exp < need.expNeed) return { ok: false, reason: "exp" };
   if (sect.fund < need.costLinh) return { ok: false, reason: "fund" };
+  const items = await vaultUse(db, sect.id, sectLevelOf(cfg, sect.level).costItems ?? []);
+  if (!items) return { ok: false, reason: "lack" };
   const failed = await run(db, [
     guard(db, `NOT EXISTS (SELECT 1 FROM sects WHERE id = ? AND level = ? AND exp >= ? AND fund >= ?)`, sect.id, sect.level, need.expNeed, need.costLinh),
     guard(db, `NOT ${hasRank(p.actorId, sect.id, cfg.upgradeRank).sql}`, ...hasRank(p.actorId, sect.id, cfg.upgradeRank).args),
+    ...items,
     db.prepare("UPDATE sects SET level = level + 1, exp = exp - ?, fund = fund - ? WHERE id = ? AND level = ?").bind(need.expNeed, need.costLinh, sect.id, sect.level),
     logStatement(db, sect.id, p.actorId, "upgrade", null, `${sect.level + 1}`, p.now),
   ]);

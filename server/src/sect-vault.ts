@@ -2,7 +2,7 @@ import { SECT_RANK, assignPieces, disbandShares, getItemDef, splitLinh, stackLim
 import { applyCurrencyDelta } from "./economy";
 import { guard as itemGuard, wearOf, type BagState } from "./inventory";
 import { actorGuard, mailStatement } from "./market";
-import { acceptOf, memberOf, sectById, vnDay, type SectResult } from "./sect";
+import { acceptOf, earnStatements, memberOf, sectById, vnDay, type SectResult } from "./sect";
 
 /**
  * The sect warehouse (docs/PHASE5.md, 5c-3). A stack in it is in escrow exactly like a market listing: the item row stays with the member who put it in, in no cell
@@ -108,13 +108,8 @@ export async function putItem(
   }
   statements.push(
     db.prepare("INSERT INTO sect_vault (item_id, sect_id, depositor_id, item_type, qty, points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(stored, sect.id, p.characterId, item.type, p.qty, credited, p.now),
-    db
-      .prepare("UPDATE sect_members SET contribution = contribution + ?, contribution_total = contribution_total + ?, vault_points = (CASE WHEN vault_day = ? THEN vault_points ELSE 0 END) + ?, vault_day = ? WHERE character_id = ?")
-      .bind(credited, credited, day, credited, day, p.characterId),
-    db
-      .prepare("UPDATE sect_members SET rank = CASE WHEN contribution_total >= ? THEN ? WHEN contribution_total >= ? THEN ? ELSE rank END WHERE character_id = ? AND rank < ?")
-      .bind(cfg.autoRanks.elite, SECT_RANK.elite, cfg.autoRanks.inner, SECT_RANK.inner, p.characterId, SECT_RANK.elder),
-    db.prepare("UPDATE sects SET exp = exp + ? WHERE id = ?").bind(credited * cfg.vault.expPerPoint, sect.id),
+    db.prepare("UPDATE sect_members SET vault_points = (CASE WHEN vault_day = ? THEN vault_points ELSE 0 END) + ?, vault_day = ? WHERE character_id = ?").bind(day, credited, day, p.characterId),
+    ...earnStatements(db, cfg, p.characterId, sect.id, credited, credited * cfg.vault.expPerPoint),
     logStatement(db, sect.id, p.characterId, "put", null, `${item.type} x${p.qty} +${credited}`, p.now),
   );
   try {

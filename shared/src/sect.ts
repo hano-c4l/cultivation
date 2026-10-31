@@ -21,6 +21,32 @@ export interface SectLevelCfg {
   expNeed: number;
   /** The Linh Thạch from the sect's fund that going on to the next level costs. */
   costLinh: number;
+  /** The items from the sect's warehouse (not the ones on the shelf) that going on to the next level uses up. */
+  costItems: Array<{ item: string; qty: number }>;
+}
+
+/** A daily task of the sect: a member hands in items at the sect NPC and the sect and the member are paid (mining, hunting and the rest are the items they bring back). */
+export interface SectTask {
+  id: string;
+  /** What kind of work it stands for (a label: mine, hunt, forge, alchemy, gather). */
+  kind: string;
+  name: string;
+  item: string;
+  qty: number;
+  /** How many times a member can do it a day (Việt Nam time). */
+  perDay: number;
+  minLevel: number;
+  reward: {
+    /** Cống hiến for the member, and kinh nghiệm for the sect. */
+    contribution: number;
+    exp: number;
+    /** Linh Thạch the SYSTEM adds to the fund (scaled by `balance.incomePct`, and capped per day by `taskIncomeCap`). */
+    fundLinh: number;
+    /** Linh Thạch the member is paid out of the fund. */
+    memberLinh: number;
+    /** Items the system puts in the warehouse (scaled by `balance.incomePct`; none past the day's cap or in a full warehouse). */
+    vault?: { item: string; qty: number };
+  };
 }
 
 export interface SectVaultCfg {
@@ -96,6 +122,10 @@ export interface SectCfg {
    * Linh Thạch and the items the system puts into a sect's fund and warehouse (sect quests, 5c-4); 100 is as the tables say.
    */
   balance: { upgradeCostPct: number; incomePct: number };
+  /** The sect's daily tasks (hand-ins). */
+  tasks: SectTask[];
+  /** The most Linh Thạch the tasks can add to a sect's fund in a day, by sect level (index = level - 1; after `balance.incomePct`). Past it a task still pays the member and the exp. */
+  taskIncomeCap: number[];
   /** The sect warehouse (5c-3). */
   vault: SectVaultCfg;
   /** How a closing sect divides its fund and warehouse when the leader chooses "by cống hiến": the share of the whole sect's cống hiến, of the leader and of the deputies (sum 100). */
@@ -116,11 +146,11 @@ export const DEFAULT_SECT: SectCfg = {
   applyMax: 3,
   requestsMax: 50,
   levels: [
-    { maxMembers: 20, expNeed: 500, costLinh: 200_000 },
-    { maxMembers: 35, expNeed: 2000, costLinh: 800_000 },
-    { maxMembers: 50, expNeed: 6000, costLinh: 2_500_000 },
-    { maxMembers: 70, expNeed: 15_000, costLinh: 8_000_000 },
-    { maxMembers: 100, expNeed: 0, costLinh: 0 },
+    { maxMembers: 20, expNeed: 500, costLinh: 200_000, costItems: [{ item: "linh_thao", qty: 50 }] },
+    { maxMembers: 35, expNeed: 2000, costLinh: 800_000, costItems: [{ item: "thu_cot", qty: 100 }] },
+    { maxMembers: 50, expNeed: 6000, costLinh: 2_500_000, costItems: [{ item: "yeu_dan", qty: 30 }] },
+    { maxMembers: 70, expNeed: 15_000, costLinh: 8_000_000, costItems: [{ item: "yeu_dan", qty: 100 }] },
+    { maxMembers: 100, expNeed: 0, costLinh: 0, costItems: [] },
   ],
   perms: { invite: SECT_RANK.elder, approve: SECT_RANK.elder, kick: SECT_RANK.deputy, notice: SECT_RANK.deputy, appoint: SECT_RANK.leader },
   maxDeputies: 2,
@@ -130,6 +160,14 @@ export const DEFAULT_SECT: SectCfg = {
   weeklyMax: [2000, 5000, 10_000, 20_000, 50_000, 100_000],
   upgradeRank: SECT_RANK.deputy,
   balance: { upgradeCostPct: 100, incomePct: 100 },
+  tasks: [
+    { id: "mine", kind: "mine", name: "Đào linh thạch: nộp Tinh Thiết Luyện Khí", item: "ren_lk", qty: 10, perDay: 2, minLevel: 1, reward: { contribution: 20, exp: 10, fundLinh: 3000, memberLinh: 500 } },
+    { id: "hunt_bone", kind: "hunt", name: "Phá hang ổ tà tu: nộp Thú Cốt", item: "thu_cot", qty: 20, perDay: 2, minLevel: 1, reward: { contribution: 25, exp: 12, fundLinh: 2000, memberLinh: 300, vault: { item: "thu_cot", qty: 5 } } },
+    { id: "hunt_dan", kind: "hunt", name: "Diệt yêu thú mạnh: nộp Yêu Đan", item: "yeu_dan", qty: 3, perDay: 1, minLevel: 2, reward: { contribution: 40, exp: 25, fundLinh: 5000, memberLinh: 800 } },
+    { id: "alchemy", kind: "alchemy", name: "Luyện đan cho tông môn: nộp Hồi Huyết Đan", item: "hoi_huyet_dan", qty: 10, perDay: 1, minLevel: 1, reward: { contribution: 30, exp: 15, fundLinh: 1000, memberLinh: 0, vault: { item: "hoi_huyet_dan", qty: 5 } } },
+    { id: "gather", kind: "gather", name: "Hái dược liệu: nộp Linh Thảo", item: "linh_thao", qty: 20, perDay: 2, minLevel: 1, reward: { contribution: 15, exp: 8, fundLinh: 500, memberLinh: 0, vault: { item: "linh_thao", qty: 10 } } },
+  ],
+  taskIncomeCap: [20_000, 60_000, 150_000, 400_000, 1_000_000],
   vault: {
     slots: [60, 100, 160, 240, 360],
     pointsByGrade: [1, 2, 4, 8, 15, 30, 60, 120, 250],
@@ -149,6 +187,24 @@ export const DEFAULT_SECT: SectCfg = {
 
 function inRange(v: unknown, lo: number, hi: number): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi;
+}
+
+const ITEM_ID = /^[A-Za-z0-9_.]{1,80}$/;
+
+function validItems(v: unknown): boolean {
+  return Array.isArray(v) && v.length <= 10 && v.every((x) => typeof x === "object" && x !== null && typeof (x as Record<string, unknown>).item === "string" && ITEM_ID.test((x as Record<string, unknown>).item as string) && inRange((x as Record<string, unknown>).qty, 1, 100_000));
+}
+
+function validTask(t: unknown): boolean {
+  if (typeof t !== "object" || t === null) return false;
+  const x = t as Record<string, unknown>;
+  const r = x.reward as Record<string, unknown> | undefined;
+  if (typeof x.id !== "string" || !/^[a-z0-9_]{1,24}$/.test(x.id) || typeof x.kind !== "string" || !/^[a-z]{1,16}$/.test(x.kind) || typeof x.name !== "string" || x.name.length < 1 || x.name.length > 80) return false;
+  if (typeof x.item !== "string" || !ITEM_ID.test(x.item) || !inRange(x.qty, 1, 100_000) || !inRange(x.perDay, 1, 100) || !inRange(x.minLevel, 1, 30)) return false;
+  if (typeof r !== "object" || r === null) return false;
+  if (!inRange(r.contribution, 0, 1_000_000) || !inRange(r.exp, 0, 1_000_000) || !inRange(r.fundLinh, 0, 1_000_000_000) || !inRange(r.memberLinh, 0, 1_000_000_000)) return false;
+  const v = r.vault as Record<string, unknown> | undefined;
+  return v === undefined || (typeof v === "object" && v !== null && typeof v.item === "string" && ITEM_ID.test(v.item) && inRange(v.qty, 1, 100_000));
 }
 
 function validVault(v: Record<string, unknown>): boolean {
@@ -175,7 +231,14 @@ export function validSect(v: unknown): v is SectCfg {
     Array.isArray(c.levels) &&
     c.levels.length >= 1 &&
     c.levels.length <= 30 &&
-    c.levels.every((l) => typeof l === "object" && l !== null && inRange((l as Record<string, unknown>).maxMembers, 1, 1000) && inRange((l as Record<string, unknown>).expNeed, 0, 1_000_000_000) && inRange((l as Record<string, unknown>).costLinh, 0, 1_000_000_000)) &&
+    c.levels.every((l) => typeof l === "object" && l !== null && inRange((l as Record<string, unknown>).maxMembers, 1, 1000) && inRange((l as Record<string, unknown>).expNeed, 0, 1_000_000_000) && inRange((l as Record<string, unknown>).costLinh, 0, 1_000_000_000) && validItems((l as Record<string, unknown>).costItems)) &&
+    Array.isArray(c.taskIncomeCap) &&
+    c.taskIncomeCap.length >= 1 &&
+    c.taskIncomeCap.length <= 30 &&
+    c.taskIncomeCap.every((n) => inRange(n, 0, 1_000_000_000)) &&
+    Array.isArray(c.tasks) &&
+    c.tasks.length <= 30 &&
+    c.tasks.every(validTask) &&
     typeof p === "object" &&
     p !== null &&
     (["invite", "approve", "kick", "notice", "appoint"] as const).every((k) => inRange(p[k], 0, SECT_RANK.leader)) &&
@@ -352,6 +415,16 @@ export interface SectMemberView {
   total: number;
 }
 
+/** One line of the ranking of the sects. */
+export interface SectRankItem {
+  id: string;
+  name: string;
+  level: number;
+  exp: number;
+  members: number;
+  leader: string;
+}
+
 export interface SectView {
   id: string;
   name: string;
@@ -380,6 +453,8 @@ export interface SectView {
   accept: SectAccept;
   /** The cống hiến this player can still earn from deposits today. */
   vaultToday: number;
+  /** How many times the player did each task today (by task id). */
+  taskDone: Record<string, number>;
 }
 
 /** One stack in the warehouse (sent when the Kho tab opens). */
@@ -432,7 +507,9 @@ export type SectError =
   | "poor"
   | "bag"
   | "value"
-  | "vault_full";
+  | "vault_full"
+  | "lack"
+  | "task";
 
 /** The lines the sect says in its own channel (the server sends them; Vietnamese, like the boss announcements). */
 export const SECT_SAY = {
