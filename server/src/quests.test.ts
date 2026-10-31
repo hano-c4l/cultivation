@@ -288,7 +288,9 @@ describe("path quests", () => {
     for (const q of EXTRA_QUESTS.filter((x) => x.path)) {
       const line = sql.split(String.fromCharCode(10)).find((x) => x.includes(`{"id":"${q.id}"`));
       expect(line, q.id).toBeDefined();
-      expect(JSON.parse(line!.slice(line!.indexOf("'{") + 1, line!.lastIndexOf("}'") + 1))).toEqual(JSON.parse(JSON.stringify(q)));
+      const stored = JSON.parse(line!.slice(line!.indexOf("'{") + 1, line!.lastIndexOf("}'") + 1)) as { rewards: { congHien?: number } };
+      delete stored.rewards.congHien; // migration 0063 takes the Cống Hiến reward out of the stored definitions
+      expect(stored).toEqual(JSON.parse(JSON.stringify(q)));
     }
     expect(sql).toMatch(/UPDATE config_versions SET version = version \+ 1/);
   });
@@ -318,7 +320,9 @@ describe("path quests", () => {
     for (const q of DAILY_QUESTS) {
       const line = sql.split(String.fromCharCode(10)).find((x) => x.includes(`{"id":"${q.id}"`));
       expect(line, q.id).toBeDefined();
-      expect(JSON.parse(line!.slice(line!.indexOf("'{") + 1, line!.lastIndexOf("}'") + 1))).toEqual(JSON.parse(JSON.stringify(q)));
+      const stored = JSON.parse(line!.slice(line!.indexOf("'{") + 1, line!.lastIndexOf("}'") + 1)) as { rewards: { congHien?: number } };
+      delete stored.rewards.congHien; // migration 0063 takes the Cống Hiến reward out of the stored definitions
+      expect(stored).toEqual(JSON.parse(JSON.stringify(q)));
     }
     expect(sql).toMatch(/UPDATE config_versions SET version = version \+ 1/);
   });
@@ -364,7 +368,7 @@ describe("Cống Hiến and daily quests", () => {
   const DAY = 86_400_000;
   const T0 = 20_000 * DAY + 3 * 3_600_000; // 10:00 Vietnam time on some day
 
-  it("a quest pays Linh Thạch and Cống Hiến together, each counted in its own totals", async () => {
+  it("a quest pays its Linh Thạch, counted in the quest totals (and no Cống Hiến)", async () => {
     const d = def("daily_herb");
     await acceptQuest(db, A, d.id, T0, true);
     await give("linh_thao", 10);
@@ -372,14 +376,13 @@ describe("Cống Hiến and daily quests", () => {
     const plan = planTurnIn(d, { items: bag.items, equipped: bag.equipped }, bag.tabs, character(), newId);
     if (!plan.ok) throw new Error("plan");
     const r = await commitTurnIn(db, A, d, plan, false, T0);
-    expect(r).toMatchObject({ status: "done", balance: 100, congHien: 8 });
+    expect(r).toMatchObject({ status: "done", balance: 100, congHien: null });
     expect(wallet("linh_thach")).toBe(100);
-    expect(wallet("cong_hien")).toBe(8);
+    expect(wallet("cong_hien")).toBe(0);
     expect(raw.prepare("SELECT total_in FROM linh_thach_totals WHERE character_id = ? AND grp = 'quest'").get(A)).toEqual({ total_in: 100 });
-    expect(raw.prepare("SELECT total_in FROM cong_hien_totals WHERE character_id = ? AND grp = 'quest'").get(A)).toEqual({ total_in: 8 });
   });
 
-  it("a Cống Hiến-only reward works too", async () => {
+  it("a Cống Hiến reward in an old definition pays nothing (it is the sect's now)", async () => {
     const q: QuestDef = { ...def("daily_herb"), id: "cong_only", rewards: { congHien: 5 } };
     raw.prepare("INSERT INTO character_quests (character_id, quest_id, state, progress, accepted_at) VALUES (?, 'cong_only', 'active', 0, 1)").run(A);
     await give("linh_thao", 10);
@@ -387,8 +390,8 @@ describe("Cống Hiến and daily quests", () => {
     const plan = planTurnIn(q, { items: bag.items, equipped: bag.equipped }, bag.tabs, character(), newId);
     if (!plan.ok) throw new Error("plan");
     const r = await commitTurnIn(db, A, q, plan, false, T0);
-    expect(r).toMatchObject({ status: "done", balance: null, congHien: 5 });
-    expect(wallet("cong_hien")).toBe(5);
+    expect(r).toMatchObject({ status: "done", balance: null, congHien: null });
+    expect(wallet("cong_hien")).toBe(0);
   });
 
   it("a daily quest is open again the next Vietnam day, and its reward is one-time per day", async () => {
@@ -408,7 +411,7 @@ describe("Cống Hiến and daily quests", () => {
     expect(questStatus(d, rows, T0 + DAY)).toBe("available"); // the next day
     await expect(acceptQuest(db, A, d.id, T0 + 3_600_000, true)).rejects.toThrow(); // the same day: the finished row stays, so the insert fails
     expect((await finish(T0 + DAY)).status).toBe("done");
-    expect(wallet("cong_hien")).toBe(16);
+    expect(wallet("cong_hien")).toBe(0);
     expect(count("linh_thao")).toBe(0);
   });
 });

@@ -77,6 +77,34 @@ const made = await A.g.wait((m) => m.t === "sect" && m.view, 8000, "sect view", 
 check("the leader founds a sect and gets its window", !!made && made.view.myRank === 5 && made.view.members.length === 1, made ? made.view.name : "no view");
 await sleep(500);
 
+// Cống hiến: give Linh Thạch, buy from the shop, set and take the weekly pay.
+await sleep(400);
+m0 = A.g.log.length;
+A.g.send({ t: "sect_donate", amount: 10000 });
+const gave = await A.g.wait((m) => m.t === "sect" && m.view?.fund === 10000, 6000, "donation", m0).catch(() => null);
+check("giving Linh Thạch fills the fund and earns cống hiến", !!gave && gave.view.contribution === 100 && gave.view.exp === 50, gave ? `${gave.view.contribution}/${gave.view.exp}` : "no view");
+const cong = [...A.g.log].reverse().find((m) => m.t === "wallet" && m.currency === "cong_hien");
+check("the Cống Hiến slot of the wallet shows it", cong?.balance === 100, `${cong?.balance}`);
+await sleep(400);
+m0 = A.g.log.length;
+A.g.send({ t: "sect_buy", npc: "sect", item: "hoi_huyet_dan" });
+const bought = await A.g.wait((m) => m.t === "inv" && m.items?.some((i) => i.type === "hoi_huyet_dan"), 6000, "the pill", m0).catch(() => null);
+await sleep(600);
+const cong2 = [...A.g.log].reverse().find((m) => m.t === "wallet" && m.currency === "cong_hien");
+check("a shop line costs cống hiến and puts the item in the bag", !!bought && cong2?.balance === 90, `${cong2?.balance}`);
+await sleep(400);
+A.g.send({ t: "sect_weekly_set", amounts: [0, 0, 0, 0, 0, 500] });
+await sleep(1000);
+m0 = A.g.log.length;
+A.g.send({ t: "sect_weekly" });
+const paid = await A.g.wait((m) => m.t === "sect" && m.view?.weeklyClaimed === true, 6000, "weekly pay", m0).catch(() => null);
+check("the leader takes the weekly pay from the fund, once", !!paid && paid.view.fund === 9500, paid ? `${paid.view.fund}` : "no view");
+await sleep(400);
+m0 = A.g.log.length;
+A.g.send({ t: "sect_weekly" });
+const again = await A.g.wait((m) => m.t === "sect_error", 4000, "second claim", m0).catch(() => null);
+check("a second claim the same week is refused", again?.reason === "claimed", again?.reason);
+
 // A short-pursed character cannot found one; a far one is refused.
 m0 = B.g.log.length;
 B.g.send({ t: "sect_create", npc: "sect", name: "Khong Du" });

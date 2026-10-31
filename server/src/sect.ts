@@ -1,4 +1,4 @@
-import { SECT_RANK, sectMaxMembers, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
+import { SECT_RANK, earnedRank, sectLevelOf, upgradeCostOf, sectMaxMembers, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
 import { applyCurrencyDelta } from "./economy";
 import { filterChat } from "./chat";
 import { actorGuard } from "./market";
@@ -30,6 +30,8 @@ interface SectRow {
   exp: number;
   fund: number;
   notice: string;
+  /** JSON array of what each rank is paid a week (empty: nothing). */
+  weekly: string;
   created_at: number;
 }
 
@@ -264,7 +266,8 @@ export async function setRole(db: D1Database, cfg: SectCfg, p: { actorId: string
     [
       guard(db, "NOT EXISTS (SELECT 1 FROM sect_members a JOIN sect_members t ON t.sect_id = a.sect_id WHERE a.character_id = ? AND t.character_id = ? AND a.rank >= ? AND a.rank > t.rank)", p.actorId, p.targetId, cfg.perms.appoint),
       ...(Number.isFinite(cap) ? [guard(db, "(SELECT COUNT(*) FROM sect_members WHERE sect_id = ? AND rank = ? AND character_id <> ?) >= ?", me.sect_id, rank, p.targetId, cap)] : []),
-      db.prepare("UPDATE sect_members SET rank = ? WHERE character_id = ? AND sect_id = ?").bind(rank, p.targetId, me.sect_id),
+      // stepping down to disciple lands on the rank the member's cống hiến has earned (not below it)
+      db.prepare("UPDATE sect_members SET rank = ? WHERE character_id = ? AND sect_id = ?").bind(p.role === "disciple" ? earnedRank(cfg, target.contribution_total) : rank, p.targetId, me.sect_id),
       logStatement(db, me.sect_id, p.actorId, "role", p.targetId, p.role, p.now),
     ],
     "limit",
@@ -379,8 +382,30 @@ export async function removeCharacter(db: D1Database, characterId: string, now: 
   ]);
 }
 
+/** The week a time falls in: weeks start on Monday 0:00 in the cfg time zone (Việt Nam, UTC+7), counted from the first Monday of 1970. */
+export const weekOf = (now: number, tzHours = 7): number => Math.floor((now + tzHours * HOUR_MS - 4 * DAY_MS) / (7 * DAY_MS));
+
+/** What each rank is paid a week: the leader's setting, never above the cap of the rank. */
+export function weeklyOf(cfg: SectCfg, json: string): number[] {
+  let parsed: unknown = [];
+  try {
+    parsed = json ? JSON.parse(json) : [];
+  } catch {
+    parsed = [];
+  }
+  return cfg.weeklyMax.map((cap, i) => {
+    const n = Array.isArray(parsed) ? parsed[i] : 0;
+    return typeof n === "number" && Number.isInteger(n) && n > 0 ? Math.min(n, cap) : 0;
+  });
+}
+
+/** A member's cống hiến (0 when in no sect): what the Cống Hiến slot of the wallet shows. */
+export async function contributionOf(db: D1Database, characterId: string): Promise<number> {
+  return (await db.prepare("SELECT contribution FROM sect_members WHERE character_id = ?").bind(characterId).first<{ contribution: number }>())?.contribution ?? 0;
+}
+
 /** What the sect window shows a member. `online` says which characters are connected right now. */
-export async function sectView(db: D1Database, cfg: SectCfg, characterId: string, online: ReadonlySet<string>): Promise<SectView | null> {
+export async function sectView(db: D1Database, cfg: SectCfg, characterId: string, online: ReadonlySet<string>, now = Date.now()): Promise<SectView | null> {
   const me = await memberOf(db, characterId);
   if (!me) return null;
   const sect = await sectById(db, me.sect_id);
@@ -402,6 +427,8 @@ export async function sectView(db: D1Database, cfg: SectCfg, characterId: string
             .all<{ id: string; name: string; lv: number; at: number }>()
         ).results
       : [];
+  const weekly = weeklyOf(cfg, sect.weekly);
+  const claimed = !!(await db.prepare("SELECT 1 AS x FROM sect_weekly WHERE character_id = ? AND week = ?").bind(characterId, weekOf(now)).first());
   return {
     id: sect.id,
     name: sect.name,
@@ -411,6 +438,11 @@ export async function sectView(db: D1Database, cfg: SectCfg, characterId: string
     fund: sect.fund,
     exp: sect.exp,
     myRank: me.rank,
+    expNeed: sectLevelOf(cfg, sect.level).expNeed,
+    costLinh: upgradeCostOf(cfg, sect.level),
+    weekly,
+    weeklyPay: weekly[me.rank] ?? 0,
+    weeklyClaimed: claimed,
     members: rows.map((r) => ({ id: r.id, name: r.name, rank: r.rank, lv: r.lv, online: online.has(r.id), joinedAt: r.joined_at, total: r.total })),
     requests,
     contribution: me.contribution,
@@ -433,4 +465,115 @@ export async function sectDirectory(db: D1Database, cfg: SectCfg, characterId: s
 /** Every member of a sect (ids), for telling them something changed. */
 export async function memberIds(db: D1Database, sectId: string): Promise<string[]> {
   return (await db.prepare("SELECT character_id FROM sect_members WHERE sect_id = ?").bind(sectId).all<{ character_id: string }>()).results.map((r) => r.character_id);
+}
+
+/** The member gives Linh Thạch to the sect: the fund and the sect's exp grow, and the member earns cống hiến (and a total for the ranks). */
+export async function donate(db: D1Database, cfg: SectCfg, p: { characterId: string; amount: unknown; now: number }): Promise<SectResult<{ sectId: string; contribution: number; balance: number }>> {
+  const amount = p.amount;
+  if (typeof amount !== "number" || !Number.isInteger(amount) || amount < cfg.donate.min || amount > 1_000_000_000) return { ok: false, reason: "invalid" };
+  const me = await memberOf(db, p.characterId);
+  if (!me) return { ok: false, reason: "no_sect" };
+  const points = Math.floor(amount / cfg.donate.linhPerPoint);
+  const exp = Math.floor(amount / cfg.donate.linhPerExp);
+  try {
+    const res = await applyCurrencyDelta(db, { characterId: p.characterId, currency: "linh_thach", delta: -amount, reason: "sect:donate", actor: "system" }, [
+      guard(db, "NOT EXISTS (SELECT 1 FROM sect_members WHERE character_id = ? AND sect_id = ?)", p.characterId, me.sect_id),
+      db.prepare("UPDATE sects SET fund = fund + ?, exp = exp + ? WHERE id = ?").bind(amount, exp, me.sect_id),
+      db.prepare("UPDATE sect_members SET contribution = contribution + ?, contribution_total = contribution_total + ? WHERE character_id = ?").bind(points, points, p.characterId),
+      // nội môn and tinh anh are earned: a disciple, nội môn or tinh anh takes the rank their total reaches (an elder and above are appointed and stay)
+      db.prepare("UPDATE sect_members SET rank = CASE WHEN contribution_total >= ? THEN ? WHEN contribution_total >= ? THEN ? ELSE rank END WHERE character_id = ? AND rank < ?").bind(cfg.autoRanks.elite, SECT_RANK.elite, cfg.autoRanks.inner, SECT_RANK.inner, p.characterId, SECT_RANK.elder),
+      logStatement(db, me.sect_id, p.characterId, "donate", null, `${amount}`, p.now),
+    ]);
+    if (res.status === "insufficient") return { ok: false, reason: "funds" };
+    if (res.status !== "applied") return { ok: false, reason: "gone" };
+    return { ok: true, sectId: me.sect_id, contribution: me.contribution + points, balance: res.balance };
+  } catch (err) {
+    if (isGuardFailure(err)) return { ok: false, reason: "gone" };
+    throw err;
+  }
+}
+
+/** A rank that may raises the sect to the next level, paying the sect exp and the Linh Thạch of its fund. */
+export async function upgradeSect(db: D1Database, cfg: SectCfg, p: { actorId: string; now: number }): Promise<SectResult<{ sectId: string; level: number }>> {
+  const me = await memberOf(db, p.actorId);
+  if (!me) return { ok: false, reason: "no_sect" };
+  if (me.rank < cfg.upgradeRank) return { ok: false, reason: "perm" };
+  const sect = await sectById(db, me.sect_id);
+  if (!sect) return { ok: false, reason: "gone" };
+  if (sect.level >= cfg.levels.length) return { ok: false, reason: "limit" };
+  const need = { expNeed: sectLevelOf(cfg, sect.level).expNeed, costLinh: upgradeCostOf(cfg, sect.level) };
+  if (sect.exp < need.expNeed) return { ok: false, reason: "exp" };
+  if (sect.fund < need.costLinh) return { ok: false, reason: "fund" };
+  const failed = await run(db, [
+    guard(db, `NOT EXISTS (SELECT 1 FROM sects WHERE id = ? AND level = ? AND exp >= ? AND fund >= ?)`, sect.id, sect.level, need.expNeed, need.costLinh),
+    guard(db, `NOT ${hasRank(p.actorId, sect.id, cfg.upgradeRank).sql}`, ...hasRank(p.actorId, sect.id, cfg.upgradeRank).args),
+    db.prepare("UPDATE sects SET level = level + 1, exp = exp - ?, fund = fund - ? WHERE id = ? AND level = ?").bind(need.expNeed, need.costLinh, sect.id, sect.level),
+    logStatement(db, sect.id, p.actorId, "upgrade", null, `${sect.level + 1}`, p.now),
+  ]);
+  return failed ? { ok: false, reason: failed } : { ok: true, sectId: sect.id, level: sect.level + 1 };
+}
+
+/** The leader sets what each rank is paid a week (never above the cap of its rank). */
+export async function setWeekly(db: D1Database, cfg: SectCfg, p: { actorId: string; amounts: unknown; now: number }): Promise<SectResult<{ sectId: string }>> {
+  const me = await memberOf(db, p.actorId);
+  if (!me) return { ok: false, reason: "no_sect" };
+  if (me.rank < cfg.perms.appoint) return { ok: false, reason: "perm" };
+  const a = p.amounts;
+  if (!Array.isArray(a) || a.length !== cfg.weeklyMax.length || !a.every((n, i) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= (cfg.weeklyMax[i] ?? 0))) return { ok: false, reason: "invalid" };
+  const failed = await run(db, [
+    guard(db, `NOT ${hasRank(p.actorId, me.sect_id, cfg.perms.appoint).sql}`, ...hasRank(p.actorId, me.sect_id, cfg.perms.appoint).args),
+    db.prepare("UPDATE sects SET weekly = ? WHERE id = ?").bind(JSON.stringify(a), me.sect_id),
+    logStatement(db, me.sect_id, p.actorId, "weekly_set", null, JSON.stringify(a), p.now),
+  ]);
+  return failed ? { ok: false, reason: failed } : { ok: true, sectId: me.sect_id };
+}
+
+/** A member takes this week's pay for their rank, from the fund: once a week. */
+export async function claimWeekly(db: D1Database, cfg: SectCfg, p: { characterId: string; now: number }): Promise<SectResult<{ sectId: string; amount: number; balance: number }>> {
+  const me = await memberOf(db, p.characterId);
+  if (!me) return { ok: false, reason: "no_sect" };
+  const sect = await sectById(db, me.sect_id);
+  if (!sect) return { ok: false, reason: "gone" };
+  const amount = weeklyOf(cfg, sect.weekly)[me.rank] ?? 0;
+  if (amount <= 0) return { ok: false, reason: "gone" };
+  const week = weekOf(p.now);
+  if (await db.prepare("SELECT 1 AS x FROM sect_weekly WHERE character_id = ? AND week = ?").bind(p.characterId, week).first()) return { ok: false, reason: "claimed" };
+  if (sect.fund < amount) return { ok: false, reason: "fund" };
+  try {
+    const res = await applyCurrencyDelta(db, { characterId: p.characterId, currency: "linh_thach", delta: amount, reason: "sect:weekly", actor: "system" }, [
+      guard(db, "NOT EXISTS (SELECT 1 FROM sect_members WHERE character_id = ? AND sect_id = ? AND rank = ?)", p.characterId, me.sect_id, me.rank),
+      db.prepare("INSERT INTO sect_weekly (character_id, week, claimed_at) VALUES (?, ?, ?)").bind(p.characterId, week, p.now),
+      db.prepare("UPDATE sects SET fund = fund - ? WHERE id = ?").bind(amount, me.sect_id), // the CHECK on fund throws when it cannot pay
+      logStatement(db, me.sect_id, p.characterId, "weekly", null, `${amount}`, p.now),
+    ]);
+    if (res.status !== "applied") return { ok: false, reason: "gone" };
+    return { ok: true, sectId: me.sect_id, amount, balance: res.balance };
+  } catch (err) {
+    const text = String(err);
+    if (/sect_weekly/.test(text)) return { ok: false, reason: "claimed" };
+    if (/fund/.test(text)) return { ok: false, reason: "fund" };
+    if (isGuardFailure(err)) return { ok: false, reason: "gone" };
+    throw err;
+  }
+}
+
+/** Why `characterId` cannot buy `item` from the sect shop now, or the shop line when they can. */
+export async function shopCheck(db: D1Database, cfg: SectCfg, characterId: string, item: string): Promise<SectResult<{ entry: SectCfg["shop"][number]; sectId: string }>> {
+  const entry = cfg.shop.find((s) => s.item === item);
+  if (!entry) return { ok: false, reason: "item" };
+  const me = await memberOf(db, characterId);
+  if (!me) return { ok: false, reason: "no_sect" };
+  const sect = await sectById(db, me.sect_id);
+  if (!sect || sect.level < entry.minLevel || me.rank < entry.minRank) return { ok: false, reason: "perm" };
+  if (me.contribution < entry.cost) return { ok: false, reason: "poor" };
+  return { ok: true, entry, sectId: sect.id };
+}
+
+/** The statements that take the price from the member's cống hiến (they ride in the batch that puts the item in the bag, so neither happens alone). */
+export function shopPayStatements(db: D1Database, p: { characterId: string; sectId: string; cost: number; item: string; now: number }): D1PreparedStatement[] {
+  return [
+    guard(db, "NOT EXISTS (SELECT 1 FROM sect_members WHERE character_id = ? AND sect_id = ? AND contribution >= ?)", p.characterId, p.sectId, p.cost),
+    db.prepare("UPDATE sect_members SET contribution = contribution - ? WHERE character_id = ?").bind(p.cost, p.characterId),
+    logStatement(db, p.sectId, p.characterId, "shop", null, `${p.item} ${p.cost}`, p.now),
+  ];
 }

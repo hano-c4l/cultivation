@@ -46,6 +46,7 @@ export function giftProblem(gift: GiftAttachments, claiming = false): "empty" | 
     const v = gift[c];
     if (v === undefined || v === 0) continue;
     if (!Number.isInteger(v) || v < 0 || v > MAX_LEDGER_AMOUNT) return "currency";
+    if (c === "cong_hien" && !claiming) return "currency"; // Cống Hiến is a sect member's contribution: it cannot be given (a gift sent before still claims)
     any = true;
   }
   if (!Array.isArray(gift.items)) return "item";

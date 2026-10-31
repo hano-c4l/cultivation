@@ -237,7 +237,7 @@ export async function commitTurnIn(
   statements.push(db.prepare("UPDATE character_quests SET state = 'done', done_at = ? WHERE character_id = ? AND quest_id = ? AND state = 'active'").bind(now, characterId, def.id));
   try {
     const linh = def.rewards.linhThach ?? 0;
-    const cong = def.rewards.congHien ?? 0;
+    const cong = 0; // Cống Hiến is the sect's now (a member's contribution): a quest no longer pays it, whatever an old definition says
     // The first currency in the reward goes through applyCurrencyDelta and the other one rides in the same batch as plain statements. The
     // one-time guard is the grant key in item_grants (the first statement of the batch), so the currency changes carry no key of their own.
     const traceMin = await linhThachTraceMin(db);

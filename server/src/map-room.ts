@@ -199,7 +199,7 @@ import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
 import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
-import { acceptInvite, answerRequest, applyTo, cooldownUntil, createSect, disbandSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
+import { acceptInvite, answerRequest, applyTo, claimWeekly, contributionOf, cooldownUntil, createSect, donate, setWeekly, shopCheck, shopPayStatements, upgradeSect, disbandSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
 import { hasRoomFor, newSession, otherSide, planTrade, setConfirm, setLock, setOffer, sideOf, type TradeSession } from "./trade";
 import { buyFixed, cancelListing, listingViews, placeBid, postListing, promoteListing, settleDue } from "./market";
 
@@ -527,6 +527,8 @@ export class MapRoom extends DurableObject<Env> {
         console.error("wallet read failed", err);
         return { ...EMPTY_WALLET };
       });
+      // The Cống Hiến slot of the wallet shows the member's cống hiến in their sect (0 with none).
+      wallet.cong_hien = await contributionOf(this.env.DB, row.id).catch(() => 0);
 
       // The bag and the mail are read here too (before accepting), for the same reason as the wallet.
       const joinedAt = Date.now();
@@ -768,6 +770,11 @@ export class MapRoom extends DurableObject<Env> {
       case "sect_transfer":
       case "sect_disband":
       case "sect_notice":
+      case "sect_donate":
+      case "sect_upgrade":
+      case "sect_weekly":
+      case "sect_weekly_set":
+      case "sect_buy":
         return this.handleSect(ws, state, msg);
       case "mount":
         this.standUp(ws, "moved");
@@ -2525,7 +2532,6 @@ export class MapRoom extends DurableObject<Env> {
       this.bags.set(id, after);
       this.sendBagDelta(id, bag, after);
       if (r.balance !== null) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance, gained: def.rewards.linhThach });
-      if (r.congHien !== null) this.sendToCharacter(id, { t: "wallet", currency: "cong_hien", balance: r.congHien, gained: def.rewards.congHien });
       if (plan.exp) this.sendToCharacter(id, { t: "stats", character: toCharacterSheet({ ...row, stage: plan.exp.to.stage, exp: plan.exp.to.exp, potential_points: row.potential_points + plan.exp.to.points }) });
       rows[def.id] = { state: "done", progress: mine.progress, at: mine.at, done: Date.now() };
       this.sendToCharacter(id, { t: "quest_done", quest: def.id });
@@ -2844,13 +2850,14 @@ export class MapRoom extends DurableObject<Env> {
         await this.sectTell(ids.map((x): [string, string] => [x, mine.sect_id]), { ids, text: SECT_SAY.succeed(name) });
       }
     }
-    const view = await sectView(this.env.DB, cfg, id, new Set());
+    const view = await sectView(this.env.DB, cfg, id, new Set(), now);
     if (view) {
       const online = await this.chatHub().onlineOf(view.members.map((m) => m.id)).catch(() => [] as string[]);
       const set = new Set(online);
       for (const m of view.members) m.online = set.has(m.id);
     }
     this.send(ws, { t: "sect", view, cooldownUntil: view ? 0 : await cooldownUntil(this.env.DB, id) });
+    this.send(ws, { t: "wallet", currency: "cong_hien", balance: view?.contribution ?? 0 });
     // A player with no sect is shown the sects to apply to along with it (one read of the window instead of two).
     if (!view) this.send(ws, { t: "sect_dir", sects: await sectDirectory(this.env.DB, cfg, id) });
     await this.syncSectLabel(id);
@@ -2873,6 +2880,12 @@ export class MapRoom extends DurableObject<Env> {
       const refresh = async (sectId: string, gone: string[], say?: string, affected: string[] = []) => {
         const ids = await memberIds(this.env.DB, sectId);
         await this.sectTell([...ids.map((x): [string, string | null] => [x, sectId]), ...gone.map((x): [string, string | null] => [x, null])], say ? { ids: [...ids, ...gone], text: say } : undefined, [...gone, ...affected]);
+      };
+      const fmtN = (n: number) => n.toLocaleString("vi-VN");
+      /** The Linh Thạch of the wallet and the Cống Hiến slot, after a command moved either. */
+      const sendWallets = async (linh: number | null) => {
+        if (linh !== null) this.send(ws, { t: "wallet", currency: "linh_thach", balance: linh });
+        this.send(ws, { t: "wallet", currency: "cong_hien", balance: await contributionOf(this.env.DB, me) });
       };
       switch (msg.t) {
         case "sect_get":
@@ -2965,6 +2978,49 @@ export class MapRoom extends DurableObject<Env> {
             res.members,
           );
           return;
+        }
+        case "sect_donate": {
+          const res = await donate(this.env.DB, cfg, { characterId: me, amount: msg.amount, now });
+          if (!res.ok) return fail(res.reason);
+          await sendWallets(res.balance);
+          await refresh(res.sectId, [], SECT_SAY.donated(state.name, fmtN(msg.amount)));
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_upgrade": {
+          const res = await upgradeSect(this.env.DB, cfg, { actorId: me, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [], SECT_SAY.upgraded(res.level));
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_weekly": {
+          const res = await claimWeekly(this.env.DB, cfg, { characterId: me, now });
+          if (!res.ok) return fail(res.reason);
+          await sendWallets(res.balance);
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_weekly_set": {
+          const res = await setWeekly(this.env.DB, cfg, { actorId: me, amounts: msg.amounts, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, []);
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_buy": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          const chk = await shopCheck(this.env.DB, cfg, me, msg.item);
+          if (!chk.ok) return fail(chk.reason);
+          if (!getItemDef(chk.entry.item)) return fail("item");
+          await this.bagTask(me, async () => {
+            const res = await this.mutateBag(me, (bag) => {
+              const ops = planAdd(bag.items, bag.tabs, chk.entry.item, chk.entry.qty, () => crypto.randomUUID());
+              return ops ? { ops, extra: shopPayStatements(this.env.DB, { characterId: me, sectId: chk.sectId, cost: chk.entry.cost, item: chk.entry.item, now }) } : null;
+            });
+            if (!res.ok) return fail(res.reason === "invalid" ? "bag" : "poor");
+            this.sendBagDelta(me, res.before, res.after);
+            await sendWallets(null);
+          });
+          return this.sendSect(ws, me, cfg, now);
         }
         case "sect_notice": {
           const res = await setNotice(this.env.DB, cfg, { actorId: me, text: msg.text, now });
@@ -3966,7 +4022,8 @@ export class MapRoom extends DurableObject<Env> {
         const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
         this.bags.set(id, after);
         this.sendBagDelta(id, bag, after);
-        for (const currency of ["linh_thach", "cong_hien", "tien_ngoc"] as const) {
+        for (const currency of ["linh_thach", "tien_ngoc"] as const) {
+          // (Cống Hiến is not sent: the slot shows the sect member's cống hiến, not the old ledger balance an old gift may still have credited.)
           const gained = r.given[currency];
           if (gained) this.sendToCharacter(id, { t: "wallet", currency, balance: r.wallet[currency], gained });
         }

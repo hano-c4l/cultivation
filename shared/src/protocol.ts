@@ -123,6 +123,16 @@ export type ClientMessage =
   | { t: "sect_transfer"; id: string }
   | { t: "sect_disband" }
   | { t: "sect_notice"; text: string }
+  /** Sect: give Linh Thạch to the sect (cống hiến, the fund and the exp grow). */
+  | { t: "sect_donate"; amount: number }
+  /** Sect: raise the sect to the next level. */
+  | { t: "sect_upgrade" }
+  /** Sect: take this week's pay of the player's rank. */
+  | { t: "sect_weekly" }
+  /** Sect (leader): what each rank is paid a week, by rank (index 0 disciple .. 5 leader). */
+  | { t: "sect_weekly_set"; amounts: number[] }
+  /** Sect: buy a line of the sect shop with cống hiến (the player must stand by a sect NPC, `npc`). */
+  | { t: "sect_buy"; npc: string; item: string }
   /** Claim every mail in one go (the ones that do not fit stay in the mailbox). */
   | { t: "mail_claim_all" }
   /** Vạn Bảo Lâu: read this town's listings again (the window asks while it is open; cheaper to call than `npc_open`). */
@@ -702,6 +712,16 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "sect_disband" };
     case "sect_notice":
       return typeof m.text === "string" && m.text.length <= 400 ? { t: "sect_notice", text: m.text } : null;
+    case "sect_donate":
+      return isInt(m.amount) && m.amount >= 1 && m.amount <= 1_000_000_000 ? { t: "sect_donate", amount: m.amount } : null;
+    case "sect_upgrade":
+      return { t: "sect_upgrade" };
+    case "sect_weekly":
+      return { t: "sect_weekly" };
+    case "sect_weekly_set":
+      return Array.isArray(m.amounts) && m.amounts.length === 6 && m.amounts.every((n) => isInt(n) && n >= 0 && n <= 1_000_000_000) ? { t: "sect_weekly_set", amounts: m.amounts as number[] } : null;
+    case "sect_buy":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.item === "string" && /^[A-Za-z0-9_.]{1,80}$/.test(m.item) ? { t: "sect_buy", npc: m.npc, item: m.item } : null;
     case "trade_lock":
       return isInt(m.rev) && m.rev >= 0 && typeof m.on === "boolean" ? { t: "trade_lock", rev: m.rev, on: m.on } : null;
     case "trade_confirm":

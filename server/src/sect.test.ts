@@ -1,11 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
-import { DEFAULT_SECT, type SectCfg } from "@game/shared";
+import { DEFAULT_SECT, scaledIncome, type SectCfg } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetSettingsCache } from "./settings";
-import { acceptInvite, answerRequest, applyTo, cooldownUntil, createSect, disbandSect, inviteProblem, kickMember, leaveSect, memberOf, removeCharacter, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader, validateSectName } from "./sect";
+import { acceptInvite, answerRequest, applyTo, claimWeekly, contributionOf, cooldownUntil, createSect, disbandSect, donate, inviteProblem, kickMember, leaveSect, memberOf, removeCharacter, sectDirectory, sectNameOf, sectView, setNotice, setRole, setWeekly, shopCheck, shopPayStatements, succeedIdleLeader, transferLeader, upgradeSect, validateSectName, weekOf } from "./sect";
 import { makeDb } from "./test-db";
 
-const cfg: SectCfg = { ...DEFAULT_SECT, createFee: 1000, levels: [{ maxMembers: 4 }] };
+const cfg: SectCfg = { ...DEFAULT_SECT, createFee: 1000, levels: [{ maxMembers: 4, expNeed: 100, costLinh: 1000 }, { maxMembers: 8, expNeed: 0, costLinh: 0 }] };
 const NOW = Date.UTC(2026, 10, 1, 3, 0, 0);
 const HOUR = 3_600_000;
 const [L, A, B, C, D, E] = ["lead", "a", "b", "c", "d", "e"];
@@ -215,5 +215,132 @@ describe("what the window shows", () => {
     expect(view?.requests.map((r) => r.id)).toEqual([C]);
     expect((await sectView(db, cfg, B, new Set()))?.requests).toEqual([]);
     expect(await sectView(db, cfg, D, new Set())).toBeNull();
+  });
+});
+
+describe("cống hiến, the fund and the levels", () => {
+  const give = (id: string, n: number) => raw.exec(`INSERT OR REPLACE INTO currency_balances (character_id, currency, balance) VALUES ('${id}', 'linh_thach', ${n})`);
+  const sectRow = () => raw.prepare("SELECT level, exp, fund FROM sects").get() as { level: number; exp: number; fund: number };
+
+  it("giving Linh Thạch fills the fund and the exp and earns cống hiến, for a member only", async () => {
+    const id = await found();
+    seat(A, id);
+    give(A, 5000);
+    expect(await donate(db, cfg, { characterId: A, amount: 50, now: NOW })).toEqual({ ok: false, reason: "invalid" }); // below the least
+    expect(await donate(db, cfg, { characterId: A, amount: 9999, now: NOW })).toEqual({ ok: false, reason: "funds" });
+    expect(await donate(db, cfg, { characterId: B, amount: 1000, now: NOW })).toEqual({ ok: false, reason: "no_sect" });
+    expect(await donate(db, cfg, { characterId: A, amount: 1000, now: NOW })).toMatchObject({ ok: true, contribution: 10, balance: 4000 });
+    expect(sectRow()).toMatchObject({ fund: 1000, exp: 5 });
+    expect(await contributionOf(db, A)).toBe(10);
+    expect(raw.prepare("SELECT contribution_total AS t FROM sect_members WHERE character_id = 'a'").get()).toEqual({ t: 10 });
+    expect(await contributionOf(db, B)).toBe(0);
+  });
+
+  it("nội môn and tinh anh are earned by the total, kept when spent, and stepping down from elder lands on the earned rank", async () => {
+    const id = await found();
+    seat(A, id);
+    give(A, 2_000_000);
+    await donate(db, cfg, { characterId: A, amount: 49_900, now: NOW }); // 499 points
+    expect(await rankOf(A)).toBe(0);
+    await donate(db, cfg, { characterId: A, amount: 100, now: NOW }); // 500
+    expect(await rankOf(A)).toBe(1);
+    raw.exec("UPDATE sect_members SET contribution = 0 WHERE character_id = 'a'"); // spending does not take the rank back
+    await donate(db, cfg, { characterId: A, amount: 100, now: NOW });
+    expect(await rankOf(A)).toBe(1);
+    await donate(db, cfg, { characterId: A, amount: 450_000, now: NOW }); // past 5000
+    expect(await rankOf(A)).toBe(2);
+    expect(await setRole(db, cfg, { actorId: L, targetId: A, role: "elder", now: NOW })).toMatchObject({ ok: true });
+    await donate(db, cfg, { characterId: A, amount: 100, now: NOW });
+    expect(await rankOf(A)).toBe(3); // an elder stays an elder
+    expect(await setRole(db, cfg, { actorId: L, targetId: A, role: "disciple", now: NOW })).toMatchObject({ ok: true });
+    expect(await rankOf(A)).toBe(2); // back to what the total earned
+  });
+
+  it("the cống hiến goes with the member who leaves", async () => {
+    const id = await found();
+    seat(A, id);
+    give(A, 5000);
+    await donate(db, cfg, { characterId: A, amount: 1000, now: NOW });
+    await leaveSect(db, cfg, { characterId: A, now: NOW });
+    expect(await contributionOf(db, A)).toBe(0);
+  });
+
+  it("the sect goes up a level when the exp and the fund are there, by a rank that may, and stops at the top", async () => {
+    const id = await found();
+    seat(A, id, 0);
+    seat(B, id, 4);
+    give(A, 100_000);
+    expect(await upgradeSect(db, cfg, { actorId: A, now: NOW })).toEqual({ ok: false, reason: "perm" });
+    expect(await upgradeSect(db, cfg, { actorId: B, now: NOW })).toEqual({ ok: false, reason: "exp" });
+    raw.exec("UPDATE sects SET exp = 100, fund = 500");
+    expect(await upgradeSect(db, cfg, { actorId: B, now: NOW })).toEqual({ ok: false, reason: "fund" });
+    raw.exec("UPDATE sects SET fund = 1500");
+    expect(await upgradeSect(db, cfg, { actorId: B, now: NOW })).toMatchObject({ ok: true, level: 2 });
+    expect(sectRow()).toEqual({ level: 2, exp: 0, fund: 500 });
+    expect(await upgradeSect(db, cfg, { actorId: B, now: NOW })).toEqual({ ok: false, reason: "limit" });
+  });
+
+  it("the balance dial scales what a level costs", async () => {
+    const id = await found();
+    seat(B, id, 4);
+    const dear: SectCfg = { ...cfg, balance: { upgradeCostPct: 200, incomePct: 100 } };
+    raw.exec("UPDATE sects SET exp = 100, fund = 1500");
+    expect(await upgradeSect(db, dear, { actorId: B, now: NOW })).toEqual({ ok: false, reason: "fund" }); // 2000 now
+    expect((await sectView(db, dear, L, new Set()))?.costLinh).toBe(2000);
+    raw.exec("UPDATE sects SET fund = 2500");
+    expect(await upgradeSect(db, dear, { actorId: B, now: NOW })).toMatchObject({ ok: true });
+    expect(sectRow().fund).toBe(500);
+    expect(scaledIncome({ ...cfg, balance: { upgradeCostPct: 100, incomePct: 150 } }, 1000)).toBe(1500);
+  });
+
+  it("two raises at once pay once", async () => {
+    const id = await found();
+    seat(B, id, 4);
+    raw.exec("UPDATE sects SET exp = 100, fund = 1500");
+    const both = await Promise.all([upgradeSect(db, cfg, { actorId: B, now: NOW }), upgradeSect(db, cfg, { actorId: L, now: NOW })]);
+    expect(both.filter((r) => r.ok)).toHaveLength(1);
+    expect(sectRow()).toEqual({ level: 2, exp: 0, fund: 500 });
+  });
+
+  it("the leader sets the weekly pay under the caps; a member takes it once a week from the fund", async () => {
+    const id = await found();
+    seat(A, id, 0);
+    expect(await setWeekly(db, cfg, { actorId: A, amounts: [100, 0, 0, 0, 0, 0], now: NOW })).toEqual({ ok: false, reason: "perm" });
+    expect(await setWeekly(db, cfg, { actorId: L, amounts: [cfg.weeklyMax[0]! + 1, 0, 0, 0, 0, 0], now: NOW })).toEqual({ ok: false, reason: "invalid" });
+    expect(await setWeekly(db, cfg, { actorId: L, amounts: [300, 0, 0, 0, 0, 800], now: NOW })).toMatchObject({ ok: true });
+    expect(await claimWeekly(db, cfg, { characterId: A, now: NOW })).toEqual({ ok: false, reason: "fund" });
+    raw.exec("UPDATE sects SET fund = 1000");
+    const before = balance(A);
+    expect(await claimWeekly(db, cfg, { characterId: A, now: NOW })).toMatchObject({ ok: true, amount: 300 });
+    expect(balance(A)).toBe(before + 300);
+    expect(sectRow().fund).toBe(700);
+    expect(await claimWeekly(db, cfg, { characterId: A, now: NOW + HOUR })).toEqual({ ok: false, reason: "claimed" });
+    expect(await claimWeekly(db, cfg, { characterId: A, now: NOW + 8 * 24 * HOUR })).toMatchObject({ ok: true });
+    expect(await claimWeekly(db, cfg, { characterId: B, now: NOW })).toEqual({ ok: false, reason: "no_sect" });
+    expect((await sectView(db, cfg, A, new Set(), NOW + 8 * 24 * HOUR))?.weeklyClaimed).toBe(true);
+    expect((await sectView(db, cfg, L, new Set(), NOW))?.weeklyPay).toBe(800);
+  });
+
+  it("weeks start on Monday 0:00 in Vietnam", () => {
+    const mondayVn = Date.UTC(2026, 10, 1, 17, 0, 0); // Sunday 17:00 UTC is Monday 00:00 in Vietnam
+    expect(weekOf(mondayVn - 1)).toBe(weekOf(mondayVn) - 1);
+    expect(weekOf(mondayVn + 6 * 24 * HOUR)).toBe(weekOf(mondayVn));
+    expect(weekOf(mondayVn + 7 * 24 * HOUR)).toBe(weekOf(mondayVn) + 1);
+  });
+
+  it("the shop: a line the sect has, at the level and rank, with enough cống hiến; the price comes out with the batch", async () => {
+    const id = await found();
+    seat(A, id, 0);
+    const pill = { ...cfg, shop: [{ item: "hoi_huyet_dan", cost: 10, qty: 1, minLevel: 1, minRank: 0 }, { item: "duong_huyet_dan", cost: 30, qty: 1, minLevel: 2, minRank: 0 }] };
+    expect(await shopCheck(db, pill, A, "nothing")).toEqual({ ok: false, reason: "item" });
+    expect(await shopCheck(db, pill, A, "hoi_huyet_dan")).toEqual({ ok: false, reason: "poor" });
+    raw.exec("UPDATE sect_members SET contribution = 25 WHERE character_id = 'a'");
+    expect(await shopCheck(db, pill, A, "duong_huyet_dan")).toEqual({ ok: false, reason: "perm" }); // the sect is level 1
+    const ok = await shopCheck(db, pill, A, "hoi_huyet_dan");
+    expect(ok).toMatchObject({ ok: true });
+    await db.batch(shopPayStatements(db, { characterId: A, sectId: id, cost: 10, item: "hoi_huyet_dan", now: NOW }));
+    expect(await contributionOf(db, A)).toBe(15);
+    await expect(db.batch(shopPayStatements(db, { characterId: A, sectId: id, cost: 20, item: "hoi_huyet_dan", now: NOW }))).rejects.toThrow();
+    expect(await contributionOf(db, A)).toBe(15);
   });
 });

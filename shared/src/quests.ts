@@ -381,9 +381,9 @@ const daily = (id: string, seq: number, titleVi: string, descVi: string, require
 });
 
 export const DAILY_QUESTS: readonly QuestDef[] = [
-  daily("daily_kill", 1, "Trừ yêu mỗi ngày", "Yêu thú ở Hắc Mộc Lâm không bao giờ hết. Mỗi ngày hạ 20 con để giữ an toàn cho thành.", "newbie_3", 0, { kind: "kill", count: 20, map: "forest" }, { linhThach: 150, congHien: 10, exp: 300 }),
-  daily("daily_herb", 2, "Dược liệu mỗi ngày", "Mỗi ngày mang cho ta 10 Linh Thảo để luyện đan cho đệ tử trong thành.", "newbie_3", 0, { kind: "collect", item: "linh_thao", qty: 10 }, { linhThach: 100, congHien: 8 }),
-  daily("daily_cave", 3, "Thám hiểm U Minh Động", "Từ Trúc Cơ trở đi, mỗi ngày hạ 20 con quái ở U Minh Động.", "newbie_6", 1, { kind: "kill", count: 20, map: "cave" }, { linhThach: 400, congHien: 20 }),
+  daily("daily_kill", 1, "Trừ yêu mỗi ngày", "Yêu thú ở Hắc Mộc Lâm không bao giờ hết. Mỗi ngày hạ 20 con để giữ an toàn cho thành.", "newbie_3", 0, { kind: "kill", count: 20, map: "forest" }, { linhThach: 150, exp: 300 }),
+  daily("daily_herb", 2, "Dược liệu mỗi ngày", "Mỗi ngày mang cho ta 10 Linh Thảo để luyện đan cho đệ tử trong thành.", "newbie_3", 0, { kind: "collect", item: "linh_thao", qty: 10 }, { linhThach: 100 }),
+  daily("daily_cave", 3, "Thám hiểm U Minh Động", "Từ Trúc Cơ trở đi, mỗi ngày hạ 20 con quái ở U Minh Động.", "newbie_6", 1, { kind: "kill", count: 20, map: "cave" }, { linhThach: 400 }),
 ];
 
 /**
@@ -391,10 +391,10 @@ export const DAILY_QUESTS: readonly QuestDef[] = [
  * are added to an existing catalogue by the server's lazy seeding (INSERT OR IGNORE), without a migration.
  */
 export const HIGH_DAILY_QUESTS: readonly QuestDef[] = [
-  daily("daily_kimdan", 4, "Trấn thủ Xích Diễm Sơn", "Từ Kim Đan trở đi, mỗi ngày hạ 25 con quái ở Xích Diễm Sơn để giữ yên vùng đất quanh thành.", null, 2, { kind: "kill", count: 25, map: "kimdan" }, { linhThach: 3_000, congHien: 40 }, "elder2"),
-  daily("daily_nguyenanh", 5, "Trấn thủ Vạn Cổ Hàn Uyên", "Từ Nguyên Anh trở đi, mỗi ngày hạ 25 con quái ở Vạn Cổ Hàn Uyên.", null, 3, { kind: "kill", count: 25, map: "nguyenanh" }, { linhThach: 30_000, congHien: 80 }, "elder2"),
-  daily("daily_hoathan", 6, "Trấn thủ Lôi Âm Tuyệt Cốc", "Từ Hóa Thần trở đi, mỗi ngày hạ 25 con quái ở Lôi Âm Tuyệt Cốc để giữ yên vùng biên giới của thành.", null, 4, { kind: "kill", count: 25, map: "hoathan" }, { linhThach: 300_000, congHien: 120 }, "elder3"),
-  daily("daily_luyenhu", 7, "Trấn thủ Hư Không Hải", "Từ Luyện Hư trở đi, mỗi ngày hạ 25 con quái ở Hư Không Hải.", null, 5, { kind: "kill", count: 25, map: "luyenhu" }, { linhThach: 3_000_000, congHien: 160 }, "elder3"),
+  daily("daily_kimdan", 4, "Trấn thủ Xích Diễm Sơn", "Từ Kim Đan trở đi, mỗi ngày hạ 25 con quái ở Xích Diễm Sơn để giữ yên vùng đất quanh thành.", null, 2, { kind: "kill", count: 25, map: "kimdan" }, { linhThach: 3_000 }, "elder2"),
+  daily("daily_nguyenanh", 5, "Trấn thủ Vạn Cổ Hàn Uyên", "Từ Nguyên Anh trở đi, mỗi ngày hạ 25 con quái ở Vạn Cổ Hàn Uyên.", null, 3, { kind: "kill", count: 25, map: "nguyenanh" }, { linhThach: 30_000 }, "elder2"),
+  daily("daily_hoathan", 6, "Trấn thủ Lôi Âm Tuyệt Cốc", "Từ Hóa Thần trở đi, mỗi ngày hạ 25 con quái ở Lôi Âm Tuyệt Cốc để giữ yên vùng biên giới của thành.", null, 4, { kind: "kill", count: 25, map: "hoathan" }, { linhThach: 300_000 }, "elder3"),
+  daily("daily_luyenhu", 7, "Trấn thủ Hư Không Hải", "Từ Luyện Hư trở đi, mỗi ngày hạ 25 con quái ở Hư Không Hải.", null, 5, { kind: "kill", count: 25, map: "luyenhu" }, { linhThach: 3_000_000 }, "elder3"),
 ];
 
 /** Everything the server seeds into an empty catalogue, in order. */

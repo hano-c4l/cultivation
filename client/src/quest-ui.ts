@@ -64,7 +64,6 @@ export function objectiveText(o: QuestObjective): string {
 export function rewardText(r: QuestRewards): string {
   const parts: string[] = [];
   if (r.linhThach) parts.push(vi.quests.rewardLinh(r.linhThach));
-  if (r.congHien) parts.push(vi.quests.rewardCong(r.congHien));
   if (r.exp) parts.push(vi.quests.rewardExp(r.exp));
   for (const it of r.items ?? []) parts.push(`${nameOf(it.item)} × ${it.qty}`);
   return parts.length > 0 ? parts.join(", ") : vi.quests.noReward;
