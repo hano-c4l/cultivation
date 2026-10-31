@@ -199,6 +199,7 @@ import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
 import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
+import { planTask, prepareTask, sectRanking } from "./sect-task";
 import { buyShelf, disbandSect, putItem, setAccept, setShelf, takeItem, vaultViews } from "./sect-vault";
 import { acceptInvite, answerRequest, applyTo, claimWeekly, contributionOf, cooldownUntil, createSect, donate, setWeekly, shopCheck, shopPayStatements, upgradeSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
 import { hasRoomFor, newSession, otherSide, planTrade, setConfirm, setLock, setOffer, sideOf, type TradeSession } from "./trade";
@@ -782,6 +783,8 @@ export class MapRoom extends DurableObject<Env> {
       case "sect_shelf":
       case "sect_shelf_buy":
       case "sect_accept":
+      case "sect_task":
+      case "sect_rank":
         return this.handleSect(ws, state, msg);
       case "mount":
         this.standUp(ws, "moved");
@@ -2874,7 +2877,7 @@ export class MapRoom extends DurableObject<Env> {
     const now = Date.now();
     const me = state.id;
     // Reads and writes have a gap each (a write waits 300 ms for the last write, a read 250 ms for the last read).
-    const reads = msg.t === "sect_get" || msg.t === "sect_list";
+    const reads = msg.t === "sect_get" || msg.t === "sect_list" || msg.t === "sect_rank";
     if (now - (reads ? (state.lastSectReadAt ?? 0) : (state.lastSectAt ?? 0)) < (reads ? 250 : 300)) return reads ? undefined : this.send(ws, { t: "sect_error", reason: "rate" }); // a read that comes too soon is dropped without a word (the client asks again on its own)
     if (reads) state.lastSectReadAt = now;
     else state.lastSectAt = now;
@@ -3033,6 +3036,26 @@ export class MapRoom extends DurableObject<Env> {
           await refresh(res.sectId, []);
           await this.sendSect(ws, me, cfg, now);
           return void this.send(ws, { t: "sect_vault", items: await vaultViews(this.env.DB, res.sectId) });
+        }
+        case "sect_rank":
+          return void this.send(ws, { t: "sect_ranks", ...(await sectRanking(this.env.DB, me, now)) });
+        case "sect_task": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          const prep = await prepareTask(this.env.DB, cfg, { characterId: me, taskId: msg.id, now });
+          if (!prep.ok) return fail(prep.reason);
+          await this.bagTask(me, async () => {
+            const res = await this.mutateBag(me, (bag) => {
+              const p = planTask(this.env.DB, cfg, prep.prep, me, bag, now);
+              return p ? { ops: p.ops, extra: p.extra } : null;
+            });
+            if (!res.ok) return fail(res.reason === "invalid" ? "lack" : "busy");
+            this.sendBagDelta(me, res.before, res.after);
+            await sendWallets((await getWallet(this.env.DB, me)).linh_thach);
+            await refresh(prep.prep.sectId, []);
+          });
+          return this.sendSect(ws, me, cfg, now);
         }
         case "sect_accept": {
           const res = await setAccept(this.env.DB, cfg, { actorId: me, cats: msg.cats, minGrade: msg.minGrade, now });

@@ -279,13 +279,13 @@ describe("adding gear to a character", () => {
     expect(new Set(pieces.map((p) => `${p.tab}:${p.cell}`)).size).toBe(5);
     expect(pieces.every((p) => p.max !== undefined && p.dur === p.max)).toBe(true);
     expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 3, 0)).toEqual({ ok: false, error: "invalid" });
-    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 3, 51)).toEqual({ ok: false, error: "invalid" });
+    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 3, 46)).toEqual({ ok: false, error: "invalid" });
     expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 3, 1.5)).toEqual({ ok: false, error: "invalid" });
     expect((await logs()).some((l) => l.includes("Thêm 5 trang bị"))).toBe(true);
     // a bag that cannot take them all takes none
     const before = (await getCharacterView(db, "c1", NOW + 4))!.items.length;
-    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 5, 50)).toEqual({ ok: true });
-    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 6, 50)).toEqual({ ok: false, error: "full" });
-    expect((await getCharacterView(db, "c1", NOW + 7))!.items.length).toBe(before + 50);
+    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 5, 45)).toEqual({ ok: true });
+    expect(await addEquipment(db, A, "c1", "eq.charm.u.3.9.4.moc", NOW + 6, 45)).toEqual({ ok: false, error: "full" });
+    expect((await getCharacterView(db, "c1", NOW + 7))!.items.length).toBe(before + 45);
   });
 });

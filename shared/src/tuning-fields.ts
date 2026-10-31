@@ -433,6 +433,13 @@ export const MONSTER_SCREENS: readonly TuningScreenGroup[] = [
 const PATH_NAMES: ReadonlyArray<[string, string]> = [["kiem", "Kiếm tu"], ["thuat", "Thuật tu"], ["dan", "Đan tu"]];
 
 /** The numbers of the NPCs that are not a stock or a position (screen "NPC · Con số"): the blacksmith's costs and the path masters' fees and bonuses. */
+/** The text leaves of the sect group (ids, names, item ids): the Admin screen edits only its numbers. */
+const SECT_TEXT_PATHS: string[] = [
+  "shop.0.item", "shop.1.item", "shop.2.item",
+  ...DEFAULT_TUNING.sect.tasks.flatMap((t, i) => [`tasks.${i}.id`, `tasks.${i}.kind`, `tasks.${i}.name`, `tasks.${i}.item`, ...(t.reward.vault ? [`tasks.${i}.reward.vault.item`] : [])]),
+  ...DEFAULT_TUNING.sect.levels.flatMap((l, i) => l.costItems.map((_, j) => `levels.${i}.costItems.${j}.item`)),
+];
+
 const NPC_SCREENS: readonly TuningScreenGroup[] = [
   {
     group: "enhanceCost",
@@ -501,7 +508,7 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
   {
     group: "sect",
     page: "npcs",
-    skip: ["shop.0.item", "shop.1.item", "shop.2.item"], // which item a line sells is chosen in the code defaults for now (the Admin edits prices and limits)
+    skip: SECT_TEXT_PATHS, // which item a line or a task uses, and the names, are in the defaults for now (the Admin edits the numbers)
     title: "Tông môn: lập, thành viên, chức vụ",
     note: "Cấp chức vụ: 0 Đệ tử, 1 Nội môn, 2 Tinh anh, 3 Trưởng lão, 4 Phó tông chủ, 5 Tông chủ. Mỗi quyền ghi chức thấp nhất làm được. Người rời, bị đuổi hoặc ở tông môn bị giải tán phải chờ hết thời gian chờ mới vào tông môn khác.",
     fields: [
@@ -531,6 +538,18 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
       { path: "disband.poolPct", label: "Giải tán chia theo cống hiến: phần chia theo tổng cống hiến cả tông môn (ba số cộng lại phải bằng 100)", kind: "int", unit: "%" },
       { path: "disband.leaderPct", label: "Giải tán chia theo cống hiến: phần cố định của tông chủ", kind: "int", unit: "%" },
       { path: "disband.deputyPct", label: "Giải tán chia theo cống hiến: phần cố định của phó tông chủ (chia đều nếu nhiều người)", kind: "int", unit: "%" },
+      ...DEFAULT_TUNING.sect.levels.flatMap((l, i) => l.costItems.map((_, j): TuningField => ({ path: `levels.${i}.costItems.${j}.qty`, label: `Cấp ${i + 1}: số vật phẩm lấy từ kho để lên cấp sau (loại ${j + 1})`, kind: "int" }))),
+      ...DEFAULT_TUNING.sect.taskIncomeCap.map((_, i): TuningField => ({ path: `taskIncomeCap.${i}`, label: `Nhiệm vụ tông môn: Linh Thạch hệ thống thêm vào quỹ tối đa mỗi ngày, cấp tông môn ${i + 1}`, kind: "int", unit: "Linh Thạch" })),
+      ...DEFAULT_TUNING.sect.tasks.flatMap((t, i): TuningField[] => [
+        { path: `tasks.${i}.qty`, label: `Nhiệm vụ "${t.name}": số vật phẩm phải nộp`, kind: "int" },
+        { path: `tasks.${i}.perDay`, label: `Nhiệm vụ "${t.name}": số lần mỗi người mỗi ngày`, kind: "int" },
+        { path: `tasks.${i}.minLevel`, label: `Nhiệm vụ "${t.name}": cấp tông môn tối thiểu`, kind: "int" },
+        { path: `tasks.${i}.reward.contribution`, label: `Nhiệm vụ "${t.name}": cống hiến cho người làm`, kind: "int", unit: "cống hiến" },
+        { path: `tasks.${i}.reward.exp`, label: `Nhiệm vụ "${t.name}": kinh nghiệm cho tông môn`, kind: "int" },
+        { path: `tasks.${i}.reward.fundLinh`, label: `Nhiệm vụ "${t.name}": Linh Thạch hệ thống thêm vào quỹ`, kind: "int", unit: "Linh Thạch" },
+        { path: `tasks.${i}.reward.memberLinh`, label: `Nhiệm vụ "${t.name}": Linh Thạch trả cho người làm, lấy từ quỹ`, kind: "int", unit: "Linh Thạch" },
+        ...(t.reward.vault ? [{ path: `tasks.${i}.reward.vault.qty`, label: `Nhiệm vụ "${t.name}": số vật phẩm hệ thống thêm vào kho`, kind: "int" as const }] : []),
+      ]),
       { path: "autoRanks.inner", label: "Đệ tử lên nội môn khi tổng cống hiến đã kiếm đạt", kind: "int", unit: "cống hiến" },
       { path: "autoRanks.elite", label: "Nội môn lên tinh anh khi tổng cống hiến đã kiếm đạt", kind: "int", unit: "cống hiến" },
       { path: "upgradeRank", label: "Chức thấp nhất được nâng cấp tông môn", kind: "int" },

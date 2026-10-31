@@ -27,6 +27,7 @@ export function makeDb(): { db: D1Database; raw: DatabaseSync } {
   // D1 runs one batch at a time; calls that overlap wait their turn, so a test can start two writers at once and see the second meet the first one's result.
   let queue: Promise<unknown> = Promise.resolve();
   const runBatch = async (list: ReturnType<typeof stmt>[]) => {
+    if (list.length > 50) throw new Error(`D1_ERROR: too many statements in a batch (${list.length} > 50)`); // the Free plan allows 50
     raw.exec("BEGIN");
     try {
       const out = [];

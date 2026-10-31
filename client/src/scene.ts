@@ -1384,6 +1384,9 @@ export class GameScene extends Phaser.Scene {
       case "sect_vault":
         this.sect.onVault(msg.items);
         break;
+      case "sect_ranks":
+        this.sect.onRanks(msg.sects, msg.mine);
+        break;
       case "sect_error":
         this.sect.onError(msg.reason);
         break;
