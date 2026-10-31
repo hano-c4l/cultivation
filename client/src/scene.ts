@@ -495,7 +495,7 @@ export class GameScene extends Phaser.Scene {
     void this.gfx.init();
     if (new URLSearchParams(location.search).get("perf") === "1") initPerf(this.game, this, () => ({ ...this.gfx.stats(), players: this.actors.size, monsters: this.monsters.size }));
     this.rank = initRank((msg) => this.net.send(msg), this.registry.get("isAdmin") === true);
-    this.sect = initSect((msg) => this.net.send(msg), (text, ok) => this.chat.system(text, ok ? "info" : "warning"), () => this.linhThach, () => this.selfId);
+    this.sect = initSect((msg) => this.net.send(msg), (text, ok) => this.chat.system(text, ok ? "info" : "warning"), () => this.linhThach, () => this.selfId, () => this.inventory.list());
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
       startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
@@ -1380,6 +1380,9 @@ export class GameScene extends Phaser.Scene {
         break;
       case "sect_dir":
         this.sect.onDir(msg.sects);
+        break;
+      case "sect_vault":
+        this.sect.onVault(msg.items);
         break;
       case "sect_error":
         this.sect.onError(msg.reason);

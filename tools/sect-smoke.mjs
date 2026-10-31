@@ -134,6 +134,56 @@ C.c.send({ t: "chat", channel: "sect", text: "toi khong trong tong mon" });
 const noSect = await C.c.wait((m) => m.t === "chat_error", 4000, "refusal", m0).catch(() => null);
 check("someone outside the sect cannot use its channel", noSect?.reason === "forbidden", noSect?.reason);
 
+// The warehouse: the leader sets what it takes, a member puts a stack in, buys another off the shelf with cống hiến, and the leader sends one out.
+const give = (id, item, qty) => fetch(`${httpBase}/api/dev/loot?room=town:7&char=${id}&item=${item}&qty=${qty}`).then((r) => r.json());
+await give(pb.id, "hoi_huyet_dan", 6);
+await give(pb.id, "linh_thao", 4);
+await sleep(3000);
+A.g.send({ t: "sect_accept", cats: { consumable: 100, material: 100 }, minGrade: 1 });
+await sleep(800);
+const bagB = new Map();
+for (const m of B.g.log) if (m.t === "inv") { if (m.full) bagB.clear(); for (const i of m.items) bagB.set(i.id, i); for (const id of m.removed) bagB.delete(id); }
+const welcomeB = B.g.log.find((m) => m.t === "welcome");
+for (const i of welcomeB?.bag?.items ?? []) if (!bagB.has(i.id)) bagB.set(i.id, i);
+const pills = [...bagB.values()].find((i) => i.type === "hoi_huyet_dan");
+const herbs = [...bagB.values()].find((i) => i.type === "linh_thao");
+check("the member holds the stacks to deposit", !!pills && !!herbs);
+if (pills && herbs) {
+  m0 = B.g.log.length;
+  B.g.send({ t: "sect_put", id: pills.id, qty: 3 });
+  const stored = await B.g.wait((m) => m.t === "sect_vault" && m.items.length === 1, 6000, "the vault list", m0).catch(() => null);
+  check("a part of a stack goes into the warehouse", !!stored && stored.items[0].qty === 3);
+  const earned = [...B.g.log].reverse().find((m) => m.t === "wallet" && m.currency === "cong_hien");
+  check("and earns cống hiến shown in the wallet slot", (earned?.balance ?? 0) > 0, `${earned?.balance}`);
+  await sleep(500);
+  B.g.send({ t: "sect_put", id: herbs.id, qty: 4 });
+  const two = await B.g.wait((m) => m.t === "sect_vault" && m.items.length === 2, 6000, "two stacks", m0).catch(() => null);
+  check("a second stack too", !!two);
+  await sleep(500);
+  m0 = B.g.log.length;
+  B.g.send({ t: "sect_put", id: pills.id, qty: 99 });
+  const bad = await B.g.wait((m) => m.t === "sect_error", 4000, "too many", m0).catch(() => null);
+  check("more than the stack is refused", bad?.reason === "invalid", bad?.reason);
+  // The leader puts one on the shelf for cống hiến; the member buys it; the other goes out by mail.
+  const herbRow = two?.items.find((x) => x.type === "linh_thao");
+  const pillRow = two?.items.find((x) => x.type === "hoi_huyet_dan");
+  await sleep(500);
+  A.g.send({ t: "sect_shelf", id: pillRow.id, currency: "cong_hien", price: 1 });
+  await sleep(1200);
+  m0 = B.g.log.length;
+  B.g.send({ t: "sect_shelf_buy", npc: "sect", id: pillRow.id });
+  await sleep(1500);
+  B.g.send({ t: "mail_refresh" });
+  const mail = await B.g.wait((m) => m.t === "mail" && m.mail?.some((x) => x.item), 6000, "the bought stack in the mail", m0).catch(() => null);
+  check("a shelf stack bought with cống hiến arrives by mail", !!mail);
+  await sleep(500);
+  A.g.send({ t: "sect_take", id: herbRow.id, to: pa.id });
+  await sleep(1500);
+  A.g.send({ t: "sect_vault" });
+  const emptied = await A.g.wait((m) => m.t === "sect_vault" && m.items.length === 0, 6000, "the vault empty").catch(() => null);
+  check("the leader takes the last stack out", !!emptied);
+}
+
 // Role, application, kick.
 await sleep(400);
 m0 = A.g.log.length;
@@ -173,7 +223,7 @@ check("the leader sends the member away, who must wait", !!out && out.cooldownUn
 
 // Closing.
 await sleep(400);
-A.g.send({ t: "sect_disband" });
+A.g.send({ t: "sect_disband", mode: "share" });
 await sleep(1500);
 m0 = B.g.log.length;
 B.g.send({ t: "sect_get" });
