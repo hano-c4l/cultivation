@@ -501,6 +501,7 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
   {
     group: "sect",
     page: "npcs",
+    skip: ["shop.0.item", "shop.1.item", "shop.2.item"], // which item a line sells is chosen in the code defaults for now (the Admin edits prices and limits)
     title: "Tông môn: lập, thành viên, chức vụ",
     note: "Cấp chức vụ: 0 Đệ tử, 1 Nội môn, 2 Tinh anh, 3 Trưởng lão, 4 Phó tông chủ, 5 Tông chủ. Mỗi quyền ghi chức thấp nhất làm được. Người rời, bị đuổi hoặc ở tông môn bị giải tán phải chờ hết thời gian chờ mới vào tông môn khác.",
     fields: [
@@ -514,7 +515,26 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
       { path: "inviteRange", label: "Người mời và người được mời cách nhau tối đa", kind: "int", unit: "ô" },
       { path: "applyMax", label: "Số đơn xin vào mở cùng lúc của một nhân vật", kind: "int" },
       { path: "requestsMax", label: "Số đơn xin vào tối đa một tông môn giữ", kind: "int" },
-      ...[0, 1, 2, 3, 4].map((i): TuningField => ({ path: `levels.${i}.maxMembers`, label: `Số thành viên tối đa, cấp ${i + 1}`, kind: "int" })),
+      ...[0, 1, 2, 3, 4].flatMap((i): TuningField[] => [
+        { path: `levels.${i}.maxMembers`, label: `Cấp ${i + 1}: số thành viên tối đa`, kind: "int" },
+        { path: `levels.${i}.expNeed`, label: `Cấp ${i + 1}: kinh nghiệm cần để lên cấp sau (0 ở cấp cuối)`, kind: "int" },
+        { path: `levels.${i}.costLinh`, label: `Cấp ${i + 1}: Linh Thạch trong quỹ tốn để lên cấp sau`, kind: "int", unit: "Linh Thạch" },
+      ]),
+      { path: "balance.upgradeCostPct", label: "Cân bằng: chi phí Linh Thạch lên cấp tông môn so với bảng (100 = đúng bảng)", kind: "int", unit: "%" },
+      { path: "balance.incomePct", label: "Cân bằng: Linh Thạch và vật phẩm hệ thống đưa vào quỹ, kho tông môn (nhiệm vụ tông môn) so với bảng", kind: "int", unit: "%" },
+      { path: "autoRanks.inner", label: "Đệ tử lên nội môn khi tổng cống hiến đã kiếm đạt", kind: "int", unit: "cống hiến" },
+      { path: "autoRanks.elite", label: "Nội môn lên tinh anh khi tổng cống hiến đã kiếm đạt", kind: "int", unit: "cống hiến" },
+      { path: "upgradeRank", label: "Chức thấp nhất được nâng cấp tông môn", kind: "int" },
+      { path: "donate.min", label: "Góp Linh Thạch: ít nhất mỗi lần", kind: "int", unit: "Linh Thạch" },
+      { path: "donate.linhPerPoint", label: "Góp Linh Thạch: bao nhiêu Linh Thạch được 1 cống hiến", kind: "int", unit: "Linh Thạch" },
+      { path: "donate.linhPerExp", label: "Góp Linh Thạch: bao nhiêu Linh Thạch thành 1 kinh nghiệm tông môn", kind: "int", unit: "Linh Thạch" },
+      ...[0, 1, 2, 3, 4, 5].map((i): TuningField => ({ path: `weeklyMax.${i}`, label: `Thưởng tuần tối đa tông chủ đặt được cho chức bậc ${i}`, kind: "int", unit: "Linh Thạch" })),
+      ...[0, 1, 2].flatMap((i): TuningField[] => [
+        { path: `shop.${i}.cost`, label: `Cửa hàng, món ${i + 1}: giá`, kind: "int", unit: "cống hiến" },
+        { path: `shop.${i}.qty`, label: `Cửa hàng, món ${i + 1}: số lượng mỗi lần mua`, kind: "int" },
+        { path: `shop.${i}.minLevel`, label: `Cửa hàng, món ${i + 1}: cấp tông môn tối thiểu`, kind: "int" },
+        { path: `shop.${i}.minRank`, label: `Cửa hàng, món ${i + 1}: chức tối thiểu`, kind: "int" },
+      ]),
       { path: "perms.invite", label: "Chức thấp nhất được mời người", kind: "int" },
       { path: "perms.approve", label: "Chức thấp nhất được duyệt đơn xin vào", kind: "int" },
       { path: "perms.kick", label: "Chức thấp nhất được đuổi người (chỉ đuổi được người thấp hơn mình)", kind: "int" },

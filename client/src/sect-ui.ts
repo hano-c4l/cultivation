@@ -1,5 +1,5 @@
-import { REALMS, SECT_RANK, SECT_ROLE_NAMES, roleOfRank, tuning, type ClientMessage, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
-import { iconButton } from "./icons";
+import { REALMS, SECT_RANK, SECT_ROLE_NAMES, getItemDef, roleOfRank, tuning, type ClientMessage, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
+import { iconButton, iconFor } from "./icons";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
@@ -61,7 +61,9 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
   let dir: SectListItem[] = [];
   let loaded = false;
   let npc: string | null = null;
-  let tab: "members" | "requests" = "members";
+  let tab: "members" | "requests" | "shop" | "weekly" = "members";
+  let donateDraft = "";
+  let weeklyDraft: number[] | null = null;
   let nameDraft = "";
   let noticeDraft: string | null = null;
   /** The button that asks twice (leave, close, kick): which one is waiting for its second press. */
@@ -144,6 +146,38 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
     const h = head(v.name);
     panel.append(h);
     panel.append(el("div", "muted", `${vi.sect.level(v.level)} · ${vi.sect.members(v.members.length, v.maxMembers)} · ${vi.sect.yourRank(rankName(v.myRank))} · ${vi.sect.contribution(fmt(v.contribution))}`));
+    // The fund, the exp and the next level.
+    const money = el("div", "sect-box");
+    money.append(el("div", undefined, vi.sect.fundLine(fmt(v.fund), fmt(v.exp), v.expNeed > 0 ? fmt(v.expNeed) : null)));
+    if (v.expNeed > 0 && v.myRank >= c.upgradeRank) {
+      const up = el("button", undefined, vi.sect.upgrade(v.level + 1, fmt(v.expNeed), fmt(v.costLinh)));
+      up.disabled = v.exp < v.expNeed || v.fund < v.costLinh;
+      up.onclick = () => send({ t: "sect_upgrade" });
+      money.append(up);
+    } else if (v.expNeed === 0) money.append(el("div", "muted", vi.sect.topLevel));
+    const give = el("div", "sect-row");
+    const amount = el("input");
+    amount.type = "number";
+    amount.min = String(c.donate.min);
+    amount.placeholder = vi.sect.donatePlaceholder(c.donate.min);
+    amount.value = donateDraft;
+    amount.oninput = () => (donateDraft = amount.value);
+    const giveBtn = el("button", undefined, vi.sect.donate);
+    giveBtn.onclick = () => {
+      const n = Math.floor(Number(amount.value));
+      if (!Number.isFinite(n) || n < c.donate.min) return notify(vi.sect.errors.invalid ?? "", false);
+      donateDraft = "";
+      send({ t: "sect_donate", amount: n });
+    };
+    give.append(amount, giveBtn);
+    money.append(give, el("div", "muted", vi.sect.donateRule(c.donate.linhPerPoint, c.donate.linhPerExp)));
+    if (v.weeklyPay > 0) {
+      const claim = el("button", undefined, v.weeklyClaimed ? vi.sect.weeklyDone : vi.sect.weeklyClaim(fmt(v.weeklyPay)));
+      claim.disabled = v.weeklyClaimed;
+      claim.onclick = () => send({ t: "sect_weekly" });
+      money.append(claim);
+    }
+    panel.append(money);
     // The notice.
     const canNotice = v.myRank >= c.perms.notice;
     const notice = el("div", "sect-box");
@@ -178,8 +212,52 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
     };
     mk("members", vi.sect.tabMembers(v.members.length));
     if (canApprove) mk("requests", vi.sect.tabRequests(v.requests.length));
+    mk("shop", vi.sect.tabShop);
+    if (v.myRank >= c.perms.appoint) mk("weekly", vi.sect.tabWeekly);
     panel.append(tabs);
-    if (tab === "requests" && canApprove) {
+    if (tab === "shop") {
+      panel.append(el("div", "muted", vi.sect.shopHint));
+      for (const s of c.shop) {
+        const def = getItemDef(s.item);
+        if (!def) continue;
+        const row = el("div", "sect-item");
+        const info = el("div", "sect-info");
+        info.append(iconFor(s.item), document.createTextNode(` ${def.nameVi}${s.qty > 1 ? ` x${s.qty}` : ""} · `), el("b", undefined, vi.sect.cost(fmt(s.cost))));
+        if (s.minLevel > v.level || s.minRank > v.myRank) info.append(el("div", "muted", vi.sect.needs(s.minLevel, rankName(s.minRank))));
+        const buy = el("button", undefined, vi.sect.buy);
+        buy.disabled = s.minLevel > v.level || s.minRank > v.myRank || v.contribution < s.cost;
+        buy.onclick = () => {
+          if (!npc) return notify(vi.sect.errors.npc ?? "", false);
+          send({ t: "sect_buy", npc, item: s.item });
+        };
+        row.append(info, buy);
+        panel.append(row);
+      }
+      if (c.shop.length === 0) panel.append(el("div", "muted", vi.sect.noShop));
+    } else if (tab === "weekly" && v.myRank >= c.perms.appoint) {
+      panel.append(el("div", "muted", vi.sect.weeklyHint));
+      const draft = weeklyDraft ?? v.weekly;
+      const inputs: HTMLInputElement[] = [];
+      c.weeklyMax.forEach((cap, rank) => {
+        const row = el("div", "sect-item");
+        row.append(el("div", "sect-info", `${rankName(rank)} (${vi.sect.upTo(fmt(cap))})`));
+        const input = el("input");
+        input.type = "number";
+        input.min = "0";
+        input.max = String(cap);
+        input.value = String(draft[rank] ?? 0);
+        input.oninput = () => (weeklyDraft = inputs.map((x) => Math.min(Math.max(0, Math.floor(Number(x.value)) || 0), c.weeklyMax[inputs.indexOf(x)] ?? 0)));
+        inputs.push(input);
+        row.append(input);
+        panel.append(row);
+      });
+      const save = el("button", undefined, vi.sect.save);
+      save.onclick = () => {
+        send({ t: "sect_weekly_set", amounts: inputs.map((x, i) => Math.min(Math.max(0, Math.floor(Number(x.value)) || 0), c.weeklyMax[i] ?? 0)) });
+        weeklyDraft = null;
+      };
+      panel.append(save);
+    } else if (tab === "requests" && canApprove) {
       if (v.requests.length === 0) panel.append(el("div", "muted", vi.sect.noRequests));
       for (const r of v.requests) {
         const row = el("div", "sect-item");
