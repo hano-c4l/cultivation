@@ -1,12 +1,10 @@
-import { getItemDef, type BagItem, type ClientMessage, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
-import { equipLines, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
+import { getItemDef, glowTierOf, type BagItem, type ClientMessage, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
+import { describeItem, elementDot, itemTierRealm, itemTierTag, realmClass } from "./equip-text";
 import { iconFor } from "./icons";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
 
 export interface TradeUi {
-  /** The player clicked another player of a safe map: asks whether to invite them. */
-  askTo(id: string, name: string): void;
   /** Someone invited this player. */
   invited(from: string, name: string, ttlMs: number): void;
   /** The server's picture of the trade (both sides); opens the window. */
@@ -54,20 +52,57 @@ export function initTrade(send: (msg: ClientMessage) => void, bag: () => BagItem
   let note = "";
   let linhDraft = 0;
   let tnDraft = 0;
-
-  const itemBlock = (type: string, qty: number, carry: Record<string, unknown>): HTMLElement => {
-    const node = el("div", "tr-item");
-    const name = el("div", "tr-name", `${getItemDef(type)?.nameVi ?? type}${qty > 1 ? ` x${qty}` : ""}`);
-    name.prepend(iconFor(type));
-    const tag = itemTierTag(type, carry.lv as number | undefined);
-    if (tag) name.prepend(el("span", `eq-tier ${realmClass(itemTierRealm(type, carry.lv as number | undefined))}`, tag));
-    const def = getItemDef(type);
-    const lines = def?.category === "equipment" ? equipLines(type, carry.dur as number | undefined, carry.max as number | undefined, carry.lv as number | undefined, carry.rs as never, carry.en as number | undefined).join(" · ") : (def?.descVi ?? "");
-    node.append(name, el("div", "muted", lines));
-    return node;
-  };
+  let bagSel: string | null = null;
+  let mineSel: string | null = null;
+  let theirSel: string | null = null;
+  let sendQty = 1;
 
   const sendOffer = (items: string[], linh: number, tienNgoc: number) => send({ t: "trade_offer", items, linh, tienNgoc });
+
+  /** The picture of one item as the bag draws it: icon, realm tag, element, quantity in the corner, quality as the ring round it. */
+  type Shown = { id: string; type: string; qty: number; lv?: number; dur?: number; max?: number; xp?: number; rs?: unknown; en?: number };
+  const cellOf = (it: Shown, selected: boolean, onClick: () => void): HTMLElement => {
+    const def = getItemDef(it.type);
+    const slot = el("button", "bag-cell");
+    slot.classList.add(`cat-${def?.category ?? "material"}`, `rar-${def?.rarity ?? "common"}`);
+    if (it.dur !== undefined && it.dur <= 0) slot.classList.add("broken");
+    const glow = glowTierOf(it.en);
+    if (glow > 0 && def?.equip) slot.classList.add(glow === 2 ? "gl10" : "gl7");
+    if (selected) slot.classList.add("selected");
+    slot.title = def?.nameVi ?? it.type;
+    slot.append(iconFor(it.type));
+    const tag = itemTierTag(it.type, it.lv);
+    if (tag) slot.append(el("span", `bag-tag ${realmClass(itemTierRealm(it.type, it.lv))}`, tag));
+    const dot = elementDot(it.type);
+    if (dot) {
+      dot.classList.add("bag-elem");
+      slot.append(dot);
+    }
+    if (it.qty > 1) slot.append(el("span", "bag-qty", String(it.qty)));
+    slot.onclick = onClick;
+    return slot;
+  };
+  const describe = (it: Shown): HTMLElement => describeItem(it.type, { dur: it.dur, max: it.max, qty: it.qty, lv: it.lv, xp: it.xp, rs: it.rs as never, en: it.en });
+  const fromCarry = (it: TradeSideView["items"][number]): Shown => ({ id: it.id, type: it.type, qty: it.qty, lv: it.carry.lv as number | undefined, dur: it.carry.dur as number | undefined, max: it.carry.max as number | undefined, xp: it.carry.xp as number | undefined, rs: it.carry.rs, en: it.carry.en as number | undefined });
+
+  /** A pane of offered items: the detail of the chosen one above, its extra button, and the cells (as many slots as the limit). */
+  const offerPane = (shown: Shown[], max: number, sel: string | null, pick: (id: string | null) => void, action: ((it: Shown) => HTMLElement) | null): HTMLElement => {
+    const box = el("div");
+    const detail = el("div", "bag-detail tr-detail");
+    const chosen = shown.find((x) => x.id === sel);
+    if (chosen) {
+      detail.append(describe(chosen));
+      if (action) detail.append(action(chosen));
+    } else detail.append(el("div", "muted", vi.trade.hint));
+    const grid = el("div", "bag-grid tr-grid");
+    for (let i = 0; i < max; i++) {
+      const it = shown[i];
+      if (it) grid.append(cellOf(it, it.id === sel, () => pick(it.id === sel ? null : it.id)));
+      else grid.append(el("div", "bag-cell empty"));
+    }
+    box.append(detail, grid);
+    return box;
+  };
 
   const render = () => {
     panel.replaceChildren();
@@ -81,18 +116,76 @@ export function initTrade(send: (msg: ClientMessage) => void, bag: () => BagItem
     if (note) panel.append(el("div", "tr-note", note));
 
     const columns = el("div", "tr-cols");
-    // --- my side
+    const offered = new Set(v.mine.items.map((x) => x.id));
+    if (bagSel && !bag().some((i) => i.id === bagSel && !offered.has(i.id))) bagSel = null;
+    if (mineSel && !offered.has(mineSel)) mineSel = null;
+    if (theirSel && !v.theirs.items.some((x) => x.id === theirSel)) theirSel = null;
+
+    // --- 1: my bag, in the order the bag has it
+    const bagCol = el("div", "tr-col");
+    bagCol.append(el("div", "tr-h", vi.trade.bag));
+    const detail = el("div", "bag-detail tr-detail");
+    const chosen = bagSel ? bag().find((i) => i.id === bagSel) : undefined;
+    if (chosen) {
+      detail.append(describe(chosen));
+      const row = el("div", "tr-send");
+      const qty = el("input");
+      qty.type = "number";
+      qty.min = "1";
+      qty.max = String(chosen.qty);
+      qty.value = String(Math.min(Math.max(1, sendQty), chosen.qty));
+      qty.readOnly = chosen.qty <= 1;
+      qty.onchange = () => {
+        sendQty = Math.min(Math.max(1, Math.floor(Number(qty.value)) || 1), chosen.qty);
+        qty.value = String(sendQty);
+      };
+      const give = el("button", "", vi.trade.send);
+      give.disabled = v.mine.items.length >= v.cfg.maxItems;
+      give.onclick = () => {
+        const n = chosen.qty <= 1 ? 1 : Math.min(Math.max(1, Math.floor(Number(qty.value)) || 1), chosen.qty);
+        send({ t: "trade_add", id: chosen.id, qty: n });
+        bagSel = null;
+        render();
+      };
+      row.append(el("span", "muted", vi.trade.qty), qty, give);
+      detail.append(row);
+    } else detail.append(el("div", "muted", vi.trade.pickBag(v.cfg.maxItems)));
+    const grid = el("div", "bag-grid tr-grid tr-scroll");
+    const mineBag = [...bag()].filter((i) => !offered.has(i.id) && !getItemDef(i.type)?.disabled).sort((x, y) => x.tab - y.tab || x.cell - y.cell);
+    for (const i of mineBag) {
+      grid.append(
+        cellOf(i, i.id === bagSel, () => {
+          bagSel = i.id === bagSel ? null : i.id;
+          sendQty = i.qty;
+          render();
+        }),
+      );
+    }
+    if (mineBag.length === 0) grid.append(el("div", "muted", vi.trade.bagEmpty));
+    bagCol.append(detail, grid);
+
+    // --- 2: what I put in, and my money
     const mine = el("div", "tr-col");
     mine.append(el("div", "tr-h", vi.trade.mine + (v.mine.locked ? ` · ${vi.trade.locked}` : "")));
-    for (const it of v.mine.items) {
-      const row = el("div", "tr-row");
-      row.append(itemBlock(it.type, it.qty, it.carry));
-      const rm = el("button", "", "×");
-      rm.title = vi.trade.remove;
-      rm.onclick = () => sendOffer(v.mine.items.filter((x) => x.id !== it.id).map((x) => x.id), v.mine.linh, v.mine.tienNgoc);
-      row.append(rm);
-      mine.append(row);
-    }
+    mine.append(
+      offerPane(
+        v.mine.items.map(fromCarry),
+        v.cfg.maxItems,
+        mineSel,
+        (id) => {
+          mineSel = id;
+          render();
+        },
+        (it) => {
+          const rm = el("button", "tr-remove", vi.trade.remove);
+          rm.onclick = () => {
+            mineSel = null;
+            sendOffer(v.mine.items.filter((x) => x.id !== it.id).map((x) => x.id), v.mine.linh, v.mine.tienNgoc);
+          };
+          return rm;
+        },
+      ),
+    );
     const linhRow = el("label", "tr-linh", vi.trade.linh);
     const linh = el("input");
     linh.type = "number";
@@ -116,32 +209,24 @@ export function initTrade(send: (msg: ClientMessage) => void, bag: () => BagItem
     };
     tnRow.append(tn);
     mine.append(linhRow, tnRow);
-    // The picker: the bag items not offered yet.
-    const offered = new Set(v.mine.items.map((x) => x.id));
-    const grid = el("div", "tr-bag");
-    for (const i of bag()) {
-      if (offered.has(i.id) || getItemDef(i.type)?.disabled) continue;
-      const cell = el("button", "tr-cell");
-      cell.title = `${getItemDef(i.type)?.nameVi ?? i.type}${i.qty > 1 ? ` x${i.qty}` : ""}`;
-      cell.append(iconFor(i.type));
-      if (i.qty > 1) cell.append(el("span", "tr-qty", String(i.qty)));
-      cell.disabled = v.mine.items.length >= v.cfg.maxItems;
-      cell.onclick = () => sendOffer([...v.mine.items.map((x) => x.id), i.id], v.mine.linh, v.mine.tienNgoc);
-      grid.append(cell);
-    }
-    mine.append(el("div", "muted", vi.trade.pick(v.cfg.maxItems)), grid);
 
-    // --- their side
+    // --- 3: what they put in (look only)
     const theirs = el("div", "tr-col");
     theirs.append(el("div", "tr-h", vi.trade.theirs(v.other.name) + (v.theirs.locked ? ` · ${vi.trade.locked}` : "")));
-    if (v.theirs.items.length === 0) theirs.append(el("div", "muted", vi.trade.nothing));
-    for (const it of v.theirs.items) {
-      const row = el("div", "tr-row");
-      row.append(itemBlock(it.type, it.qty, it.carry));
-      theirs.append(row);
-    }
+    theirs.append(
+      offerPane(
+        v.theirs.items.map(fromCarry),
+        v.cfg.maxItems,
+        theirSel,
+        (id) => {
+          theirSel = id;
+          render();
+        },
+        null,
+      ),
+    );
     theirs.append(el("div", "tr-linh", vi.trade.theirLinh(fmt(v.theirs.linh), fmt(v.theirs.tienNgoc))));
-    columns.append(mine, theirs);
+    columns.append(bagCol, mine, theirs);
     panel.append(columns);
 
     // --- buttons
@@ -175,9 +260,6 @@ export function initTrade(send: (msg: ClientMessage) => void, bag: () => BagItem
   };
 
   return {
-    askTo(id, name) {
-      showPrompt(vi.trade.askInvite(name), [[vi.trade.invite, () => send({ t: "trade_invite", to: id })], [vi.trade.no, () => undefined]], 8000);
-    },
     invited(from, name, ttlMs) {
       showPrompt(vi.trade.invitedBy(name), [[vi.trade.accept, () => send({ t: "trade_reply", from, accept: true })], [vi.trade.decline, () => send({ t: "trade_reply", from, accept: false })]], ttlMs);
     },
@@ -188,6 +270,7 @@ export function initTrade(send: (msg: ClientMessage) => void, bag: () => BagItem
       if (first) {
         linhDraft = 0;
         tnDraft = 0;
+        bagSel = mineSel = theirSel = null;
         note = "";
       } else {
         linhDraft = msg.mine.linh;

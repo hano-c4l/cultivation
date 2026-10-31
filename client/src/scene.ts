@@ -87,6 +87,7 @@ import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { initDojo, type DojoUi } from "./dojo-ui";
 import { initMarket, type MarketUi } from "./market-ui";
+import { initPlayerMenu, type PlayerMenu } from "./player-menu";
 import { initTrade, type TradeUi } from "./trade-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
@@ -284,6 +285,9 @@ function applyTrack(actor: Actor, path: Vec2[], startedAt: number, speed: number
 
 /** Radius (tiles) of the teleport array drawn on the ground and of the click that opens it. */
 /** The teleport array is a wide circle on the ground (tiles): a click anywhere in it walks the character to its middle, and standing in the middle opens its window. */
+/** A player clicked in a safe map: the character walks up to PLAYER_MENU_STAND tiles from them, and the menu opens within PLAYER_MENU_REACH. */
+const PLAYER_MENU_REACH = 3.2;
+const PLAYER_MENU_STAND = 2.2;
 const WAYGATE_RADIUS = 2.6;
 /** How close to the middle of the array the character must stand for its window to open by itself after the walk. */
 const WAYGATE_CENTER_REACH = 0.7;
@@ -323,6 +327,10 @@ export class GameScene extends Phaser.Scene {
   private channel!: ChannelUi;
   private waygate!: WaygateUi;
   /** The teleport array the character is walking to the middle of (its window opens on arrival). */
+  private playerMenu!: PlayerMenu;
+  /** A player the character is walking up to, to open the menu of what can be done with them. */
+  private pendingPlayer: { id: string; at: { x: number; y: number } } | null = null;
+  private playerWatch: Phaser.Time.TimerEvent | null = null;
   private pendingWaygate: NpcSpot | null = null;
   private waygateWatch: Phaser.Time.TimerEvent | null = null;
   private dojo!: DojoUi;
@@ -469,6 +477,7 @@ export class GameScene extends Phaser.Scene {
     this.waygate = initWaygate((msg) => this.net.send(msg));
     this.dojo = initDojo((msg) => this.net.send(msg));
     this.market = initMarket((msg) => this.net.send(msg), () => this.inventory.list());
+    this.playerMenu = initPlayerMenu();
     this.trade = initTrade((msg) => this.net.send(msg), () => this.inventory.list(), (text, ok) => this.chat.system(text, ok ? "info" : "warning"));
     this.minimap = initMinimap();
     ensureFlightTextures(this);
@@ -768,6 +777,7 @@ export class GameScene extends Phaser.Scene {
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.transferring) return;
     if (this.guardBreakthrough()) return;
+    this.pendingPlayer = null; // any click cancels a walk toward a player; the menu closes itself on a click outside it
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
@@ -804,7 +814,11 @@ export class GameScene extends Phaser.Scene {
     if (this.map.safe) {
       const other = this.pickPlayer(world.x, world.y, true);
       if (other) {
-        this.trade.askTo(other, this.actors.get(other)?.label.text ?? "");
+        this.stopAuto("manual");
+        const ev = pointer.event as MouseEvent | TouchEvent | undefined;
+        const touch = ev && "changedTouches" in ev ? ev.changedTouches[0] : undefined;
+        const rect = this.game.canvas.getBoundingClientRect();
+        this.approachPlayer(other, { x: touch?.clientX ?? (ev as MouseEvent | undefined)?.clientX ?? rect.left + pointer.x, y: touch?.clientY ?? (ev as MouseEvent | undefined)?.clientY ?? rect.top + pointer.y });
         return;
       }
     }
@@ -886,6 +900,53 @@ export class GameScene extends Phaser.Scene {
     if (spot) this.sendWalk(Math.round(spot[0] * 100) / 100, Math.round(spot[1] * 100) / 100);
   }
 
+  /**
+   * A click on another player (in a safe map): the character walks up to a short distance from them, and then the menu of what can be done with
+   * them opens (so nobody trades from across the map). Already close: it opens at once.
+   */
+  private approachPlayer(id: string, at: { x: number; y: number }): void {
+    const self = this.actors.get(this.selfId);
+    const other = this.actors.get(id);
+    if (!self || !other) return;
+    const open = () => {
+      const target = this.actors.get(id);
+      if (!target) return;
+      this.playerMenu.show(target.label.text, [{ label: vi.playerMenu.trade, run: () => this.net.send({ t: "trade_invite", to: id }) }], at);
+    };
+    const near = (): boolean => {
+      const a = this.actors.get(this.selfId);
+      const b = this.actors.get(id);
+      if (!a || !b) return false;
+      const now = performance.now();
+      const p = currentPos(a, now);
+      const q = currentPos(b, now);
+      return Math.hypot(p.x - q.x, p.y - q.y) <= PLAYER_MENU_REACH;
+    };
+    this.playerMenu.close();
+    if (near()) return open();
+    const here = currentPos(self, performance.now());
+    const there = currentPos(other, performance.now());
+    const len = Math.hypot(here.x - there.x, here.y - there.y) || 1;
+    const spot = nearestStandablePoint(this.map, there.x + ((here.x - there.x) / len) * PLAYER_MENU_STAND, there.y + ((here.y - there.y) / len) * PLAYER_MENU_STAND, 2);
+    if (!spot) return open();
+    this.sendWalk(Math.round(spot[0] * 100) / 100, Math.round(spot[1] * 100) / 100);
+    const mark = { id, at };
+    this.pendingPlayer = mark;
+    this.playerWatch?.remove(); // one watcher at a time
+    const watch: Phaser.Time.TimerEvent = this.time.addEvent({
+      delay: 150,
+      repeat: 100,
+      callback: () => {
+        if (this.pendingPlayer !== mark || !this.actors.has(id)) return void watch.remove();
+        if (!near()) return;
+        this.pendingPlayer = null;
+        watch.remove();
+        open();
+      },
+    });
+    this.playerWatch = watch;
+  }
+
   /** Walks to a point: predicts the path locally and tells the server. */
   private sendWalk(tx: number, ty: number): void {
     // Client-side throttle matches the server's, so a dropped click never desyncs the prediction.
@@ -894,6 +955,7 @@ export class GameScene extends Phaser.Scene {
     const from = this.predictSelfMove(tx, ty);
     if (!from) return;
     this.pendingWaygate = null; // a new walk cancels the one that was going to open the teleport array
+    this.pendingPlayer = null; // and the one toward a player
     this.lastMoveSentAt = now;
     this.shop.close(); // walking away from an NPC closes its window
     this.quests.close();

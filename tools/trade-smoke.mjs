@@ -140,6 +140,23 @@ ma = A.log.length;
 A.send({ t: "trade_offer", items: [], linh: 999999, tienNgoc: 0 });
 const poor = await A.wait((m) => m.t === "trade_error", 4000, "too much Linh Thạch", ma);
 check("an offer above the wallet is refused", poor.reason === "funds" || poor.reason === "limit", poor.reason);
+// A part of a stack: trade_add splits it off and offers that part.
+await give(pa.id, "hoi_huyet_dan", 4);
+await sleep(1500);
+const stack = bagOf(A, wa).find((i) => i.type === "hoi_huyet_dan" && i.qty === 4);
+check("A holds a stack of 4 pills", !!stack);
+if (stack) {
+  A.send({ t: "trade_add", id: stack.id, qty: 3 });
+  const part = await B.wait((m) => m.t === "trade" && m.theirs.items.some((i) => i.type === "hoi_huyet_dan" && i.qty === 3), 5000, "B sees 3 of the 4");
+  check("only the asked part is offered", part.theirs.items.length === 1);
+  await sleep(300);
+  check("the rest stays in A's bag", bagOf(A, wa).some((i) => i.type === "hoi_huyet_dan" && i.qty === 1));
+  await sleep(600);
+  ma = A.log.length;
+  A.send({ t: "trade_add", id: stack.id, qty: 9 });
+  const over = await A.wait((m) => m.t === "trade_error", 4000, "too many", ma);
+  check("asking for more than the stack is refused", over.reason === "invalid", over.reason);
+}
 mb = B.log.length;
 A.send({ t: "trade_cancel" });
 const cancelled = await B.wait((m) => m.t === "trade_end", 4000, "cancel", mb);

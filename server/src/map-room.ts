@@ -742,6 +742,7 @@ export class MapRoom extends DurableObject<Env> {
       case "trade_invite":
       case "trade_reply":
       case "trade_offer":
+      case "trade_add":
       case "trade_lock":
       case "trade_confirm":
       case "trade_cancel":
@@ -2850,11 +2851,11 @@ export class MapRoom extends DurableObject<Env> {
     this.sendToCharacter(s.b.id, { t: "trade", rev: s.rev, other: { id: s.a.id, name: nameOf(s.a.id) }, mine: b, theirs: a, cfg: limits });
   }
 
-  private handleTrade(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "trade_invite" | "trade_reply" | "trade_offer" | "trade_lock" | "trade_confirm" | "trade_cancel" }>): void {
+  private handleTrade(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "trade_invite" | "trade_reply" | "trade_offer" | "trade_add" | "trade_lock" | "trade_confirm" | "trade_cancel" }>): void {
     const now = Date.now();
     const me = state.id;
     const fail = (reason: TradeError) => this.send(ws, { t: "trade_error", reason });
-    if (msg.t === "trade_offer") {
+    if (msg.t === "trade_offer" || msg.t === "trade_add") {
       if (now - (state.lastTradeAt ?? 0) < 400) return fail("rate");
       state.lastTradeAt = now;
       ws.serializeAttachment(state);
@@ -2893,6 +2894,31 @@ export class MapRoom extends DurableObject<Env> {
       if (msg.t === "trade_cancel") return this.endTrade(cur, "cancelled");
       const problem = this.tradeProblem(cur.a.id, cur.b.id, cfg, now);
       if (problem) return this.endTrade(cur, problem === "far" ? "far" : "busy");
+      if (msg.t === "trade_add") {
+        // On the player's bag queue (like every other bag change), so a sort or a move at the same moment cannot meet the split half way.
+        await this.bagTask(me, async () => {
+          const mine = sideOf(cur, me)!;
+          const bag = await this.getBag(me);
+          const item = bag.items.find((i) => i.id === msg.id);
+          if (!item || mine.items.includes(item.id) || mine.items.length >= cfg.maxItems || msg.qty > item.qty) return fail("invalid");
+          let offered = item.id;
+          if (msg.qty < item.qty) {
+            // a part of a stack: split it off into its own item first, and offer that one
+            const newId = crypto.randomUUID();
+            const res = await this.mutateBag(me, (b) => {
+              const ops = planSplit(b.items, b.tabs, { tab: item.tab, cell: item.cell }, msg.qty, () => newId);
+              return ops ? { ops } : null;
+            });
+            if (!res.ok) return fail(firstFreeCell(bag.items, bag.tabs) ? "invalid" : "full");
+            this.sendBagDelta(me, res.before, res.after);
+            offered = newId;
+          }
+          setOffer(cur, me, [...mine.items, offered], mine.linh, mine.tienNgoc);
+          await this.saveTrade(cur);
+          await this.pushTrade(cur, cfg);
+        });
+        return;
+      }
       if (msg.t === "trade_offer") {
         const bag = await this.getBag(me);
         const ids = [...new Set(msg.items)];

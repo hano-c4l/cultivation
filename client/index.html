@@ -199,16 +199,21 @@
       #minimap canvas { display: block; max-width: 100%; height: auto; }
       @media (max-width: 700px) { #minimap { right: 56px; top: 74px; transform: scale(0.8); transform-origin: top right; } }
       #trade-panel[hidden], #trade-prompt[hidden] { display: none; }
-      #trade-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(620px, calc(100vw - 16px)); max-height: calc(100vh - 100px); overflow-y: auto; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 21; }
+      #trade-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(900px, calc(100vw - 16px)); max-height: calc(100vh - 100px); overflow-y: auto; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 21; }
+      #player-menu { position: fixed; z-index: 22; min-width: 150px; padding: 6px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); display: flex; flex-direction: column; gap: 4px; }
+      #player-menu[hidden] { display: none; } #player-menu .pm-name { font-weight: 700; padding: 2px 6px 4px; border-bottom: 1px solid var(--ui-border); }
+      #player-menu button { border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; padding: 6px 8px; min-height: 30px; cursor: pointer; } #player-menu button:hover { background: var(--ui-accent); color: var(--ui-on-accent); }
       #trade-prompt { position: fixed; left: 50%; top: 90px; transform: translateX(-50%); padding: 10px 14px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 22; text-align: center; }
       #trade-panel button, #trade-prompt button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; min-height: 28px; }
       #trade-panel button:disabled { opacity: 0.45; cursor: default; }
       #trade-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #trade-panel .eq-head b { flex: 1; font-size: 15px; }
       #trade-panel .muted { opacity: 0.65; font-size: 12px; margin: 4px 0; } #trade-panel .tr-note { color: #ffd27a; margin: 4px 0; }
-      #trade-panel .tr-cols { display: flex; gap: 10px; flex-wrap: wrap; } #trade-panel .tr-col { flex: 1; min-width: 240px; padding: 6px; border: 1px solid var(--ui-border); border-radius: 6px; } #trade-panel .tr-h { font-weight: 700; margin-bottom: 4px; }
+      #trade-panel .tr-cols { display: flex; gap: 10px; flex-wrap: wrap; } #trade-panel .tr-col { flex: 1; min-width: 250px; padding: 6px; border: 1px solid var(--ui-border); border-radius: 6px; } #trade-panel .tr-h { font-weight: 700; margin-bottom: 4px; }
       #trade-panel .tr-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; } #trade-panel .tr-item { flex: 1; min-width: 0; } #trade-panel .tr-name { display: flex; align-items: center; gap: 6px; font-weight: 600; } #trade-panel .tr-name .ic { width: 26px; height: 26px; flex: none; }
       #trade-panel .tr-linh { display: block; margin: 6px 0; } #trade-panel .tr-linh input { width: 130px; margin-left: 4px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--ui-border); background: transparent; color: inherit; font: inherit; }
       #trade-panel .tr-bag { display: flex; flex-wrap: wrap; gap: 4px; } #trade-panel .tr-cell { position: relative; width: 36px; height: 36px; padding: 2px; background: transparent; border: 1px solid var(--ui-border); } #trade-panel .tr-cell .ic { width: 100%; height: 100%; } #trade-panel .tr-qty { position: absolute; right: 2px; bottom: 0; font-size: 10px; text-shadow: 0 0 2px #000; }
+      #trade-panel .tr-grid { grid-template-columns: repeat(6, 1fr); } #trade-panel .tr-grid.tr-scroll { max-height: 176px; overflow-y: auto; } #trade-panel .tr-detail { min-height: 110px; max-height: 190px; overflow-y: auto; margin-bottom: 6px; }
+      #trade-panel .bag-cell.empty { opacity: 0.4; } #trade-panel .tr-send { display: flex; align-items: center; gap: 6px; margin-top: 6px; } #trade-panel .tr-send input { width: 70px; text-align: center; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--ui-border); background: transparent; color: inherit; font: inherit; } #trade-panel .tr-remove { margin-top: 6px; }
       #trade-panel .tr-bar, #trade-prompt .tr-bar { display: flex; gap: 8px; justify-content: center; margin-top: 8px; } #trade-panel .tr-cancel { background: transparent; color: var(--ui-text); border: 1px solid var(--ui-border); }
       #market-panel[hidden] { display: none; }
       #market-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(520px, calc(100vw - 16px)); max-height: calc(100vh - 100px); overflow-y: auto; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 20; }
@@ -311,14 +316,14 @@
       #bag-panel .bag-tabs button { padding: 3px 8px; background: var(--ui-border); color: var(--ui-text); } #bag-panel .bag-tabs button.active { background: var(--ui-accent); color: var(--ui-on-accent); }
       /* The whole 8x8 tab is shown; only the panel scrolls, and only when the window is too short for it. */
       /* Fixed row height (not aspect-ratio): with a capped panel height, aspect-ratio rows could shrink and overlap. */
-      #bag-panel .bag-grid { display: grid; grid-auto-rows: 40px; align-content: start; gap: 3px; padding: 2px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; }
+      :is(#bag-panel, #trade-panel) .bag-grid { display: grid; grid-auto-rows: 40px; align-content: start; gap: 3px; padding: 2px; background: rgba(0, 0, 0, 0.25); border-radius: 6px; }
       #bag-panel::-webkit-scrollbar { width: 8px; }
       #bag-panel::-webkit-scrollbar-thumb { background: var(--ui-muted); border-radius: 4px; }
       #bag-panel .bag-tabs button.bag-buy { background: #2f6b4f; color: #e8f5e9; }
-      #bag-panel .bag-cell { position: relative; height: 100%; min-width: 0; padding: 1px; background: rgba(255, 255, 255, 0.07); color: var(--ui-text); border: 1px solid var(--ui-border); overflow: hidden; }
-      #bag-panel .bag-cell.rar-uncommon { border-color: #4fc3f7; } #bag-panel .bag-cell.rar-rare { border-color: #ba68c8; } #bag-panel .bag-cell.rar-epic { border-color: #ffb300; }
-      #bag-panel .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; line-height: 1; text-shadow: 0 0 2px #000; pointer-events: none; }
-      #bag-panel .bag-mark.x { color: #ff5252; } #bag-panel .bag-mark.plus { color: var(--ui-highlight); }
+      :is(#bag-panel, #trade-panel) .bag-cell { position: relative; height: 100%; min-width: 0; padding: 1px; background: rgba(255, 255, 255, 0.07); color: var(--ui-text); border: 1px solid var(--ui-border); overflow: hidden; }
+      :is(#bag-panel, #trade-panel) .bag-cell.rar-uncommon { border-color: #4fc3f7; } :is(#bag-panel, #trade-panel) .bag-cell.rar-rare { border-color: #ba68c8; } :is(#bag-panel, #trade-panel) .bag-cell.rar-epic { border-color: #ffb300; }
+      :is(#bag-panel, #trade-panel) .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; line-height: 1; text-shadow: 0 0 2px #000; pointer-events: none; }
+      :is(#bag-panel, #trade-panel) .bag-mark.x { color: #ff5252; } :is(#bag-panel, #trade-panel) .bag-mark.plus { color: var(--ui-highlight); }
       #bag-panel .bag-actions button.active { background: #6fcf97; }
       /* Realm tags (LK, TC1...) are coloured by realm everywhere: Luyện Khí green, Trúc Cơ blue, Kim Đan orange, Nguyên Anh purple, Hóa Thần red, Luyện Hư pale blue-white. */
       .realm-0 { --realm: var(--realm-0, #8bc34a); } .realm-1 { --realm: var(--realm-1, #4fc3f7); } .realm-2 { --realm: var(--realm-2, #ffb300); } .realm-3 { --realm: var(--realm-3, #e040fb); } .realm-4 { --realm: var(--realm-4, #ff5252); } .realm-5 { --realm: var(--realm-5, #e8f4ff); }
@@ -329,13 +334,13 @@
         color: var(--ui-text); font: 12px "Be Vietnam Pro", system-ui, sans-serif; }
       .bag-ghost .bag-name { display: block; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
       .bag-ghost .bag-qty { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-weight: 700; }
-      .bag-ghost .bag-tag, #bag-panel .bag-tag { position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; line-height: 1; color: var(--ui-highlight); text-shadow: 0 0 2px #000; }
+      .bag-ghost .bag-tag, :is(#bag-panel, #trade-panel) .bag-tag { position: absolute; top: 0; left: 2px; font-size: 8px; font-weight: 700; line-height: 1; color: var(--ui-highlight); text-shadow: 0 0 2px #000; }
       .bag-ghost .bag-mark { position: absolute; top: 0; right: 2px; font-size: 12px; font-weight: 800; }
       .bag-ghost .bag-mark.x { color: #ff5252; } .bag-ghost .bag-mark.plus { color: var(--ui-highlight); }
-      #bag-panel .bag-cell .bag-name, .bag-ghost .bag-name { padding-top: 7px; }
+      :is(#bag-panel, #trade-panel) .bag-cell .bag-name, .bag-ghost .bag-name { padding-top: 7px; }
       .item-desc b { display: block; margin-bottom: 2px; } .item-desc .id-line { font-size: 12px; opacity: 0.85; line-height: 1.45; } .item-desc .st-max { color: var(--ui-highlight); font-weight: 600; } .item-desc .st-min { color: #9e9e9e; } .item-desc .st-mid { color: #fff; }
       #bag-panel .bag-compare { margin-top: 6px; padding-top: 4px; border-top: 1px dashed var(--ui-border); }
-      #bag-panel .bag-detail { max-height: 240px; overflow-y: auto; }
+      :is(#bag-panel, #trade-panel) .bag-detail { max-height: 240px; overflow-y: auto; }
       #eq-panel .eq-text { position: relative; padding-top: 9px; }
       #eq-panel .eq-tag { position: absolute; top: 0; left: 0; font-size: 9px; font-weight: 700; line-height: 1; color: var(--ui-highlight); }
       /* Icons (icons.ts): behind the name in a bag cell or hotbar slot, beside it in the gear window. */
@@ -369,30 +374,30 @@
       .shop-name, .sk-info b { display: flex; align-items: center; gap: 5px; }
       .shop-name .ic, .sk-info b .ic { width: 22px; height: 22px; }
       #buffs .buff .ic { width: 20px; height: 20px; margin: 0 auto; }
-      #bag-panel .bag-cell .ic, .bag-ghost .ic { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; pointer-events: none; }
+      :is(#bag-panel, #trade-panel) .bag-cell .ic, .bag-ghost .ic { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; pointer-events: none; }
       #hotbar .hb-slot .ic, .hb-ghost .ic { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; opacity: 0.8; pointer-events: none; }
-      #bag-panel .bag-cell .bag-name, .bag-ghost .bag-name, #hotbar .hb-name { position: relative; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 2px #000; }
+      :is(#bag-panel, #trade-panel) .bag-cell .bag-name, .bag-ghost .bag-name, #hotbar .hb-name { position: relative; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 2px #000; }
       #eq-panel .eq-name .ic, #eq-panel .eq-opt > .ic { width: 22px; height: 22px; }
-      #bag-panel .bag-cell.broken { opacity: 0.45; filter: grayscale(1); }
-      #bag-panel .bag-cell.selected { border-color: var(--ui-highlight); box-shadow: 0 0 0 1px var(--ui-highlight) inset; }
+      :is(#bag-panel, #trade-panel) .bag-cell.broken { opacity: 0.45; filter: grayscale(1); }
+      :is(#bag-panel, #trade-panel) .bag-cell.selected { border-color: var(--ui-highlight); box-shadow: 0 0 0 1px var(--ui-highlight) inset; }
       /* Gear upgraded to +7 or more shines in the bag and the equipment window: a pulsing aura at +7 to +9, a gold-and-violet flame with sparkles at +10. */
       @keyframes gl7 { 0%, 100% { box-shadow: 0 0 3px 0 rgba(120, 200, 255, 0.55), 0 0 6px 1px rgba(120, 200, 255, 0.25) inset; } 50% { box-shadow: 0 0 9px 2px rgba(150, 225, 255, 0.95), 0 0 9px 2px rgba(150, 225, 255, 0.45) inset; } }
       @keyframes gl10 { 0% { box-shadow: 0 0 6px 1px #ffd54a, 0 0 10px 2px rgba(255, 213, 74, 0.5) inset; border-color: #ffd54a; } 50% { box-shadow: 0 0 12px 3px #c77dff, 0 0 12px 3px rgba(199, 125, 255, 0.55) inset; border-color: #ff9ae8; } 100% { box-shadow: 0 0 6px 1px #ffd54a, 0 0 10px 2px rgba(255, 213, 74, 0.5) inset; border-color: #ffd54a; } }
       @keyframes glspark { 0% { transform: translateY(0) scale(0.4); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(-14px) scale(1); opacity: 0; } }
-      #bag-panel .bag-cell.gl7, #eq-panel .eq-row.gl7, #eq-panel .eq-info.gl7 { border-color: #7fd0ff; animation: gl7 1.8s ease-in-out infinite; }
-      #bag-panel .bag-cell.gl10, #eq-panel .eq-row.gl10, #eq-panel .eq-info.gl10 { animation: gl10 1.5s linear infinite; }
-      #bag-panel .bag-cell.gl7::after, #bag-panel .bag-cell.gl10::after { content: "✦"; position: absolute; right: 3px; bottom: 3px; font-size: 9px; line-height: 1; color: #bfe9ff; text-shadow: 0 0 4px #4fc3f7; animation: glspark 1.6s ease-out infinite; pointer-events: none; }
-      #bag-panel .bag-cell.gl10::after { left: 4px; right: auto; top: auto; bottom: 4px; font-size: 11px; color: #fff3a0; text-shadow: 0 0 5px #ffb300, 0 0 8px #c77dff; animation-duration: 1.1s; }
-      #bag-panel .bag-cell.gl10::before { content: "✧"; position: absolute; right: 4px; top: 4px; font-size: 9px; line-height: 1; color: #ffe9ff; text-shadow: 0 0 5px #c77dff; animation: glspark 1.3s ease-out 0.5s infinite; pointer-events: none; z-index: 1; }
+      :is(#bag-panel, #trade-panel) .bag-cell.gl7, #eq-panel .eq-row.gl7, #eq-panel .eq-info.gl7 { border-color: #7fd0ff; animation: gl7 1.8s ease-in-out infinite; }
+      :is(#bag-panel, #trade-panel) .bag-cell.gl10, #eq-panel .eq-row.gl10, #eq-panel .eq-info.gl10 { animation: gl10 1.5s linear infinite; }
+      :is(#bag-panel, #trade-panel) .bag-cell.gl7::after, :is(#bag-panel, #trade-panel) .bag-cell.gl10::after { content: "✦"; position: absolute; right: 3px; bottom: 3px; font-size: 9px; line-height: 1; color: #bfe9ff; text-shadow: 0 0 4px #4fc3f7; animation: glspark 1.6s ease-out infinite; pointer-events: none; }
+      :is(#bag-panel, #trade-panel) .bag-cell.gl10::after { left: 4px; right: auto; top: auto; bottom: 4px; font-size: 11px; color: #fff3a0; text-shadow: 0 0 5px #ffb300, 0 0 8px #c77dff; animation-duration: 1.1s; }
+      :is(#bag-panel, #trade-panel) .bag-cell.gl10::before { content: "✧"; position: absolute; right: 4px; top: 4px; font-size: 9px; line-height: 1; color: #ffe9ff; text-shadow: 0 0 5px #c77dff; animation: glspark 1.3s ease-out 0.5s infinite; pointer-events: none; z-index: 1; }
       #eq-panel .eq-row.gl10 .eq-label, #eq-panel .eq-info.gl10 .eq-label { color: #ffe27a; text-shadow: 0 0 6px #c77dff; } #eq-panel .eq-row.gl7 .eq-label { color: #bfe9ff; text-shadow: 0 0 5px #4fc3f7; }
-      @media (prefers-reduced-motion: reduce) { #bag-panel .bag-cell.gl7, #bag-panel .bag-cell.gl10, #eq-panel .gl7, #eq-panel .gl10 { animation: none; } #bag-panel .bag-cell::after, #bag-panel .bag-cell::before { display: none; } }
-      #bag-panel .bag-cell.cat-equipment { background: rgba(255, 183, 77, 0.25); }
-      #bag-panel .bag-cell.cat-skill_book { background: rgba(171, 71, 188, 0.35); }
-      #bag-panel .bag-cell.cat-consumable { background: rgba(229, 57, 53, 0.35); } #bag-panel .bag-cell.cat-material { background: rgba(102, 187, 106, 0.3); }
-      #bag-panel .bag-name { display: block; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
-      #bag-panel .bag-qty { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-weight: 700; text-shadow: 0 0 2px #000; }
+      @media (prefers-reduced-motion: reduce) { :is(#bag-panel, #trade-panel) .bag-cell.gl7, :is(#bag-panel, #trade-panel) .bag-cell.gl10, #eq-panel .gl7, #eq-panel .gl10 { animation: none; } :is(#bag-panel, #trade-panel) .bag-cell::after, :is(#bag-panel, #trade-panel) .bag-cell::before { display: none; } }
+      :is(#bag-panel, #trade-panel) .bag-cell.cat-equipment { background: rgba(255, 183, 77, 0.25); }
+      :is(#bag-panel, #trade-panel) .bag-cell.cat-skill_book { background: rgba(171, 71, 188, 0.35); }
+      :is(#bag-panel, #trade-panel) .bag-cell.cat-consumable { background: rgba(229, 57, 53, 0.35); } :is(#bag-panel, #trade-panel) .bag-cell.cat-material { background: rgba(102, 187, 106, 0.3); }
+      :is(#bag-panel, #trade-panel) .bag-name { display: block; font-size: 9px; line-height: 1.1; font-weight: 600; word-break: break-word; }
+      :is(#bag-panel, #trade-panel) .bag-qty { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-weight: 700; text-shadow: 0 0 2px #000; }
       /* The detail box sits above the grid with a fixed minimum height, so selecting an item never shifts the cells under a finger. */
-      #bag-panel .bag-detail { margin: 0 0 8px; padding: 6px 8px; min-height: 120px; box-sizing: border-box; background: rgba(255, 255, 255, 0.06); border-radius: 6px; }
+      :is(#bag-panel, #trade-panel) .bag-detail { margin: 0 0 8px; padding: 6px 8px; min-height: 120px; box-sizing: border-box; background: rgba(255, 255, 255, 0.06); border-radius: 6px; }
       #bag-panel .bag-mail { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--ui-border); }
       #bag-panel .muted { opacity: 0.65; font-size: 12px; }
       #bag-panel .bag-split { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
