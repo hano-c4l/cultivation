@@ -192,7 +192,7 @@
       #hud-toggle { padding: 6px 10px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); cursor: pointer; line-height: 0; }
       #hud-toggle[hidden] { display: none; } #hud-toggle .ic { width: 20px; height: 20px; }
       body.hud-folded #switch-char, body.hud-folded #logout, body.hud-folded #char-btn, body.hud-folded #eq-btn, body.hud-folded #sk-btn, body.hud-folded #bag-btn, body.hud-folded #quest-btn, body.hud-folded #rank-btn,
-      body.hud-folded #mount-btn, body.hud-folded #meditate-btn, body.hud-folded #auto-btn { display: none !important; }
+      body.hud-folded #mount-btn, body.hud-folded #meditate-btn, body.hud-folded #auto-btn, body.hud-folded #sect-btn { display: none !important; }
       body.hud-folded #minimap { right: 12px !important; }
       #minimap[hidden] { display: none; }
       #minimap { position: fixed; right: 60px; top: 48px; z-index: 5; padding: 3px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); pointer-events: none; }
@@ -202,6 +202,20 @@
       #trade-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(900px, calc(100vw - 16px)); max-height: calc(100vh - 100px); overflow-y: auto; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 21; }
       /* A window with a scroll bar scrolls its content only: the header (and its close button) stays at the top. */
       .win > .eq-head, .win > .cp-head, .win > .sk-head, .win > .au-head, .win > .bag-head { position: sticky; top: 0; z-index: 6; background: var(--ui-panel); box-shadow: 0 -14px 0 var(--ui-panel); }
+      #sect-btn[hidden], #sect-panel[hidden], #sect-prompt[hidden] { display: none; }
+      #sect-btn { position: fixed; right: 12px; top: 412px; width: 38px; height: 34px; padding: 0; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); cursor: pointer; }
+      #sect-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(520px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); overflow-y: auto; overscroll-behavior: contain; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 21; }
+      #sect-prompt { position: fixed; left: 50%; top: 90px; transform: translateX(-50%); padding: 10px 14px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 22; text-align: center; }
+      #sect-panel button, #sect-prompt button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; min-height: 28px; }
+      #sect-panel button:disabled { opacity: 0.45; cursor: default; } #sect-panel .tr-cancel { background: transparent; color: var(--ui-text); border: 1px solid var(--ui-border); }
+      #sect-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #sect-panel .eq-head b { flex: 1; font-size: 15px; }
+      #sect-panel .muted { opacity: 0.65; font-size: 12px; margin: 4px 0; } #sect-panel .tr-note { color: #ffd27a; margin: 4px 0; } #sect-panel .tr-h { font-weight: 700; margin: 8px 0 4px; }
+      #sect-panel .eq-tabs { display: flex; gap: 4px; margin: 8px 0; } #sect-panel .eq-tabs button.sub { background: var(--ui-border); color: var(--ui-text); }
+      #sect-panel .sect-box { margin: 6px 0; padding: 6px 8px; background: rgba(255, 255, 255, 0.06); border-radius: 6px; }
+      #sect-panel .sect-row { display: flex; gap: 6px; margin-top: 4px; } #sect-panel .sect-row input, #sect-panel select { flex: 1; min-width: 0; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--ui-border); background: rgba(16, 20, 28, 0.85); color: inherit; font: inherit; } #sect-panel select { flex: none; }
+      #sect-panel .sect-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06); } #sect-panel .sect-info { flex: 1; min-width: 0; word-break: break-word; }
+      #sect-panel .dot { color: #666; } #sect-panel .dot.on { color: #6fcf97; }
+      #sect-panel .tr-bar, #sect-prompt .tr-bar { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }
       #player-menu { position: fixed; z-index: 22; left: 50%; top: 90px; transform: translateX(-50%); min-width: 150px; padding: 6px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); display: flex; flex-direction: column; gap: 4px; }
       #player-menu[hidden] { display: none; } #player-menu .pm-name { font-weight: 700; padding: 2px 6px 4px; border-bottom: 1px solid var(--ui-border); }
       #player-menu button { border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; text-align: left; padding: 6px 8px; min-height: 30px; cursor: pointer; } #player-menu button:hover { background: var(--ui-accent); color: var(--ui-on-accent); }
@@ -444,13 +458,13 @@
       @media (max-width: 600px) { #chat-log { max-height: 96px; } }
       #chat-log b { font-weight: 600; } #chat-log b.self { text-decoration: underline; } #chat-log b.replyable { cursor: pointer; }
       /* One colour per channel, so the "all" tab stays readable. */
-      #chat-log .ch-world { color: #ffb74d; } #chat-log .ch-map { color: var(--ui-text); } #chat-log .ch-whisper { color: #f48fb1; }
+      #chat-log .ch-world { color: #ffb74d; } #chat-log .ch-map { color: var(--ui-text); } #chat-log .ch-whisper { color: #f48fb1; } #chat-log .ch-sect { color: #81c784; }
       /* Teal (as before) for information (loot), red for what matters (death, map change, announcements) and for rejected chat. */
       #chat-log .ch-system { color: #80cbc4; font-style: italic; }
       #chat-log .ch-system.important, #chat-log .ch-system.err { color: #ff5252; font-style: normal; font-weight: 600; }
       #chat-log .tag { opacity: 0.75; font-size: 11px; }
       #chat-log:not(.tab-all) .tag { display: none; }
-      #chat-log.tab-world .line:not(.ch-world), #chat-log.tab-map .line:not(.ch-map), #chat-log.tab-whisper .line:not(.ch-whisper),
+      #chat-log.tab-world .line:not(.ch-world), #chat-log.tab-map .line:not(.ch-map), #chat-log.tab-sect .line:not(.ch-sect), #chat-log.tab-whisper .line:not(.ch-whisper),
       #chat-log.tab-system .line:not(.ch-system) { display: none; }
       /* A rejection ("friend is offline", "you talk too fast") shows only in the tab it came from. It reaches "all" only when
          that was the tab in use. A "sysonly" line (the sort lock) shows in the system tab alone. */
@@ -470,7 +484,7 @@
       @media (max-width: 1200px) {
         #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout, #switch-char { padding: 4px 8px; font-size: 12px; }
         #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
-        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; } #meditate-btn { top: 368px !important; } #auto-btn { top: 408px !important; }
+        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; } #meditate-btn { top: 368px !important; } #auto-btn { top: 408px !important; } #sect-btn { top: 448px !important; }
       }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;
