@@ -6,8 +6,8 @@ export interface PlayerMenuEntry {
 }
 
 export interface PlayerMenu {
-  /** Opens the list of things to do with a player, at a point of the screen; a click anywhere else closes it. */
-  show(name: string, entries: PlayerMenuEntry[], at: { x: number; y: number }): void;
+  /** Opens the list of things to do with a player, fixed at the top centre of the screen; a click anywhere else closes it. */
+  show(name: string, entries: PlayerMenuEntry[]): void;
   close(): void;
   isOpen(): boolean;
 }
@@ -31,7 +31,7 @@ export function initPlayerMenu(): PlayerMenu {
   }
 
   return {
-    show(name, entries, at) {
+    show(name, entries) {
       close();
       box.replaceChildren();
       const title = document.createElement("div");
@@ -48,11 +48,6 @@ export function initPlayerMenu(): PlayerMenu {
         box.append(b);
       }
       box.hidden = false;
-      // keep it inside the window
-      const w = box.offsetWidth;
-      const h = box.offsetHeight;
-      box.style.left = `${Math.max(4, Math.min(at.x + 8, window.innerWidth - w - 4))}px`;
-      box.style.top = `${Math.max(4, Math.min(at.y - 8, window.innerHeight - h - 4))}px`;
       // the click that opened it must not close it at once
       setTimeout(() => document.addEventListener("pointerdown", onOutside, true), 0);
     },
