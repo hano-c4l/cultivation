@@ -1,6 +1,6 @@
 # Giai đoạn 5: Kinh tế và xã hội — kế hoạch chi tiết
 
-Bản thiết kế mở đầu giai đoạn (2026-10-30). Chưa có dòng code nào. Mục "Điều cần xác nhận" phải đóng trước khi viết migration.
+**Trạng thái (2026-11-01): giai đoạn 5 xong về mã (5a-5f), đã ở preview và production, migration `0059`-`0074`.** File này mở đầu bằng bản thiết kế ngày 2026-10-30 (các mục đầu còn giữ nguyên lời thiết kế lúc ấy, có chỗ đã đổi: xem các mục "Đợt chỉnh" và từng mục 5x ở dưới) rồi ghi từng hạng mục đã làm, quyết định và tồn đọng. Hạng mục theo thứ tự thời gian: 5a, 5b, đợt chỉnh 2026-10-31, 5c-1 đến 5c-6, 5e, 5e-2, 5e-3, 5f, 5d, 5d-2, 5d-3.
 
 ## Quyết định đã chốt (2026-10-30)
 - **Tiền được phép giao dịch và đăng chợ: Linh Thạch và Tiên Ngọc** (đổi ngày 2026-10-31 theo yêu cầu: lúc đầu chỉ Linh Thạch). Cống Hiến bị khóa. Một tin chợ tính giá bằng **một** loại tiền và người mua, người đấu giá, phí gửi bán, tiền hoàn và tiền thu đều bằng loại đó; một giao dịch trực tiếp mang được **cả hai** loại tiền và đồ cùng lúc.
@@ -18,14 +18,14 @@ Bản thiết kế mở đầu giai đoạn (2026-10-30). Chưa có dòng code n
 - Nhân vật bị xóa mềm còn tin đang bán: gỡ tin và trả đồ qua thư.
 
 ## Hạng mục
-- **5a. Vạn Bảo Lâu: bán đứt, đấu giá, tin rao trong thành** (đã code, chưa deploy; migration `0059`)
-- **5b. Giao dịch trực tiếp 2 người** (đã code, chưa deploy; migration `0060`; xem mục "5b" bên dưới)
-- **5c. Tông môn** (đang thiết kế, xem mục "5c" bên dưới; chia 4 bước 5c-1 đến 5c-4)
-- **5d. Thú cưỡi** (đã code, xem mục "5d" cuối file; migration `0072`; hình vẽ bằng code tạm, sprite chờ 4d)
-- **5e. Nghề phụ: Luyện khí** (đã code, xem mục "5e" cuối file; migration `0070`; luyện đan đã có ở 3k)
-- **5f. Dashboard tổng cung tiền và đơn nạp Tiên Ngọc** (đã code, xem mục "5f" cuối file; migration `0069`)
+- **5a. Vạn Bảo Lâu: bán đứt, đấu giá, tin rao trong thành** (xong; migration `0059`, `0061`)
+- **5b. Giao dịch trực tiếp 2 người** (xong; migration `0060`; xem mục "5b" bên dưới)
+- **5c. Tông môn** (xong; xem mục "5c" bên dưới; các bước 5c-1 đến 5c-6, migration `0062`-`0068`)
+- **5d. Thú cưỡi** (xong, thiết kế được duyệt; xem mục "5d" cuối file; migration `0072`-`0074`; sprite tạm dùng mô hình quái)
+- **5e. Nghề phụ: Luyện khí** (xong, thiết kế được duyệt, có cấp nghề; xem mục "5e" cuối file; migration `0070`, `0071`; luyện đan đã có ở 3k)
+- **5f. Dashboard tổng cung tiền và đơn nạp Tiên Ngọc** (xong; xem mục "5f" cuối file; migration `0069`; đơn nạp tự động chờ cổng thanh toán ở giai đoạn 6)
 
-5b–5f chưa thiết kế chi tiết; mỗi hạng mục là một thiết kế riêng. (Đánh số 5c–5g của bản nháp trước đã dời lên một bậc vì đấu giá nhập vào 5a.)
+Mỗi hạng mục là một thiết kế riêng (nay đều đã làm). (Đánh số 5c–5g của bản nháp trước đã dời lên một bậc vì đấu giá nhập vào 5a.)
 
 ## Điều đã kiểm trong code (2026-10-30)
 - `item_instances` đã có `qty`, `bag_tab`, `cell`, khóa duy nhất `(owner, bag_tab, cell)`; đồ không ở túi có `bag_tab`/`cell` NULL (đồ đính kèm thư, đồ đang mặc có `equip_slot`).

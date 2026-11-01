@@ -132,7 +132,7 @@ tools/   smoke.mjs
 Cần `wrangler dev` chạy ở cổng 8787 và `.dev.vars` có `DISABLE_RATE_LIMIT=1` và `ENABLE_DEV_GRANT=1`. Các script tự từ chối host không phải localhost, trừ `smoke.mjs` còn chạy được trên preview.
 | Lệnh | Kiểm gì |
 |---|---|
-| `npm run typecheck`, `npm test` | Kiểu và toàn bộ test đơn vị (khoảng 1049 test; một số dùng SQLite thật qua `server/src/test-db.ts`, loại khỏi `tsc` vì cần kiểu Node) |
+| `npm run typecheck`, `npm test` | Kiểu và toàn bộ test đơn vị (khoảng 1240 test; một số dùng SQLite thật qua `server/src/test-db.ts`, loại khỏi `tsc` vì cần kiểu Node) |
 | `node tools/smoke.mjs [ws://localhost:8787]` | Luồng chính: đăng ký, tạo nhân vật, quái, EXP, chết, cổng bản đồ |
 | `node tools/economy-smoke.mjs` | Admin: tra cứu, cộng/trừ tiền, idempotency (bảng khóa), lịch sử Linh Thạch của admin, tổng theo nhóm (nhóm `admin`) khớp số dư, chi tiết tiền, kiểm duyệt chỉ cho admin |
 | `node tools/chat-smoke.mjs` | Chat Thế giới/Bản đồ/Truyền âm/Hệ thống, giới hạn, socket chat bị thay thế |
@@ -145,6 +145,12 @@ Cần `wrangler dev` chạy ở cổng 8787 và `.dev.vars` có `DISABLE_RATE_LI
 | `node tools/breakthrough-forest-smoke.mjs` | Đột phá ở rừng: quái đánh là thất bại; một lần đủ 60 giây, kiểm bản làm việc của phòng khớp D1 sau khi rời |
 | `node tools/path-quests-smoke.mjs` | Nhiệm vụ hướng tu (hai bước mỗi hướng, bước 1 không phát vật phẩm, bỏ nhiệm vụ) và đột phá: nút nhận vật phẩm GM bị server chặn với người thường, Đạo Sư riêng từng hướng, cần Trúc Cơ, nộp thiếu thì từ chối, nhận vật phẩm (đan: nộp thảo dược và đan; thuật: Yêu Đan; kiếm: đủ 30 lần giết), chọn hướng rồi bỏ hướng thì nhiệm vụ mở lại và nhận được lần hai, vật phẩm đã nhận bằng nút cũ chặn nhiệm vụ, nhiệm vụ đột phá một lần |
 | `node tools/daily-smoke.mjs` | Nút GM nhận đan đột phá (bấm hai lần), Trưởng Lão liệt kê nhiệm vụ hằng ngày, nộp trả cả Linh Thạch và Cống Hiến, hôm nay không còn, "hôm sau" mở lại (ngày giả lập bằng cách lùi `done_at`; thanh toán ngày thứ hai do test đơn vị kiểm) |
+| `node tools/market-smoke.mjs`, `node tools/trade-smoke.mjs` | Vạn Bảo Lâu (ba nhân vật, mua đồng thời) và giao dịch hai người (mời, đề nghị, khóa, đồng ý một lần, hủy) |
+| `node tools/sect-smoke.mjs`, `node tools/sect-kill-smoke.mjs` | Tông môn (lập, mời, chat, đơn xin, góp quỹ, cửa hàng, kho và kệ, nhiệm vụ, thưởng tuần có vật phẩm, kỹ năng và mất khi bị đuổi, giải tán); đếm quái ở rừng, ghi D1, nộp ở thành sau khi qua cổng |
+| `node tools/forge-smoke.mjs` | Luyện khí ở Thợ Rèn: công thức theo cấp, bắt đầu, trừ tiền, nhận món có chỉ số và độ bền, lên cấp, nhận lần hai bị từ chối (chờ 35 giây cho cấu hình nạp lại) |
+| `node tools/beast-smoke.mjs` | Thú cưỡi: đọc phù, phù trùng bị từ chối, quá cảnh giới, cưỡi tăng tốc độ kể cả lúc đang đi, một lần một thứ với pháp bảo, giữ qua vào lại và qua đổi bản đồ |
+| `node tools/economy-smoke.mjs` | (đã có ở trên) nay kiểm cả màn Tổng quan tiền (người thường bị 403) |
+| Đã cũ từ 5b | `tools/alchemist-smoke.mjs`, phần cuối `tools/smith-smoke.mjs`, `tools/shop-smoke.mjs`: nhà mới của các thành chắn đường tới NPC, cần viết lại |
 | `node tools/guard-smoke.mjs` | Vệ binh: thành có 2 (đứng yên khi chỉ có người tên trắng, không đánh họ), người tên cam vào thành thì vệ binh đánh (phòng dựng mô phỏng cho vệ binh), rừng 4 vệ binh, hang 2 |
 | `node tools/admin-pages-smoke.mjs` | Trang admin (3a) và Quản lý tiền tệ (3b: tìm kiếm, chi tiết, popup lịch sử, kiểm duyệt chạy, từ chối khi còn Không hợp lệ, Xác nhận, Xử lý, nhật ký admin, 401/403): ẩn danh và người chơi bị chuyển về `/admin/login` ở mọi địa chỉ `/admin/*`, trang login phục vụ được, hai trang cũ chuyển về `/admin`, POST `/admin` là 405, API admin 401/403/200, admin vào được và đổi một cài đặt thì nhật ký có dòng kèm trước/sau, màn Chỉ số khác (`/api/admin/tuning`: 401/403, lưu, nhật ký, 409, 400, 404, khôi phục) (cần `DISABLE_RATE_LIMIT=1`; gán admin bằng `wrangler d1 execute --local`) |
 | `node tools/gifts-smoke.mjs` | Gửi quà (3d): 401/403, gửi cho một nhân vật, gửi trùng mã, báo `mail_new` qua socket chat, `mail_refresh` (lần hai bị bỏ qua), nhận quà (tiền, vật phẩm, nhóm Admin), nhận lần hai không trả gì, gửi cho cả server, lịch sử, nhật ký |
