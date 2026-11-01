@@ -14,6 +14,8 @@ interface Flow {
 interface CurrencyData {
   id: "tien_ngoc" | "linh_thach" | "cong_hien";
   supply: number;
+  wallets: number;
+  elsewhere: Array<{ key: string; labelVi: string; amount: number }>;
   holders: number;
   totalIn: number;
   totalOut: number;
@@ -48,6 +50,12 @@ function currencyBlock(c: CurrencyData): HTMLElement {
     h("h2", null, LABEL[c.id] ?? c.id),
     h("p", null, h("b", null, num(c.supply)), ` đang được giữ bởi ${num(c.holders)} người chơi`, c.id === "cong_hien" ? " (cống hiến của thành viên các tông môn; không còn nằm trong ví)" : "."),
   ];
+  if (c.elsewhere.length > 0) {
+    parts.push(
+      h("p", { class: "muted" }, "Tổng cung gồm ví của người chơi và số tiền đang nằm ở nơi khác (để một khoản góp quỹ hay đặt giá không bị đọc nhầm là tiền biến mất):"),
+      table(["Nơi giữ", "Số tiền"], [["Ví người chơi", num(c.wallets)], ...c.elsewhere.map((e) => [e.labelVi, num(e.amount)])]),
+    );
+  }
   if (c.groups.length > 0) {
     parts.push(
       h("h3", null, "Tiền vào và ra theo nhóm (từ đầu đến nay)"),

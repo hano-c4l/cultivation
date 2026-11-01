@@ -42,6 +42,30 @@ describe("the money overview", () => {
     expect(o.currencies.find((c) => c.id === "tien_ngoc")!.supply).toBe(50);
   });
 
+  it("counts the money held outside wallets once: sect funds, open bids, unclaimed mail", async () => {
+    raw.exec(`INSERT INTO sects (id, name, leader_id, created_at, fund) VALUES ('s', 'S', 'a', 0, 700)`);
+    // an open auction with a bid, one without, a closed one, and a bid in Tiên Ngọc
+    const listing = (id: string, status: string, bid: number, bidder: string | null, currency: string) =>
+      raw.exec(`INSERT INTO market_listings (id, town, kind, seller_id, item_id, item_type, qty, price, top_bid, top_bidder_id, status, currency, created_at, ends_at) VALUES ('${id}', 'town', 'auction', 'c', '${id}', 'linh_thao', 1, 100, ${bid}, ${bidder ? `'${bidder}'` : "NULL"}, '${status}', '${currency}', 0, 1)`);
+    listing("l1", "active", 400, "a", "linh_thach");
+    listing("l2", "active", 0, null, "linh_thach");
+    listing("l3", "sold", 900, "a", "linh_thach");
+    listing("l4", "active", 30, "b", "tien_ngoc");
+    const mail = (id: string, gift: string, extra = "") => raw.exec(`INSERT INTO mailbox (id, character_id, subject, body, gift, created_at${extra ? ", " + extra.split("=")[0] : ""}) VALUES ('${id}', 'a', 's', '', '${gift}', 0${extra ? ", " + extra.split("=")[1] : ""})`);
+    mail("m1", '{"linh_thach":250,"items":[]}'); // unclaimed
+    mail("m2", '{"tien_ngoc":20,"items":[]}'); // unclaimed, Tiên Ngọc
+    mail("m3", '{"linh_thach":999,"items":[]}', "claimed_at=5"); // claimed
+    const o = await moneyOverview(db, NOW);
+    const linh = o.currencies.find((c) => c.id === "linh_thach")!;
+    expect(linh.wallets).toBe(1300);
+    expect(linh.elsewhere.map((e) => [e.key, e.amount])).toEqual([["sect_fund", 700], ["auction_bids", 400], ["unclaimed_mail", 250]]);
+    expect(linh.supply).toBe(1300 + 700 + 400 + 250);
+    const tien = o.currencies.find((c) => c.id === "tien_ngoc")!;
+    expect(tien.elsewhere.map((e) => [e.key, e.amount])).toEqual([["auction_bids", 30], ["unclaimed_mail", 20]]);
+    expect(tien.supply).toBe(50 + 30 + 20);
+    expect(linh.history[0]!.supply).toBe(linh.supply); // the snapshot keeps the whole supply
+  });
+
   it("Cống Hiến is the contribution of the sect members", async () => {
     raw.exec(`INSERT INTO sects (id, name, leader_id, created_at) VALUES ('s', 'S', 'a', 0)`);
     raw.exec(`INSERT INTO sect_members (character_id, sect_id, rank, joined_at, contribution) VALUES ('a', 's', 5, 0, 120)`);

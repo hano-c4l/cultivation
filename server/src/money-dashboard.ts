@@ -26,10 +26,20 @@ export interface GroupFlow {
   totalOut: number;
 }
 
+/** Money that is in the game but in no wallet: the headline supply counts it, so a donation or a bid does not look like money destroyed. */
+export interface HeldElsewhere {
+  key: "sect_fund" | "auction_bids" | "unclaimed_mail";
+  labelVi: string;
+  amount: number;
+}
+
 export interface CurrencyOverview {
   id: MoneyId;
-  /** Everything held now (Cống Hiến: the cống hiến of the members of sects). */
+  /** Everything there is now: the wallets plus what is held elsewhere (Cống Hiến: the cống hiến of the members of sects). */
   supply: number;
+  /** The part of the supply in the wallets, and the rest by place. */
+  wallets: number;
+  elsewhere: HeldElsewhere[];
   holders: number;
   totalIn: number;
   totalOut: number;
@@ -62,9 +72,25 @@ async function flowsOf(db: D1Database, currency: "tien_ngoc" | "linh_thach"): Pr
     .sort((a, b) => (order.get(a.group) ?? 99) - (order.get(b.group) ?? 99));
 }
 
-async function overviewOf(db: D1Database, currency: MoneyId, day: number): Promise<CurrencyOverview> {
+/** The Linh Thạch and Tiên Ngọc held outside wallets: sect funds, the bids of the open auctions (paid up front) and the money of mails not claimed yet (sale proceeds, refunds, gifts). */
+export async function heldElsewhere(db: D1Database, currency: "tien_ngoc" | "linh_thach", now: number): Promise<HeldElsewhere[]> {
+  const out: HeldElsewhere[] = [];
+  if (currency === "linh_thach") {
+    const fund = (await db.prepare("SELECT COALESCE(SUM(fund), 0) AS n FROM sects").first<{ n: number }>())?.n ?? 0;
+    out.push({ key: "sect_fund", labelVi: "Quỹ các tông môn", amount: fund });
+  }
+  const bids = (await db.prepare("SELECT COALESCE(SUM(top_bid), 0) AS n FROM market_listings WHERE status = 'active' AND kind = 'auction' AND top_bidder_id IS NOT NULL AND currency = ?").bind(currency).first<{ n: number }>())?.n ?? 0;
+  out.push({ key: "auction_bids", labelVi: "Giá đã đặt trong các phiên đấu giá đang mở (trả trước)", amount: bids });
+  const key = `$.${currency}`;
+  const mail = (await db.prepare("SELECT COALESCE(SUM(json_extract(gift, ?)), 0) AS n FROM mailbox WHERE gift IS NOT NULL AND claimed_at IS NULL AND (expires_at IS NULL OR expires_at > ?)").bind(key, now).first<{ n: number }>())?.n ?? 0;
+  out.push({ key: "unclaimed_mail", labelVi: "Tiền trong thư chưa nhận (tiền bán, hoàn tiền, quà)", amount: mail });
+  return out;
+}
+
+async function overviewOf(db: D1Database, currency: MoneyId, day: number, now: number): Promise<CurrencyOverview> {
   let supply: number;
   let holders: number;
+  let elsewhere: HeldElsewhere[] = [];
   let groups: GroupFlow[] = [];
   let top: CurrencyOverview["top"] = [];
   if (currency === "cong_hien") {
@@ -82,6 +108,7 @@ async function overviewOf(db: D1Database, currency: MoneyId, day: number): Promi
     const r = await db.prepare("SELECT COALESCE(SUM(balance), 0) AS s, COUNT(*) AS n FROM currency_balances WHERE currency = ? AND balance > 0").bind(currency).first<{ s: number; n: number }>();
     supply = r?.s ?? 0;
     holders = r?.n ?? 0;
+    elsewhere = await heldElsewhere(db, currency, now);
     groups = await flowsOf(db, currency);
     top = (
       await db
@@ -90,6 +117,8 @@ async function overviewOf(db: D1Database, currency: MoneyId, day: number): Promi
         .all<{ id: string; name: string; balance: number }>()
     ).results;
   }
+  const wallets = supply;
+  supply += elsewhere.reduce((n, e) => n + e.amount, 0);
   const totalIn = groups.reduce((n, g) => n + g.totalIn, 0);
   const totalOut = groups.reduce((n, g) => n + g.totalOut, 0);
   await db
@@ -102,7 +131,7 @@ async function overviewOf(db: D1Database, currency: MoneyId, day: number): Promi
       .bind(currency, HISTORY_DAYS)
       .all<CurrencyOverview["history"][number]>()
   ).results;
-  return { id: currency, supply, holders, totalIn, totalOut, groups, top, history };
+  return { id: currency, supply, wallets, elsewhere, holders, totalIn, totalOut, groups, top, history };
 }
 
 /** The Tiên Ngọc the admins gave out in the last `TOPUP_DAYS` days: a credit by an admin's hand or by an admin gift (the reason kind starts with "admin"). */
@@ -128,6 +157,6 @@ export async function topups(db: D1Database, now: number): Promise<TopupView> {
 export async function moneyOverview(db: D1Database, now = Date.now()): Promise<MoneyOverview> {
   const day = vnDayOf(now);
   const currencies: CurrencyOverview[] = [];
-  for (const id of ["tien_ngoc", "linh_thach", "cong_hien"] as const) currencies.push(await overviewOf(db, id, day));
+  for (const id of ["tien_ngoc", "linh_thach", "cong_hien"] as const) currencies.push(await overviewOf(db, id, day, now));
   return { at: now, day, currencies, topups: await topups(db, now) };
 }
