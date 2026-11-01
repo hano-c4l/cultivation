@@ -159,13 +159,13 @@ Tên các giai đoạn và hạng mục (chi tiết từng hạng mục nằm �
   - 4g. Icon, NPC, ô bản đồ — làm gần hết (icon SVG; NPC là thân người chơi theo D1; nền, cây, đá, tường có khối); còn icon ở các màn còn là chữ
   - 4h. Tối ưu và đo hiệu năng — làm một phần (bộ nhớ bản đồ giảm khoảng 4 lần, WebP, gỡ atlas khi rảnh, bảng đo `?perf=1`); còn đo thật trên điện thoại
   - 4i. Admin chọn hình có sẵn (không tải ảnh lên) cho vật phẩm, trang bị theo loại, kỹ năng, quái, NPC, bản đồ, trang phục, mũ, bản đồ mini — xong
-- **Giai đoạn 5**: Kinh tế và xã hội (`docs/PHASE5.md`; mới thiết kế)
+- **Giai đoạn 5**: Kinh tế và xã hội (`docs/PHASE5.md`; **xong 2026-11-01**, đã ở production)
   - 5a. NPC Vạn Bảo Lâu: mua ngay, đấu giá, tin rao trong thành (làm trước; Linh Thạch hoặc Tiên Ngọc; tin theo từng thành; thuế 10%, phí đăng 2%)
   - 5b. Giao dịch trực tiếp 2 người (chỉ trong thành an toàn)
   - 5c. Tông môn do người chơi lập (Cống Hiến, kỹ năng tông môn, kho dùng chung, nhiệm vụ, xếp hạng); Cống Hiến là điểm riêng của từng thành viên tông môn; chia 5c-1 lõi, 5c-2 điểm cống hiến và cấp, 5c-3 kho, 5c-4 nhiệm vụ và xếp hạng; thiết kế ở `docs/PHASE5.md`
-  - 5d. Thú cưỡi
-  - 5e. Nghề phụ (luyện khí)
-  - 5f. Dashboard tổng cung tiền và đơn nạp Tiên Ngọc
+  - 5d. Thú cưỡi: đồ sưu tập học từ Ngự Thú Phù bán ở Thương nhân, cộng tốc độ, một lần một thứ với pháp bảo phi hành (xong; sprite tạm từ mô hình quái)
+  - 5e. Nghề phụ Luyện khí: Thợ Rèn làm ra trang bị và pháp bảo từ nguyên liệu, có cấp nghề mở công thức và đẩy chỉ số (xong)
+  - 5f. Dashboard tổng cung tiền và Tiên Ngọc admin cộng (xong; đơn nạp tự động chờ cổng thanh toán ở giai đoạn 6)
 - **Giai đoạn 6**: Hoàn thiện và vận hành (chưa chia hạng mục)
 
 Giai đoạn 5, 6 và các giai đoạn sau sẽ có file `docs/PHASE5.md`, `docs/PHASE6.md`... khi bắt đầu làm.
