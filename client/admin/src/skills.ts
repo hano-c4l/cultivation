@@ -1,5 +1,6 @@
 import { getSkill } from "@game/shared";
 import { skillIconSpecOf } from "../../src/icons";
+import { fxPreviewSection, type FxPreviewState } from "./fx-preview";
 import { skillLookSection } from "./looks";
 import { api, h, listView, navigate } from "./kit";
 
@@ -40,7 +41,7 @@ interface Listing {
 
 const KIND_VI: Record<string, string> = { attack: "Tấn công", heal: "Hồi máu", buff: "Tăng chỉ số", teleport: "Dịch chuyển", passive: "Bị động" };
 const SOURCE_VI: Record<string, string> = { root: "Linh căn", gear: "Pháp bảo", sect: "Tông môn", learned: "Học từ bí tịch", path: "Hướng tu" };
-const REALM_VI = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"];
+const REALM_VI = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh", "Hóa Thần", "Luyện Hư"];
 const FX_VI: Record<string, string> = { melee: "Cận chiến (chưởng, chém)", ranged: "Tầm xa (đạn bắn)" };
 
 const ERRORS: Record<string, string> = {
@@ -117,9 +118,16 @@ export function skillEditPage(): HTMLElement {
     if (!data) return void root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
     const current = data.skills.find((s) => s.id === id);
     if (!current) return void root.replaceChildren(h("p", { class: "err" }, "Không tìm thấy kỹ năng."), h("a", { href: "/admin/skills" }, "‹ Danh sách"));
-    root.replaceChildren(form(data, current));
+    // What the preview reads when it fires: the picks on this screen, taken at click time (the look picker is built after the form).
+    const live = { look: "", form: null as Pick<FxPreviewState, "fx" | "power"> | null };
+    root.replaceChildren(form(data, current, (f) => (live.form = f)));
     const base = skillIconSpecOf(getSkill(current.id)).shape;
-    void skillLookSection(current.id, Boolean(current.template), base === "unknown" ? "bolt" : base).then((node) => root.append(node));
+    void skillLookSection(current.id, Boolean(current.template), base === "unknown" ? "bolt" : base, (v) => (live.look = v)).then((node) => {
+      root.append(node);
+      if (current.kind !== "passive") {
+        void fxPreviewSection({ skillId: current.id, look: () => live.look, fx: () => live.form?.fx() ?? "", power: () => live.form?.power() }).then((preview) => root.append(preview));
+      }
+    });
   });
   return root;
 }
@@ -128,7 +136,7 @@ function field(label: string, ...children: Array<Node | null>): HTMLElement {
   return h("label", { class: "filter wide-field" }, label, ...children);
 }
 
-function form(data: Listing, e: Entry): HTMLElement {
+function form(data: Listing, e: Entry, expose: (live: Pick<FxPreviewState, "fx" | "power">) => void): HTMLElement {
   const msg = h("div", { class: "msg muted" });
   const problems = h("ul", { class: "err" });
   const has = (k: string) => e.fields.includes(k);
@@ -183,6 +191,15 @@ function form(data: Listing, e: Entry): HTMLElement {
     "theo mẫu",
     (el) => (el.value = ""),
   );
+
+  expose({
+    fx: () => (inputs.fx?.value ?? "").trim(),
+    power: () => {
+      const raw = (inputs.power?.value ?? "").trim();
+      const n = Number(raw);
+      return raw !== "" && Number.isFinite(n) ? n : undefined;
+    },
+  });
 
   const show = (text: string, cls: string, list: string[] = []) => {
     msg.textContent = text;

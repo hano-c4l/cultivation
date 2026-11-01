@@ -20,6 +20,10 @@ export interface NpcLook {
   tint?: string;
   /** A colour (`#rrggbb`) for the formation circle that turns slowly under the figure. */
   aura?: string;
+  /** The shape (0 and up; the client wraps it round the hats it has) of the hat on the head; none: bareheaded. */
+  hat?: number;
+  /** A colour (`#rrggbb`) the hat is multiplied by; none: the colour of the aura, else white. */
+  hatTint?: string;
 }
 
 /**
