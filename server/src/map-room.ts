@@ -155,7 +155,7 @@ import { getNpcs } from "./npcs";
 import { grantExp, saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import type { SpiritualRoot } from "@game/shared";
-import { DEFAULT_MAX_BATCH, type Craft, canCraft, craftLevelOf, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
+import { DEFAULT_FORGE, DEFAULT_MAX_BATCH, type Craft, biasedRoll, canCraft, craftLevelOf, craftQualityBias, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -3657,7 +3657,11 @@ export class MapRoom extends DurableObject<Env> {
     let full = false;
     // A piece of gear comes out with full durability and the stats rolled from the master table, as the merchants and the blacksmith give it.
     const max = equipmentInfo(job.output)?.maxDurability;
-    const rs = max != null ? await rollGear(this.env.DB, job.output) : undefined;
+    // A higher trade level than the recipe asks for pushes the rolls towards the top of their ranges (the level before this run's own exp is added).
+    const cfg = (await getTuning(this.env.DB))[craft];
+    const level = craftLevelOf(cfg, await getCraftExp(this.env.DB, id, craft));
+    const bias = craftQualityBias(cfg, level, cfg.recipes.find((r) => r.id === job.recipe)?.minLevel ?? 1, craft === "forge" ? DEFAULT_FORGE.quality!.perLevel : 0);
+    const rs = max != null ? await rollGear(this.env.DB, job.output, biasedRoll(Math.random, bias)) : undefined;
     const res = await this.mutateBag(id, (bag) => {
       const ops = planAdd(bag.items, bag.tabs, job.output, job.qty, () => crypto.randomUUID(), max != null ? { dur: max, max, ...(rs ? { rs } : {}) } : undefined);
       if (!ops) {

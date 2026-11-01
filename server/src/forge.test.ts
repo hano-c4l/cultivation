@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
-import { DEFAULT_FORGE, DEFAULT_ALCHEMY, canCraft, craftLevelOf, craftNextExp, equipmentInfo, getItemDef, scaleBrew, validAlchemy } from "@game/shared";
+import { DEFAULT_FORGE, DEFAULT_ALCHEMY, biasedRoll, craftQualityBias, rollForType, canCraft, craftLevelOf, craftNextExp, equipmentInfo, getItemDef, scaleBrew, validAlchemy } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { alchemyReferences, getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
 import { collectBrewStatements, getBrewJob, getCraftExp, listBrewJobs, startBrewStatements } from "./brew";
@@ -163,5 +163,62 @@ describe("trade levels", () => {
     r.prepare("INSERT INTO game_tuning (name, value, updated_at, updated_by) VALUES ('forge', ?, 0, 'boss@x.test')").run(JSON.stringify({ maxJobs: 3, recipes: [] }));
     r.exec(del);
     expect(r.prepare("SELECT 1 AS x FROM game_tuning WHERE name = 'forge'").get()).toBeDefined();
+  });
+});
+
+describe("quality by trade level", () => {
+  const mean = (f: () => number, n = 4000) => {
+    let t = 0;
+    for (let i = 0; i < n; i++) t += f();
+    return t / n;
+  };
+
+  it("pushes the roll towards the top as the exponent grows, and never leaves [0, 1]", () => {
+    const plain = mean(Math.random);
+    const k1 = mean(biasedRoll(Math.random, 0.5));
+    const k5 = mean(biasedRoll(Math.random, 2.5));
+    expect(plain).toBeGreaterThan(0.45);
+    expect(plain).toBeLessThan(0.55);
+    expect(k1).toBeGreaterThan(0.56);
+    expect(k5).toBeGreaterThan(k1);
+    expect(k5).toBeGreaterThan(0.74);
+    for (const r of [0, 0.5, 0.999999]) {
+      const v = biasedRoll(() => r, 3)();
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1); // (it can reach 1 in floating point: the top of the range, still inside it)
+    }
+    expect(biasedRoll(() => 0.3, 0)()).toBeCloseTo(0.3, 10); // k = 0: the plain roll
+  });
+
+  it("the pushed rolls stay inside the master range and are better on average than the plain ones", () => {
+    const type = "eq.ring.u.0.3.2";
+    const sum = (rand: () => number) => {
+      let t = 0;
+      for (let i = 0; i < 600; i++) t += Object.values(rollForType(type, rand) ?? {}).reduce((a, b) => a + b, 0);
+      return t / 600;
+    };
+    const low = rollForType(type, () => 0)!;
+    const high = rollForType(type, () => 0.999999)!;
+    for (let i = 0; i < 100; i++) {
+      const r = rollForType(type, biasedRoll(Math.random, 3))!;
+      for (const [key, v] of Object.entries(r)) {
+        expect(v).toBeGreaterThanOrEqual((low as Record<string, number>)[key]!);
+        expect(v).toBeLessThanOrEqual((high as Record<string, number>)[key]!);
+      }
+    }
+    expect(sum(biasedRoll(Math.random, 3))).toBeGreaterThan(sum(Math.random));
+  });
+
+  it("the push is zero at the recipe's own level and grows with the levels above it", () => {
+    const cfg = DEFAULT_FORGE;
+    expect(craftQualityBias(cfg, 1, 1)).toBe(0);
+    expect(craftQualityBias(cfg, 3, 3)).toBe(0);
+    expect(craftQualityBias(cfg, 3, 1)).toBeCloseTo(1, 10);
+    expect(craftQualityBias(cfg, 1, 3)).toBe(0); // never negative
+    expect(craftQualityBias({ levels: [1], quality: { perLevel: 0 } }, 6, 1, 0.5)).toBe(0); // 0 turns it off
+    expect(craftQualityBias({ levels: [1] }, 6, 1, 0.5)).toBeCloseTo(2.5, 10); // no setting: the fallback of the forge
+    expect(craftQualityBias({ levels: [1] }, 6, 1)).toBe(0); // and none for the alchemist
+    expect(validAlchemy({ ...DEFAULT_FORGE, quality: { perLevel: 6 } })).toBe(false);
+    expect(validAlchemy({ ...DEFAULT_FORGE, quality: { perLevel: -1 } })).toBe(false);
   });
 });
