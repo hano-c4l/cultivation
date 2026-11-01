@@ -76,7 +76,9 @@ const mail = p.log.filter((m) => m.t === "mail").at(-1)?.mail.find((m) => m.id =
 check("the mail has the subject, body, attachments and an expiry of days", mail?.subject === "Quà thử" && mail.body === "Dòng một\nDòng hai" && mail.gift?.linh_thach === 1500 && mail.gift.items[0].qty === 4 && mail.expiresInMs > 2.9 * 86_400_000, JSON.stringify(mail));
 p.send({ t: "mail_refresh" });
 await sleep(300);
-check("a second refresh right away is ignored", p.log.filter((m) => m.t === "mail").length === 1);
+check("a second refresh right away is not answered at once", p.log.filter((m) => m.t === "mail").length === 1);
+await sleep(5200);
+check("but it is answered once the gap is over", p.log.filter((m) => m.t === "mail").length === 2);
 
 p.send({ t: "mail_claim", id: `${batch1}:${playerChar.id}` });
 await sleep(1200);
@@ -89,7 +91,7 @@ check("a second claim pays nothing", sql(`SELECT balance FROM currency_balances 
 // The whole server.
 const total = sql("SELECT COUNT(*) AS n FROM characters WHERE deleted_at IS NULL")[0].n;
 const batch2 = `smoke${run}b`.slice(0, 24);
-const all = await post("/api/admin/gifts/send", { batchId: batch2, subject: "Sự kiện", body: "", audience: { kind: "all" }, gift: { cong_hien: 10, items: [] }, expiresInDays: null }, admin.cookie);
+const all = await post("/api/admin/gifts/send", { batchId: batch2, subject: "Sự kiện", body: "", audience: { kind: "all" }, gift: { linh_thach: 10, items: [] }, expiresInDays: null }, admin.cookie);
 check("a gift to the whole server reaches every character", all.status === 200 && all.data.recipients === total && sql(`SELECT COUNT(*) AS n FROM mailbox WHERE id LIKE '${batch2}:%'`)[0].n === total, JSON.stringify(all.data));
 const hist = await get("/api/admin/gifts/history?size=5", admin.cookie);
 const row = hist.data.rows?.find((r) => r.id === batch1);

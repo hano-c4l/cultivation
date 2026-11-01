@@ -254,6 +254,25 @@ describe("auctions", () => {
     expect((raw.prepare("SELECT COUNT(*) AS c FROM market_sales").get() as { c: number }).c).toBe(1);
   });
 
+  it("a listing whose escrowed item is gone is closed with the bidder refunded, and does not block the rest", async () => {
+    const lost = giveStack(S, 1, 0);
+    const fine = giveStack(S, 1, 1);
+    await fund(S, 5000);
+    await fund(B, 50_000);
+    const broken = await post("auction", 1, 1000, { cell: 0 });
+    const ok = await post("fixed", 1, 1000, { cell: 1 });
+    await placeBid(db, cfg, { bidderId: B, town: TOWN, id: broken.id, amount: 4000, now: DAY });
+    raw.exec(`DELETE FROM item_instances WHERE id = '${lost}'`);
+    const notified = await settleDue(db, cfg, DAY + 30 * 24 * HOUR, 1);
+    expect(notified.sort()).toEqual([B, S].sort());
+    expect(listing(broken.id).status).toBe("cancelled");
+    expect((raw.prepare("SELECT screen FROM admin_log").all() as Array<{ screen: string }>).map((r) => r.screen)).toEqual(["Chợ · tự đóng tin hỏng"]);
+    expect(mails(B).find((m) => m.amount === 4000)).toBeTruthy();
+    await settleDue(db, cfg, DAY + 30 * 24 * HOUR, 1);
+    expect(listing(ok.id).status).toBe("expired");
+    expect(mails(S).find((m) => m.item_id === fine)).toBeTruthy();
+  });
+
   it("an auction without a bid goes back to the seller; so does an expired fixed listing", async () => {
     const a = giveStack(S, 1, 0);
     const f = giveStack(S, 1, 1);

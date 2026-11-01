@@ -506,7 +506,7 @@ export function initInventory(send: (msg: ClientMessage) => void, toHotbar: (val
 
   function setOpen(open: boolean): void {
     panel.hidden = !open;
-    if (open) send({ t: "mail_refresh" }); // a gift may have arrived while the bag was shut (the server answers at most every few seconds)
+    if (open) send({ t: "mail_refresh" }); // a gift may have arrived while the bag was shut (the server answers at most every few seconds, a closer ask is answered late)
     if (clock) clearInterval(clock);
     clock = open ? setInterval(tickMail, 1000) : undefined;
     if (!open) {

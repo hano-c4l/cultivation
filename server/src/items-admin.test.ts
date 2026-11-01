@@ -105,6 +105,18 @@ describe("saving an item", () => {
   });
 });
 
+describe("the held-item counts", () => {
+  it("are reused within the given age and read fresh with age 0", async () => {
+    await saveItem(db, ADMIN, item(), true, 0, undefined, 0);
+    const held = async (maxAge: number) => (await listItems(db, maxAge)).items.find((i) => i.def.id === "su_kien_dan")!.owned;
+    expect(await held(0)).toBe(0);
+    expect(await held(60_000)).toBe(0); // fills the cache
+    own("su_kien_dan", 7);
+    expect(await held(60_000)).toBe(0); // old count
+    expect(await held(0)).toBe(7);
+  });
+});
+
 describe("deleting an item", () => {
   const make = async () => {
     await saveItem(db, ADMIN, item(), true, 0, undefined, 0);

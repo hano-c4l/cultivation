@@ -39,6 +39,14 @@ describe("market admin", () => {
     expect(await adminTakedown(db, "admin@x.test", "l1", "", NOW)).toEqual({ ok: false, error: "gone" });
   });
 
+  it("takes down a listing whose escrowed item is gone: the bidder is refunded and the admin log still gets its row", async () => {
+    listing("l9", "active", 400); // no item row called l9
+    expect(await adminTakedown(db, "admin@x.test", "l9", "hỏng", NOW)).toEqual({ ok: true, notify: ["s", "b"] });
+    expect(raw.prepare("SELECT status FROM market_listings WHERE id = 'l9'").get()).toEqual({ status: "cancelled" });
+    expect((raw.prepare("SELECT character_id AS to_id FROM mailbox").all() as Array<{ to_id: string }>).map((m) => m.to_id)).toEqual(["b"]);
+    expect((raw.prepare("SELECT COUNT(*) AS n FROM admin_log").get() as { n: number }).n).toBe(1);
+  });
+
   it("reads the closed sales and the trade log with names", async () => {
     raw.exec(`INSERT INTO market_sales (id, listing_id, town, kind, currency, seller_id, buyer_id, item_type, qty, price, tax, created_at) VALUES ('m1', 'l', 'town', 'fixed', 'tien_ngoc', 's', 'b', 'linh_thao', 2, 50, 5, 7)`);
     raw.exec(`INSERT INTO trade_log (id, a_id, b_id, items_a, items_b, linh_a, linh_b, created_at, tn_a, tn_b) VALUES ('t1', 's', 'b', '[{"id":"x","type":"linh_thao","qty":2}]', '[]', 0, 100, 8, 0, 3)`);

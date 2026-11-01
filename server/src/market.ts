@@ -15,6 +15,7 @@ import {
   type MarketKind,
   type MarketListingView,
 } from "@game/shared";
+import { logStatement } from "./admin-log";
 import { applyCurrencyDelta } from "./economy";
 import { guard, wearOf, type BagState } from "./inventory";
 
@@ -42,6 +43,9 @@ export interface ListingRow {
   ends_at: number;
   promoted_at: number | null;
 }
+
+/** The admin-log screen of listings the market closes by itself because their escrowed item is gone. */
+export const MARKET_AUTOCLOSE_SCREEN = "Chợ · tự đóng tin hỏng";
 
 /** The item name for a mail subject. */
 const nameOf = (type: string): string => getItemDef(type)?.nameVi ?? type;
@@ -308,10 +312,43 @@ export async function settleDue(db: D1Database, cfg: MarketCfg, now: number, lim
       notify.add(l.seller_id);
       if (sold) notify.add(l.top_bidder_id!);
     } catch (err) {
-      if (!isGuardFailure(err)) throw err; // another caller closed it first
+      if (!isGuardFailure(err)) throw err;
+      // Either another caller closed it first, or the escrowed item is gone and the listing would stay open (and first in line) forever.
+      const broken = await abandonIfBroken(db, l, now);
+      if (broken) {
+        notify.add(broken.seller_id);
+        if (broken.top_bidder_id) notify.add(broken.top_bidder_id);
+      }
     }
   }
   return [...notify];
+}
+
+/**
+ * A due listing whose escrowed item is no longer with the seller (deleted by hand, moved back into a bag) can never be handed over, so every sweep would
+ * fail on it and it would sit at the head of the queue. Closes it as cancelled: a standing top bidder is refunded and the failure is logged for an admin.
+ * Returns the listing as it was closed, or null when it is fine (just closed by someone else) or the batch lost a race.
+ */
+async function abandonIfBroken(db: D1Database, l: ListingRow, now: number, extra: D1PreparedStatement[] = []): Promise<ListingRow | null> {
+  const cur = await getListing(db, l.id);
+  if (!cur || cur.status !== "active") return null;
+  const item = await db
+    .prepare("SELECT 1 AS ok FROM item_instances WHERE id = ? AND owner_character_id = ? AND bag_tab IS NULL AND cell IS NULL AND equip_slot IS NULL")
+    .bind(cur.item_id, cur.seller_id)
+    .first();
+  if (item) return null; // the item is in place, so the failure was something else; left for the next sweep
+  console.error("market listing abandoned: escrowed item missing", cur.id, cur.item_id);
+  const statements = [listingGuard(db, cur.id, " AND top_bid = ?", [cur.top_bid]), db.prepare("UPDATE market_listings SET status = 'cancelled', closed_at = ? WHERE id = ? AND status = 'active'").bind(now, cur.id)];
+  if (cur.top_bidder_id && cur.top_bid > 0) statements.push(mailStatement(db, cur.top_bidder_id, `Vạn Bảo Lâu: hoàn tiền đặt giá ${nameOf(cur.item_type)}`, now, { amount: cur.top_bid, currency: cur.currency, reason: "market:refund" }));
+  // An Admin takedown brings its own log row; a sweep leaves one so the closed listing can be told apart from a seller's cancel.
+  statements.push(...(extra.length > 0 ? extra : [logStatement(db, { adminEmail: "system", screen: MARKET_AUTOCLOSE_SCREEN, content: `Tin ${cur.id.slice(0, 8)}: ${nameOf(cur.item_type)} x${cur.qty} mất món ký gửi, đã đóng${cur.top_bid > 0 ? " và hoàn tiền người đặt giá" : ""}` }, now)]));
+  try {
+    await db.batch(statements);
+    return cur;
+  } catch (err) {
+    if (!isGuardFailure(err)) throw err;
+    return null;
+  }
 }
 
 /**
@@ -346,8 +383,11 @@ export async function takeDownListing(db: D1Database, id: string, now: number, e
   try {
     await db.batch([listingGuard(db, l.id, " AND top_bid = ?", [l.top_bid]), ...returnStatements(db, l, "cancelled", now), ...extra]);
   } catch (err) {
-    if (isGuardFailure(err)) return null;
-    throw err;
+    if (!isGuardFailure(err)) throw err;
+    // Gone already, or the escrowed item is missing and the normal way can never succeed: close it without the item.
+    const closed = await abandonIfBroken(db, l, now, extra);
+    if (!closed) return null;
+    return { listing: closed, notify: closed.top_bidder_id ? [closed.seller_id, closed.top_bidder_id] : [closed.seller_id] };
   }
   return { listing: l, notify: l.top_bidder_id ? [l.seller_id, l.top_bidder_id] : [l.seller_id] };
 }

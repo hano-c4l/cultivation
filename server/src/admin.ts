@@ -30,6 +30,9 @@ import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type Gif
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
 import { listLookGroups, saveLookGroup } from "./looks-admin";
 
+/** The Admin item list reuses its held-item counts this long (they cost a scan of every item row). */
+const ITEM_OWNERS_CACHE_MS = 60_000;
+
 /** Returns the admin's session, or the error response to send (401 anonymous, 403 not an admin). */
 async function requireAdminSession(request: Request, env: Env): Promise<AuthedSession | Response> {
   const session = await getSession(request, env);
@@ -454,7 +457,7 @@ export async function adminQuestDelete(request: Request, env: Env): Promise<Resp
 export async function adminItems(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
-  return json(await listItems(env.DB));
+  return json(await listItems(env.DB, ITEM_OWNERS_CACHE_MS));
 }
 
 const ITEM_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, bound: 400, locked_field: 409, exists: 409, has_owner: 409, version_conflict: 409, busy: 409, deleted: 409, in_use: 409, not_found: 404 };
