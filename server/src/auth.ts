@@ -23,7 +23,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminMapCreate, adminMapDelete, adminAccounts, adminAccountDetail, adminAccountAction, adminCharacter, adminCharacterAction, adminGear, adminGearSave, adminLooks } from "./admin";
+import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminMoney, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminMapCreate, adminMapDelete, adminAccounts, adminAccountDetail, adminAccountAction, adminCharacter, adminCharacterAction, adminGear, adminGearSave, adminLooks } from "./admin";
 import { kick } from "./accounts-admin";
 import { getOwnCharacter, grantExp, listCharacters, resolveActiveCharacter, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import { getSetting } from "./settings";
@@ -472,6 +472,8 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     case "GET /api/admin/constitutions":
     case "POST /api/admin/constitutions":
       return adminConstitutions(request, env);
+    case "GET /api/admin/money":
+      return adminMoney(request, env);
     case "GET /api/admin/supply":
       return adminSupply(request, env);
     case "POST /api/dev/grant-exp":

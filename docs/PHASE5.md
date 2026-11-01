@@ -23,7 +23,7 @@ Bản thiết kế mở đầu giai đoạn (2026-10-30). Chưa có dòng code n
 - **5c. Tông môn** (đang thiết kế, xem mục "5c" bên dưới; chia 4 bước 5c-1 đến 5c-4)
 - **5d. Thú cưỡi** (layer sprite riêng, chờ 4d)
 - **5e. Nghề phụ** (luyện khí; luyện đan đã có ở 3k)
-- **5f. Dashboard tổng cung tiền và đơn nạp Tiên Ngọc**
+- **5f. Dashboard tổng cung tiền và đơn nạp Tiên Ngọc** (đã code, xem mục "5f" cuối file; migration `0069`)
 
 5b–5f chưa thiết kế chi tiết; mỗi hạng mục là một thiết kế riêng. (Đánh số 5c–5g của bản nháp trước đã dời lên một bậc vì đấu giá nhập vào 5a.)
 
@@ -241,4 +241,14 @@ Phần **cửa hàng kỹ năng tông môn** tách ra thành **5c-2b** (cần k�
 - Câu hỏi mở của 5c-4 về đếm giết thật đã đóng bằng mục này.
 - **Không ghi lại khi đã đủ:** phòng giữ **tổng trong ngày** của từng nhiệm vụ (nạp từ D1 mỗi phút một lần cùng việc xem tông môn) và thôi đếm khi tổng đạt `count × perDay`, nên người còn săn tiếp không gây thêm lần ghi D1 nào (`sectKillOpen`). Mỗi lần ghi in `sect kills rows_written`.
 - **Tồn đọng:** Admin đổi `pct` hoặc `count` giữa ngày thì chế độ của một người có thể đổi theo và số quái đã đếm có thể thành thừa; chấp nhận được.
+
+## 5f. Tổng quan tiền (nhánh `features_money-dashboard`, migration `0069`)
+- **Màn Admin mới `/admin/money` ("Tổng quan tiền")**, chỉ đọc (`GET /api/admin/money`, `server/src/money-dashboard.ts`, `client/admin/src/money.ts`). Với từng loại tiền: **tổng cung** (ví người chơi **cộng tiền đang nằm ngoài ví**: quỹ các tông môn, giá đã đặt trong các phiên đấu giá đang mở vì phải trả trước, tiền trong thư chưa nhận; mỗi khoản có dòng riêng, để một khoản góp quỹ hay đặt giá không bị đọc nhầm là tiền biến mất) và số người giữ; **tiền vào và ra theo nhóm** (cộng từ bảng `*_totals`, kèm ròng và tổng); **20 người giữ nhiều nhất** (liên kết sang chi tiết của "Quản lý tiền tệ"); **tổng cung theo ngày** (14 ngày gần nhất, kèm chênh so với ngày trước). Cống Hiến tính từ `sect_members.contribution` (ví cũ đã về 0 và không còn đổi), nên không có bảng vào ra. Cuối trang: **Tiên Ngọc admin đã cộng trong 30 ngày** (tổng, theo ngày, 100 dòng gần nhất).
+- **"Đơn nạp" hiện là các khoản cộng làm tay**: chưa nối cổng thanh toán (giai đoạn 6) nên chưa có bảng đơn nạp. Màn tính mọi khoản cộng dương trong `tien_ngoc_ledger` do admin làm (`actor` khác `system`) hoặc có lý do bắt đầu bằng `admin` (quà admin gửi, điều chỉnh kiểm duyệt). Khi nối cổng, đơn tự động sẽ có bảng riêng và hiện ở đây.
+- **Lịch sử tổng cung không chạy theo lịch** (game không có việc chạy định kỳ, báo thức tính như request): lần đầu có admin mở màn trong một ngày (giờ Việt Nam) thì ghi dòng của ngày đó vào `currency_snapshots` (INSERT OR IGNORE, khóa `(ngày, loại tiền)`), nên ngày không ai mở sẽ trống. Một lần mở đọc khoảng một hàng cho mỗi nhân vật và nhóm của hai bảng `*_totals` (D1 đọc rẻ, nhưng đừng mở liên tục khi đông nhân vật).
+- **Hai nhóm tiền mới** trong `CURRENCY_GROUPS` (shared/src/economy.ts): **Vạn Bảo Lâu** (`market*`, `auction*`: mua, đấu giá, phí gửi bán, thuế, quảng bá; trước ở nhóm "Giao dịch người chơi" nhưng nhiều khoản như `market_fee`, `market_buy:`, `auction_bid:` rơi vào "Khác" vì khớp đúng tên) và **Tông môn** (`sect*`: lập, góp quỹ, thưởng tuần, nhiệm vụ, kệ bán, giải tán; trước ở "Khác"). Hàng đã ghi theo nhóm cũ **giữ nguyên nhóm cũ** (bảng tổng không tách lại được), nên các con số cũ của "Khác" và "Giao dịch" vẫn lẫn; chỉ khoản mới vào nhóm mới.
+- **Kiểm:** `server/src/money-dashboard.test.ts` (tổng cung và người giữ, ròng của các nhóm khớp tổng cung, Cống Hiến từ tông môn, một dòng mỗi ngày và giữ lần mở đầu, khoản nạp trong 30 ngày chỉ tính khoản cộng của admin); `currency-groups.test.ts` cập nhật cho hai nhóm mới; `tools/economy-smoke.mjs` thêm phần màn tổng quan (người thường bị 403); xem màn bằng trình duyệt local (đăng nhập admin thử).
+- **Chưa làm:** biểu đồ (hiện là bảng), cảnh báo tự động khi tổng cung tăng nhanh, tách người chơi thật khỏi tài khoản admin và tài khoản thử trong tổng cung.
+- **Tồn đọng:** nhân vật đã xóa mềm vẫn nằm trong tổng cung và danh sách người giữ nhiều nhất. Trên môi trường có dữ liệu thử (local, preview) các khoản vào ra theo nhóm **không cộng khớp với tổng cung**, vì các smoke script ghi số dư bằng SQL thẳng; đó không phải lỗi, kiểm duyệt ở "Quản lý tiền tệ" mới là phép kiểm.
+- **Làm 5f trước 5e** vì 5e (nghề phụ, luyện khí) chưa có thiết kế: cần người dùng cho biết chế tạo gì, từ gì, ai làm, và khác Thợ Rèn ở đâu.
 

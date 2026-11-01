@@ -99,5 +99,13 @@ check("the totals add up to the balance", sums.s === sums.b && sums.b === 60, JS
 await sleep(3000); // a request straight after wrangler d1 execute can be reset
 check("the audit run is for admins only", (await api("/api/admin/currency/audit/run", { cookie: player.cookie, method: "POST", body: { currency: "linh_thach" } })).status === 403);
 
+// The money overview (5f): admins only, supply of the Linh Thạch adds up with the flows, the Tiên Ngọc the admin credited shows in the top-ups.
+check("the money overview is for admins only", (await api("/api/admin/money", { cookie: player.cookie })).status === 403);
+const money = await api("/api/admin/money", { cookie: admin.cookie });
+const linhOverview = money.data?.currencies?.find((c) => c.id === "linh_thach");
+check("the overview has the three currencies", money.data?.currencies?.length === 3);
+check("the Linh Thạch of the overview has a supply and flows by group (they match only on a database nobody touched with raw SQL; the audit is the check)", !!linhOverview && linhOverview.supply > 0 && linhOverview.groups.length > 0);
+check("and today's snapshot is in the history", (linhOverview?.history?.length ?? 0) >= 1);
+
 console.log(failures === 0 ? "ECONOMY SMOKE PASSED" : `ECONOMY SMOKE FAILED (${failures})`);
 process.exit(failures === 0 ? 0 : 1);

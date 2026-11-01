@@ -98,7 +98,9 @@ Mỗi nhân vật có một dòng cho mỗi nhóm trong bảng tổng của từ
 | Farm (quái, boss, người chơi rơi) | `farm` | `monster_drop` (quái và boss dùng chung lý do này) |
 | Mua bán (thương nhân, đan sư) | `shop` | `shop_buy`, `shop_sell`, `alchemist_buy`, `alchemist_sell` (đan sư chưa có) |
 | Nhiệm vụ | `quest` | `quest` |
-| Giao dịch người chơi | `trade` | `trade`, `market`, `auction` (chưa có, giai đoạn 5) |
+| Giao dịch người chơi | `trade` | `trade` (giao dịch trực tiếp, 5b) |
+| Vạn Bảo Lâu (mua, đấu giá, phí, thuế, quảng bá) | `market` | `market*`, `auction*` (5a; thêm ở 5f, trước đó một nửa nằm ở `trade`, nửa ở `other`) |
+| Tông môn (lập, góp quỹ, thưởng tuần, nhiệm vụ, kệ bán) | `sect` | `sect*` (5c; thêm ở 5f, trước đó nằm ở `other`) |
 | Cường hoá (nâng cấp, tinh luyện, đột phá, sửa đồ, hướng tu) | `enhance` | `smith_upgrade`, `smith_refine`, `repair`, `breakthrough`, `path*` |
 | Di chuyển (truyền tống) | `travel` | `waygate` |
 | Admin (chỉnh tay, gửi quà, điều chỉnh khi kiểm duyệt) | `admin` | `admin*` (`admin_grant`, `admin_adjust`) |

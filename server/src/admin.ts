@@ -3,6 +3,7 @@ import { getSession, hashPassword, type AuthedSession } from "./auth";
 import { kickCharacter } from "./accounts-admin";
 import { PBKDF2_ITERATIONS, toBase64 } from "./password-hasher";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
+import { moneyOverview } from "./money-dashboard";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
@@ -250,6 +251,13 @@ export async function adminSupply(request: Request, env: Env): Promise<Response>
     "SELECT currency, SUM(balance) AS total, COUNT(*) AS holders FROM currency_balances GROUP BY currency",
   ).all<{ currency: string; total: number; holders: number }>();
   return json({ supply: results });
+}
+
+/** The money overview (GET): supply, flows by group, top holders, the supply by day and the Tiên Ngọc the admins credited (docs/PHASE5.md, 5f). */
+export async function adminMoney(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  return json(await moneyOverview(env.DB));
 }
 
 /** The adjustable game settings with their effective values (GET), or a change of one of them (POST {key, value}). */
