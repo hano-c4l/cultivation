@@ -517,7 +517,7 @@ export class GameScene extends Phaser.Scene {
       claimPath: (path) => this.net.send({ t: "path_claim", path }),
       claimBreakthroughPill: () => this.net.send({ t: "bt_claim" }),
       isAdmin: this.registry.get("isAdmin") === true,
-      countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
+      countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),      beast: () => this.actors.get(this.selfId)?.beast,
     });
 
     const camera = this.cameras.main;
@@ -1209,6 +1209,7 @@ export class GameScene extends Phaser.Scene {
         this.mountUi.onRiding(msg.id);
         const me = this.actors.get(this.selfId);
         if (me) this.setActorBeast(me, msg.id ?? undefined);
+        this.charPanel.refresh();
         break;
       }
       case "mounted":

@@ -19,7 +19,7 @@ function oldRows() {
     drops: { ...d.drops, pill: Object.fromEntries(Object.entries(d.drops.pill).filter(([k]) => Number(k) < 3)) },
     loot: { ...d.loot, realm: Object.fromEntries(Object.entries(d.loot.realm).filter(([k]) => Number(k) < 4)) },
     itemValue: { ...d.itemValue, items: Object.fromEntries(Object.entries(d.itemValue.items).filter(([k]) => !["ttp_town3", "than_huyet_dan", "than_linh_dan", "hu_huyet_dan", "hu_linh_dan"].includes(k))) },
-    alchemy: { ...d.alchemy, recipes: d.alchemy.recipes.filter((r) => !r.id.startsWith("hu_")) },
+    alchemy: { maxJobs: d.alchemy.maxJobs, recipes: d.alchemy.recipes.filter((r) => !r.id.startsWith("hu_")).map(({ minLevel: _m, exp: _e, ...r }) => r) }, // a row stored before the trade levels
   };
   return rows;
 }
@@ -39,6 +39,12 @@ describe("migration 0055", () => {
     const read = (name: string) => JSON.parse((raw.prepare("SELECT value FROM game_tuning WHERE name = ?").get(name) as { value: string }).value) as unknown;
     for (const name of Object.keys(rows)) {
       const expected = clone(DEFAULT_TUNING[name as keyof typeof DEFAULT_TUNING]) as unknown;
+      // 0055 predates the trade levels: a stored alchemy row gets the missing recipes without them (0075 replaces a row nobody edited).
+      if (name === "alchemy") {
+        const a = expected as typeof DEFAULT_TUNING.alchemy;
+        delete a.levels;
+        a.recipes = a.recipes.map(({ minLevel: _m, exp: _e, ...r }) => r);
+      }
       if (name === "exp") (expected as typeof DEFAULT_TUNING.exp).realms[0]!.expBase = 1234;
       expect(read(name), name).toEqual(expected);
       expect(validTuningGroup(name, read(name)), name).toBe(true);

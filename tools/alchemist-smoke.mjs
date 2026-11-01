@@ -3,7 +3,7 @@
 // Usage: node tools/alchemist-smoke.mjs [ws://localhost:8787]   (takes about 70 seconds: the first recipe brews for 60)
 // Local only; needs DISABLE_RATE_LIMIT=1, ENABLE_DEV_GRANT=1 and the 0041 migration (npm run db:migrate:local). It credits the throwaway character
 // through `wrangler d1 execute --local`.
-import { T, town } from "./world.mjs";
+import { T, openWhenThere, town, townNear } from "./world.mjs";
 import { execSync } from "node:child_process";
 const base = process.argv[2] ?? "ws://localhost:8787";
 const httpBase = base.replace(/^ws/, "http");
@@ -72,13 +72,12 @@ check("a player far from the alchemist is refused", far.reason === "far", far.re
 
 // Walk to it.
 const spawn = welcome.players.find((p) => p.id === charId).path[0];
-c.send({ t: "move", x: alchemist.x, y: alchemist.y + 2, fx: spawn[0], fy: spawn[1], seq: 1 });
+const nearAlchemist = townNear("alchemist", welcome.npcs);
+c.send({ t: "move", x: nearAlchemist[0], y: nearAlchemist[1], fx: spawn[0], fy: spawn[1], seq: 1 });
 await c.wait((m) => m.t === "ack" && m.seq === 1, 4000, "ack");
-await sleep(5500);
+await sleep(2000);
 
-mark = c.log.length;
-c.send({ t: "npc_open", npc: "alchemist" });
-const shop = await c.wait((m) => m.t === "shop", 5000, "the alchemist's shop", mark);
+const shop = await openWhenThere(c, { t: "npc_open", npc: "alchemist" }, "shop");
 check("the alchemist opens a shop with a brewing tab", shop.tabs.includes("shop") && shop.tabs.includes("brew"), shop.tabs.join(","));
 check("it sells healing pills and not the brewed ones", shop.merchant.stock.some((r) => r.id === "hoi_huyet_dan") && !shop.merchant.stock.some((r) => r.id === "linh_nguyen_dan"));
 await sleep(400);
@@ -86,6 +85,10 @@ mark = c.log.length;
 c.send({ t: "npc_open", npc: "alchemist", view: "brew" });
 const brew0 = await c.wait((m) => m.t === "brew", 5000, "the brewing tab", mark);
 check("the brewing tab starts empty with the recipes in the tuning", brew0.jobs.length === 0 && brew0.tuning.alchemy.recipes.length >= 3);
+// A local database whose alchemy row an admin smoke edited has no levels (the game default does): then the level checks are skipped.
+const hasLevels = (brew0.tuning.alchemy.levels?.length ?? 0) > 0;
+if (hasLevels) check("the alchemist has trade levels, and the character starts with no exp", brew0.craftExp === 0, `${brew0.craftExp}`);
+else console.log("skip the trade level checks: the local alchemy row has no levels");
 
 await sleep(400);
 const before = linh();
@@ -120,21 +123,20 @@ c.send({ t: "brew_collect", npc: "alchemist", job: job.id });
 await c.wait((m) => m.t === "brew" || m.t === "inv_error", 6000, "collection", mark);
 await sleep(600);
 check("the pill is in the bag after collecting", count("linh_nguyen_dan") === 1, `${count("linh_nguyen_dan")}`);
+const collected = [...c.log].reverse().find((m) => m.t === "brew");
+if (hasLevels) check("collecting gave the trade exp of the recipe", collected?.craftExp === brew0.tuning.alchemy.recipes.find((r) => r.id === "linh_nguyen_dan").exp, `${collected?.craftExp}`);
 await sleep(300);
 mark = c.log.length;
 c.send({ t: "brew_collect", npc: "alchemist", job: job.id });
 const twice = await c.wait((m) => m.t === "inv_error", 4000, "second collection", mark);
 check("a second collection of the same brewing is refused", twice.reason === "invalid", twice.reason);
 
-const smith = town.npcs.find((n) => n.id === "smith");
-const here = alchemist;
-c.send({ t: "move", x: smith.x + 2, y: smith.y, fx: here.x, fy: here.y + 2, seq: 2 });
+const nearSmith = townNear("smith", welcome.npcs);
+c.send({ t: "move", x: nearSmith[0], y: nearSmith[1], fx: nearAlchemist[0], fy: nearAlchemist[1], seq: 2 });
 await c.wait((m) => m.t === "ack" && m.seq === 2, 4000, "ack");
-await sleep(5500);
-mark = c.log.length;
-c.send({ t: "npc_open", npc: "smith" });
-const sm = await c.wait((m) => m.t === "smith", 5000, "the smith window", mark);
-check("the blacksmith's window offers a trading tab", sm.tabs.join(",") === "smith,shop", sm.tabs.join(","));
+await sleep(2000);
+const sm = await openWhenThere(c, { t: "npc_open", npc: "smith" }, "smith");
+check("the blacksmith's window offers a trading tab", sm.tabs.join(",") === "smith,shop,brew", sm.tabs.join(","));
 await sleep(400);
 mark = c.log.length;
 c.send({ t: "npc_open", npc: "smith", view: "shop" });

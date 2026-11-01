@@ -23,6 +23,7 @@ export const MENU: MenuItem[] = [
   { path: "/admin/misc", label: "Chỉ số khác", hint: "Sát khí, sát nhân, anh hùng, truyền tống, vùng nhìn, cài đặt game", phase: "3c", ready: true },
   { path: "/admin/gifts", label: "Gửi quà", hint: "Tiền, vật phẩm vào hòm thư: nhiều người hoặc toàn server", phase: "3d", ready: true },
   { path: "/admin/money", label: "Tổng quan tiền", hint: "Tổng cung từng loại tiền, tiền vào ra theo nhóm, người giữ nhiều nhất, Tiên Ngọc admin cộng", phase: "5f", ready: true },
+  { path: "/admin/market", label: "Chợ và giao dịch", hint: "Tin Vạn Bảo Lâu (gỡ tin), đã chốt, nhật ký giao dịch trực tiếp", phase: "5a", ready: true },
   { path: "/admin/currency", label: "Quản lý tiền tệ", hint: "Tìm theo nhóm, chi tiết, kiểm duyệt số dư", phase: "3b", ready: true },
   { path: "/admin/log", label: "Nhật ký admin", hint: "Admin đã thay đổi gì, ở đâu, khi nào", phase: "3a", ready: true },
 ];

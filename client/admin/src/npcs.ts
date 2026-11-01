@@ -400,14 +400,16 @@ export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement
         linhThach: Number(linh.value),
         seconds: Number(secs.value),
         enabled: enabled.checked,
-        ...(forge ? { minLevel: Number(minLevel.value), exp: Number(expGain.value) } : {}),
+        // Only what the recipe has or what is set away from the default, so a save of an old recipe (no levels) changes nothing.
+        ...(r.minLevel !== undefined || Number(minLevel.value) !== 1 ? { minLevel: Number(minLevel.value) } : {}),
+        ...(r.exp !== undefined || Number(expGain.value) !== 0 ? { exp: Number(expGain.value) } : {}),
       });
       const rm = h("button", { type: "button" }, "Xóa công thức");
       rm.addEventListener("click", () => {
         box.remove();
         readers.splice(readers.indexOf(read), 1);
       });
-      box.append(h("div", { class: "toolbar" }, id, name, h("label", { class: "radio" }, enabled, "Bật"), rm), h("div", { class: "toolbar" }, h("span", null, "Làm ra:"), output, h("span", null, "×"), qty, h("span", null, "Linh Thạch:"), linh, h("span", null, "Giây:"), secs, ...(forge ? [h("span", null, "Cấp nghề cần:"), minLevel, h("span", null, "Kinh nghiệm:"), expGain] : [])), h("div", { class: "muted" }, "Nguyên liệu bị lấy ngay khi bắt đầu luyện:"), inputs, addInputBtn);
+      box.append(h("div", { class: "toolbar" }, id, name, h("label", { class: "radio" }, enabled, "Bật"), rm), h("div", { class: "toolbar" }, h("span", null, "Làm ra:"), output, h("span", null, "×"), qty, h("span", null, "Linh Thạch:"), linh, h("span", null, "Giây:"), secs, h("span", null, "Cấp nghề cần:"), minLevel, h("span", null, "Kinh nghiệm:"), expGain), h("div", { class: "muted" }, "Nguyên liệu bị lấy ngay khi bắt đầu luyện:"), inputs, addInputBtn);
       readers.push(read);
       rows.append(box);
     };
@@ -418,7 +420,7 @@ export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement
     save.addEventListener("click", async () => {
       save.disabled = true;
       show("Đang lưu...", "muted");
-      const r = await api<{ error?: string; problems?: string[] }>("/api/admin/alchemy/save", { method: "POST", body: { craft, alchemy: { ...view.alchemy, maxJobs: Number(maxJobs.value), ...(forge ? { quality: { perLevel: Number(quality.value) }, levels: levels.value.split(",").map((x) => x.trim()).filter(Boolean).map(Number) } : {}), recipes: readers.map((f) => f()) }, updatedAt: view.updatedAt } });
+      const r = await api<{ error?: string; problems?: string[] }>("/api/admin/alchemy/save", { method: "POST", body: { craft, alchemy: { ...view.alchemy, maxJobs: Number(maxJobs.value), ...(forge ? { quality: { perLevel: Number(quality.value) } } : {}), ...(view.alchemy.levels !== undefined || levels.value.trim() !== "" ? { levels: levels.value.split(",").map((x) => x.trim()).filter(Boolean).map(Number) } : {}), recipes: readers.map((f) => f()) }, updatedAt: view.updatedAt } });
       save.disabled = false;
       if (r.status === 200) return navigate(path);
       const e = r.data.error ?? "";
@@ -429,7 +431,8 @@ export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement
       list,
       h("p", { class: "muted" }, forge ? "Luyện khí ở Thợ Rèn (tab Luyện khí): làm ra MỘT món trang bị cho mỗi lần luyện (số lượng 1, mã dạng eq.loại.u.cảnh giới.bậc.phẩm; chỉ loại không phân giới tính, người chơi nhận thì chỉ số được tung). Mẻ đang luyện giữ kết quả đã định lúc bắt đầu. Máy chủ nhận công thức mới sau tối đa 30 giây." : "Mẻ đang luyện giữ kết quả đã định lúc bắt đầu; đổi hay xóa công thức không ảnh hưởng chúng. Máy chủ nhận công thức mới sau tối đa 30 giây; người chơi thấy khi mở lại Đan Sư."),
       field("Số mẻ một nhân vật được luyện cùng lúc (kể cả mẻ xong chưa nhận)", maxJobs),
-      ...(forge ? [field("Chất lượng: mỗi cấp nghề cao hơn cấp công thức đẩy chỉ số tung về phía cao thêm bao nhiêu (0 = tắt; 0,5 là mặc định; 1 cấp cao hơn thì trung bình khoảng 0,6, 5 cấp khoảng 0,78 của khoảng min-max)", quality), field("Cấp nghề: tổng kinh nghiệm cần cho cấp 2, 3, 4... (số tăng dần, cách nhau dấu phẩy; để trống thì không có cấp)", levels)] : []),
+      ...(forge ? [field("Chất lượng: mỗi cấp nghề cao hơn cấp công thức đẩy chỉ số tung về phía cao thêm bao nhiêu (0 = tắt; 0,5 là mặc định; 1 cấp cao hơn thì trung bình khoảng 0,6, 5 cấp khoảng 0,78 của khoảng min-max)", quality)] : []),
+      field("Cấp nghề: tổng kinh nghiệm cần cho cấp 2, 3, 4... (số tăng dần, cách nhau dấu phẩy; để trống thì không có cấp)", levels),
       rows,
       add,
       h("div", { class: "toolbar" }, save),
