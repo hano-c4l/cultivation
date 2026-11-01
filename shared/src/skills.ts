@@ -4,7 +4,7 @@ import { ALL_ROOTS, SPIRITUAL_ROOTS } from "./character";
 import type { MonsterRank } from "./monsters";
 import type { AreaDef } from "./area";
 import { REALMS } from "./progression-data";
-import { DOJO_SKILLS, RARE_SKILLS } from "./skills-extra";
+import { DOJO_SKILLS, RARE_SKILLS, SECT_SKILLS } from "./skills-extra";
 import { rateCap, getRootGrade, levelIndex, type Element } from "./progression";
 
 /**
@@ -283,6 +283,7 @@ export const SKILLS: readonly SkillDef[] = [
   { id: "hoi_nguyen_kd", nameVi: "Hồi Nguyên Quyết", descVi: "Kim Đan: vận kim đan chữa thương, hồi nhiều sinh lực. Học từ bí tịch.", kind: "heal", source: "learned", element: null, realm: 2, grade: 3, mpCost: 60, cooldownMs: 30_000, range: 0, power: 0.55, learn: { realm: 2, stage: 5 } },
   ...DOJO_SKILLS,
   ...RARE_SKILLS,
+  ...SECT_SKILLS,
   { id: "cuong_than_na", nameVi: "Nguyên Anh Chiến Hống", descVi: "Nguyên Anh: gầm vang chiến ý, tăng mạnh công kích trong 20 giây. Học từ bí tịch.", kind: "buff", source: "learned", element: null, realm: 3, grade: 4, mpCost: 80, cooldownMs: 40_000, range: 0, power: 0.5, buff: { stat: "attack", durationMs: 20_000 }, learn: { realm: 3, stage: 3 } },
 ];
 

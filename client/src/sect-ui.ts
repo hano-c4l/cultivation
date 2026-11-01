@@ -1,4 +1,4 @@
-import { REALMS, SECT_RANK, SECT_ROLE_NAMES, VAULT_CATEGORIES, getItemDef, roleOfRank, tuning, vaultPoints, type BagItem, type ClientMessage, type SectError, type SectListItem, type SectRankItem, type SectRole, type SectVaultItemView, type SectView } from "@game/shared";
+import { REALMS, SECT_RANK, getSkill, SECT_ROLE_NAMES, VAULT_CATEGORIES, getItemDef, roleOfRank, tuning, vaultPoints, type BagItem, type ClientMessage, type SectError, type SectListItem, type SectRankItem, type SectRole, type SectVaultItemView, type SectView } from "@game/shared";
 import { iconButton, iconFor } from "./icons";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
@@ -37,7 +37,7 @@ const realmOf = (lv: number): string => `${REALMS[Math.floor(lv / 10)]?.nameVi ?
  * The sect window: the sect the player is in (members with what they may do to each, applications, notice, leaving or closing it), or, with none, the list of sects
  * to apply to and the form to found one (at a sect NPC). It only sends what the player wants; the server decides.
  */
-export function initSect(send: (msg: ClientMessage) => void, notify: (text: string, ok: boolean) => void, linhThach: () => number, selfId: () => string, bag: () => BagItem[]): SectUi {
+export function initSect(send: (msg: ClientMessage) => void, notify: (text: string, ok: boolean) => void, linhThach: () => number, selfId: () => string, bag: () => BagItem[], knownSkills: () => readonly string[] = () => []): SectUi {
   const toggle = el("button");
   iconButton(toggle, "merit", vi.sect.button);
   toggle.id = "sect-btn";
@@ -250,6 +250,26 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
         panel.append(row);
       }
       if (c.shop.length === 0) panel.append(el("div", "muted", vi.sect.noShop));
+      // The skills the sect teaches: bought once, lost on leaving.
+      if (c.skills.length > 0) panel.append(el("div", "tr-h", vi.sect.skillsHead), el("div", "muted", vi.sect.skillsHint));
+      for (const s of c.skills) {
+        const def = getSkill(s.skill);
+        if (!def) continue;
+        const have = knownSkills().includes(s.skill);
+        const row = el("div", "sect-item");
+        const info = el("div", "sect-info");
+        info.append(document.createTextNode(`${def.nameVi} · `), el("b", undefined, vi.sect.cost(fmt(s.cost))));
+        info.append(el("div", "muted", def.descVi));
+        if (s.minLevel > v.level || s.minRank > v.myRank) info.append(el("div", "muted", vi.sect.needs(s.minLevel, rankName(s.minRank))));
+        const buy = el("button", undefined, have ? vi.sect.skillHave : vi.sect.buy);
+        buy.disabled = have || s.minLevel > v.level || s.minRank > v.myRank || v.contribution < s.cost;
+        buy.onclick = () => {
+          if (!npc) return notify(vi.sect.errors.npc ?? "", false);
+          send({ t: "sect_skill_buy", npc, skill: s.skill });
+        };
+        row.append(info, buy);
+        panel.append(row);
+      }
       // What the leader put on the shelf from the warehouse.
       const shelved = (vaultItems ?? []).filter((x) => x.shelf);
       if (shelved.length > 0) panel.append(el("div", "tr-h", vi.sect.shelf));

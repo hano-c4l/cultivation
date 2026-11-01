@@ -1,4 +1,4 @@
-import { SECT_RANK, VAULT_CATEGORIES, earnedRank, sectLevelOf, upgradeCostOf, sectMaxMembers, vaultSlotsOf, type SectAccept, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
+import { SECT_RANK, VAULT_CATEGORIES, getSkill, earnedRank, sectLevelOf, upgradeCostOf, sectMaxMembers, vaultSlotsOf, type SectAccept, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
 import { applyCurrencyDelta } from "./economy";
 import { filterChat } from "./chat";
 import { actorGuard } from "./market";
@@ -262,6 +262,7 @@ export async function answerRequest(db: D1Database, cfg: SectCfg, p: { actorId: 
 function leaveStatements(db: D1Database, cfg: SectCfg, sectId: string, characterId: string, now: number): D1PreparedStatement[] {
   return [
     db.prepare("INSERT OR REPLACE INTO sect_cooldown (character_id, until) VALUES (?, ?)").bind(characterId, now + cfg.rejoinHours * HOUR_MS),
+    db.prepare("DELETE FROM character_skills WHERE character_id = ? AND source = 'sect'").bind(characterId), // what the sect taught goes with the membership
     db.prepare("DELETE FROM sect_members WHERE character_id = ? AND sect_id = ?").bind(characterId, sectId),
   ];
 }
@@ -383,7 +384,7 @@ export async function removeCharacter(db: D1Database, cfg: SectCfg, characterId:
   await db.prepare("DELETE FROM sect_cooldown WHERE character_id = ?").bind(characterId).run();
   if (!me) return;
   if (me.rank < SECT_RANK.leader) {
-    await db.batch([db.prepare("DELETE FROM sect_members WHERE character_id = ?").bind(characterId), logStatement(db, me.sect_id, characterId, "removed", characterId, "", now)]);
+    await db.batch([db.prepare("DELETE FROM character_skills WHERE character_id = ? AND source = 'sect'").bind(characterId), db.prepare("DELETE FROM sect_members WHERE character_id = ?").bind(characterId), logStatement(db, me.sect_id, characterId, "removed", characterId, "", now)]);
     return;
   }
   const next = await db.prepare("SELECT character_id AS id FROM sect_members WHERE sect_id = ? AND character_id <> ? ORDER BY rank DESC, joined_at ASC LIMIT 1").bind(me.sect_id, characterId).first<{ id: string }>();
@@ -634,4 +635,31 @@ export function shopPayStatements(db: D1Database, p: { characterId: string; sect
     db.prepare("UPDATE sect_members SET contribution = contribution - ? WHERE character_id = ?").bind(p.cost, p.characterId),
     logStatement(db, p.sectId, p.characterId, "shop", null, `${p.item} ${p.cost}`, p.now),
   ];
+}
+
+/** Why `characterId` cannot buy the sect skill `skill` now (the realm and "already known" are the room's to check), or the shop line when they can. */
+export async function skillShopCheck(db: D1Database, cfg: SectCfg, characterId: string, skill: string): Promise<SectResult<{ entry: SectCfg["skills"][number]; sectId: string }>> {
+  const entry = cfg.skills.find((s) => s.skill === skill);
+  if (!entry || getSkill(skill)?.source !== "sect") return { ok: false, reason: "item" };
+  const me = await memberOf(db, characterId);
+  if (!me) return { ok: false, reason: "no_sect" };
+  const sect = await sectById(db, me.sect_id);
+  if (!sect || sect.level < entry.minLevel || me.rank < entry.minRank) return { ok: false, reason: "perm" };
+  if (me.contribution < entry.cost) return { ok: false, reason: "poor" };
+  return { ok: true, entry, sectId: sect.id };
+}
+
+/**
+ * Buys a sect skill: the cống hiến goes and the skill is stored in ONE batch, guarded on the price, on still being in that sect and on not knowing the skill yet (two
+ * clicks at once buy it once). The row is `source = 'sect'`, so it is deleted with the membership (`leaveStatements`, the disbanding).
+ */
+export async function buySectSkill(db: D1Database, p: { characterId: string; sectId: string; skill: string; cost: number; realm: number; now: number }): Promise<SectResult> {
+  const failed = await run(db, [
+    guard(db, "NOT EXISTS (SELECT 1 FROM sect_members WHERE character_id = ? AND sect_id = ? AND contribution >= ?)", p.characterId, p.sectId, p.cost),
+    guard(db, "EXISTS (SELECT 1 FROM character_skills WHERE character_id = ? AND skill_id = ?)", p.characterId, p.skill),
+    db.prepare("UPDATE sect_members SET contribution = contribution - ? WHERE character_id = ?").bind(p.cost, p.characterId),
+    db.prepare("INSERT INTO character_skills (character_id, skill_id, learned_at, source, realm) VALUES (?, ?, ?, 'sect', ?)").bind(p.characterId, p.skill, p.now, p.realm),
+    logStatement(db, p.sectId, p.characterId, "skill", null, `${p.skill} ${p.cost}`, p.now),
+  ]);
+  return failed ? { ok: false, reason: failed } : { ok: true };
 }

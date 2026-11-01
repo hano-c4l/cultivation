@@ -134,6 +134,7 @@ export type ClientMessage =
   | { t: "sect_weekly_set"; amounts: number[] }
   /** Sect: buy a line of the sect shop with cống hiến (the player must stand by a sect NPC, `npc`). */
   | { t: "sect_buy"; npc: string; item: string }
+  | { t: "sect_skill_buy"; npc: string; skill: string }
   /** Sect: ask for the warehouse list (the Kho tab and the shelf of the shop). */
   | { t: "sect_vault" }
   /** Sect: hand in the items of a daily task (the player must stand by a sect NPC, `npc`). */
@@ -760,6 +761,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (entries.length > 8 || !entries.every(([k, v]) => /^[a-z_]{1,16}$/.test(k) && isInt(v) && v >= 0 && v <= 1000)) return null;
       return { t: "sect_accept", cats: Object.fromEntries(entries) as Record<string, number>, minGrade: m.minGrade };
     }
+    case "sect_skill_buy":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.skill === "string" && /^[a-z0-9_]{1,32}$/.test(m.skill) ? { t: "sect_skill_buy", npc: m.npc, skill: m.skill } : null;
     case "sect_buy":
       return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.item === "string" && /^[A-Za-z0-9_.]{1,80}$/.test(m.item) ? { t: "sect_buy", npc: m.npc, item: m.item } : null;
     case "trade_lock":

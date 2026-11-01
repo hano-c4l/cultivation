@@ -436,6 +436,7 @@ const PATH_NAMES: ReadonlyArray<[string, string]> = [["kiem", "Kiếm tu"], ["th
 /** The text leaves of the sect group (ids, names, item ids): the Admin screen edits only its numbers. */
 const SECT_TEXT_PATHS: string[] = [
   "shop.0.item", "shop.1.item", "shop.2.item",
+  ...DEFAULT_TUNING.sect.skills.map((_, i) => `skills.${i}.skill`),
   ...DEFAULT_TUNING.sect.tasks.flatMap((t, i) => [`tasks.${i}.id`, `tasks.${i}.kind`, `tasks.${i}.name`, `tasks.${i}.item`, ...(t.reward.vault ? [`tasks.${i}.reward.vault.item`] : [])]),
   ...DEFAULT_TUNING.sect.levels.flatMap((l, i) => l.costItems.map((_, j) => `levels.${i}.costItems.${j}.item`)),
 ];
@@ -562,6 +563,11 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
         { path: `shop.${i}.qty`, label: `Cửa hàng, món ${i + 1}: số lượng mỗi lần mua`, kind: "int" },
         { path: `shop.${i}.minLevel`, label: `Cửa hàng, món ${i + 1}: cấp tông môn tối thiểu`, kind: "int" },
         { path: `shop.${i}.minRank`, label: `Cửa hàng, món ${i + 1}: chức tối thiểu`, kind: "int" },
+      ]),
+      ...DEFAULT_TUNING.sect.skills.flatMap((k, i): TuningField[] => [
+        { path: `skills.${i}.cost`, label: `Kỹ năng tông môn ${i + 1} (${k.skill}): giá`, kind: "int", unit: "cống hiến" },
+        { path: `skills.${i}.minLevel`, label: `Kỹ năng tông môn ${i + 1}: cấp tông môn tối thiểu`, kind: "int" },
+        { path: `skills.${i}.minRank`, label: `Kỹ năng tông môn ${i + 1}: chức tối thiểu`, kind: "int" },
       ]),
       { path: "perms.invite", label: "Chức thấp nhất được mời người", kind: "int" },
       { path: "perms.approve", label: "Chức thấp nhất được duyệt đơn xin vào", kind: "int" },
