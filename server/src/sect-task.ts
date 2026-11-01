@@ -1,4 +1,4 @@
-import { getItemDef, scaledIncome, vaultSlotsOf, type BagOp, type SectCfg, type SectRankItem, type SectTask } from "@game/shared";
+import { getItemDef, scaledIncome, sectTaskMode, vaultSlotsOf, type BagOp, type SectCfg, type SectRankItem, type SectTask } from "@game/shared";
 import { currencyStatements, linhThachTraceMin } from "./economy";
 import type { BagState } from "./inventory";
 import { actorGuard } from "./market";
@@ -13,6 +13,12 @@ const guard = (db: D1Database, badIf: string, ...args: unknown[]): D1PreparedSta
 
 export interface TaskPrep {
   task: SectTask;
+  /** Today's mode of the task for this member: hand in items, or have killed enough monsters. */
+  mode: "kill" | "item";
+  /** The kills counted for a kill day (read from D1). */
+  kills: number;
+  /** How many times it was done today. */
+  done: number;
   sectId: string;
   level: number;
   day: number;
@@ -27,15 +33,20 @@ export interface TaskPrep {
 /** Checks everything that does not need the bag: the member, the task, the limit of the day, and works out the income of this hand-in. */
 export async function prepareTask(db: D1Database, cfg: SectCfg, p: { characterId: string; taskId: string; now: number }): Promise<SectResult<{ prep: TaskPrep }>> {
   const task = cfg.tasks.find((t) => t.id === p.taskId);
-  if (!task || !getItemDef(task.item)) return { ok: false, reason: "task" };
+  if (!task || (!task.kill && !getItemDef(task.item))) return { ok: false, reason: "task" };
   const me = await memberOf(db, p.characterId);
   if (!me) return { ok: false, reason: "no_sect" };
   const sect = await sectById(db, me.sect_id);
   if (!sect) return { ok: false, reason: "gone" };
   if (sect.level < task.minLevel) return { ok: false, reason: "perm" };
   const day = vnDay(p.now);
-  const done = (await db.prepare("SELECT n FROM sect_task_log WHERE character_id = ? AND task_id = ? AND day = ?").bind(p.characterId, task.id, day).first<{ n: number }>())?.n ?? 0;
+  const row = await db.prepare("SELECT n, kills FROM sect_task_log WHERE character_id = ? AND task_id = ? AND day = ?").bind(p.characterId, task.id, day).first<{ n: number; kills: number }>();
+  const done = row?.n ?? 0;
   if (done >= task.perDay) return { ok: false, reason: "limit" };
+  const mode = sectTaskMode(task, p.characterId, day);
+  if (mode === "item" && !getItemDef(task.item)) return { ok: false, reason: "task" };
+  const kills = row?.kills ?? 0;
+  if (mode === "kill" && kills < (done + 1) * (task.kill?.count ?? 1)) return { ok: false, reason: "lack" }; // not enough monsters killed yet
   const cap = cfg.taskIncomeCap[Math.min(Math.max(1, sect.level), cfg.taskIncomeCap.length) - 1] ?? 0;
   const had = sect.income_day === day ? sect.income_today : 0;
   const fundGain = Math.max(0, Math.min(scaledIncome(cfg, task.reward.fundLinh), cap - had));
@@ -44,7 +55,7 @@ export async function prepareTask(db: D1Database, cfg: SectCfg, p: { characterId
   const wants = task.reward.vault && cap - had > 0 ? scaledIncome(cfg, task.reward.vault.qty) : 0;
   return {
     ok: true,
-    prep: { task, sectId: sect.id, level: sect.level, day, fundGain, incomeCap: cap, vaultQty: wants, slots: vaultSlotsOf(cfg, sect.level), traceMin: await linhThachTraceMin(db) },
+    prep: { task, mode, kills, done, sectId: sect.id, level: sect.level, day, fundGain, incomeCap: cap, vaultQty: wants, slots: vaultSlotsOf(cfg, sect.level), traceMin: await linhThachTraceMin(db) },
   };
 }
 
@@ -54,7 +65,6 @@ export function planTask(db: D1Database, cfg: SectCfg, prep: TaskPrep, character
   const stacks = bag.items.filter((i) => i.type === task.item).sort((a, b) => a.tab - b.tab || a.cell - b.cell);
   if (stacks.reduce((n, s) => n + s.qty, 0) < task.qty) return null;
   const ops: BagOp[] = [];
-  const extra: D1PreparedStatement[] = [];
   let left = task.qty;
   for (const s of stacks) {
     if (left <= 0) break;
@@ -62,6 +72,25 @@ export function planTask(db: D1Database, cfg: SectCfg, prep: TaskPrep, character
     left -= take;
     ops.push(take === s.qty ? { op: "remove", id: s.id, qty: s.qty } : { op: "setqty", id: s.id, from: s.qty, to: s.qty - take });
   }
+  return { ops, extra: rewardStatements(db, cfg, prep, characterId, now) };
+}
+
+/** A kill day's hand-in: nothing leaves the bag, the kills counted so far must cover this turn (a guard, so two claims at once get through only up to what was killed). */
+export async function claimKillTask(db: D1Database, cfg: SectCfg, prep: TaskPrep, characterId: string, now: number): Promise<SectResult> {
+  try {
+    // the turns already taken are read from the row itself (not from the earlier read), so a second claim at the same time needs the kills of the next turn
+    await db.batch([guard(db, "NOT EXISTS (SELECT 1 FROM sect_task_log WHERE character_id = ? AND task_id = ? AND day = ? AND kills >= (n + 1) * ?)", characterId, prep.task.id, prep.day, prep.task.kill?.count ?? 1), ...rewardStatements(db, cfg, prep, characterId, now)]);
+    return { ok: true };
+  } catch (err) {
+    if (/inv_guard|CHECK constraint|sect_members/.test(String(err))) return { ok: false, reason: "busy" };
+    throw err;
+  }
+}
+
+/** The statements that pay a finished task (for either mode): the member's turn of the day, the rewards of the member and of the sect, the fund and its income cap. */
+function rewardStatements(db: D1Database, cfg: SectCfg, prep: TaskPrep, characterId: string, now: number): D1PreparedStatement[] {
+  const { task } = prep;
+  const extra: D1PreparedStatement[] = [];
   const r = task.reward;
   extra.push(
     actorGuard(db, characterId, now),
@@ -92,7 +121,21 @@ export function planTask(db: D1Database, cfg: SectCfg, prep: TaskPrep, character
     );
   }
   extra.push(db.prepare("INSERT INTO sect_log (id, sect_id, actor_id, action, target_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), prep.sectId, characterId, "task", null, `${task.id} +${prep.fundGain}`, now));
-  return { ops, extra };
+  return extra;
+}
+
+/** Writes the kills a room counted for a member: per task and day, capped at what the task can still ask for that day. */
+export async function saveSectKills(db: D1Database, characterId: string, list: ReadonlyArray<{ task: string; day: number; add: number; cap: number }>): Promise<void> {
+  if (list.length === 0) return;
+  const results = await db.batch(
+    list.map((k) =>
+      db
+        .prepare("INSERT INTO sect_task_log (character_id, task_id, day, n, kills) VALUES (?, ?, ?, 0, MIN(?, ?)) ON CONFLICT (character_id, task_id, day) DO UPDATE SET kills = MIN(?, kills + ?)")
+        .bind(characterId, k.task, k.day, k.cap, k.add, k.cap, k.add),
+    ),
+  );
+  // Logged so `wrangler tail` shows the real D1 write cost of counting kills (docs/PHASE5.md, 5c-6).
+  console.log("sect kills rows_written", list.length, results.reduce((n, r) => n + (r.meta?.rows_written ?? 0), 0));
 }
 
 let rankCache: { at: number; list: SectRankItem[] } | null = null;

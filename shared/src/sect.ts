@@ -36,6 +36,11 @@ export interface SectTask {
   /** How many times a member can do it a day (Việt Nam time). */
   perDay: number;
   minLevel: number;
+  /**
+   * Makes the task able to come up as a KILL count instead of the hand-in: each Việt Nam day, `pct` percent of the (member, task, day) draws are kill days (see `sectTaskMode`).
+   * On a kill day the member has to kill `count` monsters (`rare`: only rare ones; `map`: only on that map) before handing in, and `item` and `qty` are not used.
+   */
+  kill?: { count: number; pct: number; rare?: boolean; map?: string };
   reward: {
     /** Cống hiến for the member, and kinh nghiệm for the sect. */
     contribution: number;
@@ -173,8 +178,8 @@ export const DEFAULT_SECT: SectCfg = {
   balance: { upgradeCostPct: 100, incomePct: 100 },
   tasks: [
     { id: "mine", kind: "mine", name: "Đào linh thạch: nộp Tinh Thiết Luyện Khí", item: "ren_lk", qty: 10, perDay: 2, minLevel: 1, reward: { contribution: 20, exp: 10, fundLinh: 3000, memberLinh: 500 } },
-    { id: "hunt_bone", kind: "hunt", name: "Phá hang ổ tà tu: nộp Thú Cốt", item: "thu_cot", qty: 20, perDay: 2, minLevel: 1, reward: { contribution: 25, exp: 12, fundLinh: 2000, memberLinh: 300, vault: { item: "thu_cot", qty: 5 } } },
-    { id: "hunt_dan", kind: "hunt", name: "Diệt yêu thú mạnh: nộp Yêu Đan", item: "yeu_dan", qty: 3, perDay: 1, minLevel: 2, reward: { contribution: 40, exp: 25, fundLinh: 5000, memberLinh: 800 } },
+    { id: "hunt_bone", kind: "hunt", name: "Phá hang ổ tà tu: nộp Thú Cốt", item: "thu_cot", qty: 20, perDay: 2, minLevel: 1, kill: { count: 15, pct: 50 }, reward: { contribution: 25, exp: 12, fundLinh: 2000, memberLinh: 300, vault: { item: "thu_cot", qty: 5 } } },
+    { id: "hunt_dan", kind: "hunt", name: "Diệt yêu thú mạnh: nộp Yêu Đan", item: "yeu_dan", qty: 3, perDay: 1, minLevel: 2, kill: { count: 2, pct: 50, rare: true }, reward: { contribution: 40, exp: 25, fundLinh: 5000, memberLinh: 800 } },
     { id: "alchemy", kind: "alchemy", name: "Luyện đan cho tông môn: nộp Hồi Huyết Đan", item: "hoi_huyet_dan", qty: 10, perDay: 1, minLevel: 1, reward: { contribution: 30, exp: 15, fundLinh: 1000, memberLinh: 0, vault: { item: "hoi_huyet_dan", qty: 5 } } },
     { id: "gather", kind: "gather", name: "Hái dược liệu: nộp Linh Thảo", item: "linh_thao", qty: 20, perDay: 2, minLevel: 1, reward: { contribution: 15, exp: 8, fundLinh: 500, memberLinh: 0, vault: { item: "linh_thao", qty: 10 } } },
   ],
@@ -220,6 +225,8 @@ function validTask(t: unknown): boolean {
   const r = x.reward as Record<string, unknown> | undefined;
   if (typeof x.id !== "string" || !/^[a-z0-9_]{1,24}$/.test(x.id) || typeof x.kind !== "string" || !/^[a-z]{1,16}$/.test(x.kind) || typeof x.name !== "string" || x.name.length < 1 || x.name.length > 80) return false;
   if (typeof x.item !== "string" || !ITEM_ID.test(x.item) || !inRange(x.qty, 1, 100_000) || !inRange(x.perDay, 1, 100) || !inRange(x.minLevel, 1, 30)) return false;
+  const k = x.kill as Record<string, unknown> | undefined;
+  if (k !== undefined && !(typeof k === "object" && k !== null && inRange(k.count, 1, 100_000) && inRange(k.pct, 0, 100) && (k.rare === undefined || typeof k.rare === "boolean") && (k.map === undefined || (typeof k.map === "string" && /^[a-z0-9_]{1,32}$/.test(k.map))))) return false;
   if (typeof r !== "object" || r === null) return false;
   if (!inRange(r.contribution, 0, 1_000_000) || !inRange(r.exp, 0, 1_000_000) || !inRange(r.fundLinh, 0, 1_000_000_000) || !inRange(r.memberLinh, 0, 1_000_000_000)) return false;
   const v = r.vault as Record<string, unknown> | undefined;
@@ -439,6 +446,29 @@ export interface SectWeeklyItem {
   qty: number;
 }
 
+/** The mode a task has for a member on a day: a task with `kill` is a kill day for `pct` percent of the draws, a hash of (member, task, day), so leaving and joining again cannot redraw it. */
+export function sectTaskMode(task: Pick<SectTask, "id" | "kill">, characterId: string, day: number): "kill" | "item" {
+  if (!task.kill || task.kill.pct <= 0) return "item";
+  if (task.kill.pct >= 100) return "kill";
+  let h = 0x811c9dc5;
+  for (const ch of `${characterId}:${task.id}:${day}`) {
+    h ^= ch.codePointAt(0)!;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h % 100 < task.kill.pct ? "kill" : "item";
+}
+
+/** Whether a kill (on `mapId`, of a rare monster or not) counts for the kill objective of a task. */
+export function sectKillCounts(task: Pick<SectTask, "kill">, mapId: string, rare: boolean): boolean {
+  const k = task.kill;
+  return !!k && (k.map === undefined || k.map === mapId) && (!k.rare || rare);
+}
+
+/** Whether a kill task can still use another kill today: the day's total so far is below what all its turns ask for (`count x perDay`). */
+export function sectKillOpen(task: Pick<SectTask, "kill" | "perDay">, total: number): boolean {
+  return !!task.kill && total < task.kill.count * task.perDay;
+}
+
 /** What the sect window shows for the sect the player is in. */
 export interface SectMemberView {
   id: string;
@@ -495,6 +525,9 @@ export interface SectView {
   vaultToday: number;
   /** How many times the player did each task today (by task id). */
   taskDone: Record<string, number>;
+  /** Today's mode of each task that can be a kill count, and the kills counted for it so far today (by task id). */
+  taskMode: Record<string, "kill" | "item">;
+  taskKills: Record<string, number>;
 }
 
 /** One stack in the warehouse (sent when the Kho tab opens). */

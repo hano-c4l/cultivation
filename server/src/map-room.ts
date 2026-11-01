@@ -147,7 +147,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { SECT_RANK, SECT_ROLE_NAMES, SECT_SAY, type SectError, type Tuning, bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { SECT_RANK, SECT_ROLE_NAMES, SECT_SAY, sectKillCounts, sectKillOpen, sectTaskMode, type SectError, type Tuning, bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
@@ -201,6 +201,7 @@ import { getTuning } from "./tuning";
 import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
 import { planTask, prepareTask, sectRanking } from "./sect-task";
 import { buyShelf, disbandSect, putItem, setAccept, setShelf, takeItem, vaultViews } from "./sect-vault";
+import { claimKillTask, saveSectKills } from "./sect-task";
 import { acceptInvite, answerRequest, applyTo, buySectSkill, skillShopCheck, claimWeekly, contributionOf, cooldownUntil, createSect, donate, setWeekly, shopCheck, shopPayStatements, upgradeSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
 import { hasRoomFor, newSession, otherSide, planTrade, setConfirm, setLock, setOffer, sideOf, type TradeSession } from "./trade";
 import { buyFixed, cancelListing, listingViews, placeBid, postListing, promoteListing, settleDue } from "./market";
@@ -437,6 +438,9 @@ export class MapRoom extends DurableObject<Env> {
   /** Quest progress of the characters in the room (loaded lazily from D1; absolute values are written back) and which quests changed. */
   private questRows = new Map<string, Record<string, QuestProgressView>>();
   private questDirty = new Map<string, Set<string>>();
+  /** Kills counted for sect kill tasks and not written yet, by character (key `task|day`), and who is in which sect (looked at for a minute at a time: no D1 read per kill). */
+  private sectKills = new Map<string, Map<string, { task: string; day: number; add: number; cap: number }>>();
+  private sectKillCtx = new Map<string, { sectId: string; level: number; at: number; day: number; totals: Map<string, number> } | null>();
   private hotbars = new Map<string, string[]>();
   /** Per character: the vitals as last written to D1 (without the timestamp), so an unchanged state is not written again. */
   private vitalKeys = new Map<string, string>();
@@ -1503,6 +1507,8 @@ export class MapRoom extends DurableObject<Env> {
     this.skillDirty.clear();
     this.questRows.clear();
     this.questDirty.clear();
+    this.sectKills.clear();
+    this.sectKillCtx.clear();
     this.vitalKeys.clear();
     this.aoi.clear();
     return true;
@@ -1682,6 +1688,7 @@ export class MapRoom extends DurableObject<Env> {
       case "kill": {
         const mapId = sockets.get(ev.playerId)?.state.mapId;
         if (mapId) later.push(this.noteKill(ev.playerId, mapId, ev.rare).catch((err) => console.error("quest kill failed", ev.playerId, err)));
+        if (mapId) later.push(this.noteSectKill(ev.playerId, mapId, ev.rare).catch((err) => console.error("sect kill failed", ev.playerId, err)));
         return;
       }
       case "player_dead": {
@@ -1766,6 +1773,8 @@ export class MapRoom extends DurableObject<Env> {
     this.skillDirty.delete(id);
     this.questRows.delete(id);
     this.questDirty.delete(id);
+    this.sectKills.delete(id);
+    this.sectKillCtx.delete(id);
     this.hotbars.delete(id);
     this.vitalKeys.delete(id);
   }
@@ -2346,6 +2355,7 @@ export class MapRoom extends DurableObject<Env> {
 
   /** Writes the quest progress changed since the last write (absolute values). A failed write keeps the quests dirty. */
   private async flushQuests(id: string): Promise<void> {
+    await this.flushSectKills(id); // the kills of the sect tasks go with the progress of the quests, on every way out of the room
     const dirty = this.questDirty.get(id);
     if (!dirty || dirty.size === 0) return;
     const rows = this.questRows.get(id) ?? {};
@@ -2358,6 +2368,66 @@ export class MapRoom extends DurableObject<Env> {
       const again = this.questDirty.get(id) ?? new Set<string>();
       for (const q of list) again.add(q.id);
       this.questDirty.set(id, again);
+    }
+  }
+
+  /**
+   * A kill counted for the sect kill tasks (docs/PHASE5.md, 5c-6): every task that is a kill day today for this member, whose filter the kill matches and whose sect level is reached,
+   * gains one (up to what it can still ask for that day). Kept in memory and written by `flushSectKills` with the quest progress.
+   */
+  private async noteSectKill(id: string, mapId: string, rare: boolean): Promise<void> {
+    const cfg = tuning().sect;
+    const tasks = cfg.tasks.filter((t) => t.kill && sectKillCounts(t, mapId, rare));
+    if (tasks.length === 0) return;
+    const now = Date.now();
+    const day = Math.floor((now + 7 * 3_600_000) / 86_400_000);
+    let ctx = this.sectKillCtx.get(id);
+    if (ctx === undefined || (ctx !== null && (now - ctx.at > 60_000 || ctx.day !== day)) || (ctx === null && now - (this.sectKillCtxAt.get(id) ?? 0) > 60_000)) {
+      const mine = await memberOf(this.env.DB, id);
+      const sect = mine ? await sectById(this.env.DB, mine.sect_id) : null;
+      // the day's totals so far (kills counted by any room, written or not), so a member past what the tasks can ask for causes no more writes
+      const totals = new Map<string, number>();
+      if (sect) for (const r of (await this.env.DB.prepare("SELECT task_id, kills FROM sect_task_log WHERE character_id = ? AND day = ?").bind(id, day).all<{ task_id: string; kills: number }>()).results) totals.set(r.task_id, r.kills);
+      ctx = sect ? { sectId: sect.id, level: sect.level, at: now, day, totals } : null;
+      this.sectKillCtx.set(id, ctx);
+      this.sectKillCtxAt.set(id, now);
+    }
+    if (!ctx) return;
+    const pending = this.sectKills.get(id) ?? new Map<string, { task: string; day: number; add: number; cap: number }>();
+    let touched = false;
+    for (const t of tasks) {
+      if (ctx.level < t.minLevel || sectTaskMode(t, id, day) !== "kill") continue;
+      const total = ctx.totals.get(t.id) ?? 0;
+      if (!sectKillOpen(t, total)) continue; // everything the task can ask for today is counted already: no more writes
+      ctx.totals.set(t.id, total + 1);
+      const cap = t.kill!.count * t.perDay;
+      const key = `${t.id}|${day}`;
+      const cur = pending.get(key) ?? { task: t.id, day, add: 0, cap };
+      cur.add += 1;
+      pending.set(key, cur);
+      touched = true;
+    }
+    if (!touched) return;
+    this.sectKills.set(id, pending);
+    await this.ensureSaveAlarm(now);
+  }
+  private sectKillCtxAt = new Map<string, number>();
+
+  /** Writes the kills counted for the sect tasks since the last write. A failed write keeps them for the next try. */
+  private async flushSectKills(id: string): Promise<void> {
+    const pending = this.sectKills.get(id);
+    if (!pending || pending.size === 0) return;
+    this.sectKills.delete(id);
+    try {
+      await saveSectKills(this.env.DB, id, [...pending.values()]);
+    } catch (err) {
+      console.error("sect kills save failed", id, err);
+      const again = this.sectKills.get(id) ?? new Map();
+      for (const [k, v] of pending) {
+        const cur = again.get(k);
+        again.set(k, cur ? { ...cur, add: Math.min(cur.cap, cur.add + v.add) } : v);
+      }
+      this.sectKills.set(id, again);
     }
   }
 
@@ -2861,6 +2931,8 @@ export class MapRoom extends DurableObject<Env> {
         await this.sectTell(ids.map((x): [string, string] => [x, mine.sect_id]), { ids, text: SECT_SAY.succeed(name) });
       }
     }
+    await this.flushSectKills(id); // so the progress of the kill tasks in the window includes what this room counted
+    this.sectKillCtx.delete(id); // and the next kill looks at the sect again
     const view = await sectView(this.env.DB, cfg, id, new Set(), now);
     if (view) {
       const online = await this.chatHub().onlineOf(view.members.map((m) => m.id)).catch(() => [] as string[]);
@@ -3045,8 +3117,16 @@ export class MapRoom extends DurableObject<Env> {
           const [hx, hy] = this.hereOf(state, now);
           const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
           if (!spot || spot.kind !== "sect") return fail("npc");
+          await this.flushSectKills(me); // the kills counted in this room are in D1 before the claim reads them
           const prep = await prepareTask(this.env.DB, cfg, { characterId: me, taskId: msg.id, now });
           if (!prep.ok) return fail(prep.reason);
+          if (prep.prep.mode === "kill") {
+            const res = await claimKillTask(this.env.DB, cfg, prep.prep, me, now);
+            if (!res.ok) return fail(res.reason);
+            await sendWallets((await getWallet(this.env.DB, me)).linh_thach);
+            await refresh(prep.prep.sectId, []);
+            return this.sendSect(ws, me, cfg, now);
+          }
           await this.bagTask(me, async () => {
             const res = await this.mutateBag(me, (bag) => {
               const p = planTask(this.env.DB, cfg, prep.prep, me, bag, now);
