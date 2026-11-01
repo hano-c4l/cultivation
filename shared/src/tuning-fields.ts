@@ -507,6 +507,19 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
     ],
   },
   {
+    group: "mounts",
+    page: "npcs",
+    skip: DEFAULT_TUNING.mounts.list.flatMap((_, i) => [`list.${i}.id`, `list.${i}.nameVi`, `list.${i}.descVi`, `list.${i}.color`, `list.${i}.enabled`]), // the ids, names and colours are in the defaults for now
+    title: "Thú cưỡi (Ngự Thú Phù ở Thương nhân)",
+    note: "Mỗi con: cảnh giới tối thiểu để thuần phục và cưỡi (0 Luyện Khí, 1 Trúc Cơ...), tốc độ di chuyển cộng thêm khi cưỡi (cộng với tốc độ đi bộ, không cộng chung với pháp bảo phi hành vì chỉ cưỡi một thứ một lúc), và giá phù (Linh Thạch, là giá Thương nhân bán).",
+    fields: DEFAULT_TUNING.mounts.list.flatMap((m, i): TuningField[] => [
+      { path: `list.${i}.minRealm`, label: `${m.nameVi}: cảnh giới tối thiểu`, kind: "int" },
+      { path: `list.${i}.speedPct`, label: `${m.nameVi}: tốc độ cộng thêm`, kind: "int", unit: "%" },
+      { path: `list.${i}.price`, label: `${m.nameVi}: giá phù`, kind: "int", unit: "Linh Thạch" },
+      { path: `list.${i}.size`, label: `${m.nameVi}: kích thước hình tạm (1 là cỡ thường)`, kind: "num" },
+    ]),
+  },
+  {
     group: "sect",
     page: "npcs",
     skip: SECT_TEXT_PATHS, // which item a line or a task uses, and the names, are in the defaults for now (the Admin edits the numbers)

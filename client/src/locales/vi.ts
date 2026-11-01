@@ -184,6 +184,8 @@ export const vi = {
       smith_mats: "Không đủ nguyên liệu.",
       brew_mats: "Không đủ nguyên liệu để luyện.",
       craft_level: "Cấp nghề chưa đủ để dùng công thức này.",
+      mount_known: "Bạn đã thuần phục con thú này rồi, phù còn nguyên.",
+      mount_realm: "Cảnh giới của bạn chưa đủ để thuần phục con thú này.",
       brew_limit: "Bạn đang có quá nhiều mẻ đan chưa nhận.",
       brew_wait: "Mẻ đan này chưa luyện xong.",
       smith_scroll: "Bạn không có Hộ Cấp Phù.",
@@ -299,6 +301,24 @@ export const vi = {
       died: "Bạn không thể thiền lúc này.",
       safe: "Ở thành không cần thiền: sinh lực và linh lực tự hồi.",
       busy: "Đang đột phá hoặc niệm phù, chưa thể thiền.",
+    } as Record<string, string>,
+  },
+  /** Beast mounts (thú cưỡi, 5d). */
+  beast: {
+    button: "Thú cưỡi",
+    title: "Thú cưỡi",
+    hint: "Dùng Ngự Thú Phù (mua ở Thương nhân) để thuần phục một con; cưỡi thì đi nhanh hơn, và không dùng chung với pháp bảo phi hành.",
+    speed: "tốc độ di chuyển",
+    ride: "Cưỡi",
+    down: "Xuống",
+    need: (realm: number) => `Cần cảnh giới thứ ${realm + 1} trở lên.`,
+    none: "Chưa có thú cưỡi nào.",
+    gone: "Có thú cưỡi đã bị gỡ khỏi trò chơi.",
+    errors: {
+      unknown: "Thú cưỡi này không còn.",
+      realm: "Cảnh giới của bạn chưa đủ để cưỡi con này.",
+      not_owned: "Bạn chưa thuần phục con này.",
+      busy: "Đang đột phá hoặc niệm phù, chưa thể cưỡi.",
     } as Record<string, string>,
   },
   mount: {

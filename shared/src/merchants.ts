@@ -97,6 +97,8 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
       { id: "ttp_town", kind: "item", item: "ttp_town" },
       { id: "keep_level", kind: "keep_level" },
       { id: "hoi_linh_dan", kind: "item", item: "hoi_linh_dan" },
+      { id: "mt_linh_loc", kind: "item", item: "mt_linh_loc", dailyLimit: 2 },
+      { id: "mt_hac_phong_lang", kind: "item", item: "mt_hac_phong_lang", dailyLimit: 2 },
     ],
   },
   merchant2: {
@@ -111,6 +113,7 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
       { id: "ttp_town2", kind: "item", item: "ttp_town2" },
       { id: "keep_level", kind: "keep_level" },
       { id: "dai_hoi_linh_dan", kind: "item", item: "dai_hoi_linh_dan", dailyLimit: 30 },
+      { id: "mt_xich_van_ma", kind: "item", item: "mt_xich_van_ma", dailyLimit: 2 },
     ],
   },
   // The alchemist sells and buys pills and materials (and brews: alchemy.ts); the blacksmith's goods are gear and pháp bảo.
@@ -141,6 +144,7 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
       { id: "ttp_town3", kind: "item", item: "ttp_town3" },
       { id: "keep_level", kind: "keep_level" },
       { id: "than_linh_dan", kind: "item", item: "than_linh_dan", dailyLimit: 30 },
+      { id: "mt_bach_ho", kind: "item", item: "mt_bach_ho", dailyLimit: 2 },
     ],
   },
   alchemist3: { id: "alchemist3", mapId: "town3", nameVi: "Đan Sư", sellRate: SELL_RATE, buys: ["pill", "material"], stock: [...PLAIN_TOP] },

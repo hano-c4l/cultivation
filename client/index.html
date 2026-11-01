@@ -192,7 +192,7 @@
       #hud-toggle { padding: 6px 10px; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); cursor: pointer; line-height: 0; }
       #hud-toggle[hidden] { display: none; } #hud-toggle .ic { width: 20px; height: 20px; }
       body.hud-folded #switch-char, body.hud-folded #logout, body.hud-folded #char-btn, body.hud-folded #eq-btn, body.hud-folded #sk-btn, body.hud-folded #bag-btn, body.hud-folded #quest-btn, body.hud-folded #rank-btn,
-      body.hud-folded #mount-btn, body.hud-folded #meditate-btn, body.hud-folded #auto-btn, body.hud-folded #sect-btn { display: none !important; }
+      body.hud-folded #mount-btn, body.hud-folded #meditate-btn, body.hud-folded #auto-btn, body.hud-folded #sect-btn, body.hud-folded #beast-btn { display: none !important; }
       body.hud-folded #minimap { right: 12px !important; }
       #minimap[hidden] { display: none; }
       #minimap { position: fixed; right: 60px; top: 48px; z-index: 5; padding: 3px; border-radius: 8px; background: rgba(0, 0, 0, 0.55); pointer-events: none; }
@@ -203,6 +203,12 @@
       /* A window with a scroll bar scrolls its content only: the header (and its close button) stays at the top. */
       .win > .eq-head, .win > .cp-head, .win > .sk-head, .win > .au-head, .win > .bag-head { position: sticky; top: 0; z-index: 6; background: var(--ui-panel); box-shadow: 0 -14px 0 var(--ui-panel); }
       #sect-btn[hidden], #sect-panel[hidden], #sect-prompt[hidden] { display: none; }
+      #beast-btn[hidden], #beast-panel[hidden] { display: none; }
+      #beast-btn { position: fixed; right: 12px; top: 452px; width: 38px; height: 34px; padding: 0; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); cursor: pointer; }
+      #beast-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(420px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); overflow-y: auto; overscroll-behavior: contain; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 21; }
+      #beast-panel button { border: 0; border-radius: 6px; background: var(--ui-accent); color: var(--ui-on-accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 10px; min-height: 28px; } #beast-panel button:disabled { opacity: 0.45; cursor: default; }
+      #beast-panel .eq-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } #beast-panel .eq-head b { flex: 1; font-size: 15px; } #beast-panel .muted { opacity: 0.65; font-size: 12px; margin: 4px 0; }
+      #beast-panel .beast-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin: 6px 0; background: rgba(255, 255, 255, 0.06); border-radius: 6px; } #beast-panel .beast-info { flex: 1; }
       #sect-btn { position: fixed; right: 12px; top: 412px; width: 38px; height: 34px; padding: 0; border-radius: 8px; border: 0; background: rgba(0, 0, 0, 0.55); color: var(--ui-text); cursor: pointer; }
       #sect-panel { position: fixed; left: 50%; top: 56px; transform: translateX(-50%); width: min(520px, calc(100vw - 16px)); max-height: calc(100vh - 72px); max-height: calc(100dvh - 72px); overflow-y: auto; overscroll-behavior: contain; padding: 10px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); box-sizing: border-box; font: 13px/1.4 "Be Vietnam Pro", system-ui, sans-serif; z-index: 21; }
       #sect-prompt { position: fixed; left: 50%; top: 90px; transform: translateX(-50%); padding: 10px 14px; border-radius: 10px; background: var(--ui-panel); color: var(--ui-text); border: 1px solid var(--ui-border); z-index: 22; text-align: center; }
@@ -485,7 +491,7 @@
       @media (max-width: 1200px) {
         #wallet div { padding: 4px 6px; font-size: 10px; gap: 3px; } #logout, #switch-char { padding: 4px 8px; font-size: 12px; }
         #hud { top: 48px !important; max-width: calc(100vw - 130px) !important; }
-        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; } #meditate-btn { top: 368px !important; } #auto-btn { top: 408px !important; } #sect-btn { top: 448px !important; }
+        #char-btn { top: 88px !important; } #eq-btn { top: 128px !important; } #sk-btn { top: 168px !important; } #bag-btn { top: 208px !important; } #quest-btn { top: 248px !important; } #rank-btn { top: 288px !important; } #mount-btn { top: 328px !important; } #meditate-btn { top: 368px !important; } #auto-btn { top: 408px !important; } #sect-btn { top: 448px !important; } #beast-btn { top: 488px !important; }
       }
       #hud {
         position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 8px;

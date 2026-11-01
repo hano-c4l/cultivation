@@ -5,6 +5,7 @@ import { equipmentInfo, type EquipInfo } from "./equipment-data";
 import type { MonsterRank } from "./monsters";
 import { REALMS } from "./progression-data";
 import { KEEP_LEVEL_ITEM, REFINE_ORES, SMITH_ORES } from "./smith";
+import { DEFAULT_MOUNTS, mountItemId } from "./mounts-data";
 import { ALL_BOOK_SKILLS, MASTERY_PILL_POINTS, bookItemId, getSkill } from "./skills";
 import { tuning } from "./tuning";
 
@@ -42,6 +43,8 @@ export interface ItemDef {
   masteryPills?: number;
   /** Skill books (bí tịch): the skill the book teaches when used. */
   teaches?: string;
+  /** Mount tokens (5d): the mount using it teaches (it is learned for good and the token is used up). */
+  mount?: string;
   /** Breakthrough pills: the realm the pill leads to. Used from the breakthrough panel, not from the bag. */
   breakthroughTo?: number;
   /** Teleport talismans: using one (outside that map) takes the character to the map's spawn. Bought from the merchant of that town. */
@@ -57,6 +60,14 @@ const BOOKS: Record<string, ItemDef> = Object.fromEntries(
   ALL_BOOK_SKILLS.map((s) => [
     bookItemId(s.id),
     { id: bookItemId(s.id), nameVi: `Bí Tịch: ${s.nameVi}`, descVi: `Dùng để học kỹ năng ${s.nameVi}.`, category: "skill_book", maxStack: 1, rarity: "epic", grade: 4, teaches: s.id } satisfies ItemDef,
+  ]),
+);
+
+/** One token per mount of the default list (the ids are fixed in code; an admin edits the numbers and the names in the tuning). */
+const MOUNT_TOKENS: Record<string, ItemDef> = Object.fromEntries(
+  DEFAULT_MOUNTS.list.map((m) => [
+    mountItemId(m.id),
+    { id: mountItemId(m.id), nameVi: `Ngự Thú Phù: ${m.nameVi}`, descVi: `Dùng để thuần phục ${m.nameVi}, cưỡi được từ cảnh giới ${m.minRealm + 1}. Phù biến mất sau khi dùng.`, category: "consumable", maxStack: 1, rarity: "epic", grade: Math.min(4, m.minRealm + 1), mount: m.id } satisfies ItemDef,
   ]),
 );
 
@@ -119,6 +130,7 @@ const SMITH_ITEMS: Record<string, ItemDef> = {
 export const ITEMS: Readonly<Record<string, ItemDef>> = {
   ...SMITH_ITEMS,
   ...BOOKS,
+  ...MOUNT_TOKENS,
   ...BREAKTHROUGH_PILLS,
   ...PATH_ITEMS,
   hoi_huyet_dan: {
@@ -537,6 +549,7 @@ export function itemRealmOf(type: string): number | null {
     const skill = getSkill(def.teaches);
     return skill?.learn?.realm ?? skill?.realm ?? null;
   }
+  if (def.mount) return DEFAULT_MOUNTS.list.find((m) => m.id === def.mount)?.minRealm ?? null;
   if (def.breakthroughTo !== undefined) return def.breakthroughTo - 1;
   const ore = /^(?:ren|tl)_(lk|tc|kd|na|ht|lh)$/.exec(type);
   if (ore) return REALM_SUFFIX[ore[1]!] ?? null;

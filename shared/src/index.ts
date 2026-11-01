@@ -51,6 +51,8 @@ export * from "./gifts";
 export * from "./aoi";
 export * from "./waygate";
 export * from "./alchemy";
+export * from "./mounts-data";
+export * from "./mounts";
 export * from "./map-content";
 export * from "./npc-tabs";
 export * from "./gfx";

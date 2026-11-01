@@ -1,4 +1,5 @@
 import { DEFAULT_ALCHEMY, DEFAULT_FORGE, validAlchemy, type AlchemyCfg } from "./alchemy";
+import { DEFAULT_MOUNTS, validMounts, type MountsCfg } from "./mounts-data";
 import type { AreaDef } from "./area";
 import { DEFAULT_DOJO, validDojo, type DojoCfg } from "./dojo";
 import { DEFAULT_MARKET, validMarket, type MarketCfg } from "./market";
@@ -156,6 +157,8 @@ export interface Tuning {
   alchemy: AlchemyCfg;
   /** The blacksmith's forge (Luyện khí, 5e): the same shape as the alchemist's group; the results are pieces of gear. */
   forge: AlchemyCfg;
+  /** The beast mounts (thú cưỡi, 5d): name, realm, speed, price and drawing of each (see mounts-data.ts). */
+  mounts: MountsCfg;
   /** Meditation EXP: the share of a kill's EXP per second of hunting that sitting gives (`huntRatio` of one ordinary kill every `secondsPerKill` seconds), and the longest stretch settled at once (a settlement after a longer silence counts only this much). */
   meditation: { huntRatio: number; secondsPerKill: number; maxSettleSeconds: number };
   /** The colours of the dots on the mini map (`#rrggbb`): yourself, other players, monsters, the boss, the NPCs and guards, and the doors (to other maps, and the teleport arrays). */
@@ -521,6 +524,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   },
   alchemy: DEFAULT_ALCHEMY,
   forge: DEFAULT_FORGE,
+  mounts: DEFAULT_MOUNTS,
   meditation: { huntRatio: 0.12, secondsPerKill: 6, maxSettleSeconds: 120 },
   minimap: { self: "#ffffff", player: "#4da3ff", monster: "#ff4d4d", boss: "#ffd24a", npc: "#4dff7a", portal: "#b9a4ff" },
   hatLooks: { rules: [{ minRealm: 0, shape: 0 }, { minRealm: 1, shape: 1 }, { minRealm: 2, shape: 3 }, { minRealm: 3, shape: 4 }, { minRealm: 4, shape: 7 }, { minRealm: 5, shape: 8 }] },
@@ -718,6 +722,7 @@ export const TUNING_LABELS_VI: Readonly<Record<TuningGroup, string>> = {
   market: "Vạn Bảo Lâu: thuế, phí đăng bán, giới hạn tin, giờ mở và chốt đấu giá, tin quảng bá",
   alchemy: "Luyện đan của Đan Sư: số mẻ luyện cùng lúc và các công thức",
   forge: "Luyện khí của Thợ Rèn: số mẻ cùng lúc và các công thức (làm ra trang bị)",
+  mounts: "Thú cưỡi: tên, cảnh giới, tốc độ cộng thêm, giá phù và màu hình tạm",
   outfits: "Trang phục hiện trên nhân vật theo cảnh giới của áo đang mặc",
   flightLooks: "Hình pháp bảo phi hành dưới chân người bay (kiếm, mây, sen), theo hệ của món đang dùng",
   auto: "Giới hạn của Auto đánh quái: phạm vi tối thiểu, tối đa, mặc định (ô), nhịp ra lệnh (ms), thời gian bỏ một con đánh mãi không trúng, nghỉ giữa hai lần uống đan, nghỉ sau khi kỹ năng báo lỗi",
@@ -1067,6 +1072,8 @@ export function validTuningGroup(group: string, value: unknown): boolean {
       return Object.keys(value).length <= 100 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && /^[a-z0-9]{1,16}$/.test(v));
     case "outfits":
       return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit));
+    case "mounts":
+      return validMounts(value);
     case "forge":
     case "alchemy":
       return validAlchemy(value);

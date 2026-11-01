@@ -24,7 +24,8 @@ async function load(db: D1Database): Promise<{ value: Tuning; version: number }>
       db.prepare("SELECT name, value, updated_by FROM game_tuning").all<{ name: string; value: string; updated_by: string | null }>(),
     ]);
   let [versionRow, res] = await read();
-  if (res.results.length < TUNING_GROUPS.length) {
+  // (by name, not by count: a stale row of a group that no longer exists must not hide a group added later)
+  if (TUNING_GROUPS.some((g) => !res.results.some((r) => r.name === g))) {
     await seed(db);
     [versionRow, res] = await read();
   }
