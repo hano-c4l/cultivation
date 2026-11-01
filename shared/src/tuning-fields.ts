@@ -509,7 +509,7 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
   {
     group: "mounts",
     page: "npcs",
-    skip: DEFAULT_TUNING.mounts.list.flatMap((_, i) => [`list.${i}.id`, `list.${i}.nameVi`, `list.${i}.descVi`, `list.${i}.color`, `list.${i}.enabled`]), // the ids, names and colours are in the defaults for now
+    skip: DEFAULT_TUNING.mounts.list.flatMap((_, i) => [`list.${i}.id`, `list.${i}.nameVi`, `list.${i}.descVi`, `list.${i}.color`, `list.${i}.sprite`, `list.${i}.enabled`]), // the ids, names and colours are in the defaults for now
     title: "Thú cưỡi (Ngự Thú Phù ở Thương nhân)",
     note: "Mỗi con: cảnh giới tối thiểu để thuần phục và cưỡi (0 Luyện Khí, 1 Trúc Cơ...), tốc độ di chuyển cộng thêm khi cưỡi (cộng với tốc độ đi bộ, không cộng chung với pháp bảo phi hành vì chỉ cưỡi một thứ một lúc), và giá phù (Linh Thạch, là giá Thương nhân bán).",
     fields: DEFAULT_TUNING.mounts.list.flatMap((m, i): TuningField[] => [

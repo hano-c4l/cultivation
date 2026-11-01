@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_MOUNTS, DEFAULT_MERCHANTS, getItemDef, itemValue, mountBlock, mountItemId, mountOf, mountSpeedPct, setTuning, validMounts, startingStats, walkSpeed } from "@game/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -38,6 +39,13 @@ describe("the mounts of the tuning", () => {
     // faster as the realm rises, and slower than the flight pháp bảo of the realm (40% to 150%) at the same realm
     const speeds = DEFAULT_MOUNTS.list.map((m) => m.speedPct);
     expect([...speeds].sort((a, b) => a - b)).toEqual(speeds);
+  });
+
+  it("every default mount names a sprite that is in the manifest, and a bad sprite name is not valid", () => {
+    const manifest = JSON.parse(readFileSync(new URL("../../client/public/gfx/manifest.json", import.meta.url), "utf8")) as { sprites: Record<string, unknown> };
+    for (const m of DEFAULT_MOUNTS.list) expect(manifest.sprites[`monster.${m.sprite}`], m.id).toBeDefined();
+    expect(validMounts({ list: [{ ...DEFAULT_MOUNTS.list[0]!, sprite: "Bad Name" }] })).toBe(false);
+    expect(validMounts({ list: [{ ...DEFAULT_MOUNTS.list[0]!, sprite: undefined }] })).toBe(true); // a mount with no sprite is drawn by code
   });
 
   it("a list with a bad entry, a repeated id or a bad colour is not valid", () => {

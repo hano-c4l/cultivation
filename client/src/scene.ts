@@ -182,6 +182,8 @@ interface Actor {
   /** The beast mount ridden (a `mounts` id) and the shape drawn under the rider until it has a sprite. */
   beast?: string;
   beastGfx?: Phaser.GameObjects.Graphics;
+  /** The sprite of the beast (a monster model, tinted) once its atlas is here; the shape above is hidden then. */
+  beastView?: GfxView;
   /** The joints, head and tail tip of the dragon pháp bảo (made when the rider's flight is the dragon; head last, tail tip first). */
   dragon?: Phaser.GameObjects.Image[];
   /** Where the rider was on screen last frame and the way they are heading (radians on screen), so a flying sword points where it flies. */
@@ -1705,6 +1707,7 @@ export class GameScene extends Phaser.Scene {
     actor.sectTag?.destroy();
     actor.cloud?.destroy();
     actor.beastGfx?.destroy();
+    actor.beastView?.destroy();
     this.clearDragon(actor);
     actor.hat?.destroy();
     actor.hatOrn?.destroy();
@@ -1912,6 +1915,8 @@ export class GameScene extends Phaser.Scene {
     actor.beast = id;
     actor.beastGfx?.destroy();
     actor.beastGfx = undefined;
+    actor.beastView?.destroy();
+    actor.beastView = undefined;
     const def = id ? mountOf(id) : undefined;
     if (!def) {
       actor.beast = undefined;
@@ -1926,6 +1931,31 @@ export class GameScene extends Phaser.Scene {
     g.fillRoundedRect(13 * k, -22 * k, 11 * k, 10 * k, 4 * k);
     g.fillStyle(0xffffff, 0.85).fillCircle(21 * k, -18 * k, 1.4);
     actor.beastGfx = g;
+  }
+
+  /** The beast under a rider: its sprite (the model of the mount, tinted, turned the way the rider goes) once the atlas is here, the drawn shape until then. */
+  private syncBeastView(actor: Actor, now: number, x: number, y: number, depth: number): void {
+    const def = actor.beast ? mountOf(actor.beast) : undefined;
+    if (!def) return;
+    if (!actor.beastView && def.sprite) {
+      const key = this.gfx.spriteKeyFor("monster", def.sprite); // asks for the atlas when it is not here yet
+      const view = key ? this.gfx.createView(key) : undefined;
+      if (view) {
+        actor.beastView = view;
+        actor.beastGfx?.setVisible(false);
+      }
+    }
+    if (actor.beastView && !actor.beastView.alive) {
+      actor.beastView = undefined;
+      actor.beastGfx?.setVisible(true);
+    }
+    if (actor.beastView) {
+      const moving = positionAlongPath(actor.path, now - actor.startedAt, actor.speed).moving;
+      actor.beastView.setScale(def.size);
+      actor.beastView.setTint(hexOf(def.color) ?? 0xffffff);
+      actor.beastView.play(moving ? "run" : "idle", headingAlongPath(actor.path, now - actor.startedAt, actor.speed) ?? actor.beastView.dir);
+      actor.beastView.place(x, y, depth);
+    } else actor.beastGfx?.setPosition(x, y).setDepth(depth);
   }
 
   /** Draws (or removes) the cloud under a rider; for yourself it also keeps the badge and the gear-stat views in step. */
@@ -2580,7 +2610,7 @@ export class GameScene extends Phaser.Scene {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
       actor.body.setPosition(s.x, s.y - (rides(actor) ? 25 : 17));
-      if (actor.beastGfx) actor.beastGfx.setPosition(s.x, s.y + 2).setDepth(10 + pos.x + pos.y - 0.1);
+      if (actor.beast) this.syncBeastView(actor, now, s.x, s.y + 2, 10 + pos.x + pos.y - 0.1);
       if (this.snapCamera && actor.id === this.selfId) {
         this.cameras.main.centerOn(actor.body.x, actor.body.y); // the first frame after a welcome: no slide in from the old view
         this.snapCamera = false;
