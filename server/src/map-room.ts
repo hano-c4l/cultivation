@@ -425,6 +425,8 @@ export class MapRoom extends DurableObject<Env> {
   private waking: Promise<void> | null = null;
   /** JSON of the monster classes last written to storage, to skip identical writes. */
   private ranksJson: string | null = null;
+  /** Characters whose delayed `mail_refresh` answer is already scheduled (see handleMailRefresh). */
+  private mailRefreshDue = new Set<string>();
   /**
    * Each online character's bag as this room last wrote it (the room is the only writer while it holds the character
    * lock). Too big for the socket attachment, so it lives in memory and is reloaded lazily after a sleep.
@@ -2249,10 +2251,23 @@ export class MapRoom extends DurableObject<Env> {
     return res.ok ? removed : [];
   }
 
-  /** The player asks for the mail list again (a gift arrived, or the bag was opened); at most one answer per MAIL_REFRESH_GAP_MS. */
+  /** The player asks for the mail list again (a gift arrived, or the bag was opened); at most one answer per MAIL_REFRESH_GAP_MS (an ask that comes too soon is answered when the gap is over). */
   private handleMailRefresh(ws: WebSocket, state: PlayerState): void {
     const now = Date.now();
-    if (now - (state.lastMailRefreshAt ?? 0) < MAIL_REFRESH_GAP_MS) return;
+    const wait = MAIL_REFRESH_GAP_MS - (now - (state.lastMailRefreshAt ?? 0));
+    if (wait > 0) {
+      // Too soon: one answer is owed once the gap is over, so a mail that arrived in between is not missed (further asks meanwhile fold into it).
+      if (!this.mailRefreshDue.has(state.id)) {
+        this.mailRefreshDue.add(state.id);
+        setTimeout(() => {
+          this.mailRefreshDue.delete(state.id);
+          void this.sendMailList(state.id, ws).catch((err) => console.error("mail refresh failed", state.id, err));
+        }, wait);
+        state.lastMailRefreshAt = now + wait;
+        ws.serializeAttachment(state);
+      }
+      return;
+    }
     state.lastMailRefreshAt = now;
     ws.serializeAttachment(state);
     void this.sendMailList(state.id, ws).catch((err) => console.error("mail refresh failed", state.id, err));

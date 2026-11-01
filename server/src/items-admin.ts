@@ -65,18 +65,28 @@ async function overlayRows(db: D1Database): Promise<Row[]> {
   return (await db.prepare("SELECT id, custom, disabled, def, updated_at FROM items").all<Row>()).results;
 }
 
-export async function listItems(db: D1Database): Promise<ItemListResult> {
-  const [rows, value, owners, gifts] = await Promise.all([
-    overlayRows(db),
-    itemValueRow(db),
+type OwnerRows = { owners: Array<{ item_type: string; total: number; biggest: number }>; gifts: Array<{ item: string; n: number }> };
+let ownerCache: { at: number; rows: OwnerRows } | null = null;
+
+/** How many of each item are held and waiting in mail: two scans over every item row and every mail, so the Admin list may reuse them for `maxAgeMs`. */
+async function ownerRows(db: D1Database, maxAgeMs: number): Promise<OwnerRows> {
+  const now = Date.now();
+  if (ownerCache && now - ownerCache.at < maxAgeMs) return ownerCache.rows;
+  const [owners, gifts] = await Promise.all([
     db.prepare("SELECT item_type, SUM(qty) AS total, MAX(qty) AS biggest FROM item_instances GROUP BY item_type").all<{ item_type: string; total: number; biggest: number }>(),
     db
       .prepare("SELECT json_extract(j.value, '$.type') AS item, COUNT(*) AS n FROM mailbox m, json_each(m.gift, '$.items') j WHERE m.claimed_at IS NULL AND m.gift IS NOT NULL GROUP BY item")
       .all<{ item: string; n: number }>(),
   ]);
+  ownerCache = { at: now, rows: { owners: owners.results, gifts: gifts.results } };
+  return ownerCache.rows;
+}
+
+export async function listItems(db: D1Database, ownersMaxAgeMs = 0): Promise<ItemListResult> {
+  const [rows, value, held] = await Promise.all([overlayRows(db), itemValueRow(db), ownerRows(db, ownersMaxAgeMs)]);
   const token = new Map(rows.map((r) => [r.id, r]));
-  const own = new Map(owners.results.map((o) => [o.item_type, o]));
-  const giftCount = new Map(gifts.results.map((g) => [g.item, g.n]));
+  const own = new Map(held.owners.map((o) => [o.item_type, o]));
+  const giftCount = new Map(held.gifts.map((g) => [g.item, g.n]));
   return {
     valueToken: value.updatedAt,
     meta: { categories: CUSTOM_ITEM_CATEGORIES, rarities: ITEM_RARITIES, maxGrade: MAX_ITEM_GRADE, limits: { name: ITEM_NAME_MAX, description: ITEM_DESC_MAX } },
