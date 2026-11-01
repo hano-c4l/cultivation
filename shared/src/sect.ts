@@ -464,6 +464,11 @@ export function sectKillCounts(task: Pick<SectTask, "kill">, mapId: string, rare
   return !!k && (k.map === undefined || k.map === mapId) && (!k.rare || rare);
 }
 
+/** Whether a kill task can still use another kill today: the day's total so far is below what all its turns ask for (`count x perDay`). */
+export function sectKillOpen(task: Pick<SectTask, "kill" | "perDay">, total: number): boolean {
+  return !!task.kill && total < task.kill.count * task.perDay;
+}
+
 /** What the sect window shows for the sect the player is in. */
 export interface SectMemberView {
   id: string;

@@ -147,7 +147,7 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { SECT_RANK, SECT_ROLE_NAMES, SECT_SAY, sectKillCounts, sectTaskMode, type SectError, type Tuning, bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { SECT_RANK, SECT_ROLE_NAMES, SECT_SAY, sectKillCounts, sectKillOpen, sectTaskMode, type SectError, type Tuning, bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
@@ -440,7 +440,7 @@ export class MapRoom extends DurableObject<Env> {
   private questDirty = new Map<string, Set<string>>();
   /** Kills counted for sect kill tasks and not written yet, by character (key `task|day`), and who is in which sect (looked at for a minute at a time: no D1 read per kill). */
   private sectKills = new Map<string, Map<string, { task: string; day: number; add: number; cap: number }>>();
-  private sectKillCtx = new Map<string, { sectId: string; level: number; at: number } | null>();
+  private sectKillCtx = new Map<string, { sectId: string; level: number; at: number; day: number; totals: Map<string, number> } | null>();
   private hotbars = new Map<string, string[]>();
   /** Per character: the vitals as last written to D1 (without the timestamp), so an unchanged state is not written again. */
   private vitalKeys = new Map<string, string>();
@@ -2380,24 +2380,29 @@ export class MapRoom extends DurableObject<Env> {
     const tasks = cfg.tasks.filter((t) => t.kill && sectKillCounts(t, mapId, rare));
     if (tasks.length === 0) return;
     const now = Date.now();
+    const day = Math.floor((now + 7 * 3_600_000) / 86_400_000);
     let ctx = this.sectKillCtx.get(id);
-    if (ctx === undefined || (ctx !== null && now - ctx.at > 60_000) || (ctx === null && now - (this.sectKillCtxAt.get(id) ?? 0) > 60_000)) {
+    if (ctx === undefined || (ctx !== null && (now - ctx.at > 60_000 || ctx.day !== day)) || (ctx === null && now - (this.sectKillCtxAt.get(id) ?? 0) > 60_000)) {
       const mine = await memberOf(this.env.DB, id);
       const sect = mine ? await sectById(this.env.DB, mine.sect_id) : null;
-      ctx = sect ? { sectId: sect.id, level: sect.level, at: now } : null;
+      // the day's totals so far (kills counted by any room, written or not), so a member past what the tasks can ask for causes no more writes
+      const totals = new Map<string, number>();
+      if (sect) for (const r of (await this.env.DB.prepare("SELECT task_id, kills FROM sect_task_log WHERE character_id = ? AND day = ?").bind(id, day).all<{ task_id: string; kills: number }>()).results) totals.set(r.task_id, r.kills);
+      ctx = sect ? { sectId: sect.id, level: sect.level, at: now, day, totals } : null;
       this.sectKillCtx.set(id, ctx);
       this.sectKillCtxAt.set(id, now);
     }
     if (!ctx) return;
-    const day = Math.floor((now + 7 * 3_600_000) / 86_400_000);
     const pending = this.sectKills.get(id) ?? new Map<string, { task: string; day: number; add: number; cap: number }>();
     let touched = false;
     for (const t of tasks) {
       if (ctx.level < t.minLevel || sectTaskMode(t, id, day) !== "kill") continue;
+      const total = ctx.totals.get(t.id) ?? 0;
+      if (!sectKillOpen(t, total)) continue; // everything the task can ask for today is counted already: no more writes
+      ctx.totals.set(t.id, total + 1);
       const cap = t.kill!.count * t.perDay;
       const key = `${t.id}|${day}`;
       const cur = pending.get(key) ?? { task: t.id, day, add: 0, cap };
-      if (cur.add >= cap) continue;
       cur.add += 1;
       pending.set(key, cur);
       touched = true;

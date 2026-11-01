@@ -127,13 +127,15 @@ function rewardStatements(db: D1Database, cfg: SectCfg, prep: TaskPrep, characte
 /** Writes the kills a room counted for a member: per task and day, capped at what the task can still ask for that day. */
 export async function saveSectKills(db: D1Database, characterId: string, list: ReadonlyArray<{ task: string; day: number; add: number; cap: number }>): Promise<void> {
   if (list.length === 0) return;
-  await db.batch(
+  const results = await db.batch(
     list.map((k) =>
       db
         .prepare("INSERT INTO sect_task_log (character_id, task_id, day, n, kills) VALUES (?, ?, ?, 0, MIN(?, ?)) ON CONFLICT (character_id, task_id, day) DO UPDATE SET kills = MIN(?, kills + ?)")
         .bind(characterId, k.task, k.day, k.cap, k.add, k.cap, k.add),
     ),
   );
+  // Logged so `wrangler tail` shows the real D1 write cost of counting kills (docs/PHASE5.md, 5c-6).
+  console.log("sect kills rows_written", list.length, results.reduce((n, r) => n + (r.meta?.rows_written ?? 0), 0));
 }
 
 let rankCache: { at: number; list: SectRankItem[] } | null = null;

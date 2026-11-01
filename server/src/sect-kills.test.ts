@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { DEFAULT_SECT, sectKillCounts, sectTaskMode, validSect, type SectCfg, type SectTask } from "@game/shared";
+import { DEFAULT_SECT, sectKillCounts, sectKillOpen, sectTaskMode, validSect, type SectCfg, type SectTask } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetSettingsCache } from "./settings";
 import { createSect, sectView } from "./sect";
@@ -68,6 +68,14 @@ describe("the draw of the mode", () => {
 });
 
 describe("counting and claiming kills", () => {
+  it("stops counting at what the task can ask for in a day (count x perDay)", () => {
+    const t = killTask(); // 3 a turn, 2 turns
+    expect(sectKillOpen(t, 0)).toBe(true);
+    expect(sectKillOpen(t, 5)).toBe(true);
+    expect(sectKillOpen(t, 6)).toBe(false);
+    expect(sectKillOpen({ perDay: 2 }, 0)).toBe(false);
+  });
+
   it("writes cumulative kills capped at count x perDay", async () => {
     await founded(cfgOf([killTask()]));
     await saveSectKills(db, A, [{ task: "k1", day: DAY, add: 4, cap: 6 }]);
