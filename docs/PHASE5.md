@@ -22,7 +22,7 @@ Bản thiết kế mở đầu giai đoạn (2026-10-30). Chưa có dòng code n
 - **5b. Giao dịch trực tiếp 2 người** (đã code, chưa deploy; migration `0060`; xem mục "5b" bên dưới)
 - **5c. Tông môn** (đang thiết kế, xem mục "5c" bên dưới; chia 4 bước 5c-1 đến 5c-4)
 - **5d. Thú cưỡi** (layer sprite riêng, chờ 4d)
-- **5e. Nghề phụ** (luyện khí; luyện đan đã có ở 3k)
+- **5e. Nghề phụ: Luyện khí** (đã code, xem mục "5e" cuối file; migration `0070`; luyện đan đã có ở 3k)
 - **5f. Dashboard tổng cung tiền và đơn nạp Tiên Ngọc** (đã code, xem mục "5f" cuối file; migration `0069`)
 
 5b–5f chưa thiết kế chi tiết; mỗi hạng mục là một thiết kế riêng. (Đánh số 5c–5g của bản nháp trước đã dời lên một bậc vì đấu giá nhập vào 5a.)
@@ -251,4 +251,15 @@ Phần **cửa hàng kỹ năng tông môn** tách ra thành **5c-2b** (cần k�
 - **Chưa làm:** biểu đồ (hiện là bảng), cảnh báo tự động khi tổng cung tăng nhanh, tách người chơi thật khỏi tài khoản admin và tài khoản thử trong tổng cung.
 - **Tồn đọng:** nhân vật đã xóa mềm vẫn nằm trong tổng cung và danh sách người giữ nhiều nhất. Trên môi trường có dữ liệu thử (local, preview) các khoản vào ra theo nhóm **không cộng khớp với tổng cung**, vì các smoke script ghi số dư bằng SQL thẳng; đó không phải lỗi, kiểm duyệt ở "Quản lý tiền tệ" mới là phép kiểm.
 - **Làm 5f trước 5e** vì 5e (nghề phụ, luyện khí) chưa có thiết kế: cần người dùng cho biết chế tạo gì, từ gì, ai làm, và khác Thợ Rèn ở đâu.
+
+## 5e. Nghề phụ Luyện khí (nhánh `features_forge`, migration `0070`) — **thiết kế đề xuất, chờ người dùng duyệt**
+Người dùng chọn làm 5e theo bản đề xuất của trợ lý (2026-11-01): "nghề chế tạo trang bị/pháp bảo giống Đan Sư". Mọi con số bên dưới là **giá trị tạm**, nằm trong D1 để Admin chỉnh.
+- **Ai làm:** NPC **Thợ Rèn** có thêm tab **Luyện khí** (cạnh Cường hóa và Mua/bán). Thợ Rèn cũ nâng cấp, tinh luyện, sửa độ bền món **đã có**; Luyện khí **làm ra món mới** từ nguyên liệu, nên không trùng việc.
+- **Cách chạy:** dùng nguyên máy của Đan Sư: nguyên liệu và Linh Thạch bị lấy ngay khi bắt đầu; sau một khoảng thời gian thì nhận (có thể thoát game). Công thức là **dữ liệu D1**: nhóm tuning `forge` (cùng dạng với `alchemy`: số mẻ cùng lúc và danh sách công thức), sửa ở **`/admin/npcs/forge`** ("Công thức luyện khí"; Admin gõ mã trang bị, danh sách gợi ý chỉ có các món công thức đang làm ra). Mỗi nghề có **giới hạn mẻ và danh sách riêng** (`brew_jobs.craft`); một mẻ chỉ nhận được ở NPC của nghề đó.
+- **Làm ra gì:** **một món trang bị cho mỗi lần luyện** (trang bị không xếp chồng; số lô cố định 1), loại **không phân giới tính** (nhẫn, đai lưng, giày, pháp bảo...), phẩm 2 bậc 3, cao hơn hàng 1 mà Thợ Rèn bán. Khi nhận, món được tung chỉ số từ bảng master và có đủ độ bền như hàng thương nhân bán (`rollGear`). Mặc định tám công thức: sáu món mỗi cảnh giới một (nhẫn Luyện Khí, đai lưng Trúc Cơ, giày Kim Đan, nhẫn Nguyên Anh, đai lưng Hóa Thần, giày Luyện Hư; mỗi cái cần **40 Tinh Thiết của đúng cảnh giới đó** và Linh Thạch 20.000 đến 4.000.000, thời gian 10 đến 35 phút) và hai **pháp bảo** (bản mệnh Trúc Cơ; phi hành Kim Đan **hệ Kim cố định trong mã công thức**: mỗi hệ là một công thức riêng, người chơi chưa được chọn hệ; cần 60 Tinh Thiết), tối đa 2 mẻ cùng lúc.
+- **Không nén nguyên liệu:** nguyên liệu nâng cấp vẫn chỉ rơi từ quái đúng cảnh giới (luật 2j); Luyện khí chỉ **tiêu** chúng, không đổi cảnh giới nguyên liệu.
+- **Không có cấp nghề:** đây là sách công thức, ai cũng dùng được. Nếu muốn **cấp nghề** (luyện nhiều thì mở công thức, tỉ lệ ra món tốt) thì là bước sau, cần người dùng chốt.
+- **Kỹ thuật:** `Craft = "alchemy" | "forge"`; tin `brew` mang `craft`; chỉ Thợ Rèn mở tab Luyện khí (`npcTabs("smith")` thêm `"brew"`); lý do tiền `forge:<công thức>` thuộc nhóm "Cường hoá". Lưu ý của Admin: danh sách gợi ý không liệt kê trang bị vì mã trang bị được ghép từ loại, cảnh giới, bậc và phẩm.
+- **Kiểm:** `server/src/forge.test.ts` (công thức mặc định hợp lệ và tung được chỉ số, hai nghề có danh sách và giới hạn riêng, nhận đúng NPC một lần, lưu Admin trên cơ sở dữ liệu mới, trang bị chỉ một món một lần và chỉ nhận ở nghề rèn, vật phẩm chỉ dùng bởi công thức luyện khí vẫn bị báo là đang dùng); `tools/forge-smoke.mjs` chạy thật (tab, bắt đầu, trừ tiền, nhận món có chỉ số, nhận lần hai bị từ chối). `tools/alchemist-smoke.mjs` và phần cuối của `tools/smith-smoke.mjs` **đã cũ từ trước** (đường đi tới NPC bị nhà chắn từ 5b), chưa viết lại.
+- **Chưa làm:** cấp nghề; chặn tắt Thợ Rèn và Đan Sư khi còn mẻ của nghề kia chưa nhận (chốt "Đan Sư cuối cùng" nay chỉ đếm mẻ luyện đan); chặn tắt Thợ Rèn cuối cùng khi còn mẻ luyện khí chưa nhận (Đan Sư có chốt này, Thợ Rèn chưa); xem bằng mắt các tab trên điện thoại (đã xem tab Luyện khí trên trình duyệt local ở máy tính và đã bấm qua lại Cường hóa và Luyện khí); người chơi chọn hệ cho pháp bảo phi hành (hiện mỗi hệ một công thức), công thức cho vũ khí.
 

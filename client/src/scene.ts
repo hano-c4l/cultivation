@@ -849,6 +849,7 @@ export class GameScene extends Phaser.Scene {
     this.shop.close();
     this.smith.close();
     if (view === "smith") this.smith.open(npc);
+    else if (view === "brew") this.shop.openForge(npc); // the forge: the shop window opens on its brewing tab
     else this.shop.open(npc, this.map.id);
   }
 
@@ -1420,7 +1421,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "brew":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
-        this.shop.setBrew(msg.npc, msg.jobs, msg.now, msg.tabs);
+        this.shop.setBrew(msg.npc, msg.jobs, msg.now, msg.tabs, msg.craft);
         break;
       case "smith_result": {
         const owned = [...this.worn, ...this.inventory.list()].find((x) => x.id === msg.id);

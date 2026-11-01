@@ -452,7 +452,7 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     case "POST /api/admin/merchant/save":
       return adminMerchantSave(request, env);
     case "GET /api/admin/alchemy":
-      return adminAlchemy(request, env);
+      return adminAlchemy(request, env, url);
     case "POST /api/admin/alchemy/save":
       return adminAlchemySave(request, env);
     case "GET /api/admin/monsters":

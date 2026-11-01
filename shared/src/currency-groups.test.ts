@@ -12,6 +12,7 @@ describe("currency groups", () => {
       smith_refine: "enhance",
       repair: "enhance",
       breakthrough: "enhance",
+      "forge:forge_ring_lk": "enhance",
       path_choose: "enhance",
       path_swap: "enhance",
       path_drop: "enhance",

@@ -28,6 +28,9 @@ export interface AlchemyCfg {
   recipes: BrewRecipe[];
 }
 
+/** The two trades that work like this: the alchemist's brewing and the forge of the blacksmith (docs/PHASE5.md, 5e). */
+export type Craft = "alchemy" | "forge";
+
 export const DEFAULT_MAX_BATCH = 10;
 export const DEFAULT_BATCH_TIME_STEP = 0.3;
 
@@ -92,3 +95,23 @@ export interface BrewJobView {
   /** Server time (ms) it is ready. */
   readyAt: number;
 }
+
+/**
+ * Forging at the blacksmith (Luyện khí, 5e): the same machinery as the alchemist (a recipe book in the tuning, materials and Linh Thạch taken at the start, the piece
+ * collected when ready), but the result is a piece of GEAR (rolled from the master table when it is collected). One piece a run (gear does not stack), the id of a
+ * gender-neutral kind, and a grade above what the blacksmith sells. All numbers are placeholders; the recipes are edited at /admin/npcs/forge.
+ */
+export const DEFAULT_FORGE: AlchemyCfg = {
+  maxJobs: 2,
+  maxBatch: 1,
+  recipes: [
+    { id: "forge_ring_lk", nameVi: "Luyện Nhẫn Luyện Khí", output: "eq.ring.u.0.3.2", qty: 1, inputs: [{ item: "ren_lk", qty: 40 }], linhThach: 20_000, seconds: 600, enabled: true },
+    { id: "forge_belt_tc", nameVi: "Luyện Đai Lưng Trúc Cơ", output: "eq.belt.u.1.3.2", qty: 1, inputs: [{ item: "ren_tc", qty: 40 }], linhThach: 60_000, seconds: 900, enabled: true },
+    { id: "forge_boots_kd", nameVi: "Luyện Giày Kim Đan", output: "eq.boots.u.2.3.2", qty: 1, inputs: [{ item: "ren_kd", qty: 40 }], linhThach: 180_000, seconds: 1200, enabled: true },
+    { id: "forge_ring_na", nameVi: "Luyện Nhẫn Nguyên Anh", output: "eq.ring.u.3.3.2", qty: 1, inputs: [{ item: "ren_na", qty: 40 }], linhThach: 500_000, seconds: 1500, enabled: true },
+    { id: "forge_belt_ht", nameVi: "Luyện Đai Lưng Hóa Thần", output: "eq.belt.u.4.3.2", qty: 1, inputs: [{ item: "ren_ht", qty: 40 }], linhThach: 1_500_000, seconds: 1800, enabled: true },
+    { id: "forge_bonded_tc", nameVi: "Luyện Pháp Bảo Bản Mệnh Trúc Cơ", output: "eq.bonded.u.1.3.2", qty: 1, inputs: [{ item: "ren_tc", qty: 60 }], linhThach: 120_000, seconds: 1500, enabled: true },
+    { id: "forge_flight_kd", nameVi: "Luyện Pháp Bảo Phi Hành Kim Đan (hệ Kim)", output: "eq.flight.u.2.3.2.kim", qty: 1, inputs: [{ item: "ren_kd", qty: 60 }], linhThach: 300_000, seconds: 1800, enabled: true },
+    { id: "forge_boots_lh", nameVi: "Luyện Giày Luyện Hư", output: "eq.boots.u.5.3.2", qty: 1, inputs: [{ item: "ren_lh", qty: 40 }], linhThach: 4_000_000, seconds: 2100, enabled: true },
+  ],
+};

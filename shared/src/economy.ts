@@ -67,6 +67,7 @@ const GROUP_OF_KIND: ReadonlyArray<readonly [string, CurrencyGroup]> = [
   ["smith_refine", "enhance"],
   ["repair", "enhance"],
   ["breakthrough", "enhance"],
+  ["forge", "enhance"],
   ["path*", "enhance"],
   ["waygate", "travel"],
   ["admin*", "admin"],
