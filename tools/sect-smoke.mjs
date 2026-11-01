@@ -185,39 +185,39 @@ if (pills && herbs) {
   check("the leader takes the last stack out", !!emptied);
 }
 
-// Daily tasks: hand in the items at the NPC, the fund and cống hiến grow, a second hand-in past the limit is refused; the ranking lists the sect.
-await give(pa.id, "thu_cot", 40);
+// Daily tasks (the gather task is never a kill day): hand in the items at the NPC, the fund and cống hiến grow, a second hand-in past the limit is refused; the ranking lists the sect.
+await give(pa.id, "linh_thao", 40);
 await sleep(3000);
 const bagA = new Map();
 for (const m of A.g.log) if (m.t === "inv") { if (m.full) bagA.clear(); for (const i of m.items) bagA.set(i.id, i); for (const id of m.removed) bagA.delete(id); }
-check("the leader holds the bones", [...bagA.values()].some((i) => i.type === "thu_cot"));
+check("the leader holds the herbs", [...bagA.values()].some((i) => i.type === "linh_thao"));
 const cong0 = [...A.g.log].reverse().find((m) => m.t === "wallet" && m.currency === "cong_hien")?.balance ?? 0;
 for (let k = 0; k < 2; k++) {
   await sleep(500);
   m0 = A.g.log.length;
-  A.g.send({ t: "sect_task", npc: "sect", id: "hunt_bone" });
-  const done = await A.g.wait((m) => m.t === "sect" && m.view?.taskDone?.hunt_bone === k + 1, 6000, `task ${k + 1}`, m0).catch(() => null);
-  check(`hand-in ${k + 1} of the bone task goes through`, !!done, done ? `${done.view.fund}` : "no view");
+  A.g.send({ t: "sect_task", npc: "sect", id: "gather" });
+  const done = await A.g.wait((m) => m.t === "sect" && m.view?.taskDone?.gather === k + 1, 6000, `task ${k + 1}`, m0).catch(() => null);
+  check(`hand-in ${k + 1} of the gather task goes through`, !!done, done ? `${done.view.fund}` : "no view");
 }
 await sleep(500);
 m0 = A.g.log.length;
-A.g.send({ t: "sect_task", npc: "sect", id: "hunt_bone" });
+A.g.send({ t: "sect_task", npc: "sect", id: "gather" });
 const over = await A.g.wait((m) => m.t === "sect_error", 4000, "past the limit", m0).catch(() => null);
 check("a third one the same day is refused", over?.reason === "limit", over?.reason);
 const cong1 = [...A.g.log].reverse().find((m) => m.t === "wallet" && m.currency === "cong_hien")?.balance ?? 0;
-check("and the cống hiến of two hand-ins came (2 x 25)", cong1 - cong0 === 50, `${cong1 - cong0}`);
+check("and the cống hiến of two hand-ins came (2 x 15)", cong1 - cong0 === 30, `${cong1 - cong0}`);
 await sleep(500);
 A.g.send({ t: "sect_rank" });
 const ranks = await A.g.wait((m) => m.t === "sect_ranks", 4000, "the ranking").catch(() => null);
 check("the ranking lists the sect and where it stands", !!ranks && ranks.sects.length >= 1 && ranks.mine >= 1, ranks ? `${ranks.mine}` : "none");
 
-// A weekly item (5c): the leader pays the disciple rank 3 bones a week from the warehouse (the tasks above put 10 there); the disciple takes them by mail, once.
+// A weekly item (5c): the leader pays the disciple rank 3 herbs a week from the warehouse (the hand-ins above put 10 Linh Thảo there); the disciple takes them by mail, once.
 await sleep(400);
-A.g.send({ t: "sect_weekly_set", amounts: [0, 0, 0, 0, 0, 500], items: [{ item: "thu_cot", qty: 3 }, null, null, null, null, null] });
+A.g.send({ t: "sect_weekly_set", amounts: [0, 0, 0, 0, 0, 500], items: [{ item: "linh_thao", qty: 3 }, null, null, null, null, null] });
 await sleep(1200);
 m0 = B.g.log.length;
 B.g.send({ t: "sect_get" });
-const seenPay = await B.g.wait((m) => m.t === "sect" && m.view?.weeklyItem?.item === "thu_cot", 5000, "the weekly item in the view", m0).catch(() => null);
+const seenPay = await B.g.wait((m) => m.t === "sect" && m.view?.weeklyItem?.item === "linh_thao", 5000, "the weekly item in the view", m0).catch(() => null);
 check("the disciple sees the item paid to their rank", !!seenPay && seenPay.view.weeklyItem.qty === 3);
 await sleep(400);
 m0 = B.g.log.length;

@@ -543,6 +543,12 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
       ...DEFAULT_TUNING.sect.taskIncomeCap.map((_, i): TuningField => ({ path: `taskIncomeCap.${i}`, label: `Nhiệm vụ tông môn: Linh Thạch hệ thống thêm vào quỹ tối đa mỗi ngày, cấp tông môn ${i + 1}`, kind: "int", unit: "Linh Thạch" })),
       ...DEFAULT_TUNING.sect.tasks.flatMap((t, i): TuningField[] => [
         { path: `tasks.${i}.qty`, label: `Nhiệm vụ "${t.name}": số vật phẩm phải nộp`, kind: "int" },
+        ...(t.kill
+          ? ([
+              { path: `tasks.${i}.kill.count`, label: `Nhiệm vụ "${t.name}": số quái phải giết vào ngày giết quái`, kind: "int" },
+              { path: `tasks.${i}.kill.pct`, label: `Nhiệm vụ "${t.name}": xác suất một ngày là ngày giết quái thay vì nộp vật phẩm`, kind: "int", unit: "%" },
+            ] as TuningField[])
+          : []),
         { path: `tasks.${i}.perDay`, label: `Nhiệm vụ "${t.name}": số lần mỗi người mỗi ngày`, kind: "int" },
         { path: `tasks.${i}.minLevel`, label: `Nhiệm vụ "${t.name}": cấp tông môn tối thiểu`, kind: "int" },
         { path: `tasks.${i}.reward.contribution`, label: `Nhiệm vụ "${t.name}": cống hiến cho người làm`, kind: "int", unit: "cống hiến" },

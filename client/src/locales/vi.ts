@@ -527,6 +527,7 @@ export const vi = {
     tabTasks: "Nhiệm vụ",
     tabRank: "Xếp hạng",
     tasksHint: "Nộp vật phẩm cho tông môn mỗi ngày (phải đứng cạnh NPC Tông Môn ở thành). Người làm được cống hiến và Linh Thạch từ quỹ; tông môn được kinh nghiệm, Linh Thạch hệ thống thêm vào quỹ (có trần mỗi ngày) và đôi khi vật phẩm vào kho.",
+    taskKill: (count: number, rare: boolean, have: number, need: number) => `Hôm nay: giết ${count} quái${rare ? " hiếm" : ""} (đã giết ${have}/${need})`,
     taskNeed: (item: string, qty: number, have: number) => `Nộp ${qty} ${item} (bạn có ${have})`,
     taskReward: (c: number, exp: number, fund: string, member: string, vault: string | null) => `Thưởng: ${c} cống hiến, tông môn +${exp} kinh nghiệm, +${fund} Linh Thạch vào quỹ${member !== "0" ? `, bạn nhận ${member} Linh Thạch từ quỹ` : ""}${vault ? `, +${vault} vào kho` : ""}`,
     taskGo: (done: number, perDay: number) => `Nộp (${done}/${perDay})`,

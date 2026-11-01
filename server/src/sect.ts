@@ -1,4 +1,4 @@
-import { SECT_RANK, SECT_ROLES, VAULT_CATEGORIES, getItemDef, getSkill, stackLimit, type SectWeeklyItem, earnedRank, sectLevelOf, upgradeCostOf, sectMaxMembers, vaultSlotsOf, type SectAccept, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
+import { SECT_RANK, SECT_ROLES, VAULT_CATEGORIES, getItemDef, getSkill, stackLimit, type SectWeeklyItem, sectTaskMode, earnedRank, sectLevelOf, upgradeCostOf, sectMaxMembers, vaultSlotsOf, type SectAccept, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
 import { applyCurrencyDelta } from "./economy";
 import { filterChat } from "./chat";
 import { actorGuard, mailStatement } from "./market";
@@ -469,6 +469,7 @@ export async function sectView(db: D1Database, cfg: SectCfg, characterId: string
       : [];
   const weekly = weeklyOf(cfg, sect.weekly);
   const weeklyItems = weeklyItemsOf(sect.weekly_items);
+  const taskRows = (await db.prepare("SELECT task_id, n, kills FROM sect_task_log WHERE character_id = ? AND day = ?").bind(characterId, vnDay(now)).all<{ task_id: string; n: number; kills: number }>()).results;
   const claimed = !!(await db.prepare("SELECT 1 AS x FROM sect_weekly WHERE character_id = ? AND week = ?").bind(characterId, weekOf(now)).first());
   return {
     id: sect.id,
@@ -489,7 +490,9 @@ export async function sectView(db: D1Database, cfg: SectCfg, characterId: string
     vaultCount: (await db.prepare("SELECT COUNT(*) AS n FROM sect_vault WHERE sect_id = ?").bind(sect.id).first<{ n: number }>())?.n ?? 0,
     vaultSlots: vaultSlotsOf(cfg, sect.level),
     accept: acceptOf(cfg, sect.accept),
-    taskDone: Object.fromEntries(((await db.prepare("SELECT task_id, n FROM sect_task_log WHERE character_id = ? AND day = ?").bind(characterId, vnDay(now)).all<{ task_id: string; n: number }>()).results).map((r) => [r.task_id, r.n])),
+    taskDone: Object.fromEntries(taskRows.map((r) => [r.task_id, r.n])),
+    taskMode: Object.fromEntries(cfg.tasks.filter((t) => t.kill).map((t) => [t.id, sectTaskMode(t, characterId, vnDay(now))])),
+    taskKills: Object.fromEntries(taskRows.filter((r) => r.kills > 0).map((r) => [r.task_id, r.kills])),
     vaultToday: Math.max(0, cfg.vault.dailyCap - (me.vault_day === vnDay(now) ? me.vault_points : 0)),
     members: rows.map((r) => ({ id: r.id, name: r.name, rank: r.rank, lv: r.lv, online: online.has(r.id), joinedAt: r.joined_at, total: r.total })),
     requests,

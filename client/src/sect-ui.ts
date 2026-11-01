@@ -298,9 +298,12 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
         const row = el("div", "sect-item");
         const info = el("div", "sect-info");
         const vaultText = t.reward.vault ? `${getItemDef(t.reward.vault.item)?.nameVi ?? t.reward.vault.item} x${t.reward.vault.qty}` : null;
-        info.append(el("b", undefined, t.name), el("div", "muted", vi.sect.taskNeed(def?.nameVi ?? t.item, t.qty, held(t.item))), el("div", "muted", vi.sect.taskReward(t.reward.contribution, t.reward.exp, fmt(t.reward.fundLinh), fmt(t.reward.memberLinh), vaultText)));
+        const killDay = !!t.kill && v.taskMode[t.id] === "kill";
+        const need = killDay ? (done + 1) * t.kill!.count : 0;
+        const killed = v.taskKills[t.id] ?? 0;
+        info.append(el("b", undefined, t.name), el("div", "muted", killDay ? vi.sect.taskKill(t.kill!.count, !!t.kill!.rare, Math.min(killed, need), need) : vi.sect.taskNeed(def?.nameVi ?? t.item, t.qty, held(t.item))), el("div", "muted", vi.sect.taskReward(t.reward.contribution, t.reward.exp, fmt(t.reward.fundLinh), fmt(t.reward.memberLinh), vaultText)));
         const go = el("button", undefined, vi.sect.taskGo(done, t.perDay));
-        go.disabled = done >= t.perDay || v.level < t.minLevel || held(t.item) < t.qty;
+        go.disabled = done >= t.perDay || v.level < t.minLevel || (killDay ? killed < need : held(t.item) < t.qty);
         go.onclick = () => {
           if (!npc) return notify(vi.sect.errors.npc ?? "", false);
           send({ t: "sect_task", npc, id: t.id });
