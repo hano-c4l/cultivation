@@ -152,10 +152,11 @@ import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
 import { collectBrewStatements, getBrewJob, getCraftExp, listBrewJobs, startBrewStatements } from "./brew";
 import { getNpcs } from "./npcs";
-import { grantExp, saveMounted, savePkScores } from "./characters";
+import { grantExp, saveBeast, saveMounted, savePkScores } from "./characters";
+import { learnMountStatement, ownedMounts, ownsMount } from "./mounts";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import type { SpiritualRoot } from "@game/shared";
-import { DEFAULT_FORGE, DEFAULT_MAX_BATCH, type Craft, biasedRoll, canCraft, craftLevelOf, craftQualityBias, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
+import { DEFAULT_FORGE, DEFAULT_MAX_BATCH, mountBlock, mountOf, mountSpeedPct, type Craft, biasedRoll, canCraft, craftLevelOf, craftQualityBias, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -255,6 +256,8 @@ interface PlayerState {
   speed: number;
   /** Riding the flight pháp bảo (kept per connection: a map change gets off). */
   mounted?: boolean;
+  /** The beast mount ridden (a `mounts` id); never together with `mounted` (one ride at a time). */
+  beast?: string;
   lastMountAt?: number;
   lastMeditateAt?: number;
   lastMoveAt: number;
@@ -595,6 +598,8 @@ export class MapRoom extends DurableObject<Env> {
       const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
       this.ctx.acceptWebSocket(server);
       const position = restorePosition(map, row.x, row.y);
+      // The beast being ridden when the character left is kept only while the character still owns it and the realm allows it (a flight ride is restored the same way below).
+      const beastNow = row.riding_beast && !mountBlock(mountOf(row.riding_beast), row.realm) && (await ownsMount(this.env.DB, row.id, row.riding_beast)) ? row.riding_beast : undefined;
       const state: PlayerState = {
         id: row.id,
         admin: request.headers.get("x-char-admin") === "1",
@@ -615,8 +620,9 @@ export class MapRoom extends DurableObject<Env> {
         mapId,
         path: [position],
         startedAt: Date.now(),
-        mounted: row.mounted === 1 && bagNow.equipped.some((e) => e.slot === "flight") ? true : undefined,
-        speed: walkSpeed(baseOf(row), equipmentBonus(bagNow.equipped, wearerOfRow(row)).moveSpeed),
+        mounted: !beastNow && row.mounted === 1 && bagNow.equipped.some((e) => e.slot === "flight") ? true : undefined,
+        ...(beastNow ? { beast: beastNow } : {}),
+        speed: walkSpeed(baseOf(row), equipmentBonus(bagNow.equipped, wearerOfRow(row)).moveSpeed + mountSpeedPct(beastNow)),
         lastMoveAt: 0,
         dirty: false,
         chatTimes: [],
@@ -791,6 +797,11 @@ export class MapRoom extends DurableObject<Env> {
       case "sect_task":
       case "sect_rank":
         return this.handleSect(ws, state, msg);
+      case "beast":
+        this.standUp(ws, "moved");
+        return this.handleBeast(ws, state, msg.id);
+      case "mount_list":
+        return void this.sendMounts(ws, state.id);
       case "mount":
         this.standUp(ws, "moved");
         return this.handleMount(ws, state, msg.on, msg.fx !== undefined && msg.fy !== undefined ? [msg.fx, msg.fy] : undefined);
@@ -1888,7 +1899,7 @@ export class MapRoom extends DurableObject<Env> {
     const bag = await this.getBag(first.id);
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!w || !state || state.transferring) return;
-    const speed = walkSpeed(w.base, equipmentBonus(bag.equipped, { ...w, mounted: state.mounted }).moveSpeed);
+    const speed = walkSpeed(w.base, equipmentBonus(bag.equipped, { ...w, mounted: state.mounted }).moveSpeed + mountSpeedPct(state.beast));
     if (speed === state.speed && !opts.force) return;
     let accepted = false;
     if (speed !== state.speed) {
@@ -1940,8 +1951,10 @@ export class MapRoom extends DurableObject<Env> {
   /** Gets off at once (a breakthrough starts, or the character died): the flag is saved and the speed and stats follow. */
   private async forceDismount(id: string): Promise<void> {
     const sock = this.socketOf(id);
+    if (sock?.state.beast) await this.clearBeast(sock.ws, sock.state); // a breakthrough or a death gets off a beast too
     if (!sock?.state.mounted) {
       await saveMounted(this.env.DB, id, false).catch(() => undefined);
+      if (!sock) await saveBeast(this.env.DB, id, null).catch(() => undefined);
       return;
     }
     const { ws } = sock;
@@ -2066,6 +2079,67 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  /** Gets off the beast (the flag is saved, the client and the others hear of it, the speed follows). */
+  private async clearBeast(ws: WebSocket, state: PlayerState): Promise<void> {
+    const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+    if (!fresh.beast) return;
+    delete fresh.beast;
+    ws.serializeAttachment(fresh);
+    await saveBeast(this.env.DB, fresh.id, null).catch((err) => console.error("save beast failed", fresh.id, err));
+    this.send(ws, { t: "beast", id: null });
+    await this.refreshSpeed(ws, { force: true });
+  }
+
+  /** The mounts of a character and the one it rides. */
+  private async sendMounts(ws: WebSocket, id: string): Promise<void> {
+    this.send(ws, { t: "mounts", owned: await ownedMounts(this.env.DB, id), riding: this.socketOf(id)?.state.beast ?? null });
+  }
+
+  /** Ride a beast mount the character owns (and its realm allows), or get off it. The flight pháp bảo is left first: one ride at a time. */
+  private async handleBeast(ws: WebSocket, state: PlayerState, id: string | null): Promise<void> {
+    const now = Date.now();
+    if (now - (state.lastMountAt ?? 0) < 500) return;
+    state.lastMountAt = now;
+    ws.serializeAttachment(state);
+    if (id === null) return void (await this.clearBeast(ws, state));
+    if (state.beast === id) return this.send(ws, { t: "beast", id });
+    if (state.bt || state.tp) return this.send(ws, { t: "beast", id: state.beast ?? null, error: "busy" });
+    const w = await this.wearerOf(state.id);
+    const block = mountBlock(mountOf(id), w?.realm ?? 0);
+    if (block) return this.send(ws, { t: "beast", id: state.beast ?? null, error: block });
+    if (!(await ownsMount(this.env.DB, state.id, id))) return this.send(ws, { t: "beast", id: state.beast ?? null, error: "not_owned" });
+    const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+    if (fresh.transferring) return;
+    if (fresh.mounted) {
+      fresh.mounted = false; // off the flight pháp bảo
+      await saveMounted(this.env.DB, fresh.id, false).catch((err) => console.error("save mounted failed", fresh.id, err));
+      this.send(ws, { t: "mounted", on: false });
+    }
+    fresh.beast = id;
+    ws.serializeAttachment(fresh);
+    await saveBeast(this.env.DB, fresh.id, id).catch((err) => console.error("save beast failed", fresh.id, err));
+    this.send(ws, { t: "beast", id });
+    await this.refreshSpeed(ws, { force: true }); // not quiet: the client does not predict the speed of a beast, it takes the track the server sends
+    this.applyGear(fresh.id, await this.getBag(fresh.id), ws); // the stats of the flight pháp bảo go with the flag
+  }
+
+  /** Reads a mount token: the mount is learned for good and the token used up, in one batch (a mount already known rolls it back). */
+  private async learnMount(ws: WebSocket, id: string, tab: number, cell: number, mountId: string): Promise<void> {
+    const w = await this.wearerOf(id);
+    const block = mountBlock(mountOf(mountId), w?.realm ?? 0);
+    if (block) return this.send(ws, { t: "inv_error", reason: block === "realm" ? "mount_realm" : "invalid" });
+    const res = await this.mutateBag(id, (bag) => {
+      const ops = planRemove(bag.items, bag.tabs, { tab, cell }, 1);
+      return ops ? { ops, extra: [learnMountStatement(this.env.DB, id, mountId, Date.now())] } : null;
+    });
+    if (!res.ok) {
+      if (res.reason === "duplicate") return this.send(ws, { t: "inv_error", reason: "mount_known" });
+      return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
+    }
+    this.sendBagDelta(id, res.before, res.after);
+    await this.sendMounts(ws, id);
+  }
+
   /** Get on or off the flight pháp bảo. Stats and speed follow at once. */
   private async handleMount(ws: WebSocket, state: PlayerState, on: boolean, claim?: [number, number]): Promise<void> {
     const now = Date.now();
@@ -2089,6 +2163,7 @@ export class MapRoom extends DurableObject<Env> {
       if (!w || !flight || !info) return refuse("no_flight");
       const block = equipBlock(info, flight.slot as EquipSlot, flight.dur, w);
       if (block) return refuse(block === "broken" ? "broken" : "requirements");
+      if (state.beast) await this.clearBeast(ws, state); // one ride at a time: the flight pháp bảo and a beast do not go together (after the checks above: a refusal leaves the beast ridden)
     }
     const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
     if (fresh.transferring) return;
@@ -4067,6 +4142,7 @@ export class MapRoom extends DurableObject<Env> {
     const bag = await this.getBag(id);
     const item = itemAt(bag.items, { tab, cell });
     if (item && getItemDef(item.type)?.teaches) return this.learnBook(ws, id, tab, cell, getItemDef(item.type)!.teaches!);
+    if (item && getItemDef(item.type)?.mount) return this.learnMount(ws, id, tab, cell, getItemDef(item.type)!.mount!);
     const teleport = item ? getItemDef(item.type)?.teleportTo : undefined;
     if (item && teleport) return this.useTalisman(ws, id, tab, cell, teleport);
     const heal = item ? getItemDef(item.type)?.healFraction : undefined;
@@ -5224,7 +5300,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.lk ? { lk: p.lk } : {}), ...(p.med ? { med: true as const } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}), ...(p.sc ? { sc: p.sc } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.beast ? { bs: p.beast } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.lk ? { lk: p.lk } : {}), ...(p.med ? { med: true as const } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}), ...(p.sc ? { sc: p.sc } : {}) };
   }
 
   /** A character sheet went out (a level, a breakthrough): when the realm or stage changed, everyone who sees the player gets the new look with it. */

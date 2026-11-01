@@ -195,6 +195,10 @@ export type ClientMessage =
   | { t: "bt_cancel" }
   /** Get on (true) or off (false) the flight pháp bảo. Its stats and speed only count while riding. */
   | { t: "mount"; on: boolean; fx?: number; fy?: number }
+  /** Ride the beast mount `id`, or (null) get off it. */
+  | { t: "beast"; id: string | null }
+  /** Asks for the list of the character's mounts. */
+  | { t: "mount_list" }
   /** Sit down to meditate (HP and MP regenerate) or stand up again. Walking, attacking or being hit stands the character up. */
   | { t: "meditate"; on: boolean }
   /** Sent now and then while sitting: the server settles the EXP of the stretch since the last one (it also does at standing up). */
@@ -302,6 +306,8 @@ export interface PlayerSnapshot {
   speed: number;
   /** Riding the flight pháp bảo (left out when on foot). */
   mounted?: true;
+  /** The beast mount ridden (a `mounts` tuning id; left out when on foot or on the flight pháp bảo). */
+  bs?: string;
   /** Drawn with the female body (left out for the male body; the gender itself is never sent). */
   f?: true;
   /** The weapon family in the hand (WEAPON_TYPES), left out with no weapon or a broken one: it picks the weapon sprite drawn over the body. */
@@ -339,6 +345,10 @@ export type ServerMessage =
   | { t: "stats"; character: CharacterSheet }
   /** Whether you are riding the flight pháp bảo now (also sent when it comes off by itself), or why getting on failed. */
   | { t: "mounted"; on: boolean; error?: "no_flight" | "broken" | "busy" | "requirements" }
+  /** The beast being ridden now (null: none), or why a request to ride was refused. */
+  | { t: "beast"; id: string | null; error?: "unknown" | "realm" | "not_owned" | "busy" }
+  /** The mounts the character has, and the one it rides. */
+  | { t: "mounts"; owned: string[]; riding: string | null }
   /** Whether the character meditates now. `reason` when it stopped by itself: hit, moved (also an attack or a skill), died, or refused (`safe`: a town needs no meditation, `busy`: a breakthrough or a talisman runs). */
   | { t: "meditating"; on: boolean; reason?: "hit" | "moved" | "died" | "safe" | "busy" }
   /** A player sat down to meditate or stood up (the others draw the pose and the motes). */
@@ -434,7 +444,7 @@ export type ServerMessage =
   | { t: "waygate"; npc: string; dests: WaygateDest[] }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
   | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "money" | "other" }
-  | { t: "inv_error"; reason: "craft_level" | "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden" | "brew_mats" | "brew_limit" | "brew_wait"; retryMs?: number }
+  | { t: "inv_error"; reason: "craft_level" | "mount_known" | "mount_realm" | "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden" | "brew_mats" | "brew_limit" | "brew_wait"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -608,6 +618,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "med_tick" };
     case "meditate":
       return typeof m.on === "boolean" ? { t: "meditate", on: m.on } : null;
+    case "beast":
+      return m.id === null ? { t: "beast", id: null } : typeof m.id === "string" && /^[a-z0-9_]{1,32}$/.test(m.id) ? { t: "beast", id: m.id } : null;
+    case "mount_list":
+      return { t: "mount_list" };
     case "mount":
       if (typeof m.on !== "boolean") return null;
       if (m.fx !== undefined || m.fy !== undefined) return isCoord(m.fx) && isCoord(m.fy) ? { t: "mount", on: m.on, fx: m.fx, fy: m.fy } : null;

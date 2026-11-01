@@ -62,7 +62,7 @@ import {
   type ServerMessage,
   type Vec2,
   equipmentBonus,
-  walkSpeed,
+  mountOf, walkSpeed,
   type EquipStatKey,
   setTuning,
   setItemOverlays,
@@ -88,6 +88,7 @@ import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { initDojo, type DojoUi } from "./dojo-ui";
 import { initMarket, type MarketUi } from "./market-ui";
 import { initPlayerMenu, type PlayerMenu } from "./player-menu";
+import { initMount, type MountUi } from "./mount-ui";
 import { initSect, type SectUi } from "./sect-ui";
 import { initTrade, type TradeUi } from "./trade-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
@@ -156,6 +157,9 @@ function toTile(sx: number, sy: number): { x: number; y: number } {
   return { x: (a + b) / 2, y: (b - a) / 2 };
 }
 
+/** Whether the actor is raised on a ride: the flight pháp bảo or a beast mount. */
+const rides = (a: { mounted: boolean; beast?: string }): boolean => a.mounted || a.beast !== undefined;
+
 interface Actor {
   id: string;
   path: Vec2[];
@@ -175,6 +179,9 @@ interface Actor {
   /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
   mounted: boolean;
   cloud?: Phaser.GameObjects.Image;
+  /** The beast mount ridden (a `mounts` id) and the shape drawn under the rider until it has a sprite. */
+  beast?: string;
+  beastGfx?: Phaser.GameObjects.Graphics;
   /** The joints, head and tail tip of the dragon pháp bảo (made when the rider's flight is the dragon; head last, tail tip first). */
   dragon?: Phaser.GameObjects.Image[];
   /** Where the rider was on screen last frame and the way they are heading (radians on screen), so a flying sword points where it flies. */
@@ -342,6 +349,7 @@ export class GameScene extends Phaser.Scene {
   private market!: MarketUi;
   private trade!: TradeUi;
   private sect!: SectUi;
+  private mountUi!: MountUi;
   private minimap!: MinimapUi;
   private fx!: Effects;
   private rank!: RankUi;
@@ -495,6 +503,7 @@ export class GameScene extends Phaser.Scene {
     void this.gfx.init();
     if (new URLSearchParams(location.search).get("perf") === "1") initPerf(this.game, this, () => ({ ...this.gfx.stats(), players: this.actors.size, monsters: this.monsters.size }));
     this.rank = initRank((msg) => this.net.send(msg), this.registry.get("isAdmin") === true);
+    this.mountUi = initMount((msg) => this.net.send(msg));
     this.sect = initSect((msg) => this.net.send(msg), (text, ok) => this.chat.system(text, ok ? "info" : "warning"), () => this.linhThach, () => this.selfId, () => this.inventory.list(), () => this.knownSkills ?? []);
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
@@ -1031,6 +1040,7 @@ export class GameScene extends Phaser.Scene {
         this.quests.setSheet(msg.character);
         this.rank.show(msg.character.name);
         this.sect.show();
+        this.mountUi.show();
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
@@ -1189,6 +1199,16 @@ export class GameScene extends Phaser.Scene {
         this.upsertActor([msg.player]);
         this.refreshHud();
         break;
+      case "mounts":
+        this.mountUi.onList(msg.owned, msg.riding);
+        break;
+      case "beast": {
+        if (msg.error) this.chat.system(vi.beast.errors[msg.error] ?? msg.error);
+        this.mountUi.onRiding(msg.id);
+        const me = this.actors.get(this.selfId);
+        if (me) this.setActorBeast(me, msg.id ?? undefined);
+        break;
+      }
       case "mounted":
         if (msg.error) this.chat.system(vi.mount.errors[msg.error] ?? msg.error);
         this.applyMounted(msg.on, true);
@@ -1658,6 +1678,7 @@ export class GameScene extends Phaser.Scene {
       this.setActorPk(actor, p.pk ?? 0);
       this.setActorSect(p.id, p.sc);
       this.setActorMounted(actor, p.mounted === true);
+      this.setActorBeast(actor, p.bs);
       this.recolorName(actor, now);
       if (isNew) {
         actor.path = p.path;
@@ -1683,6 +1704,7 @@ export class GameScene extends Phaser.Scene {
     actor.tag.destroy();
     actor.sectTag?.destroy();
     actor.cloud?.destroy();
+    actor.beastGfx?.destroy();
     this.clearDragon(actor);
     actor.hat?.destroy();
     actor.hatOrn?.destroy();
@@ -1882,6 +1904,28 @@ export class GameScene extends Phaser.Scene {
   private setActorPk(actor: Actor, mode: PkMode): void {
     actor.pk = mode;
     actor.tag.setVisible(mode > 0 && actor.id !== this.selfId).setColor(mode === 2 ? "#ff5252" : "#c68642");
+  }
+
+  /** The shape of a beast mount drawn under the rider (a body, a head, four legs) in the colour and size of its definition, until the sprite comes. */
+  private setActorBeast(actor: Actor, id: string | undefined): void {
+    if (actor.beast === id) return;
+    actor.beast = id;
+    actor.beastGfx?.destroy();
+    actor.beastGfx = undefined;
+    const def = id ? mountOf(id) : undefined;
+    if (!def) {
+      actor.beast = undefined;
+      return;
+    }
+    const color = Number.parseInt(def.color.slice(1), 16);
+    const k = def.size;
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.25).fillEllipse(0, 4, 38 * k, 12 * k);
+    g.fillStyle(color, 1).fillRoundedRect(-17 * k, -14 * k, 34 * k, 14 * k, 6 * k);
+    g.fillRect(-14 * k, -2 * k, 4 * k, 8 * k).fillRect(-4 * k, -2 * k, 4 * k, 8 * k).fillRect(5 * k, -2 * k, 4 * k, 8 * k).fillRect(12 * k, -2 * k, 4 * k, 8 * k);
+    g.fillRoundedRect(13 * k, -22 * k, 11 * k, 10 * k, 4 * k);
+    g.fillStyle(0xffffff, 0.85).fillCircle(21 * k, -18 * k, 1.4);
+    actor.beastGfx = g;
   }
 
   /** Draws (or removes) the cloud under a rider; for yourself it also keeps the badge and the gear-stat views in step. */
@@ -2098,7 +2142,7 @@ export class GameScene extends Phaser.Scene {
     a.view.setSeated(sit);
     a.wview?.setSeated(sit);
     // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
-    const anim = moving && !a.mounted ? "run" : "idle";
+    const anim = moving && !rides(a) ? "run" : "idle";
     const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
     // The weapon is a second sprite over the body that shows the same frame as the body (frames line up by name); it follows what is in the hand.
     const wkey = a.weapon ? this.gfx.spriteKeyFor("weapon", a.weapon, a.female ? "female" : "male") : undefined;
@@ -2115,7 +2159,7 @@ export class GameScene extends Phaser.Scene {
       a.wview?.followFrame(a.view);
       this.applyReact(a.id, a.view, a.wview, now);
       // A rider stands 8 px above the ground on the pháp bảo; seated, the rider sits a little higher (on the pháp bảo itself, not in it).
-      const ride = a.mounted ? (sit ? 16 : 8) : 0;
+      const ride = rides(a) ? (sit ? 16 : 8) : 0;
       const lift = -ride;
       a.view.place(x, y - ride, depth);
       a.wview?.place(x, y - ride, depth + 0.02);
@@ -2222,9 +2266,9 @@ export class GameScene extends Phaser.Scene {
     // The crossed legs: a robe-coloured mound (a darker knee line in front) where the legs were cut away, a little wider than the body.
     const robe = mixTint(a.lk?.r !== undefined ? (hexOf(robeTintOf(a.lk.r)) ?? 0xd8d0bc) : 0xd8d0bc, 0x30303c, 0.25);
     if (!a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
-    a.legs.setPosition(x, y + lift - (a.mounted ? 1 : 3)).setFillStyle(robe).setDepth(depth + 0.01);
+    a.legs.setPosition(x, y + lift - (rides(a) ? 1 : 3)).setFillStyle(robe).setDepth(depth + 0.01);
     if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
-    a.seat.setPosition(x, y + 3 + (a.mounted ? lift + 2 : 0)).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
+    a.seat.setPosition(x, y + 3 + (rides(a) ? lift + 2 : 0)).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
     if ((a.moteAt ?? 0) > now) return;
     a.moteAt = now + 260 + Math.random() * 200;
     // For yourself the motes show what is coming back: green while HP is below the maximum, blue while MP is.
@@ -2325,7 +2369,7 @@ export class GameScene extends Phaser.Scene {
       a.hatOrn?.destroy();
       a.hatOrn = undefined;
     }
-    if (moving && !a.mounted && lk?.b !== undefined && Math.random() < 0.12) this.fx.puff("trail", x + (Math.random() - 0.5) * 10, y - 2, 1, hexOf(bootsTintOf(lk.b)) ?? 0xffffff);
+    if (moving && !rides(a) && lk?.b !== undefined && Math.random() < 0.12) this.fx.puff("trail", x + (Math.random() - 0.5) * 10, y - 2, 1, hexOf(bootsTintOf(lk.b)) ?? 0xffffff);
   }
 
   /** The same for a monster, a guard or a boss; the rank and boss sizes scale the sprite as they scale the square. */
@@ -2535,7 +2579,8 @@ export class GameScene extends Phaser.Scene {
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
-      actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
+      actor.body.setPosition(s.x, s.y - (rides(actor) ? 25 : 17));
+      if (actor.beastGfx) actor.beastGfx.setPosition(s.x, s.y + 2).setDepth(10 + pos.x + pos.y - 0.1);
       if (this.snapCamera && actor.id === this.selfId) {
         this.cameras.main.centerOn(actor.body.x, actor.body.y); // the first frame after a welcome: no slide in from the old view
         this.snapCamera = false;
@@ -2578,9 +2623,9 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);
-      this.syncQi(actor, now, s.x, s.y - (actor.mounted ? 8 : 0));
+      this.syncQi(actor, now, s.x, s.y - (rides(actor) ? 8 : 0));
       // The name stands just above the head: a sprite says how tall it is, the oval has a fixed height (a rider is lifted a little).
-      const rise = actor.view?.alive ? actor.view.rise() + 6 + (actor.mounted ? 8 : 0) : actor.mounted ? 46 : 38;
+      const rise = actor.view?.alive ? actor.view.rise() + 6 + (rides(actor) ? 8 : 0) : rides(actor) ? 46 : 38;
       actor.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);
       if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - rise - 1).setDepth(depth + 0.1);
       actor.sectTag?.setPosition(s.x, s.y - rise - actor.label.height + 1).setDepth(depth + 0.1);
