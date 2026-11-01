@@ -131,7 +131,7 @@ export type ClientMessage =
   /** Sect: take this week's pay of the player's rank. */
   | { t: "sect_weekly" }
   /** Sect (leader): what each rank is paid a week, by rank (index 0 disciple .. 5 leader). */
-  | { t: "sect_weekly_set"; amounts: number[] }
+  | { t: "sect_weekly_set"; amounts: number[]; items?: Array<{ item: string; qty: number } | null> }
   /** Sect: buy a line of the sect shop with cống hiến (the player must stand by a sect NPC, `npc`). */
   | { t: "sect_buy"; npc: string; item: string }
   | { t: "sect_skill_buy"; npc: string; skill: string }
@@ -739,7 +739,12 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "sect_weekly":
       return { t: "sect_weekly" };
     case "sect_weekly_set":
-      return Array.isArray(m.amounts) && m.amounts.length === 6 && m.amounts.every((n) => isInt(n) && n >= 0 && n <= 1_000_000_000) ? { t: "sect_weekly_set", amounts: m.amounts as number[] } : null;
+    {
+      if (!(Array.isArray(m.amounts) && m.amounts.length === 6 && m.amounts.every((n) => isInt(n) && n >= 0 && n <= 1_000_000_000))) return null;
+      if (m.items === undefined) return { t: "sect_weekly_set", amounts: m.amounts as number[] };
+      const okItem = (x: unknown) => x === null || (typeof x === "object" && x !== null && typeof (x as Record<string, unknown>).item === "string" && /^[A-Za-z0-9_.]{1,80}$/.test((x as Record<string, unknown>).item as string) && isInt((x as Record<string, unknown>).qty) && ((x as Record<string, number>).qty as number) >= 1 && ((x as Record<string, number>).qty as number) <= 999);
+      return Array.isArray(m.items) && m.items.length === 6 && m.items.every(okItem) ? { t: "sect_weekly_set", amounts: m.amounts as number[], items: m.items as Array<{ item: string; qty: number } | null> } : null;
+    }
     case "sect_vault":
       return { t: "sect_vault" };
     case "sect_task":

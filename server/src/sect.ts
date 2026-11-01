@@ -1,7 +1,7 @@
-import { SECT_RANK, VAULT_CATEGORIES, getSkill, earnedRank, sectLevelOf, upgradeCostOf, sectMaxMembers, vaultSlotsOf, type SectAccept, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
+import { SECT_RANK, SECT_ROLES, VAULT_CATEGORIES, getItemDef, getSkill, stackLimit, type SectWeeklyItem, earnedRank, sectLevelOf, upgradeCostOf, sectMaxMembers, vaultSlotsOf, type SectAccept, type SectCfg, type SectError, type SectListItem, type SectRole, type SectView } from "@game/shared";
 import { applyCurrencyDelta } from "./economy";
 import { filterChat } from "./chat";
-import { actorGuard } from "./market";
+import { actorGuard, mailStatement } from "./market";
 import { closeSectReturning } from "./sect-vault";
 
 /**
@@ -71,6 +71,8 @@ interface SectRow {
   notice: string;
   /** JSON array of what each rank is paid a week (empty: nothing). */
   weekly: string;
+  /** JSON array, one entry per rank: the item paid a week from the warehouse, or null (empty: none). */
+  weekly_items: string;
   accept: string;
   income_day: number;
   income_today: number;
@@ -418,6 +420,25 @@ export function weeklyOf(cfg: SectCfg, json: string): number[] {
   });
 }
 
+/** What each rank is paid a week in items (the leader's setting; entries that are not plain stackable items are dropped). */
+export function weeklyItemsOf(json: string): Array<SectWeeklyItem | null> {
+  let parsed: unknown = [];
+  try {
+    parsed = json ? JSON.parse(json) : [];
+  } catch {
+    parsed = [];
+  }
+  return SECT_ROLES.map((_, i) => {
+    const x = Array.isArray(parsed) ? (parsed[i] as { item?: unknown; qty?: unknown } | null | undefined) : null;
+    return x && typeof x.item === 'string' && validWeeklyItem(x.item, x.qty) ? { item: x.item, qty: x.qty as number } : null;
+  });
+}
+
+/** A weekly item is a plain stackable item (its row is made new on payment) and at most one stack. */
+function validWeeklyItem(item: string, qty: unknown): boolean {
+  return !!getItemDef(item) && stackLimit(item) > 1 && typeof qty === 'number' && Number.isInteger(qty) && qty >= 1 && qty <= stackLimit(item);
+}
+
 /** A member's cống hiến (0 when in no sect): what the Cống Hiến slot of the wallet shows. */
 export async function contributionOf(db: D1Database, characterId: string): Promise<number> {
   return (await db.prepare("SELECT contribution FROM sect_members WHERE character_id = ?").bind(characterId).first<{ contribution: number }>())?.contribution ?? 0;
@@ -447,6 +468,7 @@ export async function sectView(db: D1Database, cfg: SectCfg, characterId: string
         ).results
       : [];
   const weekly = weeklyOf(cfg, sect.weekly);
+  const weeklyItems = weeklyItemsOf(sect.weekly_items);
   const claimed = !!(await db.prepare("SELECT 1 AS x FROM sect_weekly WHERE character_id = ? AND week = ?").bind(characterId, weekOf(now)).first());
   return {
     id: sect.id,
@@ -461,6 +483,8 @@ export async function sectView(db: D1Database, cfg: SectCfg, characterId: string
     costLinh: upgradeCostOf(cfg, sect.level),
     weekly,
     weeklyPay: weekly[me.rank] ?? 0,
+    weeklyItems: me.rank >= cfg.perms.appoint ? weeklyItems : [],
+    weeklyItem: weeklyItems[me.rank] ?? null,
     weeklyClaimed: claimed,
     vaultCount: (await db.prepare("SELECT COUNT(*) AS n FROM sect_vault WHERE sect_id = ?").bind(sect.id).first<{ n: number }>())?.n ?? 0,
     vaultSlots: vaultSlotsOf(cfg, sect.level),
@@ -520,7 +544,7 @@ export async function donate(db: D1Database, cfg: SectCfg, p: { characterId: str
  * keeps its row with less and its points scaled down. Each stack is pinned to the quantity it had when read, so a take or a shelf buy at the same moment makes the batch throw.
  * Null when the warehouse does not hold enough or more than 20 stacks would be touched.
  */
-async function vaultUse(db: D1Database, sectId: string, costs: ReadonlyArray<{ item: string; qty: number }>): Promise<D1PreparedStatement[] | null> {
+export async function vaultUse(db: D1Database, sectId: string, costs: ReadonlyArray<{ item: string; qty: number }>, maxStacks = 14): Promise<D1PreparedStatement[] | null> {
   const statements: D1PreparedStatement[] = [];
   let touched = 0;
   for (const cost of costs) {
@@ -546,7 +570,7 @@ async function vaultUse(db: D1Database, sectId: string, costs: ReadonlyArray<{ i
     }
     if (left > 0) return null;
   }
-  return touched <= 14 ? statements : null; // 3 statements a stack and 4 more in the upgrade: at most 46 of the 50 a batch may hold
+  return touched <= maxStacks ? statements : null; // 3 statements a stack and 4 more in the upgrade: at most 46 of the 50 a batch may hold
 }
 
 /** A rank that may raises the sect to the next level, paying the sect exp, the Linh Thạch of its fund and the items of its warehouse. */
@@ -572,49 +596,80 @@ export async function upgradeSect(db: D1Database, cfg: SectCfg, p: { actorId: st
   return failed ? { ok: false, reason: failed } : { ok: true, sectId: sect.id, level: sect.level + 1 };
 }
 
-/** The leader sets what each rank is paid a week (never above the cap of its rank). */
-export async function setWeekly(db: D1Database, cfg: SectCfg, p: { actorId: string; amounts: unknown; now: number }): Promise<SectResult<{ sectId: string }>> {
+/** The leader sets what each rank is paid a week (never above the cap of its rank) and, when `items` is given, the item each is paid from the warehouse. */
+export async function setWeekly(db: D1Database, cfg: SectCfg, p: { actorId: string; amounts: unknown; items?: unknown; now: number }): Promise<SectResult<{ sectId: string }>> {
   const me = await memberOf(db, p.actorId);
   if (!me) return { ok: false, reason: "no_sect" };
   if (me.rank < cfg.perms.appoint) return { ok: false, reason: "perm" };
   const a = p.amounts;
   if (!Array.isArray(a) || a.length !== cfg.weeklyMax.length || !a.every((n, i) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= (cfg.weeklyMax[i] ?? 0))) return { ok: false, reason: "invalid" };
+  let items: string | null = null;
+  if (p.items !== undefined) {
+    const list = p.items;
+    if (!Array.isArray(list) || list.length !== SECT_ROLES.length) return { ok: false, reason: "invalid" };
+    for (const x of list) if (x !== null && !(typeof x === "object" && typeof x.item === "string" && validWeeklyItem(x.item, x.qty))) return { ok: false, reason: "invalid" };
+    items = JSON.stringify(list.map((x: SectWeeklyItem | null) => (x ? { item: x.item, qty: x.qty } : null)));
+  }
   const failed = await run(db, [
     guard(db, `NOT ${hasRank(p.actorId, me.sect_id, cfg.perms.appoint).sql}`, ...hasRank(p.actorId, me.sect_id, cfg.perms.appoint).args),
-    db.prepare("UPDATE sects SET weekly = ? WHERE id = ?").bind(JSON.stringify(a), me.sect_id),
-    logStatement(db, me.sect_id, p.actorId, "weekly_set", null, JSON.stringify(a), p.now),
+    db.prepare("UPDATE sects SET weekly = ?, weekly_items = COALESCE(?, weekly_items) WHERE id = ?").bind(JSON.stringify(a), items, me.sect_id),
+    logStatement(db, me.sect_id, p.actorId, "weekly_set", null, JSON.stringify(items ? [a, JSON.parse(items)] : a), p.now),
   ]);
   return failed ? { ok: false, reason: failed } : { ok: true, sectId: me.sect_id };
 }
 
-/** A member takes this week's pay for their rank, from the fund: once a week. */
-export async function claimWeekly(db: D1Database, cfg: SectCfg, p: { characterId: string; now: number }): Promise<SectResult<{ sectId: string; amount: number; balance: number }>> {
+/**
+ * A member takes this week's pay for their rank, once a week: Linh Thạch from the fund and/or an item from the warehouse (a new row, delivered by mail). All or nothing: when the
+ * fund or the warehouse falls short the turn is not used. `balance` is null when the rank is paid in items only.
+ */
+export async function claimWeekly(db: D1Database, cfg: SectCfg, p: { characterId: string; now: number }): Promise<SectResult<{ sectId: string; amount: number; balance: number | null; item: SectWeeklyItem | null }>> {
   const me = await memberOf(db, p.characterId);
   if (!me) return { ok: false, reason: "no_sect" };
   const sect = await sectById(db, me.sect_id);
   if (!sect) return { ok: false, reason: "gone" };
   const amount = weeklyOf(cfg, sect.weekly)[me.rank] ?? 0;
-  if (amount <= 0) return { ok: false, reason: "gone" };
+  const item = weeklyItemsOf(sect.weekly_items)[me.rank] ?? null;
+  if (amount <= 0 && !item) return { ok: false, reason: "gone" };
   const week = weekOf(p.now);
   if (await db.prepare("SELECT 1 AS x FROM sect_weekly WHERE character_id = ? AND week = ?").bind(p.characterId, week).first()) return { ok: false, reason: "claimed" };
   if (sect.fund < amount) return { ok: false, reason: "fund" };
+  let itemStatements: D1PreparedStatement[] = [];
+  if (item) {
+    const used = await vaultUse(db, sect.id, [item], WEEKLY_MAX_STACKS);
+    if (!used) return { ok: false, reason: "lack" };
+    const made = crypto.randomUUID();
+    itemStatements = [
+      ...used,
+      db.prepare("INSERT INTO item_instances (id, owner_character_id, item_type, qty, created_at) VALUES (?, ?, ?, ?, ?)").bind(made, p.characterId, item.item, item.qty, p.now),
+      mailStatement(db, p.characterId, `Tông môn: thưởng tuần ${getItemDef(item.item)?.nameVi ?? item.item}${item.qty > 1 ? ` x${item.qty}` : ""}`, p.now, { itemId: made }),
+    ];
+  }
+  const extra = [
+    guard(db, "NOT EXISTS (SELECT 1 FROM sect_members WHERE character_id = ? AND sect_id = ? AND rank = ?)", p.characterId, me.sect_id, me.rank),
+    db.prepare("INSERT INTO sect_weekly (character_id, week, claimed_at) VALUES (?, ?, ?)").bind(p.characterId, week, p.now),
+    ...(amount > 0 ? [db.prepare("UPDATE sects SET fund = fund - ? WHERE id = ?").bind(amount, me.sect_id)] : []), // the CHECK on fund throws when it cannot pay
+    ...itemStatements,
+    logStatement(db, me.sect_id, p.characterId, "weekly", null, `${amount}${item ? ` ${item.item} x${item.qty}` : ""}`, p.now),
+  ];
   try {
-    const res = await applyCurrencyDelta(db, { characterId: p.characterId, currency: "linh_thach", delta: amount, reason: "sect:weekly", actor: "system" }, [
-      guard(db, "NOT EXISTS (SELECT 1 FROM sect_members WHERE character_id = ? AND sect_id = ? AND rank = ?)", p.characterId, me.sect_id, me.rank),
-      db.prepare("INSERT INTO sect_weekly (character_id, week, claimed_at) VALUES (?, ?, ?)").bind(p.characterId, week, p.now),
-      db.prepare("UPDATE sects SET fund = fund - ? WHERE id = ?").bind(amount, me.sect_id), // the CHECK on fund throws when it cannot pay
-      logStatement(db, me.sect_id, p.characterId, "weekly", null, `${amount}`, p.now),
-    ]);
+    if (amount <= 0) {
+      await db.batch(extra);
+      return { ok: true, sectId: me.sect_id, amount, balance: null, item };
+    }
+    const res = await applyCurrencyDelta(db, { characterId: p.characterId, currency: "linh_thach", delta: amount, reason: "sect:weekly", actor: "system" }, extra);
     if (res.status !== "applied") return { ok: false, reason: "gone" };
-    return { ok: true, sectId: me.sect_id, amount, balance: res.balance };
+    return { ok: true, sectId: me.sect_id, amount, balance: res.balance, item };
   } catch (err) {
     const text = String(err);
     if (/sect_weekly/.test(text)) return { ok: false, reason: "claimed" };
     if (/fund/.test(text)) return { ok: false, reason: "fund" };
-    if (isGuardFailure(err)) return { ok: false, reason: "gone" };
+    if (isGuardFailure(err)) return { ok: false, reason: item ? "busy" : "gone" };
     throw err;
   }
 }
+
+/** The most warehouse stacks one weekly payment uses (3 statements each; the batch stays under the 50 of D1 Free with the currency statements, see the test at the maximum). */
+export const WEEKLY_MAX_STACKS = 8;
 
 /** Why `characterId` cannot buy `item` from the sect shop now, or the shop line when they can. */
 export async function shopCheck(db: D1Database, cfg: SectCfg, characterId: string, item: string): Promise<SectResult<{ entry: SectCfg["shop"][number]; sectId: string }>> {

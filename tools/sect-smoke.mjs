@@ -211,6 +211,29 @@ A.g.send({ t: "sect_rank" });
 const ranks = await A.g.wait((m) => m.t === "sect_ranks", 4000, "the ranking").catch(() => null);
 check("the ranking lists the sect and where it stands", !!ranks && ranks.sects.length >= 1 && ranks.mine >= 1, ranks ? `${ranks.mine}` : "none");
 
+// A weekly item (5c): the leader pays the disciple rank 3 bones a week from the warehouse (the tasks above put 10 there); the disciple takes them by mail, once.
+await sleep(400);
+A.g.send({ t: "sect_weekly_set", amounts: [0, 0, 0, 0, 0, 500], items: [{ item: "thu_cot", qty: 3 }, null, null, null, null, null] });
+await sleep(1200);
+m0 = B.g.log.length;
+B.g.send({ t: "sect_get" });
+const seenPay = await B.g.wait((m) => m.t === "sect" && m.view?.weeklyItem?.item === "thu_cot", 5000, "the weekly item in the view", m0).catch(() => null);
+check("the disciple sees the item paid to their rank", !!seenPay && seenPay.view.weeklyItem.qty === 3);
+await sleep(400);
+m0 = B.g.log.length;
+B.g.send({ t: "sect_weekly" });
+const gotPay = await B.g.wait((m) => m.t === "sect" && m.view?.weeklyClaimed === true, 6000, "the weekly claim", m0).catch(() => null);
+check("the disciple takes the weekly item", !!gotPay);
+await sleep(500);
+B.g.send({ t: "mail_refresh" });
+const payMail = await B.g.wait((m) => m.t === "mail" && m.mail?.some((x) => x.item && x.subject?.includes("thưởng tuần")), 6000, "the weekly item mail", m0).catch(() => null);
+check("and it arrives by mail", !!payMail);
+await sleep(400);
+m0 = B.g.log.length;
+B.g.send({ t: "sect_weekly" });
+const payAgain = await B.g.wait((m) => m.t === "sect_error", 4000, "second weekly claim", m0).catch(() => null);
+check("a second weekly claim is refused", payAgain?.reason === "claimed", payAgain?.reason);
+
 // Role, application, kick.
 await sleep(400);
 m0 = A.g.log.length;

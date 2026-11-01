@@ -1,4 +1,4 @@
-import { REALMS, SECT_RANK, getSkill, SECT_ROLE_NAMES, VAULT_CATEGORIES, getItemDef, roleOfRank, tuning, vaultPoints, type BagItem, type ClientMessage, type SectError, type SectListItem, type SectRankItem, type SectRole, type SectVaultItemView, type SectView } from "@game/shared";
+import { REALMS, SECT_RANK, getSkill, stackLimit, SECT_ROLE_NAMES, VAULT_CATEGORIES, getItemDef, roleOfRank, tuning, vaultPoints, type BagItem, type ClientMessage, type SectError, type SectListItem, type SectRankItem, type SectRole, type SectVaultItemView, type SectView } from "@game/shared";
 import { iconButton, iconFor } from "./icons";
 import { vi } from "./locales/vi";
 import { registerWindow } from "./window-manager";
@@ -182,8 +182,9 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
     };
     give.append(amount, giveBtn);
     money.append(give, el("div", "muted", vi.sect.donateRule(c.donate.linhPerPoint, c.donate.linhPerExp)));
-    if (v.weeklyPay > 0) {
-      const claim = el("button", undefined, v.weeklyClaimed ? vi.sect.weeklyDone : vi.sect.weeklyClaim(fmt(v.weeklyPay)));
+    if (v.weeklyPay > 0 || v.weeklyItem) {
+      const itemName = v.weeklyItem ? `${getItemDef(v.weeklyItem.item)?.nameVi ?? v.weeklyItem.item} x${v.weeklyItem.qty}` : "";
+      const claim = el("button", undefined, v.weeklyClaimed ? vi.sect.weeklyDone : vi.sect.weeklyClaim(v.weeklyPay > 0 ? fmt(v.weeklyPay) : "", itemName));
       claim.disabled = v.weeklyClaimed;
       claim.onclick = () => send({ t: "sect_weekly" });
       money.append(claim);
@@ -217,7 +218,7 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
       const b = el("button", id === tab ? "active" : "sub", label);
       b.onclick = () => {
         tab = id;
-        if (id === "vault" || id === "shop") send({ t: "sect_vault" });
+        if (id === "vault" || id === "shop" || id === "weekly") send({ t: "sect_vault" });
         if (id === "rank") send({ t: "sect_rank" });
         render();
       };
@@ -323,6 +324,11 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
       panel.append(el("div", "muted", vi.sect.weeklyHint));
       const draft = weeklyDraft ?? v.weekly;
       const inputs: HTMLInputElement[] = [];
+      const itemSels: HTMLSelectElement[] = [];
+      const qtys: HTMLInputElement[] = [];
+      // The item types the warehouse holds (plain stackable ones) plus what is set already, so a rank can be paid in items.
+      const types = new Set<string>((vaultItems ?? []).filter((x) => stackLimit(x.type) > 1).map((x) => x.type));
+      for (const w of v.weeklyItems) if (w) types.add(w.item);
       c.weeklyMax.forEach((cap, rank) => {
         const row = el("div", "sect-item");
         row.append(el("div", "sect-info", `${rankName(rank)} (${vi.sect.upTo(fmt(cap))})`));
@@ -333,12 +339,23 @@ export function initSect(send: (msg: ClientMessage) => void, notify: (text: stri
         input.value = String(draft[rank] ?? 0);
         input.oninput = () => (weeklyDraft = inputs.map((x) => Math.min(Math.max(0, Math.floor(Number(x.value)) || 0), c.weeklyMax[inputs.indexOf(x)] ?? 0)));
         inputs.push(input);
-        row.append(input);
+        const sel = el("select");
+        sel.append(new Option(vi.sect.weeklyNoItem, ""));
+        for (const t of types) sel.append(new Option(getItemDef(t)?.nameVi ?? t, t));
+        sel.value = v.weeklyItems[rank]?.item ?? "";
+        itemSels.push(sel);
+        const qty = el("input");
+        qty.type = "number";
+        qty.min = "1";
+        qty.value = String(v.weeklyItems[rank]?.qty ?? 1);
+        qtys.push(qty);
+        row.append(input, sel, qty);
         panel.append(row);
       });
       const save = el("button", undefined, vi.sect.save);
       save.onclick = () => {
-        send({ t: "sect_weekly_set", amounts: inputs.map((x, i) => Math.min(Math.max(0, Math.floor(Number(x.value)) || 0), c.weeklyMax[i] ?? 0)) });
+        const items = itemSels.map((sel, i) => (sel.value ? { item: sel.value, qty: Math.min(Math.max(1, Math.floor(Number(qtys[i]!.value)) || 1), stackLimit(sel.value)) } : null));
+        send({ t: "sect_weekly_set", amounts: inputs.map((x, i) => Math.min(Math.max(0, Math.floor(Number(x.value)) || 0), c.weeklyMax[i] ?? 0)), items });
         weeklyDraft = null;
       };
       panel.append(save);

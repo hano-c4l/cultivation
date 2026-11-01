@@ -433,6 +433,12 @@ export function assignPieces(items: ReadonlyArray<{ id: string; value: number; q
   return out;
 }
 
+/** An item a rank is paid a week from the warehouse (a plain stackable item). */
+export interface SectWeeklyItem {
+  item: string;
+  qty: number;
+}
+
 /** What the sect window shows for the sect the player is in. */
 export interface SectMemberView {
   id: string;
@@ -477,6 +483,9 @@ export interface SectView {
   /** What each rank is paid a week (the leader sets it; index = rank), what this player is paid, and whether they took it this week. */
   weekly: number[];
   weeklyPay: number;
+  /** The items each rank is paid a week from the warehouse (index = rank; null: none; only for a rank that sets them), and this player's own. */
+  weeklyItems: Array<SectWeeklyItem | null>;
+  weeklyItem: SectWeeklyItem | null;
   weeklyClaimed: boolean;
   /** How many stacks the warehouse holds now and at most, and what it takes (only the leader needs the last). */
   vaultCount: number;

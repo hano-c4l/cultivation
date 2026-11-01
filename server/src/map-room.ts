@@ -3081,11 +3081,12 @@ export class MapRoom extends DurableObject<Env> {
         case "sect_weekly": {
           const res = await claimWeekly(this.env.DB, cfg, { characterId: me, now });
           if (!res.ok) return fail(res.reason);
-          await sendWallets(res.balance);
+          if (res.balance !== null) await sendWallets(res.balance);
+          if (res.item) await this.notifyMail([me]); // the item arrives by mail
           return this.sendSect(ws, me, cfg, now);
         }
         case "sect_weekly_set": {
-          const res = await setWeekly(this.env.DB, cfg, { actorId: me, amounts: msg.amounts, now });
+          const res = await setWeekly(this.env.DB, cfg, { actorId: me, amounts: msg.amounts, items: msg.items, now });
           if (!res.ok) return fail(res.reason);
           await refresh(res.sectId, []);
           return this.sendSect(ws, me, cfg, now);
