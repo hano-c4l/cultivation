@@ -3,6 +3,9 @@ import {
   REALMS,
   DEFAULT_MAX_BATCH,
   scaleBrew,
+  canCraft,
+  craftLevelOf,
+  craftNextExp,
   SHOP_CATEGORIES,
   SHOP_SELL_MANY_MAX,
   ALL_ROOTS,
@@ -37,7 +40,7 @@ export interface ShopUi {
   /** Units left today per offer with a daily limit, and the windows this NPC has (tabs). */
   setStock(npc: string, left: Record<string, number>, tabs: NpcView[]): void;
   /** The alchemist's brewings (`now` is the server time, so the countdowns follow the server clock). */
-  setBrew(npc: string, jobs: BrewJobView[], now: number, tabs: NpcView[], craft?: "alchemy" | "forge"): void;
+  setBrew(npc: string, jobs: BrewJobView[], now: number, tabs: NpcView[], craft?: "alchemy" | "forge", craftExp?: number): void;
   /** The bag changed: the list of things that can be sold may have too. */
   refresh(): void;
   /** A trade went through: shown as a green line at the top of the window. */
@@ -77,6 +80,8 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   let jobs: BrewJobView[] = [];
   /** Which trade the brewing tab shows: the alchemist's, or the blacksmith's forge. */
   let craft: "alchemy" | "forge" = "alchemy";
+  /** The character's exp in the trade (the level follows from the tuning's `levels`). */
+  let craftExp = 0;
   /** Server time minus the local time, so a countdown follows the server clock. */
   let skewMs = 0;
   let category: ShopCategory = "all";
@@ -344,6 +349,8 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
   function renderBrew(): HTMLElement {
     const box = el("div");
     const cfg = tuning()[craft];
+    const level = craftLevelOf(cfg, craftExp);
+    if (cfg.levels?.length) box.append(el("div", "shop-name", vi.brew.level(level, craftExp, craftNextExp(cfg, craftExp))));
     box.append(el("div", "muted", vi.brew.jobs(jobs.length, cfg.maxJobs)));
     if (jobs.length === 0) box.append(el("div", "muted", vi.brew.none));
     for (const job of jobs) {
@@ -371,7 +378,9 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       const main = el("div");
       main.append(withIcon(el("div", "shop-name", `${base.nameVi} → ${nameOf(base.output)} ×${recipe.qty}`), base.output));
       const mats = recipe.inputs.map((i) => `${nameOf(i.item)} ${i.qty} (${vi.brew.have(countOf(i.item))})`).join(", ");
-      main.append(el("div", "muted", `${mats} · ${vi.brew.cost(recipe.linhThach)} · ${vi.brew.left(recipe.seconds)}`));
+      main.append(el("div", "muted", `${mats} · ${vi.brew.cost(recipe.linhThach)} · ${vi.brew.left(recipe.seconds)}${recipe.exp ? ` · ${vi.brew.expGain(recipe.exp)}` : ""}`));
+      const open = canCraft(base, level);
+      if (!open) main.append(el("div", "muted", vi.brew.needLevel(base.minLevel ?? 1)));
       const step = (to: number) => {
         batches.set(base.id, Math.max(1, Math.min(maxBatch, to)));
         render();
@@ -387,7 +396,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       most.onclick = () => step(afford);
       const amount = el("span", "brew-count", `${vi.brew.batches}: ${n}`);
       const start = el("button", undefined, vi.brew.start);
-      start.disabled = jobs.length >= cfg.maxJobs || recipe.inputs.some((i) => countOf(i.item) < i.qty);
+      start.disabled = !open || jobs.length >= cfg.maxJobs || recipe.inputs.some((i) => countOf(i.item) < i.qty);
       start.onclick = () => send({ t: "brew_start", npc, recipe: base.id, ...(n > 1 ? { count: n } : {}) });
       const pick = el("div", "brew-pick");
       pick.append(...(maxBatch > 1 ? [less, amount, more, most] : []), start); // gear is made one at a time: no number of batches to pick
@@ -549,9 +558,10 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       npcTabs = tabs;
       render();
     },
-    setBrew(id, list, now, tabs, kind) {
+    setBrew(id, list, now, tabs, kind, exp) {
       if (id !== npc) return;
       if (kind) craft = kind;
+      craftExp = exp ?? 0;
       mode = "brew"; // a brewing message answers a request for the brewing tab (also when the forge was opened from the blacksmith's window)
       jobs = list;
       skewMs = now - Date.now();

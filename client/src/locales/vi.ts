@@ -183,6 +183,7 @@ export const vi = {
       smith_full: "Mọi chỉ số của món này đã ở mức tối đa, không thể tinh luyện thêm.",
       smith_mats: "Không đủ nguyên liệu.",
       brew_mats: "Không đủ nguyên liệu để luyện.",
+      craft_level: "Cấp nghề chưa đủ để dùng công thức này.",
       brew_limit: "Bạn đang có quá nhiều mẻ đan chưa nhận.",
       brew_wait: "Mẻ đan này chưa luyện xong.",
       smith_scroll: "Bạn không có Hộ Cấp Phù.",
@@ -742,6 +743,9 @@ export const vi = {
     have: (n: number) => `có ${n}`,
     note: "Nguyên liệu và Linh Thạch bị lấy ngay khi bắt đầu luyện; quay lại nhận đan sau khi mẻ xong (có thể thoát game).",
     collected: (name: string, qty: number) => `Đã nhận ${qty} ${name}.`,
+    level: (n: number, exp: number, next: number | null) => `Cấp luyện khí ${n}${next === null ? " (cao nhất)" : ` (${exp.toLocaleString("vi-VN")}/${next.toLocaleString("vi-VN")} kinh nghiệm)`}`,
+    needLevel: (n: number) => `Cần cấp nghề ${n}.`,
+    expGain: (n: number) => `+${n} kinh nghiệm nghề`,
     /** The words that differ at the blacksmith's forge (Luyện khí). */
     forge: {
       noRecipes: "Thợ Rèn chưa có công thức nào.",

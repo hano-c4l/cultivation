@@ -344,10 +344,12 @@ interface Recipe {
   linhThach: number;
   seconds: number;
   enabled: boolean;
+  minLevel?: number;
+  exp?: number;
 }
 
 interface AlchemyView {
-  alchemy: { maxJobs: number; recipes: Recipe[] };
+  alchemy: { maxJobs: number; levels?: number[]; recipes: Recipe[] } & Record<string, unknown>;
   updatedAt: number;
   items: Array<{ id: string; nameVi: string }>;
 }
@@ -363,6 +365,7 @@ export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement
     const dlId = "alchemy-items";
     const list = h("datalist", { id: dlId }, ...view.items.map((i) => h("option", { value: i.id }, i.nameVi)));
     const maxJobs = num(view.alchemy.maxJobs, { min: "1", max: "20", step: "1" });
+    const levels = text((view.alchemy.levels ?? []).join(", "), { size: "40", placeholder: "30, 100, 250, 600, 1400" });
     const rows = h("div");
     const readers: Array<() => Recipe> = [];
     const addRecipe = (r: Recipe) => {
@@ -372,6 +375,8 @@ export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement
       const qty = num(r.qty, { min: "1", step: "1", title: "Số lượng làm ra" });
       const linh = num(r.linhThach, { min: "0", step: "1", title: "Linh Thạch" });
       const secs = num(r.seconds, { min: "1", step: "1", title: "Thời gian (giây)" });
+      const minLevel = num(r.minLevel ?? 1, { min: "1", max: "20", step: "1", title: "Cấp nghề tối thiểu" });
+      const expGain = num(r.exp ?? 0, { min: "0", step: "1", title: "Kinh nghiệm nghề mỗi lần luyện xong" });
       const enabled = h("input", { type: "checkbox" });
       enabled.checked = r.enabled;
       const inputs = h("div");
@@ -394,13 +399,14 @@ export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement
         linhThach: Number(linh.value),
         seconds: Number(secs.value),
         enabled: enabled.checked,
+        ...(forge ? { minLevel: Number(minLevel.value), exp: Number(expGain.value) } : {}),
       });
       const rm = h("button", { type: "button" }, "Xóa công thức");
       rm.addEventListener("click", () => {
         box.remove();
         readers.splice(readers.indexOf(read), 1);
       });
-      box.append(h("div", { class: "toolbar" }, id, name, h("label", { class: "radio" }, enabled, "Bật"), rm), h("div", { class: "toolbar" }, h("span", null, "Làm ra:"), output, h("span", null, "×"), qty, h("span", null, "Linh Thạch:"), linh, h("span", null, "Giây:"), secs), h("div", { class: "muted" }, "Nguyên liệu bị lấy ngay khi bắt đầu luyện:"), inputs, addInputBtn);
+      box.append(h("div", { class: "toolbar" }, id, name, h("label", { class: "radio" }, enabled, "Bật"), rm), h("div", { class: "toolbar" }, h("span", null, "Làm ra:"), output, h("span", null, "×"), qty, h("span", null, "Linh Thạch:"), linh, h("span", null, "Giây:"), secs, ...(forge ? [h("span", null, "Cấp nghề cần:"), minLevel, h("span", null, "Kinh nghiệm:"), expGain] : [])), h("div", { class: "muted" }, "Nguyên liệu bị lấy ngay khi bắt đầu luyện:"), inputs, addInputBtn);
       readers.push(read);
       rows.append(box);
     };
@@ -411,7 +417,7 @@ export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement
     save.addEventListener("click", async () => {
       save.disabled = true;
       show("Đang lưu...", "muted");
-      const r = await api<{ error?: string; problems?: string[] }>("/api/admin/alchemy/save", { method: "POST", body: { craft, alchemy: { maxJobs: Number(maxJobs.value), recipes: readers.map((f) => f()) }, updatedAt: view.updatedAt } });
+      const r = await api<{ error?: string; problems?: string[] }>("/api/admin/alchemy/save", { method: "POST", body: { craft, alchemy: { ...view.alchemy, maxJobs: Number(maxJobs.value), ...(forge ? { levels: levels.value.split(",").map((x) => x.trim()).filter(Boolean).map(Number) } : {}), recipes: readers.map((f) => f()) }, updatedAt: view.updatedAt } });
       save.disabled = false;
       if (r.status === 200) return navigate(path);
       const e = r.data.error ?? "";
@@ -422,6 +428,7 @@ export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement
       list,
       h("p", { class: "muted" }, forge ? "Luyện khí ở Thợ Rèn (tab Luyện khí): làm ra MỘT món trang bị cho mỗi lần luyện (số lượng 1, mã dạng eq.loại.u.cảnh giới.bậc.phẩm; chỉ loại không phân giới tính, người chơi nhận thì chỉ số được tung). Mẻ đang luyện giữ kết quả đã định lúc bắt đầu. Máy chủ nhận công thức mới sau tối đa 30 giây." : "Mẻ đang luyện giữ kết quả đã định lúc bắt đầu; đổi hay xóa công thức không ảnh hưởng chúng. Máy chủ nhận công thức mới sau tối đa 30 giây; người chơi thấy khi mở lại Đan Sư."),
       field("Số mẻ một nhân vật được luyện cùng lúc (kể cả mẻ xong chưa nhận)", maxJobs),
+      ...(forge ? [field("Cấp nghề: tổng kinh nghiệm cần cho cấp 2, 3, 4... (số tăng dần, cách nhau dấu phẩy; để trống thì không có cấp)", levels)] : []),
       rows,
       add,
       h("div", { class: "toolbar" }, save),

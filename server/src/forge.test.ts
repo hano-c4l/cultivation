@@ -1,8 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
-import { DEFAULT_FORGE, DEFAULT_ALCHEMY, equipmentInfo, getItemDef, validAlchemy } from "@game/shared";
+import { readFileSync } from "node:fs";
+import { DEFAULT_FORGE, DEFAULT_ALCHEMY, canCraft, craftLevelOf, craftNextExp, equipmentInfo, getItemDef, scaleBrew, validAlchemy } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { alchemyReferences, getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
-import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
+import { collectBrewStatements, getBrewJob, getCraftExp, listBrewJobs, startBrewStatements } from "./brew";
 import { rollGear } from "./gear-master";
 import { resetTuningCache } from "./tuning";
 import { makeDb } from "./test-db";
@@ -109,5 +110,58 @@ describe("the admin screen of the forge", () => {
   it("an item used only by a forge recipe is reported as used", async () => {
     await getAlchemyAdmin(db, "forge");
     expect((await alchemyReferences(db, "ren_tc")).some((t) => t.includes("luyện khí"))).toBe(true);
+  });
+});
+
+describe("trade levels", () => {
+  it("the level follows the exp at the thresholds, and the recipes open by level", () => {
+    const cfg = { levels: [30, 100] };
+    expect([0, 29, 30, 99, 100, 5000].map((e) => craftLevelOf(cfg, e))).toEqual([1, 1, 2, 2, 3, 3]);
+    expect(craftNextExp(cfg, 29)).toBe(30);
+    expect(craftNextExp(cfg, 100)).toBeNull();
+    expect(craftLevelOf({}, 99999)).toBe(1); // a group with no levels has none
+    expect(canCraft({}, 1)).toBe(true);
+    expect(canCraft({ minLevel: 3 }, 2)).toBe(false);
+    expect(canCraft({ minLevel: 3 }, 3)).toBe(true);
+    // the defaults open recipes in order, and the top level is reachable
+    expect(DEFAULT_FORGE.recipes.every((r) => (r.minLevel ?? 1) <= craftLevelOf(DEFAULT_FORGE, 1e9))).toBe(true);
+    expect(scaleBrew({ ...DEFAULT_ALCHEMY.recipes[0]!, exp: 7 }, 3, {}).exp).toBe(21);
+  });
+
+  it("old groups without levels are valid; a levels list that is not increasing, or a recipe above the top level, is not", () => {
+    expect(validAlchemy(DEFAULT_ALCHEMY)).toBe(true);
+    expect(validAlchemy(DEFAULT_FORGE)).toBe(true);
+    expect(validAlchemy({ ...DEFAULT_FORGE, levels: [30, 30] })).toBe(false);
+    expect(validAlchemy({ ...DEFAULT_FORGE, levels: [100, 30] })).toBe(false);
+    expect(validAlchemy({ ...DEFAULT_FORGE, levels: [30] })).toBe(false); // the recipes ask for levels up to 6
+    expect(validAlchemy({ ...DEFAULT_ALCHEMY, recipes: [{ ...DEFAULT_ALCHEMY.recipes[0]!, minLevel: 2 }] })).toBe(false); // no levels, so no level 2
+  });
+
+  it("a finished run gives the exp it was started with, once, whatever the recipe says later", async () => {
+    const recipe = { ...DEFAULT_FORGE.recipes[0]!, exp: 10 };
+    await db.batch(startBrewStatements(db, A, "smith", recipe, "j1", 2, NOW, "forge"));
+    expect((raw.prepare("SELECT exp FROM brew_jobs WHERE id = 'j1'").get() as { exp: number }).exp).toBe(10);
+    raw.exec("UPDATE brew_jobs SET exp = 10"); // (an Admin raising the recipe's exp later changes nothing of this row)
+    await db.batch(collectBrewStatements(db, A, "j1", NOW + 10 * 3_600_000));
+    expect(await getCraftExp(db, A, "forge")).toBe(10);
+    expect(await getCraftExp(db, A, "alchemy")).toBe(0);
+    await expect(db.batch(collectBrewStatements(db, A, "j1", NOW + 10 * 3_600_000))).rejects.toThrow(); // the second collection adds nothing
+    expect(await getCraftExp(db, A, "forge")).toBe(10);
+    await db.batch(startBrewStatements(db, A, "smith", recipe, "j2", 2, NOW, "forge"));
+    await db.batch(collectBrewStatements(db, A, "j2", NOW + 10 * 3_600_000));
+    expect(await getCraftExp(db, A, "forge")).toBe(20); // exp adds up
+  });
+
+  it("migration 0071 replaces a forge row nobody edited and keeps an edited one", () => {
+    const { raw: r } = makeDb();
+    const sql = readFileSync(new URL("../migrations/0071_craft_levels.sql", import.meta.url), "utf8");
+    const del = sql.split(String.fromCharCode(10)).filter((l) => l.startsWith("DELETE FROM game_tuning")).join(String.fromCharCode(10));
+    r.exec("DELETE FROM game_tuning WHERE name = 'forge'");
+    r.prepare("INSERT INTO game_tuning (name, value, updated_at) VALUES ('forge', ?, 0)").run(JSON.stringify({ maxJobs: 2, recipes: [] }));
+    r.exec(del);
+    expect(r.prepare("SELECT 1 AS x FROM game_tuning WHERE name = 'forge'").get()).toBeUndefined();
+    r.prepare("INSERT INTO game_tuning (name, value, updated_at, updated_by) VALUES ('forge', ?, 0, 'boss@x.test')").run(JSON.stringify({ maxJobs: 3, recipes: [] }));
+    r.exec(del);
+    expect(r.prepare("SELECT 1 AS x FROM game_tuning WHERE name = 'forge'").get()).toBeDefined();
   });
 });
