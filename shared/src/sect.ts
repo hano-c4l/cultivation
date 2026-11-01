@@ -83,6 +83,15 @@ export interface SectShopItem {
   minRank: number;
 }
 
+/** One skill the sect teaches: bought once with cống hiến, kept only while the character stays in a sect (5c-2b). */
+export interface SectSkillItem {
+  /** The id of a skill of source "sect". */
+  skill: string;
+  cost: number;
+  minLevel: number;
+  minRank: number;
+}
+
 export interface SectCfg {
   /** The realm (index) a character must have reached to found a sect. */
   createRealm: number;
@@ -117,6 +126,8 @@ export interface SectCfg {
   upgradeRank: number;
   /** What the sect shop sells for cống hiến. */
   shop: SectShopItem[];
+  /** The skills the sect teaches for cống hiến. */
+  skills: SectSkillItem[];
   /**
    * The dials to balance the sect economy against inflation without touching the tables: `upgradeCostPct` scales the Linh Thạch every level costs, `incomePct` scales the
    * Linh Thạch and the items the system puts into a sect's fund and warehouse (sect quests, 5c-4); 100 is as the tables say.
@@ -182,6 +193,14 @@ export const DEFAULT_SECT: SectCfg = {
     { item: "hoi_huyet_dan", cost: 10, qty: 1, minLevel: 1, minRank: 0 },
     { item: "linh_thao", cost: 15, qty: 5, minLevel: 1, minRank: 0 },
     { item: "duong_huyet_dan", cost: 30, qty: 1, minLevel: 2, minRank: 0 },
+  ],
+  skills: [
+    { skill: "tm_ho_than", cost: 150, minLevel: 1, minRank: 0 },
+    { skill: "tm_hoi_xuan", cost: 200, minLevel: 1, minRank: 0 },
+    { skill: "tm_tran_phap", cost: 500, minLevel: 2, minRank: 0 },
+    { skill: "tm_chien_y", cost: 1200, minLevel: 3, minRank: 0 },
+    { skill: "tm_kiem_tran", cost: 3000, minLevel: 4, minRank: 0 },
+    { skill: "tm_tam_phap", cost: 8000, minLevel: 5, minRank: 0 },
   ],
 };
 
@@ -272,6 +291,18 @@ export function validSect(v: unknown): v is SectCfg {
     inRange((c.autoRanks as Record<string, unknown>).inner, 1, 1_000_000_000) &&
     inRange((c.autoRanks as Record<string, unknown>).elite, 1, 1_000_000_000) &&
     ((c.autoRanks as Record<string, number>).inner as number) < ((c.autoRanks as Record<string, number>).elite as number) &&
+    Array.isArray(c.skills) &&
+    c.skills.length <= 50 &&
+    c.skills.every(
+      (s) =>
+        typeof s === "object" &&
+        s !== null &&
+        typeof (s as Record<string, unknown>).skill === "string" &&
+        /^[a-z0-9_]{1,32}$/.test((s as Record<string, unknown>).skill as string) &&
+        inRange((s as Record<string, unknown>).cost, 1, 1_000_000_000) &&
+        inRange((s as Record<string, unknown>).minLevel, 1, 30) &&
+        inRange((s as Record<string, unknown>).minRank, 0, SECT_RANK.leader),
+    ) &&
     Array.isArray(c.shop) &&
     c.shop.length <= 50 &&
     c.shop.every(
@@ -509,7 +540,9 @@ export type SectError =
   | "value"
   | "vault_full"
   | "lack"
-  | "task";
+  | "task"
+  | "known"
+  | "skill_level";
 
 /** The lines the sect says in its own channel (the server sends them; Vietnamese, like the boss announcements). */
 export const SECT_SAY = {

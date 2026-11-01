@@ -201,7 +201,7 @@ import { getTuning } from "./tuning";
 import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
 import { planTask, prepareTask, sectRanking } from "./sect-task";
 import { buyShelf, disbandSect, putItem, setAccept, setShelf, takeItem, vaultViews } from "./sect-vault";
-import { acceptInvite, answerRequest, applyTo, claimWeekly, contributionOf, cooldownUntil, createSect, donate, setWeekly, shopCheck, shopPayStatements, upgradeSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
+import { acceptInvite, answerRequest, applyTo, buySectSkill, skillShopCheck, claimWeekly, contributionOf, cooldownUntil, createSect, donate, setWeekly, shopCheck, shopPayStatements, upgradeSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
 import { hasRoomFor, newSession, otherSide, planTrade, setConfirm, setLock, setOffer, sideOf, type TradeSession } from "./trade";
 import { buyFixed, cancelListing, listingViews, placeBid, postListing, promoteListing, settleDue } from "./market";
 
@@ -777,6 +777,7 @@ export class MapRoom extends DurableObject<Env> {
       case "sect_weekly":
       case "sect_weekly_set":
       case "sect_buy":
+      case "sect_skill_buy":
       case "sect_vault":
       case "sect_put":
       case "sect_take":
@@ -2868,6 +2869,7 @@ export class MapRoom extends DurableObject<Env> {
     }
     this.send(ws, { t: "sect", view, cooldownUntil: view ? 0 : await cooldownUntil(this.env.DB, id) });
     this.send(ws, { t: "wallet", currency: "cong_hien", balance: view?.contribution ?? 0 });
+    if (!view) await this.dropSectSkills(ws, id);
     // A player with no sect is shown the sects to apply to along with it (one read of the window instead of two).
     if (!view) this.send(ws, { t: "sect_dir", sects: await sectDirectory(this.env.DB, cfg, id) });
     await this.syncSectLabel(id);
@@ -3106,6 +3108,26 @@ export class MapRoom extends DurableObject<Env> {
           });
           return this.sendSect(ws, me, cfg, now);
         }
+        case "sect_skill_buy": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          const skill = getSkill(msg.skill);
+          const chk = await skillShopCheck(this.env.DB, cfg, me, msg.skill);
+          if (!chk.ok || !skill) return fail(chk.ok ? "item" : chk.reason);
+          const who = await this.casterOf(me);
+          if (!who) return fail("gone");
+          if (who.granted.includes(skill.id)) return fail("known");
+          if (!canLearn(skill, who.realm, who.stage)) return fail("skill_level");
+          const res = await buySectSkill(this.env.DB, { characterId: me, sectId: chk.sectId, skill: skill.id, cost: chk.entry.cost, realm: skill.realm, now });
+          if (!res.ok) return fail(res.reason);
+          (await this.getSkillRows(me)).push({ skill_id: skill.id, source: "sect", realm: skill.realm, level: 0, mastery: 0 });
+          this.sim?.addGranted(me, skill.id);
+          this.sendToCharacter(me, { t: "skills", ids: availableSkills([...who.granted, skill.id], who.gear) });
+          this.sendToCharacter(me, { t: "skill_state", id: skill.id, lv: 0, xp: 0 });
+          await sendWallets(null);
+          return this.sendSect(ws, me, cfg, now);
+        }
         case "sect_notice": {
           const res = await setNotice(this.env.DB, cfg, { actorId: me, text: msg.text, now });
           if (!res.ok) return fail(res.reason);
@@ -3117,6 +3139,29 @@ export class MapRoom extends DurableObject<Env> {
       console.error("sect command failed", msg.t, err);
       fail("busy");
     });
+  }
+
+  /**
+   * A character with no sect keeps no skill the sect taught: the rows were deleted with the membership (leaving, being sent away, the disbanding), and this
+   * clears what THIS room still holds (its copy of the rows, the simulation, the hotbar), which a member in another room had no way to be told about before.
+   */
+  private async dropSectSkills(ws: WebSocket, id: string): Promise<void> {
+    const rows = await this.getSkillRows(id);
+    const gone = rows.filter((r) => r.source === "sect" || getSkill(r.skill_id)?.source === "sect").map((r) => r.skill_id);
+    const current = await this.getHotbar(id);
+    const cleaned = current.map((slot) => (getSkill(parseSkillSlot(slot)?.id ?? "")?.source === "sect" ? "" : slot));
+    const barChanged = cleaned.some((slot, i) => slot !== current[i]);
+    if (gone.length === 0 && !barChanged) return;
+    for (let i = rows.length - 1; i >= 0; i--) if (gone.includes(rows[i]!.skill_id)) rows.splice(i, 1);
+    this.sim?.removeGranted(id, gone);
+    if (barChanged) {
+      await saveHotbar(this.env.DB, id, cleaned).catch((err) => console.error("hotbar save failed", id, err));
+      this.hotbars.set(id, cleaned);
+      this.send(ws, { t: "hotbar", slots: cleaned });
+    }
+    const live = this.sim?.getPlayer(id);
+    const gear = (await this.getBag(id)).equipped;
+    this.send(ws, { t: "skills", ids: live && this.sim ? this.sim.skillsOf(live) : availableSkills(rows.map((r) => r.skill_id), gearSkillIds(gear)) });
   }
 
   /** Where a player stands now. */

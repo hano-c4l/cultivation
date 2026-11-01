@@ -1,6 +1,7 @@
 // Local test of the sects (phase 5c-1): a leader founds a sect at the NPC, invites a player, the member chats in the sect channel, is made an elder, an applicant is taken in,
 // a member is sent away (and waits), and the leader closes the sect.
 // Usage: node tools/sect-smoke.mjs [ws://localhost:8787]
+// 5c-2b: also buys a sect skill and checks it goes when the member is sent away.
 // Local only; needs DISABLE_RATE_LIMIT=1 and the 0062 migration (npm run db:migrate:local). It raises the realm and credits the throwaway characters through
 // `wrangler d1 execute --local`.
 import { execSync } from "node:child_process";
@@ -234,6 +235,32 @@ await sleep(1500);
 C.g.send({ t: "sect_get" });
 const cIn = await C.g.wait((m) => m.t === "sect" && m.view, 5000, "C in the sect").catch(() => null);
 check("the applicant is taken in", !!cIn && cIn.view.members.length === 3);
+// A sect skill (5c-2b): too low a realm is refused, then bought with cống hiến, not twice, put on the hotbar; it goes when the member is sent away.
+sql(`UPDATE sect_members SET contribution = 500 WHERE character_id = '${pc.id}'`);
+await sleep(400);
+m0 = C.g.log.length;
+C.g.send({ t: "sect_skill_buy", npc: "sect", skill: "tm_ho_than" });
+const low = await C.g.wait((m) => m.t === "sect_error", 4000, "realm refusal", m0).catch(() => null);
+check("a sect skill is refused below its realm", low?.reason === "skill_level", low?.reason);
+sql(`UPDATE characters SET stage = 3 WHERE id = '${pc.id}'`);
+await sleep(400);
+m0 = C.g.log.length;
+C.g.send({ t: "sect_skill_buy", npc: "sect", skill: "tm_ho_than" });
+const learnt = await C.g.wait((m) => m.t === "skills" && m.ids.includes("tm_ho_than"), 6000, "the skill list", m0).catch(() => null);
+check("buying a sect skill puts it in the skill list", !!learnt);
+await sleep(600);
+const congC = [...C.g.log].reverse().find((m) => m.t === "wallet" && m.currency === "cong_hien");
+check("and costs its price in cống hiến (500 - 150)", congC?.balance === 350, `${congC?.balance}`);
+await sleep(400);
+m0 = C.g.log.length;
+C.g.send({ t: "sect_skill_buy", npc: "sect", skill: "tm_ho_than" });
+const twice = await C.g.wait((m) => m.t === "sect_error", 4000, "known", m0).catch(() => null);
+check("buying it again is refused", twice?.reason === "known", twice?.reason);
+await sleep(400);
+C.g.send({ t: "hotbar_set", slot: 0, v: "s:tm_ho_than" });
+const slotted = await C.g.wait((m) => m.t === "hotbar" && m.slots[0] === "s:tm_ho_than", 4000, "hotbar", m0).catch(() => null);
+check("it can be put on the hotbar", !!slotted);
+
 await sleep(400);
 m0 = B.g.log.length;
 B.g.send({ t: "sect_kick", id: pc.id });
@@ -246,6 +273,10 @@ m0 = C.g.log.length;
 C.g.send({ t: "sect_get" });
 const out = await C.g.wait((m) => m.t === "sect" && m.view === null, 5000, "C out", m0).catch(() => null);
 check("the leader sends the member away, who must wait", !!out && out.cooldownUntil > Date.now(), `${out?.cooldownUntil}`);
+const lost = await C.g.wait((m) => m.t === "skills" && !m.ids.includes("tm_ho_than"), 4000, "the skill list without it", m0).catch(() => null);
+check("the member loses the sect skill when sent away", !!lost);
+const cleared = await C.g.wait((m) => m.t === "hotbar" && m.slots[0] === "", 4000, "hotbar cleared", m0).catch(() => null);
+check("and the hotbar slot is cleared", !!cleared);
 
 // Closing.
 await sleep(400);

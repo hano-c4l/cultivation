@@ -282,7 +282,7 @@ export async function removeItem(db: D1Database, admin: string, id: string, inst
 
 export async function addSkill(db: D1Database, admin: string, id: string, skillId: unknown, now = Date.now()): Promise<CharacterResult> {
   const skill = typeof skillId === "string" ? getSkill(skillId) : undefined;
-  if (!skill) return { ok: false, error: "invalid" };
+  if (!skill || skill.source === "sect") return { ok: false, error: "invalid" };
   const c = await db.prepare("SELECT name FROM characters WHERE id = ?").bind(id).first<{ name: string }>();
   if (!c) return { ok: false, error: "not_found" };
   if (!(await reviewing(db, id, admin, now))) return { ok: false, error: "not_reviewing" };

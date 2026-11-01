@@ -520,6 +520,9 @@ export const vi = {
     needs: (level: number, rank: string) => `Cần tông môn cấp ${level}, chức ${rank} trở lên.`,
     buy: "Mua",
     noShop: "Cửa hàng chưa có gì.",
+    skillsHead: "Kỹ năng tông môn",
+    skillsHint: "Mua một lần bằng cống hiến; rời hoặc bị đuổi khỏi tông môn, hoặc tông môn giải tán, thì mất kỹ năng này. Cần đủ cảnh giới để học.",
+    skillHave: "Đã học",
     tabTasks: "Nhiệm vụ",
     tabRank: "Xếp hạng",
     tasksHint: "Nộp vật phẩm cho tông môn mỗi ngày (phải đứng cạnh NPC Tông Môn ở thành). Người làm được cống hiến và Linh Thạch từ quỹ; tông môn được kinh nghiệm, Linh Thạch hệ thống thêm vào quỹ (có trần mỗi ngày) và đôi khi vật phẩm vào kho.",
@@ -588,6 +591,8 @@ export const vi = {
       vault_full: "Kho đã đầy.",
       lack: "Không đủ vật phẩm (trong túi hoặc trong kho tông môn).",
       task: "Nhiệm vụ không có.",
+      known: "Bạn đã học kỹ năng này rồi.",
+      skill_level: "Cảnh giới chưa đủ để học kỹ năng này.",
     } as Record<string, string>,
   },
   trade: {

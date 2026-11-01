@@ -241,7 +241,8 @@ describe("the ranking and the migration", () => {
     r.exec("DELETE FROM game_tuning WHERE name = 'sect'");
     r.prepare("INSERT INTO game_tuning (name, value, updated_at, updated_by) VALUES ('sect', ?, 0, 'admin')").run(JSON.stringify(old));
     const sql = readFileSync(new URL("../migrations/0065_sect_tasks.sql", import.meta.url), "utf8");
-    r.exec(sql.split(String.fromCharCode(10)).filter((l) => l.startsWith("UPDATE game_tuning")).join(String.fromCharCode(10)));
+    const later = readFileSync(new URL("../migrations/0066_sect_skills.sql", import.meta.url), "utf8"); // the group grew again after 0065
+    r.exec((sql + later).split(String.fromCharCode(10)).filter((l) => l.startsWith("UPDATE game_tuning")).join(String.fromCharCode(10)));
     const row = JSON.parse((r.prepare("SELECT value FROM game_tuning WHERE name = 'sect'").get() as { value: string }).value);
     expect(validSect(row)).toBe(true);
     expect(row.createFee).toBe(77); // the edits stay

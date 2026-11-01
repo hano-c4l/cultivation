@@ -281,6 +281,7 @@ export async function closeBatch(
     db.prepare("DELETE FROM sect_vault WHERE sect_id = ?").bind(p.sectId),
     db.prepare("INSERT OR REPLACE INTO sect_cooldown (character_id, until) SELECT character_id, ? FROM sect_members WHERE sect_id = ? AND character_id IN (SELECT value FROM json_each(?))").bind(p.now + cfg.rejoinHours * HOUR_MS, p.sectId, JSON.stringify(p.waitFor)),
     db.prepare("DELETE FROM sect_requests WHERE sect_id = ?").bind(p.sectId),
+    db.prepare("DELETE FROM character_skills WHERE source = 'sect' AND character_id IN (SELECT character_id FROM sect_members WHERE sect_id = ?)").bind(p.sectId), // the skills of the sect go with it
     db.prepare("DELETE FROM sect_members WHERE sect_id = ?").bind(p.sectId),
     db.prepare("DELETE FROM sects WHERE id = ?").bind(p.sectId),
     logStatement(db, p.sectId, p.actor, "disband", null, p.sectName, p.now),
