@@ -3,7 +3,7 @@
 // Hộ Cấp Phù for Tiên Ngọc. Usage: node tools/smith-smoke.mjs [ws://localhost:8787]
 // Local only; needs DISABLE_RATE_LIMIT=1, ENABLE_DEV_GRANT=1 and the 0028 migration (npm run db:migrate:local). It credits the throwaway
 // character through `wrangler d1 execute --local`.
-import { T, TOWN_SMITH_NEAR } from "./world.mjs";
+import { T, TOWN_SMITH_NEAR, openWhenThere, townNear } from "./world.mjs";
 import { execSync } from "node:child_process";
 const base = process.argv[2] ?? "ws://localhost:8787";
 const httpBase = base.replace(/^ws/, "http");
@@ -162,12 +162,10 @@ const noOre = await c.wait((m) => m.t === "inv_error", 5000, "no ore", mark);
 check("without ore the upgrade is refused", noOre.reason === "smith_mats", noOre.reason);
 // The merchant sells the Hộ Cấp Phù for Tiên Ngọc.
 await sleep(300);
-c.send({ t: "move", x: TOWN_SMITH_NEAR[0] + 3, y: TOWN_SMITH_NEAR[1] - 3, fx: TOWN_SMITH_NEAR[0], fy: TOWN_SMITH_NEAR[1], seq: 2 });
+const nearMerchant = townNear("merchant", w2.npcs);
+c.send({ t: "move", x: nearMerchant[0], y: nearMerchant[1], fx: TOWN_SMITH_NEAR[0], fy: TOWN_SMITH_NEAR[1], seq: 2 });
 await c.wait((m) => m.t === "ack" && m.seq === 2, 4000, "ack").catch(() => undefined);
-await sleep(2500);
-mark = c.log.length;
-c.send({ t: "npc_open", npc: "merchant" });
-await c.wait((m) => m.t === "shop", 5000, "the merchant window", mark);
+await openWhenThere(c, { t: "npc_open", npc: "merchant" }, "shop");
 await sleep(400);
 mark = c.log.length;
 c.send({ t: "shop_buy", npc: "merchant", offer: "ren_giu_cap", qty: 1 });

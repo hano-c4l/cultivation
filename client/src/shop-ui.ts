@@ -352,7 +352,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
     const box = el("div");
     const cfg = tuning()[craft];
     const level = craftLevelOf(cfg, craftExp);
-    if (cfg.levels?.length) box.append(el("div", "shop-name", vi.brew.level(level, craftExp, craftNextExp(cfg, craftExp))));
+    if (cfg.levels?.length) box.append(el("div", "shop-name", vi.brew.level(level, craftExp, craftNextExp(cfg, craftExp), craft)));
     box.append(el("div", "muted", vi.brew.jobs(jobs.length, cfg.maxJobs)));
     if (jobs.length === 0) box.append(el("div", "muted", vi.brew.none));
     for (const job of jobs) {

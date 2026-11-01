@@ -335,3 +335,19 @@ export async function closeListingsOf(db: D1Database, sellerId: string, now: num
   }
   return [...notify];
 }
+
+/**
+ * An admin takes one open listing down (a bad or abusive listing): the item goes back to the seller by mail and a standing top bidder is refunded, like a cancel the seller
+ * could not make. Returns the listing that was closed, or null when it is gone (already closed by someone else) so the admin can reload.
+ */
+export async function takeDownListing(db: D1Database, id: string, now: number, extra: D1PreparedStatement[] = []): Promise<{ listing: ListingRow; notify: string[] } | null> {
+  const l = await getListing(db, id);
+  if (!l || l.status !== "active") return null;
+  try {
+    await db.batch([listingGuard(db, l.id, " AND top_bid = ?", [l.top_bid]), ...returnStatements(db, l, "cancelled", now), ...extra]);
+  } catch (err) {
+    if (isGuardFailure(err)) return null;
+    throw err;
+  }
+  return { listing: l, notify: l.top_bidder_id ? [l.seller_id, l.top_bidder_id] : [l.seller_id] };
+}

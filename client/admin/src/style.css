@@ -132,3 +132,5 @@ th.subhead { padding-top: 12px; color: var(--accent); font-size: 13px; }
 .look-rule { align-items: center; }
 .check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; margin-top: 6px; }
 input.tiny { width: 56px; }
+.fx-stage { margin-top: 8px; width: 520px; max-width: 100%; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.fx-stage canvas { display: block; max-width: 100%; height: auto !important; }

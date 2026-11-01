@@ -24,6 +24,7 @@ import {
   clampConstitutionTier,
   constitutionTierName,
   deriveStats,
+  mountSpeedPct,
   equipmentBonus,
   passiveTotals,
   withPassives,
@@ -80,6 +81,8 @@ export interface CharacterPanelDeps {
   isAdmin: boolean;
   /** How many of an item type the bag holds. */
   countOf: (type: string) => number;
+  /** The beast mount being ridden (a `mounts` id), if any: its speed adds to the walking speed shown. */
+  beast: () => string | undefined;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -213,7 +216,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
     for (const def of STAT_DEFS) preview[def.key] += pending[def.key] ?? 0;
     // Gear counts as the server counts it: requirements are judged against the saved stats, not the unconfirmed clicks.
     const gear = equipmentBonus(worn, wearerOfSheet(s));
-    const d = withPaths(withPassives(deriveStats(preview, s.realm, s.stage, s.rootGrade, gear, s.roots.length), passiveTotals(skillIds, skillStates, s.rootGrade)), s.paths);
+    const d = withPaths(withPassives(deriveStats(preview, s.realm, s.stage, s.rootGrade, gear, s.roots.length, [mountSpeedPct(deps.beast())]), passiveTotals(skillIds, skillStates, s.rootGrade)), s.paths);
     const derived = el("div", "cp-derived");
     const lines: [string, string][] = [
       [vi.character.derived.maxHp, String(d.maxHp)],
@@ -224,6 +227,7 @@ export function initCharacterPanel(deps: CharacterPanelDeps): CharacterPanel {
       [vi.character.derived.dodgeRate, `${d.dodgeRate}%`],
       [vi.character.derived.expBonus, `${d.expBonus >= 0 ? "+" : ""}${d.expBonus}%`],
       [vi.character.derived.dropBonus, `+${d.dropBonus}%`],
+      [vi.character.derived.moveSpeed, `${Math.round(d.moveSpeed * 100) / 100}`],
       [vi.character.derived.satKhi, `${satKhi}${satKhiDamagePct(satKhi) > 0 ? ` (+${Math.round(satKhiDamagePct(satKhi) * 10) / 10}% sát thương)` : ""}`],
     ];
     for (const [name, value] of lines) {

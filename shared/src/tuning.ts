@@ -656,20 +656,20 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   // Xianxia robes for everyone: the white robe `tien`, one colour each by tint, a formation circle in the same colour under the feet.
   npcLooks: {
     byKind: {
-      merchant: { body: "male", outfit: "sage", tint: "#f0d890", aura: "#e6c35a" },
-      quest: { body: "female", outfit: "sage", tint: "#cfe0ff", aura: "#9fc4ff" },
-      smith: { body: "male", outfit: "sage", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a" },
-      alchemist: { body: "female", outfit: "sage", tint: "#bff0c8", aura: "#7dff9c" },
-      master: { body: "male", outfit: "ranger", weapon: "kiem", tint: "#e6b8a0", aura: "#e0563a" },
-      market: { body: "female", outfit: "sage", tint: "#e8c8ff", aura: "#c89cff" },
-      sect: { body: "male", outfit: "sage", tint: "#9ad8c0", aura: "#6fe0b0" },
-      guard: { body: "male", outfit: "warden", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a" },
+      merchant: { body: "male", outfit: "sage", tint: "#f0d890", aura: "#e6c35a", hat: 5 },
+      quest: { body: "female", outfit: "sage", tint: "#cfe0ff", aura: "#9fc4ff", hat: 1 },
+      smith: { body: "male", outfit: "sage", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a", hat: 5 },
+      alchemist: { body: "female", outfit: "sage", tint: "#bff0c8", aura: "#7dff9c", hat: 3 },
+      master: { body: "male", outfit: "ranger", weapon: "kiem", tint: "#e6b8a0", aura: "#e0563a", hat: 6 },
+      market: { body: "female", outfit: "sage", tint: "#e8c8ff", aura: "#c89cff", hat: 3 },
+      sect: { body: "male", outfit: "sage", tint: "#9ad8c0", aura: "#6fe0b0", hat: 7 },
+      guard: { body: "male", outfit: "warden", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a", hat: 6 },
     },
     byId: {
-      elder: { body: "male", outfit: "sage", tint: "#fff0c0", aura: "#ffe58a" },
-      path_kiem: { body: "male", outfit: "sage", weapon: "kiem", tint: "#bfe4ff", aura: "#9fe0ff" },
-      path_thuat: { body: "female", outfit: "sage", tint: "#dccbff", aura: "#b99bff" },
-      path_dan: { body: "female", outfit: "sage", tint: "#c6f5c6", aura: "#7dff9c" },
+      elder: { body: "male", outfit: "sage", tint: "#fff0c0", aura: "#ffe58a", hat: 1 },
+      path_kiem: { body: "male", outfit: "sage", weapon: "kiem", tint: "#bfe4ff", aura: "#9fe0ff", hat: 0 },
+      path_thuat: { body: "female", outfit: "sage", tint: "#dccbff", aura: "#b99bff", hat: 7 },
+      path_dan: { body: "female", outfit: "sage", tint: "#c6f5c6", aura: "#7dff9c", hat: 3 },
     },
   },
 };
@@ -1024,7 +1024,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "mapArt":
       return obj(value.maps) && Object.keys(value.maps).length <= 100 && Object.entries(value.maps).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && obj(v) && (GROUND_STYLES as readonly unknown[]).includes(v.ground) && (OBSTACLE_STYLES as readonly unknown[]).includes(v.obstacle) && (v.big === undefined || v.big === "wall" || v.big === "house") && (v.mix === undefined || (Array.isArray(v.mix) && v.mix.length >= 1 && v.mix.length <= 12 && v.mix.every((s) => (OBSTACLE_STYLES as readonly unknown[]).includes(s)))));
     case "npcLooks": {
-      const look = (v: unknown): boolean => obj(v) && (v.body === "male" || v.body === "female") && (v.outfit === undefined || (typeof v.outfit === "string" && /^[a-z]{1,16}$/.test(v.outfit))) && (v.weapon === undefined || (typeof v.weapon === "string" && /^[a-z]{1,16}$/.test(v.weapon))) && (v.scale === undefined || num(v.scale, 0.5, 3)) && (v.tint === undefined || (typeof v.tint === "string" && /^#[0-9a-fA-F]{6}$/.test(v.tint))) && (v.aura === undefined || (typeof v.aura === "string" && /^#[0-9a-fA-F]{6}$/.test(v.aura)));
+      const look = (v: unknown): boolean => obj(v) && (v.body === "male" || v.body === "female") && (v.outfit === undefined || (typeof v.outfit === "string" && /^[a-z]{1,16}$/.test(v.outfit))) && (v.weapon === undefined || (typeof v.weapon === "string" && /^[a-z]{1,16}$/.test(v.weapon))) && (v.scale === undefined || num(v.scale, 0.5, 3)) && (v.tint === undefined || (typeof v.tint === "string" && /^#[0-9a-fA-F]{6}$/.test(v.tint))) && (v.aura === undefined || (typeof v.aura === "string" && /^#[0-9a-fA-F]{6}$/.test(v.aura))) && (v.hat === undefined || int(v.hat, 0, 31)) && (v.hatTint === undefined || (typeof v.hatTint === "string" && /^#[0-9a-fA-F]{6}$/.test(v.hatTint)));
       const table = (t: unknown): boolean => obj(t) && Object.keys(t).length <= 100 && Object.entries(t).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && look(v));
       return table(value.byKind) && table(value.byId);
     }

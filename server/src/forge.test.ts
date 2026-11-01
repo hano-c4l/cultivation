@@ -128,13 +128,28 @@ describe("trade levels", () => {
     expect(scaleBrew({ ...DEFAULT_ALCHEMY.recipes[0]!, exp: 7 }, 3, {}).exp).toBe(21);
   });
 
+  it("the alchemist has trade levels too: every recipe is reachable, the plain pills are open at once, and migration 0075 replaces only an unedited row", () => {
+    expect(validAlchemy(DEFAULT_ALCHEMY)).toBe(true);
+    expect(DEFAULT_ALCHEMY.levels?.length).toBeGreaterThan(0);
+    expect(DEFAULT_ALCHEMY.recipes.every((r) => (r.exp ?? 0) > 0 && (r.minLevel ?? 0) >= 1)).toBe(true);
+    expect(DEFAULT_ALCHEMY.recipes.some((r) => r.minLevel === 1)).toBe(true);
+    const { raw } = makeDb() as unknown as { raw: DatabaseSync };
+    const sql = readFileSync(new URL("../migrations/0075_alchemy_levels.sql", import.meta.url), "utf8");
+    raw.exec("DELETE FROM game_tuning WHERE name IN ('alchemy', 'forge')");
+    raw.exec(`INSERT INTO game_tuning (name, value, updated_at, updated_by) VALUES ('alchemy', '{}', 0, NULL), ('forge', '{}', 0, NULL)`);
+    raw.exec(`INSERT INTO game_tuning (name, value, updated_at, updated_by) VALUES ('alchemy_x', '{}', 0, 'a@x.test')`);
+    raw.exec(`UPDATE game_tuning SET updated_by = 'a@x.test' WHERE name = 'forge'`);
+    raw.exec(sql);
+    expect(raw.prepare("SELECT name FROM game_tuning WHERE name IN ('alchemy', 'forge') ORDER BY name").all()).toEqual([{ name: "forge" }]);
+  });
+
   it("old groups without levels are valid; a levels list that is not increasing, or a recipe above the top level, is not", () => {
     expect(validAlchemy(DEFAULT_ALCHEMY)).toBe(true);
     expect(validAlchemy(DEFAULT_FORGE)).toBe(true);
     expect(validAlchemy({ ...DEFAULT_FORGE, levels: [30, 30] })).toBe(false);
     expect(validAlchemy({ ...DEFAULT_FORGE, levels: [100, 30] })).toBe(false);
     expect(validAlchemy({ ...DEFAULT_FORGE, levels: [30] })).toBe(false); // the recipes ask for levels up to 6
-    expect(validAlchemy({ ...DEFAULT_ALCHEMY, recipes: [{ ...DEFAULT_ALCHEMY.recipes[0]!, minLevel: 2 }] })).toBe(false); // no levels, so no level 2
+    expect(validAlchemy({ ...DEFAULT_ALCHEMY, levels: undefined, recipes: [{ ...DEFAULT_ALCHEMY.recipes[0]!, minLevel: 2 }] })).toBe(false); // no levels, so no level 2
   });
 
   it("a finished run gives the exp it was started with, once, whatever the recipe says later", async () => {

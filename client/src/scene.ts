@@ -16,6 +16,8 @@ import {
   setBasicSkillRealm,
   bootsTintOf,
   hatShapeOf,
+  HAT_SHAPES,
+  type NpcLook,
   hatTintOf,
   robeTintOf,
   weaponTintOf,
@@ -103,6 +105,13 @@ const actorFlight = (a: { flight?: string }): FlightStyle => ((FLIGHT_STYLES as 
 /** Which side of the screen each of the 8 directions of a figure faces: -2 left, 0 toward the camera or away from it, +2 right (see DIRECTION_VECTORS). */
 /** How big a hat picture is drawn on a head (the picture is 40 px wide; a head is about 14 px across on screen). */
 const HAT_SCALE = 0.62;
+
+/** What a figure keeps of its hat: the picture on the head, its front ornament, and the way the head faces now (radians, 0 = towards the camera). */
+interface HatHolder {
+  hat?: Phaser.GameObjects.Image;
+  hatOrn?: Phaser.GameObjects.Image;
+  hatAng?: number;
+}
 const HEAD_SIDE: readonly number[] = [0, -1, -2, -1, 0, 1, 2, 1];
 
 /** `#rrggbb` as a number, or undefined (no tint) when there is none. */
@@ -241,6 +250,10 @@ interface MonsterActor {
   auraUntil?: number;
   /** A vệ binh: own name and colour, and it is only clicked (attacked) with the PK state on. */
   guard: boolean;
+  /** The hat of a guard (its look names one). */
+  hat?: Phaser.GameObjects.Image;
+  hatOrn?: Phaser.GameObjects.Image;
+  hatAng?: number;
   /** The map boss: red name, big body. */
   boss: boolean;
   tier: number;
@@ -318,7 +331,7 @@ export class GameScene extends Phaser.Scene {
   /** Timed buffs still running on each actor (skill id -> when it ends, performance.now): they keep a light round the figure. */
   private buffGlows = new Map<string, Map<string, number>>();
   private nextGlowAt = 0;
-  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView; aura?: Phaser.GameObjects.Container }> = [];
+  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView; aura?: Phaser.GameObjects.Container } & HatHolder> = [];
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
   private targetId: string | null = null;
@@ -517,7 +530,7 @@ export class GameScene extends Phaser.Scene {
       claimPath: (path) => this.net.send({ t: "path_claim", path }),
       claimBreakthroughPill: () => this.net.send({ t: "bt_claim" }),
       isAdmin: this.registry.get("isAdmin") === true,
-      countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),
+      countOf: (type) => this.inventory.list().filter((i) => i.type === type).reduce((n, i) => n + i.qty, 0),      beast: () => this.actors.get(this.selfId)?.beast,
     });
 
     const camera = this.cameras.main;
@@ -601,6 +614,7 @@ export class GameScene extends Phaser.Scene {
       f.view?.destroy();
       f.wview?.destroy();
       f.aura?.destroy();
+      this.dropHat(f);
     }
     this.npcFigures = [];
     this.reacts.clear();
@@ -691,6 +705,7 @@ export class GameScene extends Phaser.Scene {
         f.wview?.destroy();
         f.view.destroy();
         f.view = f.wview = undefined;
+        this.dropHat(f);
         f.body.setVisible(true);
         f.label.setY(f.y - 48);
       }
@@ -714,7 +729,14 @@ export class GameScene extends Phaser.Scene {
       f.wview?.followFrame(f.view);
       f.wview?.place(f.x, f.y, f.depth + 0.02);
       f.label.setY(f.y - f.view.rise() - 6);
+      this.syncLookHat(f, look, f.view, f.x, f.y, f.depth);
     }
+  }
+
+  /** The hat of an NPC or a guard from its look (`hat`, `hatTint`, else the colour of its aura); none in the look: the head is bare. */
+  private syncLookHat(h: HatHolder, look: NpcLook, view: GfxView, x: number, y: number, depth: number): void {
+    if (look.hat === undefined || !view.alive) return this.dropHat(h);
+    this.placeHat(h, look.hat % HAT_SHAPES, hexOf(look.hatTint ?? look.aura) ?? 0xffffff, view, x, y, depth, look.scale ?? 1);
   }
 
   /** Isometric diamond whose top vertex is at (x, y); `scale` 1 is a full tile. */
@@ -1209,6 +1231,7 @@ export class GameScene extends Phaser.Scene {
         this.mountUi.onRiding(msg.id);
         const me = this.actors.get(this.selfId);
         if (me) this.setActorBeast(me, msg.id ?? undefined);
+        this.charPanel.refresh();
         break;
       }
       case "mounted":
@@ -1872,6 +1895,7 @@ export class GameScene extends Phaser.Scene {
     m.wview?.destroy();
     m.view?.destroy();
     m.aura?.destroy();
+    this.dropHat(m);
     m.body.destroy();
     m.label.destroy();
     m.icon.destroy();
@@ -2350,6 +2374,52 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * A hat on a head: a picture of `shape` (tinted `base`) sitting on the top of the figure's head, with its front ornament carried round it as the figure turns. Every hat picture is
+   * symmetric and seen from above, so it stays put and unflipped whichever way the figure turns (flipping and squashing it per direction made it flicker on the diagonals); only
+   * the head moving a pixel to the side follows the heading, and the hat is a little darker with the face turned away. The facing eases from one heading to the next, so a diagonal
+   * walk never snaps the ornament about. `size` scales the whole hat (a big figure wears a big hat). Players, NPCs and guards all use it.
+   */
+  private placeHat(h: HatHolder, shape: number, base: number, view: GfxView, x: number, y: number, depth: number, size: number): void {
+    const key = HAT_TEX(shape);
+    if (!h.hat) h.hat = this.add.image(0, 0, key).setOrigin(0.5, 0.85);
+    if (h.hat.texture.key !== key) h.hat.setTexture(key);
+    const dir = view.dir;
+    const sx = HEAD_SIDE[dir] ?? 0;
+    const away = dir === 3 || dir === 4 || dir === 5;
+    const want = dir * (Math.PI / 4);
+    const have = h.hatAng ?? want;
+    h.hatAng = have + Math.atan2(Math.sin(want - have), Math.cos(want - have)) * 0.3;
+    const fx = -Math.sin(h.hatAng);
+    const fy = Math.cos(h.hatAng);
+    if (!h.hatOrn) h.hatOrn = this.add.image(0, 0, HAT_ORN_TEX(shape));
+    if (h.hatOrn.texture.key !== HAT_ORN_TEX(shape)) h.hatOrn.setTexture(HAT_ORN_TEX(shape));
+    const dim = away ? 0.85 : 1;
+    const tint = (Math.round(((base >> 16) & 255) * dim) << 16) | (Math.round(((base >> 8) & 255) * dim) << 8) | Math.round((base & 255) * dim);
+    const scale = HAT_SCALE * size;
+    // The top of the head is `rise` above the feet (the name stands a few px higher); the picture's bottom edge sits on it.
+    h.hat
+      .setPosition(x + Math.sign(sx) * size, y - view.rise() + 6 * size)
+      .setDepth(depth + 0.03)
+      .setTint(tint)
+      .setFlipX(false)
+      .setScale(scale)
+      .setVisible(true);
+    h.hatOrn
+      .setPosition(h.hat.x + fx * 10.5 * scale, h.hat.y - 2 * size + fy * 4 * size)
+      .setDepth(depth + (fy < -0.25 ? 0.02 : 0.035))
+      .setScale(scale * 1.05)
+      .setVisible(fy > -0.25);
+  }
+
+  /** Takes the hat off (its pictures are destroyed). */
+  private dropHat(h: HatHolder): void {
+    h.hat?.destroy();
+    h.hat = undefined;
+    h.hatOrn?.destroy();
+    h.hatOrn = undefined;
+  }
+
+  /**
    * What the worn gear adds to a figure: the robe colours the body sprite, the weapon its sprite (by element and realm), the hat is a small shape on the head,
    * the boots raise dust of their colour while the figure runs. The colours come from the tuning (`gearLooks`); a Canvas renderer ignores tints.
    */
@@ -2358,47 +2428,8 @@ export class GameScene extends Phaser.Scene {
     a.view?.setTint(lk?.r !== undefined ? hexOf(robeTintOf(lk.r)) : undefined);
     a.wview?.setTint(lk?.w !== undefined ? hexOf(weaponTintOf(lk.w)) : undefined);
     this.applyWeaponGlow(a, depth, lk);
-    if (lk?.h !== undefined && a.view) {
-      if (!a.hat) a.hat = this.add.image(0, 0, HAT_TEX(hatShapeOf(lk.h))).setOrigin(0.5, 0.85);
-      const key = HAT_TEX(hatShapeOf(lk.h));
-      if (a.hat.texture.key !== key) a.hat.setTexture(key);
-      // The top of the head is `rise` above the feet (the name stands a few px higher); the picture's bottom edge sits on it.
-      // Every hat picture is symmetric and seen from above, so it stays put and unflipped whichever way the figure turns (flipping and squashing it per direction made it
-      // flicker on the diagonals); only the head moving a pixel to the side follows the heading, and it is a little darker with the face turned away.
-      const dir = a.view.dir;
-      const sx = HEAD_SIDE[dir] ?? 0;
-      const away = dir === 3 || dir === 4 || dir === 5;
-      // The hat turns with the head: its front ornament (a gem, a tuft) rides round the hat to the side the figure faces, and hides behind it when the figure faces
-      // away. The facing eases from one heading to the next, so a diagonal walk never snaps the ornament about.
-      const want = dir * (Math.PI / 4);
-      const have = a.hatAng ?? want;
-      a.hatAng = have + Math.atan2(Math.sin(want - have), Math.cos(want - have)) * 0.3;
-      const fx = -Math.sin(a.hatAng);
-      const fy = Math.cos(a.hatAng);
-      const shape = hatShapeOf(lk.h);
-      if (!a.hatOrn) a.hatOrn = this.add.image(0, 0, HAT_ORN_TEX(shape));
-      if (a.hatOrn.texture.key !== HAT_ORN_TEX(shape)) a.hatOrn.setTexture(HAT_ORN_TEX(shape));
-      const base = hexOf(hatTintOf(lk.h)) ?? 0xffffff;
-      const dim = away ? 0.85 : 1;
-      const tint = (Math.round(((base >> 16) & 255) * dim) << 16) | (Math.round(((base >> 8) & 255) * dim) << 8) | Math.round((base & 255) * dim);
-      a.hat
-        .setPosition(x + Math.sign(sx), y - a.view.rise() + 6)
-        .setDepth(depth + 0.03)
-        .setTint(tint)
-        .setFlipX(false)
-        .setScale(HAT_SCALE)
-        .setVisible(true);
-      a.hatOrn
-        .setPosition(a.hat.x + fx * 10.5 * HAT_SCALE, a.hat.y - 2 + fy * 4)
-        .setDepth(depth + (fy < -0.25 ? 0.02 : 0.035))
-        .setScale(HAT_SCALE * 1.05)
-        .setVisible(fy > -0.25);
-    } else if (a.hat) {
-      a.hat.destroy();
-      a.hat = undefined;
-      a.hatOrn?.destroy();
-      a.hatOrn = undefined;
-    }
+    if (lk?.h !== undefined && a.view) this.placeHat(a, hatShapeOf(lk.h), hexOf(hatTintOf(lk.h)) ?? 0xffffff, a.view, x, y, depth, 1);
+    else this.dropHat(a);
     if (moving && !rides(a) && lk?.b !== undefined && Math.random() < 0.12) this.fx.puff("trail", x + (Math.random() - 0.5) * 10, y - 2, 1, hexOf(bootsTintOf(lk.b)) ?? 0xffffff);
   }
 
@@ -2409,6 +2440,7 @@ export class GameScene extends Phaser.Scene {
       m.wview?.destroy();
       m.wview = undefined;
       m.view = undefined;
+      this.dropHat(m);
       m.body.setVisible(true);
     }
     const key = look ? this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`) : this.gfx.spriteKeyFor("monster", m.kind);
@@ -2418,6 +2450,7 @@ export class GameScene extends Phaser.Scene {
       m.wview = undefined;
       m.view.destroy();
       m.view = undefined;
+      this.dropHat(m);
       m.body.setVisible(true);
     }
     if (!m.view) {
@@ -2450,6 +2483,7 @@ export class GameScene extends Phaser.Scene {
       m.wview?.setScale(scale);
       m.wview?.followFrame(m.view);
       m.wview?.place(x, y, depth + 0.02);
+      this.syncLookHat(m, look, m.view, x, y, depth);
     }
   }
 

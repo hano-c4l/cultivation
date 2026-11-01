@@ -28,7 +28,21 @@ const CATEGORY_VI: Record<string, string> = { consumable: "Đan / tiêu hao", ma
 
 const HAT_VI = ["Nón tre", "Khăn nho sinh", "Vương miện", "Búi tóc ngọc trâm", "Mũ lông vũ", "Khăn đầu", "Mũ sắt", "Liên hoa quan", "Long quan", "Phượng quan"];
 const REALM_VI = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh", "Hóa Thần", "Luyện Hư"];
-const NPC_KIND_VI: Record<string, string> = { merchant: "Thương nhân", quest: "NPC nhiệm vụ", smith: "Thợ rèn", alchemist: "Đan sư", master: "Võ sư", guard: "Vệ binh" };
+const NPC_KIND_VI: Record<string, string> = { merchant: "Thương nhân", quest: "NPC nhiệm vụ", smith: "Thợ rèn", alchemist: "Đan sư", master: "Võ sư", market: "Vạn Bảo Lâu", sect: "Tông Môn", guard: "Vệ binh" };
+
+/** A small picture of one hat shape, for the pickers. */
+const hatPreview = (shape: number): HTMLElement => {
+  const canvas = h("canvas", { class: "sprite-prev", width: "48", height: "44" });
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.scale(1.2, 1.2);
+    paintHat(shape, ctx);
+  }
+  return canvas;
+};
+const hatOptions = (): Opt[] => Array.from({ length: HAT_SHAPES }, (_, i) => ({ value: String(i), label: `${i}. ${HAT_VI[i] ?? "Mũ"}`, preview: () => hatPreview(i) }));
+/** The hat of an NPC look: a shape picker, or "bareheaded". */
+const npcHatRow = (look: NpcLook): HTMLElement => row("Mũ", picker(hatOptions(), look.hat === undefined ? "" : String(look.hat), "(không đội mũ)", (v) => (v === "" ? delete look.hat : (look.hat = Number(v)))));
 
 const options = (values: readonly string[], names: Record<string, string>, preview?: (v: string) => (() => HTMLElement | null) | undefined): Opt[] =>
   values.map((v) => {
@@ -95,16 +109,7 @@ export async function looksPage(): Promise<HTMLElement> {
   // Hats by the realm of the hat worn.
   {
     const value = looks.get<{ rules: Array<{ minRealm: number; shape: number }> }>("hatLooks");
-    const hatPreview = (shape: number): HTMLElement => {
-      const canvas = h("canvas", { class: "sprite-prev", width: "48", height: "44" });
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.scale(1.2, 1.2);
-        paintHat(shape, ctx);
-      }
-      return canvas;
-    };
-    const shapes: Opt[] = Array.from({ length: HAT_SHAPES }, (_, i) => ({ value: String(i), label: `${i}. ${HAT_VI[i] ?? "Mũ"}`, preview: () => hatPreview(i) }));
+    const shapes = hatOptions();
     const rules = h("div", null);
     const draw = () =>
       rules.replaceChildren(
@@ -135,9 +140,9 @@ export async function looksPage(): Promise<HTMLElement> {
     const rows = Object.entries(NPC_KIND_VI).map(([kind, name]) => {
       const look: NpcLook = value.byKind[kind] ?? { body: "male" };
       value.byKind[kind] = look;
-      return row(name, picker(outfitOptions(choices.outfits), look.outfit ?? "", "(đồ nông dân)", (v) => (v ? (look.outfit = v) : delete look.outfit)));
-    });
-    root.append(section("Trang phục NPC và vệ binh", "Mỗi loại NPC mặc một trang phục; NPC có hình riêng (ở màn sửa NPC) thì thắng. Màu nhuộm và vũ khí giữ như đang có.", ...rows, saveBar(() => looks.save("npcLooks", value))));
+      return [row(name, picker(outfitOptions(choices.outfits), look.outfit ?? "", "(đồ nông dân)", (v) => (v ? (look.outfit = v) : delete look.outfit))), npcHatRow(look)];
+    }).flat();
+    root.append(section("Trang phục NPC và vệ binh", "Mỗi loại NPC mặc một trang phục và đội một mũ (vệ binh cũng vậy; màu mũ theo màu vòng trận); NPC có hình riêng (ở màn sửa NPC) thì thắng. Màu nhuộm và vũ khí giữ như đang có.", ...rows, saveBar(() => looks.save("npcLooks", value))));
   }
 
   // The flight pháp bảo.
@@ -195,13 +200,18 @@ export async function itemIconSection(itemId: string): Promise<HTMLElement> {
 }
 
 /** Under the edit form of a skill: its icon (not for a template, whose skills have their own ids) and the look of its effect. */
-export async function skillLookSection(skillId: string, template: boolean, baseIcon: IconShape): Promise<HTMLElement> {
+export async function skillLookSection(skillId: string, template: boolean, baseIcon: IconShape, onLook?: (look: string) => void): Promise<HTMLElement> {
   const looks = await Looks.load();
   if (!looks) return failed();
   const icons = looks.get<{ items: Record<string, IconShape>; skills: Record<string, IconShape>; kinds: Record<string, IconShape> }>("iconLooks");
   const effects = looks.get<Record<string, string>>("skillLooks");
   const code = DEFAULT_TUNING.skillLooks[skillId];
-  const effect = row("Hình ảnh ra đòn", picker(skillLookOptions, effects[skillId] ?? "", `(theo game${code ? `: ${code}` : ""})`, (v) => (v ? (effects[skillId] = v) : delete effects[skillId])));
+  const effect = row("Hình ảnh ra đòn", picker(skillLookOptions, effects[skillId] ?? "", `(theo game${code ? `: ${code}` : ""})`, (v) => {
+    if (v) effects[skillId] = v;
+    else delete effects[skillId];
+    onLook?.(v);
+  }));
+  onLook?.(effects[skillId] ?? "");
   return section(
     "Hình ảnh",
     template ? "Mẫu kỹ năng: hình ra đòn áp cho mọi kỹ năng của mẫu (kỹ năng có dòng riêng thì thắng). Biểu tượng chọn ở từng kỹ năng." : null,
@@ -237,6 +247,7 @@ export async function npcLookSection(npcId: string, kind: string): Promise<HTMLE
   const body = row("Thân", picker([{ value: "male", label: "Nam", preview: () => spritePreview("player.male", 56) }, { value: "female", label: "Nữ", preview: () => spritePreview("player.female", 56) }], look.body, null, (v) => (look.body = v === "female" ? "female" : "male")));
   const outfit = row("Trang phục", picker(outfitOptions(choices.outfits), look.outfit ?? "", "(đồ nông dân)", (v) => (v ? (look.outfit = v) : delete look.outfit)));
   const weapon = row("Vũ khí", picker(options(WEAPON_TYPES.filter((w) => w !== "quyen"), WEAPON_VI), look.weapon ?? "", "(tay không)", (v) => (v ? (look.weapon = v) : delete look.weapon)));
+  const hat = npcHatRow(look);
   const reset = h("button", { type: "button" }, "Bỏ lựa chọn riêng (theo loại NPC)");
   reset.disabled = own === undefined;
   reset.addEventListener("click", async () => {
@@ -251,6 +262,7 @@ export async function npcLookSection(npcId: string, kind: string): Promise<HTMLE
     body,
     outfit,
     weapon,
+    hat,
     saveBar(() => looks.save("npcLooks", { ...value, byId: { ...value.byId, [baseId]: look } })),
     h("div", { class: "toolbar" }, reset),
   );

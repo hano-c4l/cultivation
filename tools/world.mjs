@@ -1,5 +1,5 @@
 // Positions of the maps for the smoke scripts, taken from the shared map data (so they follow the layout). Tile centres unless noted.
-import { CAVE_CHAMBERS, FOREST_GLADES, getMap, mapPoint } from "../shared/src/map.ts";
+import { CAVE_CHAMBERS, FOREST_GLADES, NPC_INTERACT_RADIUS, getMap, mapPoint, nearestStandablePoint } from "../shared/src/map.ts";
 
 const c = ([x, y]) => [x + 0.5, y + 0.5];
 export const town = getMap("town");
@@ -31,3 +31,31 @@ export const TOWN_WAYGATE = (() => {
   const n = town.npcs.find((x) => x.kind === "waygate");
   return [n.x, n.y];
 })();
+/** A spot a player can stand on within reach of the town NPC `id` (the houses around the NPCs block the ground, so "two tiles below" is often a wall). Throws when there is none. */
+export function townNear(id, npcs = town.npcs) {
+  // Pass the `npcs` of the welcome message: a local database can hold NPC positions that differ from the code's defaults (the admin moves NPCs).
+  const n = npcs.find((x) => x.id === id);
+  if (!n) throw new Error(`no NPC ${id} in the town`);
+  for (const [dx, dy] of [[0, 2], [2, 0], [0, -2], [-2, 0], [2, 2], [-2, 2], [2, -2], [-2, -2]]) {
+    const p = nearestStandablePoint(town, n.x + dx, n.y + dy, 1.2);
+    if (p && Math.hypot(p[0] - n.x, p[1] - n.y) <= NPC_INTERACT_RADIUS - 0.5) return p;
+  }
+  throw new Error(`nowhere to stand beside ${id}`);
+}
+
+/**
+ * Sends `msg` (an `npc_open`) again until the NPC answers with a message of type `type`: a walk through the town takes as long as the route around the houses does, and until the
+ * character is within reach the answer is an `inv_error far`. `c` is a client of a smoke script ({ log, send, wait }). Gives up after `ms`.
+ */
+export async function openWhenThere(c, msg, type, ms = 30_000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const from = c.log.length;
+    c.send(msg);
+    try {
+      return await c.wait((m) => m.t === type, 1500, type, from);
+    } catch (err) {
+      if (Date.now() > end) throw err;
+    }
+  }
+}
