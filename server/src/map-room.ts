@@ -155,7 +155,7 @@ import { getNpcs } from "./npcs";
 import { grantExp, saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import type { SpiritualRoot } from "@game/shared";
-import { DEFAULT_MAX_BATCH, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
+import { DEFAULT_MAX_BATCH, type Craft, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -2647,9 +2647,9 @@ export class MapRoom extends DurableObject<Env> {
         // Opening any NPC counts as talking to it (a talk quest may be waiting for that).
         await this.noteTalk(id, npcId).catch((err) => console.error("quest talk failed", id, err));
         if (spot.kind === "quest") return this.sendQuests(ws, id, npcId);
-        if (spot.kind === "smith" && msg.view !== "shop") return this.sendSmith(ws, id, npcId);
+        if (spot.kind === "smith" && msg.view !== "shop" && msg.view !== "brew") return this.sendSmith(ws, id, npcId);
         if (spot.kind === "waygate") return this.sendWaygate(ws, state.mapId, npcId);
-        if (spot.kind === "alchemist" && msg.view === "brew") return this.sendBrew(ws, id, npcId);
+        if ((spot.kind === "alchemist" || spot.kind === "smith") && msg.view === "brew") return this.sendBrew(ws, id, npcId, spot.kind === "smith" ? "forge" : "alchemy");
         if (spot.kind === "master") return this.sendDojo(ws, id, npcId);
         if (spot.kind === "market") return this.sendMarket(ws, id, npcId, state.mapId);
       }
@@ -2816,9 +2816,9 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** The alchemist's brewing tab: the brewings this character has going (waiting or ready) and, in the tuning, the recipes. */
-  private async sendBrew(ws: WebSocket, id: string, npcId: string): Promise<void> {
-    const [jobs, tune] = await Promise.all([listBrewJobs(this.env.DB, id), getTuning(this.env.DB)]);
-    this.send(ws, { t: "brew", npc: npcId, jobs, tuning: tune, tabs: npcTabs("alchemist", true), now: Date.now() });
+  private async sendBrew(ws: WebSocket, id: string, npcId: string, craft: Craft = "alchemy"): Promise<void> {
+    const [jobs, tune] = await Promise.all([listBrewJobs(this.env.DB, id, craft), getTuning(this.env.DB)]);
+    this.send(ws, { t: "brew", npc: npcId, craft, jobs, tuning: tune, tabs: npcTabs(craft === "forge" ? "smith" : "alchemist", true), now: Date.now() });
   }
 
   /** The martial master's window: the courses of this master the character does not have yet, and whether the realm allows each now. */
@@ -3587,20 +3587,21 @@ export class MapRoom extends DurableObject<Env> {
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
-    if (!spot || spot.kind !== "alchemist") return this.send(ws, { t: "inv_error", reason: "far" });
+    if (!spot || (spot.kind !== "alchemist" && spot.kind !== "smith")) return this.send(ws, { t: "inv_error", reason: "far" });
+    const craft: Craft = spot.kind === "smith" ? "forge" : "alchemy"; // the alchemist brews, the blacksmith forges
     if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "inv_error", reason: "murderer" });
     if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
     void this.bagTask(id, async () => {
-      if (msg.t === "brew_collect") return this.brewCollect(ws, id, msg.npc, msg.job);
-      return this.brewStart(ws, id, msg.npc, msg.recipe, msg.count ?? 1);
+      if (msg.t === "brew_collect") return this.brewCollect(ws, id, msg.npc, msg.job, craft);
+      return this.brewStart(ws, id, msg.npc, msg.recipe, msg.count ?? 1, craft);
     });
   }
 
-  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string, count: number): Promise<void> {
-    const cfg = (await getTuning(this.env.DB)).alchemy;
+  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string, count: number, craft: Craft): Promise<void> {
+    const cfg = (await getTuning(this.env.DB))[craft];
     const base = cfg.recipes.find((r) => r.id === recipeId && r.enabled);
     if (base && count > (cfg.maxBatch ?? DEFAULT_MAX_BATCH)) return this.send(ws, { t: "inv_error", reason: "invalid" });
     const recipe = base ? scaleBrew(base, count, cfg) : undefined; // a run of several batches: more of everything, and the time grows less
@@ -3609,7 +3610,13 @@ export class MapRoom extends DurableObject<Env> {
       return def !== undefined && def.disabled !== true;
     };
     if (!recipe || !usable(recipe.output) || !recipe.inputs.every((i) => usable(i.item))) return this.send(ws, { t: "inv_error", reason: "invalid" });
-    if ((await listBrewJobs(this.env.DB, id)).length >= cfg.maxJobs) return this.send(ws, { t: "inv_error", reason: "brew_limit" });
+    // A piece of gear does not stack: one a run, of a kind this character can wear (the id of a gendered kind carries its style).
+    const gear = equipmentInfo(recipe.output);
+    if (gear) {
+      const wearer = await this.wearerOf(id);
+      if (recipe.qty !== 1 || (gear.style === "m" && wearer?.gender !== "male") || (gear.style === "f" && wearer?.gender !== "female")) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    }
+    if ((await listBrewJobs(this.env.DB, id, craft)).length >= cfg.maxJobs) return this.send(ws, { t: "inv_error", reason: "brew_limit" });
     const bag = await this.getBag(id);
     const ops: BagOp[] = [];
     for (const input of recipe.inputs) {
@@ -3618,11 +3625,11 @@ export class MapRoom extends DurableObject<Env> {
       ops.push(...taken);
     }
     const now = Date.now();
-    const extra = [...startBrewStatements(this.env.DB, id, npcId, recipe, crypto.randomUUID(), cfg.maxJobs, now), ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now))];
+    const extra = [...startBrewStatements(this.env.DB, id, npcId, recipe, crypto.randomUUID(), cfg.maxJobs, now, craft), ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now))];
     try {
       let balance: number | undefined;
       if (recipe.linhThach > 0) {
-        const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -recipe.linhThach, reason: `brew:${recipe.id}`, actor: "system" }, extra);
+        const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -recipe.linhThach, reason: `${craft === "forge" ? "forge" : "brew"}:${recipe.id}`, actor: "system" }, extra);
         if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
         if (r.status !== "applied") return this.resync(ws, id, "busy");
         balance = r.balance;
@@ -3632,7 +3639,7 @@ export class MapRoom extends DurableObject<Env> {
       this.bags.set(id, after);
       this.sendBagDelta(id, bag, after);
       if (balance !== undefined) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance });
-      await this.sendBrew(ws, id, npcId);
+      await this.sendBrew(ws, id, npcId, craft);
     } catch (err) {
       if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("brew start failed", id, err);
       this.bags.delete(id);
@@ -3640,14 +3647,17 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
-  private async brewCollect(ws: WebSocket, id: string, npcId: string, jobId: string): Promise<void> {
-    const job = await getBrewJob(this.env.DB, id, jobId);
+  private async brewCollect(ws: WebSocket, id: string, npcId: string, jobId: string, craft: Craft): Promise<void> {
+    const job = await getBrewJob(this.env.DB, id, jobId, craft);
     if (!job) return this.send(ws, { t: "inv_error", reason: "invalid" });
     const now = Date.now();
     if (job.readyAt > now) return this.send(ws, { t: "inv_error", reason: "brew_wait", retryMs: job.readyAt - now });
     let full = false;
+    // A piece of gear comes out with full durability and the stats rolled from the master table, as the merchants and the blacksmith give it.
+    const max = equipmentInfo(job.output)?.maxDurability;
+    const rs = max != null ? await rollGear(this.env.DB, job.output) : undefined;
     const res = await this.mutateBag(id, (bag) => {
-      const ops = planAdd(bag.items, bag.tabs, job.output, job.qty, () => crypto.randomUUID());
+      const ops = planAdd(bag.items, bag.tabs, job.output, job.qty, () => crypto.randomUUID(), max != null ? { dur: max, max, ...(rs ? { rs } : {}) } : undefined);
       if (!ops) {
         full = true;
         return null;
@@ -3657,7 +3667,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!res.ok) return full ? this.send(ws, { t: "inv_error", reason: "full" }) : this.resync(ws, id, "busy");
     this.sendBagDelta(id, res.before, res.after);
     this.sendToCharacter(id, { t: "shop_ok", op: "buy", item: job.output, qty: job.qty, total: 0 });
-    await this.sendBrew(ws, id, npcId);
+    await this.sendBrew(ws, id, npcId, craft);
   }
 
   /** Blacksmith commands: upgrading a piece and repairing. Same checks as the merchant (close enough, no murderers, rate limit). */

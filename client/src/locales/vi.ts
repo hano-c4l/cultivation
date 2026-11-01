@@ -725,7 +725,7 @@ export const vi = {
     learned: (name: string, cost: string) => `Đã học ${name} (${cost} Linh Thạch).`,
   },
   /** The tabs of an NPC that does more than one thing (the blacksmith: upgrading and trading; the alchemist: trading and brewing). */
-  npcTabs: { shop: "Mua/bán", smith: "Cường hóa", brew: "Luyện đan" } as Record<string, string>,
+  npcTabs: { shop: "Mua/bán", smith: "Cường hóa", brew: "Luyện đan", forge: "Luyện khí" } as Record<string, string>,
   brew: {
     jobs: (n: number, max: number) => `Mẻ đang luyện: ${n}/${max}`,
     none: "Chưa có mẻ nào.",
@@ -742,6 +742,11 @@ export const vi = {
     have: (n: number) => `có ${n}`,
     note: "Nguyên liệu và Linh Thạch bị lấy ngay khi bắt đầu luyện; quay lại nhận đan sau khi mẻ xong (có thể thoát game).",
     collected: (name: string, qty: number) => `Đã nhận ${qty} ${name}.`,
+    /** The words that differ at the blacksmith's forge (Luyện khí). */
+    forge: {
+      noRecipes: "Thợ Rèn chưa có công thức nào.",
+      note: "Nguyên liệu và Linh Thạch bị lấy ngay khi bắt đầu luyện; quay lại nhận trang bị sau khi xong (có thể thoát game). Mỗi lần luyện ra một món, chỉ số được tung khi nhận.",
+    },
   },
   shop: {
     title: "Thương nhân",

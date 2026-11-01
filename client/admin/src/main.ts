@@ -125,6 +125,9 @@ async function render(): Promise<void> {
   } else if (path === "/admin/npcs/alchemy") {
     title = "NPC · Công thức luyện đan";
     content = alchemyPage();
+  } else if (path === "/admin/npcs/forge") {
+    title = "NPC · Công thức luyện khí";
+    content = alchemyPage("forge");
   } else if (path === "/admin/monsters") {
     title = "Quái / BOSS · Loài quái";
     content = speciesListPage();

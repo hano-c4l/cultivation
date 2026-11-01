@@ -85,9 +85,9 @@ function field(label: string, ...children: Array<Node | null>): HTMLElement {
   return h("label", { class: "filter wide-field" }, label, ...children);
 }
 
-function tabs(active: "npcs" | "alchemy" | "numbers"): HTMLElement {
+function tabs(active: "npcs" | "alchemy" | "forge" | "numbers"): HTMLElement {
   const link = (href: string, label: string, on: boolean) => h("a", { href, class: on ? "active" : "" }, label);
-  return h("div", { class: "toolbar" }, link("/admin/npcs", "NPC", active === "npcs"), link("/admin/npcs/alchemy", "Công thức luyện đan", active === "alchemy"), link("/admin/npcs/numbers", "Con số (Thợ Rèn, Đạo Sư, Vạn Bảo Lâu)", active === "numbers"));
+  return h("div", { class: "toolbar" }, link("/admin/npcs", "NPC", active === "npcs"), link("/admin/npcs/alchemy", "Công thức luyện đan", active === "alchemy"), link("/admin/npcs/forge", "Công thức luyện khí", active === "forge"), link("/admin/npcs/numbers", "Con số (Thợ Rèn, Đạo Sư, Vạn Bảo Lâu)", active === "numbers"));
 }
 
 function messageBox(): { msg: HTMLElement; problems: HTMLElement; show: (text: string, cls: string, list?: string[]) => void } {
@@ -352,9 +352,11 @@ interface AlchemyView {
   items: Array<{ id: string; nameVi: string }>;
 }
 
-export function alchemyPage(): HTMLElement {
+export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement {
+  const forge = craft === "forge";
+  const path = forge ? "/admin/npcs/forge" : "/admin/npcs/alchemy";
   const root = h("div", { class: "detail wide" });
-  void api<AlchemyView>("/api/admin/alchemy").then((res) => {
+  void api<AlchemyView>(`/api/admin/alchemy?craft=${craft}`).then((res) => {
     if (res.status !== 200) return void root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
     const view = res.data;
     const { msg, problems, show } = messageBox();
@@ -366,7 +368,7 @@ export function alchemyPage(): HTMLElement {
     const addRecipe = (r: Recipe) => {
       const id = text(r.id, { maxlength: "40", size: "16", placeholder: "mã công thức" });
       const name = text(r.nameVi, { maxlength: "60", size: "22", placeholder: "tên" });
-      const output = text(r.output, { list: dlId, size: "16", placeholder: "đan làm ra" });
+      const output = text(r.output, { list: dlId, size: "16", placeholder: forge ? "trang bị làm ra (mã eq.…)" : "đan làm ra" });
       const qty = num(r.qty, { min: "1", step: "1", title: "Số lượng làm ra" });
       const linh = num(r.linhThach, { min: "0", step: "1", title: "Linh Thạch" });
       const secs = num(r.seconds, { min: "1", step: "1", title: "Thời gian (giây)" });
@@ -409,16 +411,16 @@ export function alchemyPage(): HTMLElement {
     save.addEventListener("click", async () => {
       save.disabled = true;
       show("Đang lưu...", "muted");
-      const r = await api<{ error?: string; problems?: string[] }>("/api/admin/alchemy/save", { method: "POST", body: { alchemy: { maxJobs: Number(maxJobs.value), recipes: readers.map((f) => f()) }, updatedAt: view.updatedAt } });
+      const r = await api<{ error?: string; problems?: string[] }>("/api/admin/alchemy/save", { method: "POST", body: { craft, alchemy: { maxJobs: Number(maxJobs.value), recipes: readers.map((f) => f()) }, updatedAt: view.updatedAt } });
       save.disabled = false;
-      if (r.status === 200) return navigate("/admin/npcs/alchemy");
+      if (r.status === 200) return navigate(path);
       const e = r.data.error ?? "";
       show(ERRORS[e] ?? (e === "invalid" ? "Công thức không hợp lệ (mã công thức a-z 0-9 _ không trùng, mã vật phẩm phải có thật, 1-6 nguyên liệu khác nhau):" : `Lỗi ${r.status}.`), "err", e === "invalid" ? r.data.problems ?? [] : []);
     });
     root.replaceChildren(
-      tabs("alchemy"),
+      tabs(forge ? "forge" : "alchemy"),
       list,
-      h("p", { class: "muted" }, "Mẻ đang luyện giữ kết quả đã định lúc bắt đầu; đổi hay xóa công thức không ảnh hưởng chúng. Máy chủ nhận công thức mới sau tối đa 30 giây; người chơi thấy khi mở lại Đan Sư."),
+      h("p", { class: "muted" }, forge ? "Luyện khí ở Thợ Rèn (tab Luyện khí): làm ra MỘT món trang bị cho mỗi lần luyện (số lượng 1, mã dạng eq.loại.u.cảnh giới.bậc.phẩm; chỉ loại không phân giới tính, người chơi nhận thì chỉ số được tung). Mẻ đang luyện giữ kết quả đã định lúc bắt đầu. Máy chủ nhận công thức mới sau tối đa 30 giây." : "Mẻ đang luyện giữ kết quả đã định lúc bắt đầu; đổi hay xóa công thức không ảnh hưởng chúng. Máy chủ nhận công thức mới sau tối đa 30 giây; người chơi thấy khi mở lại Đan Sư."),
       field("Số mẻ một nhân vật được luyện cùng lúc (kể cả mẻ xong chưa nhận)", maxJobs),
       rows,
       add,

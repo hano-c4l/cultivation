@@ -459,7 +459,7 @@ export type ServerMessage =
   /** A repair was paid for. */
   | { t: "repaired"; cost: number }
   /** The blacksmith's window: the upgrade rules and the extra success chance (percent) each of your pieces has built up from failures. */
-  | { t: "brew"; npc: string; jobs: BrewJobView[]; tuning: Tuning; tabs: NpcView[]; now: number }
+  | { t: "brew"; npc: string; craft: "alchemy" | "forge"; jobs: BrewJobView[]; tuning: Tuning; tabs: NpcView[]; now: number }
   /** The martial master's courses this character can still take (what is already known is left out), each with its cost in Linh Thạch. */
   | { t: "dojo"; npc: string; courses: Array<{ skill: string; cost: number; ok: boolean }> }
   | { t: "dojo_ok"; skill: string; cost: number }

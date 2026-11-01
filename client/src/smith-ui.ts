@@ -170,12 +170,19 @@ export function initSmith(send: (msg: ClientMessage) => void, getBag: () => BagI
       return;
     }
     // A blacksmith that also trades has a second tab: its goods (another window).
-    if (npcTabs.includes("shop")) {
+    if (npcTabs.includes("shop") || npcTabs.includes("brew")) {
       const row = el("div", "eq-tabs");
       row.append(el("button", "active", vi.npcTabs.smith));
-      const trade = el("button", undefined, vi.npcTabs.shop);
-      trade.onclick = () => switchView(npc, "shop");
-      row.append(trade);
+      if (npcTabs.includes("shop")) {
+        const trade = el("button", undefined, vi.npcTabs.shop);
+        trade.onclick = () => switchView(npc, "shop");
+        row.append(trade);
+      }
+      if (npcTabs.includes("brew")) {
+        const forge = el("button", undefined, vi.npcTabs.forge); // Luyện khí (5e)
+        forge.onclick = () => switchView(npc, "brew");
+        row.append(forge);
+      }
       panel.append(row);
     }
     if (flash) panel.append(el("div", flash.ok ? "shop-flash" : "shop-flash smith-bad", flash.text));
