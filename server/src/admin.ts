@@ -4,7 +4,7 @@ import { kickCharacter } from "./accounts-admin";
 import { PBKDF2_ITERATIONS, toBase64 } from "./password-hasher";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
 import { moneyOverview } from "./money-dashboard";
-import { adminListings, adminSales, adminTakedown, adminTrades } from "./market-admin";
+import { adminListings, adminSales, adminTakedown, adminTakedownItem, adminTrades } from "./market-admin";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
@@ -29,6 +29,9 @@ import { createMap, deleteMap, getMapAdmin, listMaps, resetMap, saveMap } from "
 import { countCharacters, listGiftBatches, resolveRecipients, sendGift, type GiftInput } from "./gifts";
 import { TUNING_LOG_SCREEN, listTuningGroups, saveTuningGroup } from "./tuning-admin";
 import { listLookGroups, saveLookGroup } from "./looks-admin";
+
+/** The Admin item list reuses its held-item counts this long (they cost a scan of every item row). */
+const ITEM_OWNERS_CACHE_MS = 60_000;
 
 /** Returns the admin's session, or the error response to send (401 anonymous, 403 not an admin). */
 async function requireAdminSession(request: Request, env: Env): Promise<AuthedSession | Response> {
@@ -292,6 +295,25 @@ export async function adminMarketTakedown(request: Request, env: Env): Promise<R
   return json({ ok: true });
 }
 
+/** POST `{id}`: takes down every open market listing of one item (the Admin Items screen, once the item is untradable). */
+export async function adminItemTakedown(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 4 * 1024);
+  if (!body || typeof body.id !== "string" || !/^[a-z0-9_.]{1,60}$/.test(body.id)) return errorResponse("invalid_body", 400);
+  const result = await adminTakedownItem(env.DB, session.email, body.id);
+  if (result.closed > 0) {
+    try {
+      const hub = env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" });
+      await hub.notifyMail(result.notify);
+      await hub.marketChanged(null);
+    } catch (err) {
+      console.error("item takedown notify failed", err);
+    }
+  }
+  return json({ ok: true, closed: result.closed });
+}
+
 /** The adjustable game settings with their effective values (GET), or a change of one of them (POST {key, value}). */
 export async function adminSettings(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
@@ -454,7 +476,7 @@ export async function adminQuestDelete(request: Request, env: Env): Promise<Resp
 export async function adminItems(request: Request, env: Env): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
-  return json(await listItems(env.DB));
+  return json(await listItems(env.DB, ITEM_OWNERS_CACHE_MS));
 }
 
 const ITEM_ERROR_STATUS: Record<string, number> = { invalid: 400, unchanged: 400, bound: 400, locked_field: 409, exists: 409, has_owner: 409, version_conflict: 409, busy: 409, deleted: 409, in_use: 409, not_found: 404 };

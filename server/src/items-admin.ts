@@ -38,6 +38,8 @@ export interface ItemListEntry {
   maxQty: number;
   /** Unclaimed gift mails that hold it. */
   gifts: number;
+  /** Open Vạn Bảo Lâu listings of this item (for the button that takes them down once the item cannot be traded). */
+  listed: number;
 }
 
 export interface ItemListResult {
@@ -65,18 +67,34 @@ async function overlayRows(db: D1Database): Promise<Row[]> {
   return (await db.prepare("SELECT id, custom, disabled, def, updated_at FROM items").all<Row>()).results;
 }
 
-export async function listItems(db: D1Database): Promise<ItemListResult> {
-  const [rows, value, owners, gifts] = await Promise.all([
-    overlayRows(db),
-    itemValueRow(db),
+type OwnerRows = { owners: Array<{ item_type: string; total: number; biggest: number }>; gifts: Array<{ item: string; n: number }> };
+let ownerCache: { at: number; rows: OwnerRows } | null = null;
+
+/** How many of each item are held and waiting in mail: two scans over every item row and every mail, so the Admin list may reuse them for `maxAgeMs`. */
+async function ownerRows(db: D1Database, maxAgeMs: number): Promise<OwnerRows> {
+  const now = Date.now();
+  if (ownerCache && now - ownerCache.at < maxAgeMs) return ownerCache.rows;
+  const [owners, gifts] = await Promise.all([
     db.prepare("SELECT item_type, SUM(qty) AS total, MAX(qty) AS biggest FROM item_instances GROUP BY item_type").all<{ item_type: string; total: number; biggest: number }>(),
     db
       .prepare("SELECT json_extract(j.value, '$.type') AS item, COUNT(*) AS n FROM mailbox m, json_each(m.gift, '$.items') j WHERE m.claimed_at IS NULL AND m.gift IS NOT NULL GROUP BY item")
       .all<{ item: string; n: number }>(),
   ]);
+  ownerCache = { at: now, rows: { owners: owners.results, gifts: gifts.results } };
+  return ownerCache.rows;
+}
+
+export async function listItems(db: D1Database, ownersMaxAgeMs = 0): Promise<ItemListResult> {
+  const [rows, value, held, listed] = await Promise.all([
+    overlayRows(db),
+    itemValueRow(db),
+    ownerRows(db, ownersMaxAgeMs),
+    db.prepare("SELECT item_type, COUNT(*) AS n FROM market_listings WHERE status = 'active' GROUP BY item_type").all<{ item_type: string; n: number }>(),
+  ]);
+  const listedCount = new Map(listed.results.map((l) => [l.item_type, l.n]));
   const token = new Map(rows.map((r) => [r.id, r]));
-  const own = new Map(owners.results.map((o) => [o.item_type, o]));
-  const giftCount = new Map(gifts.results.map((g) => [g.item, g.n]));
+  const own = new Map(held.owners.map((o) => [o.item_type, o]));
+  const giftCount = new Map(held.gifts.map((g) => [g.item, g.n]));
   return {
     valueToken: value.updatedAt,
     meta: { categories: CUSTOM_ITEM_CATEGORIES, rarities: ITEM_RARITIES, maxGrade: MAX_ITEM_GRADE, limits: { name: ITEM_NAME_MAX, description: ITEM_DESC_MAX } },
@@ -91,6 +109,7 @@ export async function listItems(db: D1Database): Promise<ItemListResult> {
         owned: own.get(def.id)?.total ?? 0,
         maxQty: own.get(def.id)?.biggest ?? 0,
         gifts: giftCount.get(def.id) ?? 0,
+        listed: listedCount.get(def.id) ?? 0,
       };
     }),
   };
@@ -138,6 +157,7 @@ const FIELD_LABELS: Array<[keyof ItemDef, string]> = [
   ["healFraction", "hồi máu"],
   ["healOverMs", "thời gian hồi"],
   ["masteryPills", "điểm thuần thục"],
+  ["untradable", "không giao dịch"],
 ];
 
 /**
@@ -170,7 +190,10 @@ export async function saveItem(
     const base = ITEMS[id]!;
     const edited: Partial<ItemDef> = {};
     const next: Record<string, unknown> = { nameVi: text.nameVi, descVi: text.descVi, rarity: posted.rarity, grade: posted.grade };
-    for (const k of EDITABLE_ITEM_FIELDS) if (next[k] !== base[k]) (edited as Record<string, unknown>)[k] = next[k];
+    for (const k of EDITABLE_ITEM_FIELDS) if (k !== "untradable" && next[k] !== base[k]) (edited as Record<string, unknown>)[k] = next[k];
+    // The flag is stored only when it differs from the code's (a path item starts on the list, so taking it off is stored as false).
+    const flag = typeof posted.untradable === "boolean" ? posted.untradable : before?.untradable === true;
+    if (flag !== (base.untradable === true)) edited.untradable = flag;
     overlay = { id, custom: false, disabled: false, def: edited };
   } else {
     if (isNew) {
@@ -194,6 +217,7 @@ export async function saveItem(
       ...(posted.healFraction !== undefined && posted.healFraction !== null ? { healFraction: posted.healFraction as number } : {}),
       ...(posted.healOverMs !== undefined && posted.healOverMs !== null ? { healOverMs: posted.healOverMs as number } : {}),
       ...(posted.masteryPills !== undefined && posted.masteryPills !== null ? { masteryPills: posted.masteryPills as number } : {}),
+      ...((typeof posted.untradable === "boolean" ? posted.untradable : before?.untradable === true) ? { untradable: true } : {}),
     };
     overlay = { id, custom: true, disabled: false, def };
     if (before) {
@@ -209,7 +233,7 @@ export async function saveItem(
 
   // The change, for the log and for "nothing changed".
   const after: ItemDef | undefined = inCode ? { ...ITEMS[id]!, ...overlay.def } : (overlay.def as ItemDef);
-  const changed = before && after ? FIELD_LABELS.filter(([k]) => JSON.stringify(before![k] ?? null) !== JSON.stringify(after[k] ?? null)).map(([, label]) => label) : [];
+  const changed = before && after ? FIELD_LABELS.filter(([k]) => (k === "untradable" ? !!before!.untradable !== !!after.untradable : JSON.stringify(before![k] ?? null) !== JSON.stringify(after[k] ?? null))).map(([, label]) => label) : [];
   const valueRow = value !== undefined ? await itemValueRow(db) : null;
   let newValues: Tuning["itemValue"] | null = null;
   if (valueRow && value !== undefined) {

@@ -19,6 +19,7 @@ interface ItemDef {
   teleportTo?: string;
   pathItem?: string;
   disabled?: boolean;
+  untradable?: boolean;
 }
 
 interface Entry {
@@ -30,6 +31,7 @@ interface Entry {
   owned: number;
   maxQty: number;
   gifts: number;
+  listed: number;
 }
 
 interface Listing {
@@ -85,9 +87,9 @@ export function itemListPage(): HTMLElement {
     if (!data) return void root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
     const add = h("button", { type: "button", class: "primary" }, "+ Thêm vật phẩm");
     add.addEventListener("click", () => navigate("/admin/items/edit"));
-    const key = (e: Entry, k: string): string | number => (k === "name" ? e.def.nameVi : k === "category" ? e.def.category : k === "rarity" ? e.def.rarity : k === "grade" ? e.def.grade : k === "value" ? e.value : k === "owned" ? e.owned : e.def.id);
+    const key = (e: Entry, k: string): string | number => (k === "name" ? e.def.nameVi : k === "category" ? e.def.category : k === "rarity" ? e.def.rarity : k === "grade" ? e.def.grade : k === "value" ? e.value : k === "owned" ? e.owned : k === "trade" ? (e.def.untradable ? 1 : 0) : e.def.id);
     root.replaceChildren(
-      h("p", { class: "muted" }, "Vật phẩm của hệ thống (nền xám) chỉ sửa được tên, mô tả, độ hiếm, phẩm cấp và giá trị. Trang bị sinh từ mẫu nên chưa có ở đây. Người đang online thấy tên mới khi vào lại game; số mới có hiệu lực với máy chủ sau tối đa 30 giây."),
+      h("p", { class: "muted" }, "Vật phẩm của hệ thống (nền xám) chỉ sửa được tên, mô tả, độ hiếm, phẩm cấp, giá trị và cờ «không giao dịch được». Trang bị sinh từ mẫu nên chưa có ở đây. Người đang online thấy tên mới khi vào lại game; số mới có hiệu lực với máy chủ sau tối đa 30 giây."),
       listView<Entry>({
         columns: [
           { key: "id", label: "Mã", sortable: true, render: (e) => e.def.id },
@@ -97,16 +99,20 @@ export function itemListPage(): HTMLElement {
           { key: "grade", label: "Phẩm", sortable: true, render: (e) => String(e.def.grade) },
           { key: "value", label: "Giá trị", sortable: true, render: (e) => (e.value ? String(e.value) : "—") },
           { key: "owned", label: "Đang sở hữu", sortable: true, render: (e) => `${e.owned}${e.gifts ? ` (+${e.gifts} thư quà)` : ""}` },
+          { key: "trade", label: "Giao dịch", sortable: true, render: (e) => (e.def.untradable ? (e.listed > 0 ? `Không · ${e.listed} tin đang bán` : "Không") : "Được") },
           { key: "source", label: "Nguồn", render: (e) => (e.disabled ? "Đã xóa (mềm)" : e.custom ? "Do admin tạo" : "Hệ thống") },
         ],
         defaultSort: { key: "id", dir: "asc" },
         searchPlaceholder: "Tìm theo mã hoặc tên...",
-        filters: [{ key: "category", label: "Loại", kind: "select", options: [["", "Tất cả"], ...Object.entries(CATEGORY_VI).filter(([k]) => k !== "equipment")] }],
+        filters: [
+          { key: "category", label: "Loại", kind: "select", options: [["", "Tất cả"], ...Object.entries(CATEGORY_VI).filter(([k]) => k !== "equipment")] },
+          { key: "trade", label: "Giao dịch", kind: "select", options: [["", "Tất cả"], ["no", "Không giao dịch được"]] },
+        ],
         toolbar: [add],
         rowHref: (e) => `/admin/items/edit?id=${encodeURIComponent(e.def.id)}`,
         fetchPage: async (q) => {
           const needle = q.q.toLowerCase();
-          let rows = data.items.filter((e) => (!needle || e.def.id.toLowerCase().includes(needle) || e.def.nameVi.toLowerCase().includes(needle)) && (!q.extra.category || e.def.category === q.extra.category));
+          let rows = data.items.filter((e) => (!needle || e.def.id.toLowerCase().includes(needle) || e.def.nameVi.toLowerCase().includes(needle)) && (!q.extra.category || e.def.category === q.extra.category) && (q.extra.trade !== "no" || e.def.untradable === true));
           rows = [...rows].sort((a, b) => {
             const av = key(a, q.sort);
             const bv = key(b, q.sort);
@@ -158,9 +164,11 @@ function form(data: Listing, current: Entry | undefined): HTMLElement {
   const heal = num(d.healFraction !== undefined ? Math.round(d.healFraction * 100) : undefined, { min: "1", max: "100", placeholder: "% sinh lực" });
   const healSecs = num(d.healOverMs !== undefined ? d.healOverMs / 1000 : undefined, { min: "0", placeholder: "giây (trống = hồi ngay)" });
   const mastery = num(d.masteryPills, { min: "1", step: "1", placeholder: "điểm thuần thục" });
+  const untradable = h("input", { type: "checkbox" });
+  untradable.checked = d.untradable === true;
   const value = num(current?.value || undefined, { min: "0", step: "1", placeholder: "Linh Thạch (trống = không bán được)" });
   if (system || locked) for (const el of [category, stack, heal, healSecs, mastery]) el.disabled = true;
-  if (locked) for (const el of [name, desc, rarity, grade, value]) el.disabled = true;
+  if (locked) for (const el of [name, desc, rarity, grade, value, untradable]) el.disabled = true;
   if (!isNew && owned && !system) category.disabled = true;
 
   const mechanics = h(
@@ -183,6 +191,23 @@ function form(data: Listing, current: Entry | undefined): HTMLElement {
   category.addEventListener("change", syncMech);
   syncMech();
 
+  const takedown = h("button", { type: "button" }, `Gỡ ${current?.listed ?? 0} tin đang bán ở Vạn Bảo Lâu`);
+  takedown.hidden = !(current && current.listed > 0 && current.def.untradable === true);
+  takedown.addEventListener("click", async () => {
+    if (!current || !window.confirm(`Gỡ mọi tin đang bán «${current.def.nameVi}» ở Vạn Bảo Lâu? Đồ về thư người bán, tiền đặt giá được hoàn.`)) return;
+    const res = await api<{ closed?: number }>("/api/admin/items/takedown", { method: "POST", body: { id: current.def.id } });
+    if (res.status !== 200) return void show(`Lỗi ${res.status}.`, "err");
+    takedown.hidden = true;
+    show(`Đã gỡ ${res.data.closed ?? 0} tin.`, "muted");
+  });
+  const trade = h(
+    "section",
+    { class: "form" },
+    h("h3", null, "Giao dịch"),
+    h("p", { class: "muted" }, "Vật phẩm không giao dịch được thì không bán ở Vạn Bảo Lâu, không đưa vào giao dịch trực tiếp và không cất vào kho tông môn. Người chơi vẫn dùng, tặng bằng quà admin và nhận từ nhiệm vụ như thường. Vật phẩm hướng tu mặc định không giao dịch được. Tin đang bán trong chợ không tự gỡ (không ai mua hay đặt giá được nữa, hết hạn thì đồ về thư người bán): gỡ ngay bằng nút dưới đây khi mở lại vật phẩm; danh sách cho biết món nào còn tin. Món đã nằm trong kho tông môn không bị đụng tới."),
+    field("Không giao dịch được", untradable),
+    takedown,
+  );
   const save = h("button", { type: "button", class: "primary" }, isNew ? "Tạo vật phẩm" : "Lưu");
   save.disabled = locked;
   const show = (text: string, cls: string, list: string[] = []) => {
@@ -191,7 +216,7 @@ function form(data: Listing, current: Entry | undefined): HTMLElement {
     problems.replaceChildren(...list.map((p) => h("li", null, p)));
   };
   save.addEventListener("click", async () => {
-    const item: Record<string, unknown> = { id: idInput.value.trim(), nameVi: name.value, descVi: desc.value, rarity: rarity.value, grade: Number(grade.value) };
+    const item: Record<string, unknown> = { id: idInput.value.trim(), nameVi: name.value, descVi: desc.value, rarity: rarity.value, grade: Number(grade.value), untradable: untradable.checked };
     if (!system) {
       item.category = category.value;
       item.maxStack = Number(stack.value);
@@ -231,6 +256,7 @@ function form(data: Listing, current: Entry | undefined): HTMLElement {
     current ? h("p", { class: "muted" }, `${current.owned} đang trong túi và hòm thư của nhân vật${current.gifts ? `, ${current.gifts} thư quà chưa nhận` : ""}.${system ? " Vật phẩm của hệ thống." : ""}`) : null,
     h("section", { class: "form" }, field("Mã (không đổi được sau khi tạo)", idInput), field("Tên", name), field("Mô tả", desc), field("Độ hiếm", rarity), field(`Phẩm cấp (1-${data.meta.maxGrade})`, grade), field("Giá trị bán cho thương nhân (Linh Thạch)", value)),
     mechanics,
+    trade,
     h("div", { class: "toolbar" }, save, del),
     msg,
     problems,

@@ -104,10 +104,10 @@ function entryOf(def: SkillDef, overrides: Overrides, template: boolean): SkillL
   };
 }
 
-export async function listSkills(db: D1Database): Promise<{ skills: SkillListEntry[]; token: number; limits: { name: number; description: number }; fx: readonly string[] }> {
+export async function listSkills(db: D1Database): Promise<{ skills: SkillListEntry[]; token: number; limits: { name: number; description: number }; fx: readonly string[]; areas: Tuning["skillAreas"] }> {
   const { overrides, token } = await readOverrides(db);
   const templates: SkillListEntry[] = SKILL_TEMPLATES.map((t) => entryOf(templateAsSkill(t), overrides, true));
-  return { skills: [...templates, ...SKILLS.map((s) => entryOf(s, overrides, false))], token, limits: { name: SKILL_NAME_MAX, description: SKILL_DESC_MAX }, fx: SKILL_FX_KINDS };
+  return { skills: [...templates, ...SKILLS.map((s) => entryOf(s, overrides, false))], token, limits: { name: SKILL_NAME_MAX, description: SKILL_DESC_MAX }, fx: SKILL_FX_KINDS, areas: (await getTuning(db)).skillAreas };
 }
 
 export type SkillSaveResult =

@@ -37,16 +37,16 @@ describe("picture groups", () => {
 
   it("saves a hat for an NPC and takes it off again, and the game reads both back", async () => {
     const before = await get("npcLooks");
-    const value = before.value as { byKind: Record<string, { body: string; hat?: number }>; byId: Record<string, unknown> };
+    const value = before.value as { byKind: Record<string, { body: string; hat?: number; hatTint?: string }>; byId: Record<string, unknown> };
     expect(value.byKind.merchant!.hat).toBeGreaterThanOrEqual(0); // the default has one
-    const withHat = { ...value, byKind: { ...value.byKind, merchant: { ...value.byKind.merchant!, hat: 4 } } };
+    const withHat = { ...value, byKind: { ...value.byKind, merchant: { ...value.byKind.merchant!, hat: 4, hatTint: "#aa5500" } } };
     const first = await saveLookGroup(db, "npcLooks", withHat, before.token, "a@x.test", before.token + 5);
-    expect(first).toMatchObject({ ok: true, changes: 1 });
-    expect((await getTuning(db, Date.now() + 120_000)).npcLooks.byKind.merchant!.hat).toBe(4);
+    expect(first).toMatchObject({ ok: true, changes: 2 }); // the hat and its colour
+    expect((await getTuning(db, Date.now() + 120_000)).npcLooks.byKind.merchant).toMatchObject({ hat: 4, hatTint: "#aa5500" });
     const mid = await get("npcLooks");
-    const { hat: _gone, ...bare } = withHat.byKind.merchant!;
+    const { hat: _gone, hatTint: _tint, ...bare } = withHat.byKind.merchant!;
     const second = await saveLookGroup(db, "npcLooks", { ...withHat, byKind: { ...withHat.byKind, merchant: bare } }, mid.token, "a@x.test", mid.token + 5);
-    expect(second).toMatchObject({ ok: true, changes: 1 });
+    expect(second).toMatchObject({ ok: true, changes: 2 });
     resetTuningCache();
     expect((await getTuning(db, Date.now() + 240_000)).npcLooks.byKind.merchant!.hat).toBeUndefined();
   });

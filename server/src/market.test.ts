@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { DEFAULT_MARKET, auctionEndsAt, suggestedBid, type MarketCfg } from "@game/shared";
+import { DEFAULT_MARKET, auctionEndsAt, setItemOverlays, suggestedBid, type MarketCfg } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyCurrencyDelta } from "./economy";
 import { claimGiftMail } from "./gifts";
@@ -55,6 +55,38 @@ async function post(kind: "fixed" | "auction", qty: number, price: number, opts:
   if (r.status !== "ok") throw new Error(`post failed: ${r.status}`);
   return r;
 }
+
+describe("an untradable item", () => {
+  it("cannot be put up, and nothing changes", async () => {
+    const item = giveStack(S, 3, 0, "path_item_kiem");
+    await fund(S, 5000);
+    const bag = await loadBag(db, S);
+    const r = await postListing(db, cfg, { sellerId: S, town: TOWN, kind: "fixed", currency: "linh_thach", bag, tab: 0, cell: 0, qty: 3, price: 100, now: DAY });
+    expect(r.status).toBe("untradable");
+    expect(raw.prepare("SELECT cell FROM item_instances WHERE id = ?").get(item)).toEqual({ cell: 0 });
+    expect((raw.prepare("SELECT COUNT(*) AS c FROM market_listings").get() as { c: number }).c).toBe(0);
+  });
+});
+
+describe("an item put on the untradable list after it was listed", () => {
+  it("can no longer be bought or bid on, and still runs out back to the seller", async () => {
+    const fixed = giveStack(S, 1, 0);
+    const auction = giveStack(S, 1, 1);
+    await fund(S, 5000);
+    await fund(B, 50_000);
+    const f = await post("fixed", 1, 1000, { cell: 0 });
+    const a = await post("auction", 1, 1000, { cell: 1 });
+    setItemOverlays([{ id: PILL, custom: false, disabled: false, def: { untradable: true } }]);
+    expect((await buyFixed(db, cfg, { buyerId: B, town: TOWN, id: f.id, now: DAY })).status).toBe("untradable");
+    expect((await placeBid(db, cfg, { bidderId: B, town: TOWN, id: a.id, amount: 2000, now: DAY })).status).toBe("untradable");
+    expect(balance(B)).toBe(50_000);
+    await settleDue(db, cfg, DAY + 30 * 24 * HOUR);
+    expect(listing(f.id).status).toBe("expired");
+    expect(mails(S).find((m) => m.item_id === fixed)).toBeTruthy();
+    expect(mails(S).find((m) => m.item_id === auction)).toBeTruthy();
+    setItemOverlays([]);
+  });
+});
 
 describe("putting a listing up", () => {
   it("takes the whole stack out of its cell, charges the fee and lists it", async () => {
@@ -252,6 +284,25 @@ describe("auctions", () => {
     expect(mails(B).find((m) => m.item_id === item)).toBeTruthy();
     expect(await settleDue(db, cfg, DAY + 12 * HOUR)).toEqual([]);
     expect((raw.prepare("SELECT COUNT(*) AS c FROM market_sales").get() as { c: number }).c).toBe(1);
+  });
+
+  it("a listing whose escrowed item is gone is closed with the bidder refunded, and does not block the rest", async () => {
+    const lost = giveStack(S, 1, 0);
+    const fine = giveStack(S, 1, 1);
+    await fund(S, 5000);
+    await fund(B, 50_000);
+    const broken = await post("auction", 1, 1000, { cell: 0 });
+    const ok = await post("fixed", 1, 1000, { cell: 1 });
+    await placeBid(db, cfg, { bidderId: B, town: TOWN, id: broken.id, amount: 4000, now: DAY });
+    raw.exec(`DELETE FROM item_instances WHERE id = '${lost}'`);
+    const notified = await settleDue(db, cfg, DAY + 30 * 24 * HOUR, 1);
+    expect(notified.sort()).toEqual([B, S].sort());
+    expect(listing(broken.id).status).toBe("cancelled");
+    expect((raw.prepare("SELECT screen FROM admin_log").all() as Array<{ screen: string }>).map((r) => r.screen)).toEqual(["Chợ · tự đóng tin hỏng"]);
+    expect(mails(B).find((m) => m.amount === 4000)).toBeTruthy();
+    await settleDue(db, cfg, DAY + 30 * 24 * HOUR, 1);
+    expect(listing(ok.id).status).toBe("expired");
+    expect(mails(S).find((m) => m.item_id === fine)).toBeTruthy();
   });
 
   it("an auction without a bid goes back to the seller; so does an expired fixed listing", async () => {

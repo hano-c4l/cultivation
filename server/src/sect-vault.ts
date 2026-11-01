@@ -1,4 +1,4 @@
-import { SECT_RANK, assignPieces, disbandShares, getItemDef, splitLinh, stackLimit, vaultPoints, vaultSlotsOf, type BagOp, type SectCfg, type SectError, type SectVaultItemView } from "@game/shared";
+import { SECT_RANK, assignPieces, disbandShares, getItemDef, isTradable, splitLinh, stackLimit, vaultPoints, vaultSlotsOf, type BagOp, type SectCfg, type SectError, type SectVaultItemView } from "@game/shared";
 import { applyCurrencyDelta } from "./economy";
 import { guard as itemGuard, wearOf, type BagState } from "./inventory";
 import { actorGuard, mailStatement } from "./market";
@@ -76,6 +76,7 @@ export async function putItem(
   const item = p.bag.items.find((i) => i.id === p.itemId);
   const def = item ? getItemDef(item.type) : undefined;
   if (!item || !def || def.disabled || !Number.isInteger(p.qty) || p.qty < 1 || p.qty > item.qty) return { ok: false, reason: "invalid" };
+  if (def.untradable) return { ok: false, reason: "untradable" };
   if (stackLimit(item.type) === 1 && p.qty !== 1) return { ok: false, reason: "invalid" };
   const points = vaultPoints(cfg, acceptOf(cfg, sect.accept), def, p.qty);
   if (points <= 0) return { ok: false, reason: "value" };
@@ -166,6 +167,7 @@ export async function setShelf(db: D1Database, p: { actorId: string; itemId: str
   if (me.rank < SECT_RANK.leader) return { ok: false, reason: "perm" };
   const row = await rowOf(db, p.itemId);
   if (!row || row.sect_id !== me.sect_id) return { ok: false, reason: "item" };
+  if (p.currency !== null && !isTradable(row.item_type)) return { ok: false, reason: "untradable" };
   if (p.currency !== null && (!Number.isInteger(p.price) || p.price < 1 || p.price > 1_000_000_000)) return { ok: false, reason: "invalid" };
   try {
     await db.batch([

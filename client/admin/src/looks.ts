@@ -42,7 +42,20 @@ const hatPreview = (shape: number): HTMLElement => {
 };
 const hatOptions = (): Opt[] => Array.from({ length: HAT_SHAPES }, (_, i) => ({ value: String(i), label: `${i}. ${HAT_VI[i] ?? "Mũ"}`, preview: () => hatPreview(i) }));
 /** The hat of an NPC look: a shape picker, or "bareheaded". */
-const npcHatRow = (look: NpcLook): HTMLElement => row("Mũ", picker(hatOptions(), look.hat === undefined ? "" : String(look.hat), "(không đội mũ)", (v) => (v === "" ? delete look.hat : (look.hat = Number(v)))));
+const npcHatRow = (look: NpcLook): HTMLElement => {
+  const pick = picker(hatOptions(), look.hat === undefined ? "" : String(look.hat), "(không đội mũ)", (v) => (v === "" ? (delete look.hat, delete look.hatTint) : (look.hat = Number(v))));
+  const tint = h("input", { type: "color" });
+  tint.value = /^#[0-9a-fA-F]{6}$/.test(look.hatTint ?? "") ? look.hatTint! : "#ffffff";
+  tint.addEventListener("input", () => (look.hatTint = tint.value));
+  tint.style.width = "4rem";
+  const clear = h("button", { type: "button" }, "Bỏ màu mũ (theo màu vòng trận)");
+  clear.style.alignSelf = "flex-start";
+  clear.addEventListener("click", () => {
+    delete look.hatTint;
+    tint.value = "#ffffff";
+  });
+  return row("Mũ", pick, tint, clear);
+};
 
 const options = (values: readonly string[], names: Record<string, string>, preview?: (v: string) => (() => HTMLElement | null) | undefined): Opt[] =>
   values.map((v) => {
