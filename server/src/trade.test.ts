@@ -80,6 +80,13 @@ describe("a direct trade", () => {
     expect(raw.prepare("SELECT tn_a, tn_b FROM trade_log").get()).toEqual({ tn_a: 0, tn_b: 30 });
   });
 
+  it("an untradable item is refused at the plan, even when it was offered before it was on the list", async () => {
+    const a1 = give(A, 1, 0, "path_item_kiem");
+    const b1 = give(B, 2, 0, "linh_thao");
+    expect(await plan([a1], 0, [b1], 0)).toMatchObject({ ok: false, reason: "stale" });
+    expect(owner(a1)).toBe(A);
+  });
+
   it("a side without the money rolls everything back", async () => {
     const a1 = give(A, 1, 0);
     await fund(A, 100);

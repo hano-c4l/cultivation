@@ -155,7 +155,7 @@ import { getNpcs } from "./npcs";
 import { grantExp, saveBeast, saveMounted, savePkScores } from "./characters";
 import { learnMountStatement, ownedMounts, ownsMount } from "./mounts";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
-import type { SpiritualRoot } from "@game/shared";
+import { isTradable, type SpiritualRoot } from "@game/shared";
 import { DEFAULT_FORGE, DEFAULT_MAX_BATCH, mountBlock, mountOf, mountSpeedPct, type Craft, biasedRoll, canCraft, craftLevelOf, craftQualityBias, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
@@ -3467,6 +3467,7 @@ export class MapRoom extends DurableObject<Env> {
           const bag = await this.getBag(me);
           const item = bag.items.find((i) => i.id === msg.id);
           if (!item || mine.items.includes(item.id) || mine.items.length >= cfg.maxItems || msg.qty > item.qty) return fail("invalid");
+          if (!isTradable(item.type)) return fail("untradable");
           let offered = item.id;
           if (msg.qty < item.qty) {
             // a part of a stack: split it off into its own item first, and offer that one
@@ -3489,6 +3490,7 @@ export class MapRoom extends DurableObject<Env> {
         const bag = await this.getBag(me);
         const ids = [...new Set(msg.items)];
         if (ids.length > cfg.maxItems || ids.some((id) => !bag.items.some((i) => i.id === id))) return fail("invalid");
+        if (ids.some((id) => !isTradable(bag.items.find((i) => i.id === id)!.type))) return fail("untradable");
         if (msg.linh > cfg.maxLinh || msg.tienNgoc > (cfg.maxTienNgoc ?? 10_000_000)) return fail("limit");
         if (msg.linh > 0 || msg.tienNgoc > 0) {
           const wallet = await getWallet(this.env.DB, me);

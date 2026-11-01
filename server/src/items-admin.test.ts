@@ -11,6 +11,7 @@ import { resetQuestCache } from "./quests";
 import { resetNpcsCache } from "./npcs";
 import { resetTuningCache } from "./tuning";
 import { claimGiftMail, sendGift } from "./gifts";
+import { adminTakedownItem } from "./market-admin";
 import { makeDb } from "./test-db";
 
 let db: D1Database;
@@ -102,6 +103,56 @@ describe("saving an item", () => {
     expect(await saveItem(db, ADMIN, item({ category: "material", healFraction: undefined }), false, token, undefined, 0)).toEqual({ ok: false, error: "locked_field", problems: ["category"] });
     expect(await saveItem(db, ADMIN, item({ maxStack: 30 }), false, token, undefined, 0)).toEqual({ ok: false, error: "locked_field", problems: ["maxStack"] });
     expect(await saveItem(db, ADMIN, item({ maxStack: 99 }), false, token, undefined, 0, token + 5)).toMatchObject({ ok: true });
+  });
+});
+
+describe("the untradable flag", () => {
+  const flag = (id: string) => getItemDef(id)?.untradable === true;
+  const save = async (id: string, fields: Record<string, unknown>, isNew = false, updatedAt = 0) => {
+    const base = getItemDef(id);
+    return saveItem(db, ADMIN, { id, nameVi: base?.nameVi ?? "X", descVi: base?.descVi ?? "Y", rarity: base?.rarity ?? "common", grade: base?.grade ?? 1, category: base?.category, maxStack: base?.maxStack, ...fields }, isNew, updatedAt, undefined, 0);
+  };
+
+  it("starts on for path items and off for the rest, and an admin turns either way", async () => {
+    expect(flag("path_item_kiem")).toBe(true);
+    expect(flag("linh_thao")).toBe(false);
+    expect(await save("linh_thao", { untradable: true })).toMatchObject({ ok: true, changed: ["không giao dịch"] });
+    await getItemOverlays(db);
+    expect(flag("linh_thao")).toBe(true);
+    const row = (await find("path_item_kiem"))!;
+    expect(await save("path_item_kiem", { untradable: false }, false, row.updatedAt)).toMatchObject({ ok: true });
+    await getItemOverlays(db);
+    expect(flag("path_item_kiem")).toBe(false);
+    expect((await find("path_item_kiem"))!.def.untradable).toBe(false);
+  });
+
+  it("is kept when the form does not mention it, and an unchanged flag is not a change", async () => {
+    await save("linh_thao", { untradable: true });
+    const t = (await find("linh_thao"))!.updatedAt;
+    expect(await save("linh_thao", { nameVi: "Linh Thảo Mới" }, false, t)).toMatchObject({ ok: true });
+    await getItemOverlays(db);
+    expect(flag("linh_thao")).toBe(true);
+    expect(await save("thu_cot", { untradable: false })).toEqual({ ok: false, error: "unchanged" });
+  });
+
+  it("is stored on an item an admin made", async () => {
+    expect(await saveItem(db, ADMIN, item({ untradable: true }), true, 0, undefined, 0)).toMatchObject({ ok: true });
+    await getItemOverlays(db);
+    expect(flag("su_kien_dan")).toBe(true);
+    expect(await saveItem(db, ADMIN, item({ untradable: "yes" }), false, (await find("su_kien_dan"))!.updatedAt, undefined, 0)).toEqual({ ok: false, error: "unchanged" }); // a non-boolean is read as "not mentioned"
+    expect(flag("su_kien_dan")).toBe(true);
+  });
+
+  it("counts the open market listings and takes them all down", async () => {
+    raw.exec("INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at) VALUES ('b', 'acc', 'B', 'kim', 0, 0, 0, 0)");
+    raw.exec("INSERT INTO item_instances (id, owner_character_id, item_type, qty, created_at) VALUES ('i1', 'char', 'linh_thao', 3, 0), ('i2', 'char', 'linh_thao', 2, 0)");
+    for (const [id, item] of [["l1", "i1"], ["l2", "i2"]] as const) {
+      raw.exec(`INSERT INTO market_listings (id, town, kind, seller_id, item_id, item_type, qty, price, status, currency, created_at, ends_at) VALUES ('${id}', 'town', 'fixed', 'char', '${item}', 'linh_thao', 2, 100, 'active', 'linh_thach', 5, 9)`);
+    }
+    expect((await find("linh_thao"))!.listed).toBe(2);
+    expect(await adminTakedownItem(db, ADMIN, "linh_thao", 1000)).toEqual({ closed: 2, notify: ["char"] });
+    expect((await find("linh_thao"))!.listed).toBe(0);
+    expect(n("SELECT COUNT(*) AS n FROM mailbox WHERE character_id = 'char'")).toBe(2);
   });
 });
 

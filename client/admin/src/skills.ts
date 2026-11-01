@@ -37,6 +37,7 @@ interface Listing {
   token: number;
   limits: { name: number; description: number };
   fx: string[];
+  areas?: Record<string, unknown>;
 }
 
 const KIND_VI: Record<string, string> = { attack: "Tấn công", heal: "Hồi máu", buff: "Tăng chỉ số", teleport: "Dịch chuyển", passive: "Bị động" };
@@ -125,7 +126,7 @@ export function skillEditPage(): HTMLElement {
     void skillLookSection(current.id, Boolean(current.template), base === "unknown" ? "bolt" : base, (v) => (live.look = v)).then((node) => {
       root.append(node);
       if (current.kind !== "passive") {
-        void fxPreviewSection({ skillId: current.id, look: () => live.look, fx: () => live.form?.fx() ?? "", power: () => live.form?.power() }).then((preview) => root.append(preview));
+        void fxPreviewSection({ skillId: current.id, look: () => live.look, fx: () => live.form?.fx() ?? "", power: () => live.form?.power(), areas: data.areas }).then((preview) => root.append(preview));
       }
     });
   });

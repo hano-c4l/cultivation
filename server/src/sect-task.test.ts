@@ -167,6 +167,18 @@ describe("handing in a task", () => {
   });
 });
 
+describe("an untradable item", () => {
+  it("cannot be put in the warehouse", async () => {
+    const cfg = baseCfg([]);
+    await founded(cfg);
+    raw.exec(`UPDATE sects SET accept = '${JSON.stringify({ cats: { material: 100 }, minGrade: 1 })}'`);
+    const item = give(A, 2, 0, "path_item_kiem");
+    expect(await putItem(db, cfg, { characterId: A, bag: await loadBag(db, A), itemId: item, qty: 2, now: NOW })).toEqual({ ok: false, reason: "untradable" });
+    expect(vault()).toEqual([]);
+    expect(owned(A, "path_item_kiem")).toBe(2);
+  });
+});
+
 describe("the item costs of a level", () => {
   const stocked = async (cfg: SectCfg) => {
     const id = await founded(cfg);

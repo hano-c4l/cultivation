@@ -581,6 +581,7 @@ export type SectError =
   | "bag"
   | "value"
   | "vault_full"
+  | "untradable"
   | "lack"
   | "task"
   | "known"

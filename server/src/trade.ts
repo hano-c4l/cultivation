@@ -1,4 +1,4 @@
-import { firstFreeCell, type BagItem, type BagOp } from "@game/shared";
+import { firstFreeCell, isTradable, type BagItem, type BagOp } from "@game/shared";
 import { currencyStatements } from "./economy";
 import type { BagState } from "./inventory";
 import { actorGuard } from "./market";
@@ -56,6 +56,7 @@ export function planTrade(db: D1Database, p: { tradeId: string; a: TradeSide; b:
   const givenA = resolve(p.a.bag, p.a.items);
   const givenB = resolve(p.b.bag, p.b.items);
   if (!givenA || !givenB) return { ok: false, reason: "stale" };
+  if ([...givenA, ...givenB].some((i) => !isTradable(i.type))) return { ok: false, reason: "stale" }; // an admin put it on the list after it was offered
   const intoB = destinations(p.b.bag, givenA.length);
   const intoA = destinations(p.a.bag, givenB.length);
   if (!intoB) return { ok: false, reason: "full", side: "b" };

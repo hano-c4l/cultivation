@@ -15,6 +15,8 @@ export interface FxPreviewState {
   fx: () => string;
   /** The power in the form, when it is a number. */
   power: () => number | undefined;
+  /** The saved hit areas (`skillAreas`) the game uses, so the area marks follow what an admin saved. */
+  areas?: Record<string, unknown>;
 }
 
 const ELEMENTS: Array<[string, string]> = [["", "(hệ của kỹ năng)"], ["kim", "Kim"], ["moc", "Mộc"], ["thuy", "Thủy"], ["hoa", "Hỏa"], ["tho", "Thổ"], ["loi", "Lôi"], ["bang", "Băng"], ["phong", "Phong"]];
@@ -56,7 +58,7 @@ export async function fxPreviewSection(state: FxPreviewState): Promise<HTMLEleme
     const override: Record<string, unknown> = {};
     if (effect) override.fx = effect;
     if (power !== undefined) override.power = power;
-    setTuning({ skillLooks: { ...DEFAULT_TUNING.skillLooks, ...(picked ? { [state.skillId]: picked } : {}) }, skillOverrides: Object.keys(override).length > 0 ? { [sample.id]: override } : {} });
+    setTuning({ skillAreas: { ...DEFAULT_TUNING.skillAreas, ...(state.areas as typeof DEFAULT_TUNING.skillAreas | undefined) }, skillLooks: { ...DEFAULT_TUNING.skillLooks, ...(picked ? { [state.skillId]: picked } : {}) }, skillOverrides: Object.keys(override).length > 0 ? { [sample.id]: override } : {} });
     const def = getSkill(sample.id);
     if (!def) return;
     const el = element.value || undefined;

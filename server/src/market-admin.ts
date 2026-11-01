@@ -119,3 +119,17 @@ export async function adminTakedown(db: D1Database, adminEmail: string, id: stri
   const done = await takeDownListing(db, id, now, [log]);
   return done ? { ok: true, notify: done.notify } : { ok: false, error: "gone" };
 }
+
+/** Takes down every open listing of one item (after an admin made it untradable). Returns how many were closed and who got mail. */
+export async function adminTakedownItem(db: D1Database, adminEmail: string, itemType: string, now = Date.now()): Promise<{ closed: number; notify: string[] }> {
+  const { results } = await db.prepare("SELECT id FROM market_listings WHERE item_type = ? AND status = 'active'").bind(itemType).all<{ id: string }>();
+  const notify = new Set<string>();
+  let closed = 0;
+  for (const l of results) {
+    const r = await adminTakedown(db, adminEmail, l.id, "vật phẩm không giao dịch được", now);
+    if (!r.ok) continue;
+    closed++;
+    r.notify.forEach((n) => notify.add(n));
+  }
+  return { closed, notify: [...notify] };
+}
