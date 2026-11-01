@@ -1,5 +1,5 @@
 {
-  "version": 96,
+  "version": 97,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -192,6 +192,10 @@
     "char_sage_female": {
       "image": "char_sage_female.webp",
       "data": "char_sage_female.json"
+    },
+    "m_dog": {
+      "image": "m_dog.webp",
+      "data": "m_dog.json"
     }
   },
   "sprites": {
@@ -2277,6 +2281,40 @@
         },
         "die": {
           "frames": 6,
+          "fps": 2,
+          "loop": false
+        }
+      }
+    },
+    "monster.dog": {
+      "atlas": "m_dog",
+      "frame": {
+        "w": 96,
+        "h": 96
+      },
+      "anchor": {
+        "x": 48,
+        "y": 84
+      },
+      "head": 50,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 3,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 6,
+          "loop": true
+        },
+        "attack": {
+          "frames": 6,
+          "fps": 4,
+          "loop": false
+        },
+        "die": {
+          "frames": 3,
           "fps": 2,
           "loop": false
         }

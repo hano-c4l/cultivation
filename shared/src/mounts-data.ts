@@ -14,7 +14,8 @@ export interface MountDef {
   speedPct: number;
   /** What the token is worth in Linh Thạch (the merchant sells it at this price). */
   price: number;
-  /** How the beast is drawn until it has a sprite: the body colour and the size. */
+  /** How the beast is drawn: the key of the monster model whose sprite is used (`monster.<key>` in the sprite manifest; absent or not loaded yet: a shape drawn by code), the colour it is tinted with and its size. */
+  sprite?: string;
   color: string;
   size: number;
   enabled: boolean;
@@ -26,10 +27,10 @@ export interface MountsCfg {
 
 export const DEFAULT_MOUNTS: MountsCfg = {
   list: [
-    { id: "linh_loc", nameVi: "Linh Lộc", descVi: "Con hươu linh khí hiền lành, chạy nhanh hơn người đi bộ.", minRealm: 0, speedPct: 30, price: 20_000, color: "#c9a96a", size: 1, enabled: true },
-    { id: "hac_phong_lang", nameVi: "Hắc Phong Lang", descVi: "Sói đen chạy nhanh như gió, thuần phục được từ Trúc Cơ.", minRealm: 1, speedPct: 45, price: 150_000, color: "#44485a", size: 1.1, enabled: true },
-    { id: "xich_van_ma", nameVi: "Xích Vân Mã", descVi: "Ngựa đỏ bốc lửa, phi như mây trời Kim Đan.", minRealm: 2, speedPct: 60, price: 1_000_000, color: "#b5483a", size: 1.25, enabled: true },
-    { id: "bach_ho", nameVi: "Bạch Hổ", descVi: "Hổ trắng thần thú, chỉ Nguyên Anh mới ngự được.", minRealm: 3, speedPct: 80, price: 6_000_000, color: "#e7e7e0", size: 1.4, enabled: true },
+    { id: "linh_loc", nameVi: "Linh Lộc", descVi: "Con hươu linh khí hiền lành, chạy nhanh hơn người đi bộ.", minRealm: 0, speedPct: 30, price: 20_000, sprite: "dog", color: "#d8b878", size: 0.9, enabled: true },
+    { id: "hac_phong_lang", nameVi: "Hắc Phong Lang", descVi: "Sói đen chạy nhanh như gió, thuần phục được từ Trúc Cơ.", minRealm: 1, speedPct: 45, price: 150_000, sprite: "wolf", color: "#8a8fa8", size: 1.1, enabled: true },
+    { id: "xich_van_ma", nameVi: "Xích Vân Mã", descVi: "Ngựa đỏ bốc lửa, phi như mây trời Kim Đan.", minRealm: 2, speedPct: 60, price: 1_000_000, sprite: "wolf", color: "#e0603c", size: 1.3, enabled: true },
+    { id: "bach_ho", nameVi: "Bạch Hổ", descVi: "Hổ trắng thần thú, chỉ Nguyên Anh mới ngự được.", minRealm: 3, speedPct: 80, price: 6_000_000, sprite: "cat", color: "#ffffff", size: 1.5, enabled: true },
   ],
 };
 
@@ -47,6 +48,7 @@ export function validMounts(v: unknown): v is MountsCfg {
     ids.add(m.id);
     if (typeof m.nameVi !== "string" || m.nameVi.length < 1 || m.nameVi.length > 60 || typeof m.descVi !== "string" || m.descVi.length > 200) return false;
     if (!isInt(m.minRealm, 0, 20) || !isInt(m.speedPct, 0, 300) || !isInt(m.price, 1, 1_000_000_000)) return false;
+    if (m.sprite !== undefined && (typeof m.sprite !== "string" || !/^[a-z0-9_]{1,32}$/.test(m.sprite))) return false;
     if (typeof m.color !== "string" || !/^#[0-9a-fA-F]{6}$/.test(m.color) || typeof m.size !== "number" || m.size < 0.5 || m.size > 3 || typeof m.enabled !== "boolean") return false;
   }
   return true;
