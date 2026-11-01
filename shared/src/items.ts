@@ -53,6 +53,8 @@ export interface ItemDef {
   pathItem?: string;
   /** Taken out of play by an admin (soft delete): it still shows in bags, but it no longer drops, is sold, gifted or given as a reward. */
   disabled?: boolean;
+  /** Cannot be sold at the market, offered in a direct trade or put in a sect warehouse (an admin's list; path items start on it). */
+  untradable?: boolean;
 }
 
 /** One bí tịch per book skill, made from the skill list so a new book skill needs no item entry. */
@@ -97,7 +99,7 @@ const PATH_ITEMS: Record<string, ItemDef> = Object.fromEntries(
     const p = PATHS[id];
     return [
       p.item,
-      { id: p.item, nameVi: p.itemNameVi, descVi: `Vật phẩm để bước vào hướng tu ${p.nameVi}. Dùng từ bảng Nhân vật, mục hướng tu.`, category: "material", maxStack: 999, rarity: "epic", grade: 3, pathItem: id } satisfies ItemDef,
+      { id: p.item, nameVi: p.itemNameVi, descVi: `Vật phẩm để bước vào hướng tu ${p.nameVi}. Dùng từ bảng Nhân vật, mục hướng tu.`, category: "material", maxStack: 999, rarity: "epic", grade: 3, pathItem: id, untradable: true } satisfies ItemDef,
     ];
   }),
 );
@@ -337,7 +339,7 @@ export interface ItemOverlay {
 }
 
 /** The fields an admin may change on an item that belongs to the code (its mechanics stay as written). */
-export const EDITABLE_ITEM_FIELDS = ["nameVi", "descVi", "rarity", "grade"] as const;
+export const EDITABLE_ITEM_FIELDS = ["nameVi", "descVi", "rarity", "grade", "untradable"] as const;
 /** The categories an admin can create (equipment comes from its templates, books from the skill list). */
 export const CUSTOM_ITEM_CATEGORIES = ["consumable", "material"] as const;
 export const ITEM_NAME_MAX = 60;
@@ -376,6 +378,7 @@ export function itemOverlayProblem(o: ItemOverlay): string | null {
   if (d.descVi !== undefined && !text(d.descVi, ITEM_DESC_MAX)) return "bad description";
   if (d.rarity !== undefined && !(ITEM_RARITIES as readonly string[]).includes(d.rarity)) return "bad rarity";
   if (d.grade !== undefined && !isInt(d.grade, 1, MAX_ITEM_GRADE)) return "bad grade";
+  if (d.untradable !== undefined && typeof d.untradable !== "boolean") return "bad untradable flag";
   if (!o.custom) return null;
   if (!CUSTOM_ITEM_ID.test(o.id) || Object.prototype.hasOwnProperty.call(ITEMS, o.id)) return "this id belongs to the code";
   if (d.id !== o.id || !text(d.nameVi, ITEM_NAME_MAX) || !text(d.descVi, ITEM_DESC_MAX) || d.rarity === undefined || d.grade === undefined) return "a custom item needs its whole definition";
@@ -439,6 +442,11 @@ export function allItemDefs(): ItemDef[] {
     if (def) out.push(def);
   }
   return out;
+}
+
+/** Whether the item of this type may be sold at the market, traded or put in a sect warehouse (equipment always may). */
+export function isTradable(type: string): boolean {
+  return getItemDef(type)?.untradable !== true;
 }
 
 export function isItemId(v: unknown): v is string {

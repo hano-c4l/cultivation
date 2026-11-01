@@ -4,7 +4,7 @@ import { kickCharacter } from "./accounts-admin";
 import { PBKDF2_ITERATIONS, toBase64 } from "./password-hasher";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
 import { moneyOverview } from "./money-dashboard";
-import { adminListings, adminSales, adminTakedown, adminTrades } from "./market-admin";
+import { adminListings, adminSales, adminTakedown, adminTakedownItem, adminTrades } from "./market-admin";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
@@ -293,6 +293,25 @@ export async function adminMarketTakedown(request: Request, env: Env): Promise<R
   }
   console.log("market takedown", session.accountId, body.id);
   return json({ ok: true });
+}
+
+/** POST `{id}`: takes down every open market listing of one item (the Admin Items screen, once the item is untradable). */
+export async function adminItemTakedown(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 4 * 1024);
+  if (!body || typeof body.id !== "string" || !/^[a-z0-9_.]{1,60}$/.test(body.id)) return errorResponse("invalid_body", 400);
+  const result = await adminTakedownItem(env.DB, session.email, body.id);
+  if (result.closed > 0) {
+    try {
+      const hub = env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" });
+      await hub.notifyMail(result.notify);
+      await hub.marketChanged(null);
+    } catch (err) {
+      console.error("item takedown notify failed", err);
+    }
+  }
+  return json({ ok: true, closed: result.closed });
 }
 
 /** The adjustable game settings with their effective values (GET), or a change of one of them (POST {key, value}). */

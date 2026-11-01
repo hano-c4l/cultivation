@@ -35,7 +35,7 @@ export function validTrade(v: unknown): v is TradeCfg {
 export type TradeEnd = "done" | "cancelled" | "declined" | "expired" | "left" | "far" | "busy" | "gone" | "stale" | "funds" | "full";
 
 /** Why a trade command was refused (the window stays open, or the invitation never went out). */
-export type TradeError = "rate" | "invalid" | "far" | "unsafe" | "busy" | "self" | "murderer" | "stale" | "full" | "funds" | "limit" | "none";
+export type TradeError = "rate" | "invalid" | "far" | "unsafe" | "busy" | "self" | "murderer" | "stale" | "full" | "funds" | "limit" | "none" | "untradable";
 
 /** One side of the window. `items` carry what a bag item carries (durability, upgrade, rolled stats) so both can read the stats before agreeing. */
 export interface TradeSideView {

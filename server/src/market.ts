@@ -3,6 +3,7 @@ import {
   auctionOpen,
   fixedEndsAt,
   getItemDef,
+  isTradable,
   listingFee,
   marketMaxPrice,
   marketTax,
@@ -124,6 +125,7 @@ export async function postListing(
 ): Promise<PostResult> {
   const item = p.bag.items.find((i) => i.tab === p.tab && i.cell === p.cell);
   const def = item ? getItemDef(item.type) : undefined;
+  if (item && def?.untradable) return { status: "untradable" };
   if (!item || !def || def.disabled || p.qty < 1 || p.qty > item.qty || p.price < 1 || p.price > marketMaxPrice(cfg, p.currency)) return { status: "invalid" };
   if (stackLimit(item.type) === 1 && p.qty !== 1) return { status: "invalid" };
   const open = await db.prepare("SELECT COUNT(*) AS c FROM market_listings WHERE seller_id = ? AND status = 'active'").bind(p.sellerId).first<{ c: number }>();
@@ -202,6 +204,7 @@ export async function buyFixed(db: D1Database, cfg: MarketCfg, p: { buyerId: str
   if (!l || l.status !== "active" || l.town !== p.town || l.kind !== "fixed") return { status: "gone" };
   if (l.seller_id === p.buyerId) return { status: "mine" };
   if (l.ends_at <= p.now) return { status: "gone" };
+  if (!isTradable(l.item_type)) return { status: "untradable" }; // put on the list after it was listed: it can only run out and go back
   const extra = [
     actorGuard(db, p.buyerId, p.now),
     listingGuard(db, l.id, " AND kind = 'fixed' AND town = ? AND price = ? AND ends_at > ?", [p.town, l.price, p.now]),
@@ -224,6 +227,7 @@ export async function placeBid(db: D1Database, cfg: MarketCfg, p: { bidderId: st
   if (!l || l.status !== "active" || l.town !== p.town || l.kind !== "auction" || l.ends_at <= p.now) return { status: "gone" };
   // The seller may bid on their own auction (to buy it back, or to egg others on); the proceeds of a sale to themselves are taxed like any other.
   if (l.top_bidder_id === p.bidderId) return { status: "top" };
+  if (!isTradable(l.item_type)) return { status: "untradable" };
   if (!auctionOpen(cfg, p.now)) return { status: "closed" };
   if (p.amount < minNextBid(cfg, l.price, l.top_bid) || p.amount > marketMaxPrice(cfg, l.currency)) return { status: "low" };
   const extra = [
