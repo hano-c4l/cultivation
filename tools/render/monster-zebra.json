@@ -1,0 +1,53 @@
+{
+  "extends": "sprite-config.json",
+  "name": "m_zebra",
+  "spriteKey": "monster.zebra",
+  "source": {
+    "model": "downloads/farm-animals/FBX/Zebra.fbx"
+  },
+  "rigName": "Armature",
+  "stripObjectCurves": true,
+  "bodyMesh": "Zebra",
+  "hipsBone": "Hips",
+  "forwardBones": [
+    "Hips",
+    "Head_end"
+  ],
+  "autoColors": [
+    1.6,
+    1.6,
+    1.6
+  ],
+  "figureScale": 0.15,
+  "sourceFps": 30,
+  "actionPrefix": "Armature|Armature|",
+  "onlyAnims": [
+    "idle",
+    "run",
+    "attack",
+    "die"
+  ],
+  "anims": {
+    "idle": {
+      "action": "Idle",
+      "frames": 4,
+      "loop": true
+    },
+    "run": {
+      "action": "Run",
+      "frames": 8,
+      "loop": true
+    },
+    "attack": {
+      "action": "Walk",
+      "frames": 6,
+      "loop": false
+    },
+    "die": {
+      "action": "Death",
+      "frames": 4,
+      "loop": false
+    }
+  },
+  "animsNote": "Farm Animals pack: Idle, Run, Walk, Death. Attack replays the walk once (a mount does not attack)."
+}
