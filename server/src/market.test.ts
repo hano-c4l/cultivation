@@ -356,7 +356,7 @@ describe("what the mail hands over can be claimed in the game", () => {
     const r = await claimGiftMail(db, S, proceeds.id, await loadBag(db, S));
     expect(r.status).toBe("claimed");
     expect(balance(S)).toBe(before + 9000);
-    const group = raw.prepare("SELECT total_in FROM linh_thach_totals WHERE character_id = ? AND grp = 'trade'").get(S) as { total_in: number };
+    const group = raw.prepare("SELECT total_in FROM linh_thach_totals WHERE character_id = ? AND grp = 'market'").get(S) as { total_in: number };
     expect(group.total_in).toBe(9000);
     expect((await claimGiftMail(db, S, proceeds.id, await loadBag(db, S))).status).toBe("already_claimed");
 
