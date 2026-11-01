@@ -182,6 +182,7 @@ if (seen.open) {
   loser.c.send({ t: "market_bid", npc: "market", id: auction.id, amount: auction.nextBid * 2 });
   const up = await loser.c.wait((m) => m.t === "market_ok" || m.t === "market_error", 5000, "outbid", mark);
   check("a higher bid is taken", up.t === "market_ok", up.reason ?? "");
+  await sleep(5200); // the server answers a mail_refresh at most once per 5 s on a socket (MAIL_REFRESH_GAP_MS): an earlier one is dropped without an answer
   winner.c.send({ t: "mail_refresh" });
   const refund = await winner.c.wait((m) => m.t === "mail" && m.mail.some((x) => x.gift?.linh_thach === auction.nextBid), 5000, "the refund mail");
   check("the outbid bidder is refunded by mail", !!refund);

@@ -25,7 +25,7 @@ interface Detail {
   characters: Array<{ id: string; name: string; gender: string; realm: number; stage: number; map: string }>;
 }
 
-const REALM = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh"];
+const REALM = ["Luyện Khí", "Trúc Cơ", "Kim Đan", "Nguyên Anh", "Hóa Thần", "Luyện Hư"];
 const ERRORS: Record<string, string> = {
   invalid: "Dữ liệu không hợp lệ (lý do 1-200 ký tự; số ngày 1-3650).",
   forbidden: "Không dùng được cho tài khoản Admin.",

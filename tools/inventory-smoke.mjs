@@ -4,6 +4,9 @@
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
 import { TOWN_GATE, TOWN_SPAWN } from "./world.mjs";
+
+/** The most one stack of the materials used here holds (`maxStack` of linh_thao, thu_cot and yeu_dan in shared/src/items.ts; it was 99 before phase 2). */
+const CAP = 999;
 import { execFileSync } from "node:child_process";
 
 const base = process.argv[2] ?? "ws://localhost:8787";
@@ -85,9 +88,9 @@ check("a new character has one tab and an empty bag and no mail", a.welcome.bag.
 // Loot goes into the bag and is announced.
 let msgs = await after(a, () => give("linh_thao", 3));
 check("loot arrives as a bag delta and a loot message", msgs.some((m) => m.t === "inv" && m.items[0]?.qty === 3) && msgs.some((m) => m.t === "loot" && m.items[0].type === "linh_thao" && !m.items[0].mailed));
-await give("linh_thao", 200);
+await give("linh_thao", CAP + 100); // more than one stack holds
 await sleep(300);
-check("stacks never exceed 99 and the total is exact", bagOf(a).every((i) => i.qty <= 99) && total("linh_thao") === 203 && bagOf(a).reduce((s, i) => s + i.qty, 0) === 203, `total ${total("linh_thao")}`);
+check("stacks never exceed the cap and the total is exact", bagOf(a).every((i) => i.qty <= CAP) && bagOf(a).length === 2 && total("linh_thao") === CAP + 103 && bagOf(a).reduce((s, i) => s + i.qty, 0) === CAP + 103, `total ${total("linh_thao")}`);
 
 // Move: merge the small stack into the 99-stacks, swap, and the rate limit.
 const stacks = bagOf(a).sort((x, y) => x.cell - y.cell);
@@ -117,7 +120,7 @@ check("moving from an empty cell is refused and the bag is resent", msgs.some((m
 await sleep(250);
 const last = bagOf(a).filter((i) => i.type === "linh_thao").sort((x, y) => x.qty - y.qty)[0];
 msgs = await after(a, () => a.send({ t: "inv_drop", tab: 0, cell: last.cell, qty: 1 }));
-check("discarding one reduces the stack by one", total("linh_thao") === 202 && bagOf(a).find((i) => i.id === last.id).qty === last.qty - 1);
+check("discarding one reduces the stack by one", total("linh_thao") === CAP + 102 && bagOf(a).find((i) => i.id === last.id).qty === last.qty - 1);
 await give("hoi_huyet_dan", 2);
 await sleep(300);
 const potion = bagOf(a).find((i) => i.type === "hoi_huyet_dan");
@@ -127,7 +130,7 @@ check("a potion is refused when there is nothing to heal (town) and is not consu
 
 // A bag that is full sends loot to the mailbox.
 const used = bagOf(a).length;
-await give("thu_cot", (64 - used) * 99); // exactly fills the free cells (a few thu_cot already sit in one)
+await give("thu_cot", (64 - used) * CAP); // exactly fills the free cells (a few thu_cot already sit in one)
 await sleep(600);
 check("the bag can be filled to the last cell", bagOf(a).length === 64, `${bagOf(a).length} cells`);
 msgs = await after(a, () => give("yeu_dan", 1), 700);
@@ -151,7 +154,7 @@ msgs = await after(a, () => a.send({ t: "mail_claim", id: mailId }));
 check("a second claim of the same mail changes nothing", total("yeu_dan") === 1 && msgs.some((m) => m.t === "inv_error"));
 
 // Expiry: a mail past its deadline cannot be claimed and its item disappears on the next login.
-await give("yeu_dan", 98); // tops the Yêu Đan stack up to 99, which fits without a new cell
+await give("yeu_dan", CAP - 1); // tops the Yêu Đan stack up to the cap, which fits without a new cell
 await sleep(400);
 await give("yeu_dan", 1); // that stack is full and the bag has no free cell, so this one is mailed
 await sleep(600);
@@ -174,7 +177,7 @@ await sleep(600);
 const sumAfter = b.welcome.bag.items.reduce((s, i) => s + i.qty, 0);
 check("a second login during writes neither creates nor loses items", sumAfter === sumBefore, `${sumBefore} -> ${sumAfter}`);
 check("the old connection was kicked", a.log.some((m) => m.t === "kicked"));
-check("the expired mail's item was deleted when it was swept at login", sql(`SELECT COUNT(*) AS n FROM mailbox WHERE character_id='${charId}' AND claimed_at IS NULL`)[0].n === 0 && total("yeu_dan") === 99);
+check("the expired mail's item was deleted when it was swept at login", sql(`SELECT COUNT(*) AS n FROM mailbox WHERE character_id='${charId}' AND claimed_at IS NULL`)[0].n === 0 && total("yeu_dan") === CAP);
 const cells = b.welcome.bag.items.map((i) => `${i.tab}:${i.cell}`);
 check("no two items share a cell after reconnecting", new Set(cells).size === cells.length);
 check("the reconnected bag keeps the same set of items as before the writes", b.welcome.bag.items.length === before.length);
@@ -235,19 +238,19 @@ check("the reconnected bag keeps the same set of items as before the writes", b.
   const g3 = (item, qty) => fetch(`${httpBase}/api/dev/loot?room=${ROOM}&char=${id3}&item=${item}&qty=${qty}`).then((r) => r.json());
   const rows3 = () => sql(`SELECT item_type AS type, qty, bag_tab AS tab, cell FROM item_instances WHERE owner_character_id='${id3}' AND cell IS NOT NULL ORDER BY cell`);
   const t = await connect(reg3.cookie);
-  await g3("linh_thao", 100); // 99 + 1
+  await g3("linh_thao", CAP + 1); // a full stack + 1
   await g3("thu_cot", 5);
   await g3("yeu_dan", 1);
   await sleep(600);
   const sum = (type) => rows3().filter((r) => r.type === type).reduce((s, r) => s + r.qty, 0);
   const start = rows3();
-  const bigCell = start.find((r) => r.type === "linh_thao" && r.qty === 99).cell;
+  const bigCell = start.find((r) => r.type === "linh_thao" && r.qty === CAP).cell;
 
   let msgs = await after(t, () => t.send({ t: "inv_split", tab: 0, cell: bigCell, qty: 20 }));
-  check("splitting 20 off a stack of 99 leaves 79 and a new stack of 20", rows3().filter((r) => r.type === "linh_thao").map((r) => r.qty).sort((x, y) => y - x).join() === "79,20,1" && msgs.some((m) => m.t === "inv"), JSON.stringify(rows3().filter((r) => r.type === "linh_thao")));
+  check("splitting 20 off a full stack leaves the rest and a new stack of 20", rows3().filter((r) => r.type === "linh_thao").map((r) => r.qty).sort((x, y) => y - x).join() === `${CAP - 20},20,1` && msgs.some((m) => m.t === "inv"), JSON.stringify(rows3().filter((r) => r.type === "linh_thao")));
   await sleep(200);
-  msgs = await after(t, () => t.send({ t: "inv_split", tab: 0, cell: bigCell, qty: 79 }));
-  check("splitting off the whole stack is refused and the bag is resent", msgs.some((m) => m.t === "inv_error" && m.reason === "invalid") && sum("linh_thao") === 100);
+  msgs = await after(t, () => t.send({ t: "inv_split", tab: 0, cell: bigCell, qty: CAP - 20 }));
+  check("splitting off the whole stack is refused and the bag is resent", msgs.some((m) => m.t === "inv_error" && m.reason === "invalid") && sum("linh_thao") === CAP + 1);
 
   // One sort is allowed per 15 seconds: a second one inside the window is refused and changes nothing.
   // No slow database check in between: each wrangler call takes seconds and would eat into the window.
@@ -263,12 +266,12 @@ check("the reconnected bag keeps the same set of items as before the writes", b.
   await wait(15_500);
   const sort3 = await after(t, () => t.send({ t: "inv_sort", mode: "grade" }), 1250);
 
-  check("sorting by rarity merges the split stacks (79 + 20 + 1 -> 99 + 1), nothing lost", sort1.some((m) => m.t === "inv" && m.removed.length >= 1) && sum("linh_thao") === 100 && sum("thu_cot") === 5 && sum("yeu_dan") === 1);
+  check("sorting by rarity merges the split stacks (rest + 20 + 1 -> a full stack + 1), nothing lost", sort1.some((m) => m.t === "inv" && m.removed.length >= 1) && sum("linh_thao") === CAP + 1 && sum("thu_cot") === 5 && sum("yeu_dan") === 1);
   check("a second sort inside the 15 second window is refused and changes nothing", tooSoon.some((m) => m.t === "inv_error" && m.reason === "wait") && !tooSoon.some((m) => m.t === "inv") && afterRarity[0].type === "yeu_dan");
   check("sorting by name puts Linh Thảo first and packs from the first cell", afterName[0].type === "linh_thao" && afterName.map((r) => r.cell).join() === afterName.map((_, i) => i).join() && sort2.some((m) => m.t === "inv"), JSON.stringify(afterName.map((r) => r.type)));
   check("a sort right after another is refused and changes nothing", sort4.some((m) => m.t === "inv_error" && m.reason === "wait") && !sort4.some((m) => m.t === "inv") && afterName[0].type === "linh_thao");
   check("after the window a sort by grade puts the Trung phẩm item first", rows3()[0].type === "yeu_dan" && sort3.some((m) => m.t === "inv"));
-  check("all four stacks survived the sorts", rows3().length === 4 && sum("linh_thao") === 100);
+  check("all four stacks survived the sorts", rows3().length === 4 && sum("linh_thao") === CAP + 1);
   // The layout survives a reconnect.
   const rejoin = await connect(reg3.cookie);
   check("the sorted layout is what a new connection receives", rejoin.welcome.bag.items.length === 4 && rejoin.welcome.bag.items.sort((x, y) => x.cell - y.cell)[0].type === "yeu_dan");

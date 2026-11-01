@@ -132,6 +132,14 @@ describe("map art and NPC looks", () => {
     expect(validTuningGroup("npcLooks", { byKind: { quest: { body: "male", tint: "#aabbcc", aura: "#112233" } }, byId: {} })).toBe(true);
   });
 
+  it("every NPC and the guard wear a hat, and the hat fields are validated", () => {
+    for (const l of [...Object.values(DEFAULT_TUNING.npcLooks.byKind), ...Object.values(DEFAULT_TUNING.npcLooks.byId)]) expect(l.hat, JSON.stringify(l)).toBeGreaterThanOrEqual(0);
+    expect(validTuningGroup("npcLooks", { byKind: { quest: { body: "male", hat: 3, hatTint: "#aabbcc" } }, byId: {} })).toBe(true);
+    expect(validTuningGroup("npcLooks", { byKind: { quest: { body: "male", hat: -1 } }, byId: {} })).toBe(false);
+    expect(validTuningGroup("npcLooks", { byKind: { quest: { body: "male", hat: 1.5 } }, byId: {} })).toBe(false);
+    expect(validTuningGroup("npcLooks", { byKind: { quest: { body: "male", hatTint: "red" } }, byId: {} })).toBe(false);
+  });
+
   it("validates both groups", () => {
     expect(validTuningGroup("mapArt", DEFAULT_TUNING.mapArt)).toBe(true);
     expect(validTuningGroup("mapArt", { maps: { a: { ground: "lava", obstacle: "tree" } } })).toBe(true);
