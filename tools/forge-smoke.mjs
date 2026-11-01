@@ -51,7 +51,7 @@ if (row.length === 0) {
   console.error("no forge tuning row in the local D1: start the game once (any join seeds it)");
   process.exit(1);
 }
-sql("UPDATE game_tuning SET value = json_set(value, '$.recipes[0].seconds', 1) WHERE name = 'forge'");
+sql("UPDATE game_tuning SET value = json_set(value, '$.recipes[0].seconds', 1, '$.recipes[0].exp', 10, '$.recipes[1].seconds', 1, '$.levels', json('[10, 100, 250, 600, 1400]')) WHERE name = 'forge'");
 sql("UPDATE config_versions SET version = version + 1 WHERE name = 'tuning'");
 console.log("waiting for the config to reload...");
 await sleep(35_000);
@@ -62,6 +62,7 @@ const id = created.data.character.id;
 sql(`INSERT OR REPLACE INTO currency_balances (character_id, currency, balance) VALUES ('${id}', 'linh_thach', 100000)`);
 await sleep(4000);
 await fetch(`${httpBase}/api/dev/loot?room=town:${CH}&char=${id}&item=ren_lk&qty=45`).then((r) => r.json()).catch(() => null);
+await fetch(`${httpBase}/api/dev/loot?room=town:${CH}&char=${id}&item=ren_tc&qty=45`).then((r) => r.json()).catch(() => null);
 
 const c = open(reg.cookie);
 await c.opened;
@@ -75,6 +76,13 @@ c.send({ t: "npc_open", npc: "smith", view: "brew" });
 const tab = await c.wait((m) => m.t === "brew", 6000, "the forge tab", m0).catch(() => null);
 check("the smith's brewing tab is the forge", tab?.craft === "forge" && tab.jobs.length === 0, JSON.stringify(tab && { craft: tab.craft, jobs: tab.jobs.length }));
 check("and the blacksmith's tabs include it", !!tab?.tabs?.includes("brew"));
+
+// Level 2 recipe at level 1: refused.
+await sleep(600);
+m0 = c.log.length;
+c.send({ t: "brew_start", npc: "smith", recipe: "forge_belt_tc" });
+const locked = await c.wait((m) => m.t === "inv_error", 4000, "the level refusal", m0).catch(() => null);
+check("a recipe above the trade level is refused", locked?.reason === "craft_level", locked?.reason);
 
 await sleep(600);
 m0 = c.log.length;
@@ -94,6 +102,14 @@ check("collecting puts the piece in the bag", !!piece && piece.qty === 1, JSON.s
 check("with its durability and rolled stats", !!piece && piece.dur > 0 && !!piece.rs, JSON.stringify(piece && { dur: piece.dur, rs: piece.rs }));
 const left = sql(`SELECT COALESCE(SUM(qty), 0) AS q FROM item_instances WHERE owner_character_id = '${id}' AND item_type = 'ren_lk'`)[0].q;
 check("and the ore was used (45 - 40)", left === 5, `${left}`);
+
+const afterCollect = await c.wait((m) => m.t === "brew" && m.craftExp === 10, 6000, "the exp after the collection", m0).catch(() => null);
+check("the run gave its 10 trade exp (level 2 with the levels of this test)", !!afterCollect, JSON.stringify(afterCollect?.craftExp));
+await sleep(600);
+m0 = c.log.length;
+c.send({ t: "brew_start", npc: "smith", recipe: "forge_belt_tc" });
+const opened = await c.wait((m) => m.t === "brew" && m.jobs.some((j) => j.recipe === "forge_belt_tc"), 8000, "the level 2 job", m0).catch(() => null);
+check("and now the level 2 recipe starts", !!opened);
 
 await sleep(600);
 m0 = c.log.length;

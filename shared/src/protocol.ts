@@ -434,7 +434,7 @@ export type ServerMessage =
   | { t: "waygate"; npc: string; dests: WaygateDest[] }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
   | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "money" | "other" }
-  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden" | "brew_mats" | "brew_limit" | "brew_wait"; retryMs?: number }
+  | { t: "inv_error"; reason: "craft_level" | "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden" | "brew_mats" | "brew_limit" | "brew_wait"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -459,7 +459,7 @@ export type ServerMessage =
   /** A repair was paid for. */
   | { t: "repaired"; cost: number }
   /** The blacksmith's window: the upgrade rules and the extra success chance (percent) each of your pieces has built up from failures. */
-  | { t: "brew"; npc: string; craft: "alchemy" | "forge"; jobs: BrewJobView[]; tuning: Tuning; tabs: NpcView[]; now: number }
+  | { t: "brew"; npc: string; craft: "alchemy" | "forge"; /** The character's exp in this trade (the level follows from the tuning). */ craftExp: number; jobs: BrewJobView[]; tuning: Tuning; tabs: NpcView[]; now: number }
   /** The martial master's courses this character can still take (what is already known is left out), each with its cost in Linh Thạch. */
   | { t: "dojo"; npc: string; courses: Array<{ skill: string; cost: number; ok: boolean }> }
   | { t: "dojo_ok"; skill: string; cost: number }

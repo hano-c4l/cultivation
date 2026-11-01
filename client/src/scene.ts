@@ -1421,7 +1421,7 @@ export class GameScene extends Phaser.Scene {
         break;
       case "brew":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
-        this.shop.setBrew(msg.npc, msg.jobs, msg.now, msg.tabs, msg.craft);
+        this.shop.setBrew(msg.npc, msg.jobs, msg.now, msg.tabs, msg.craft, msg.craftExp);
         break;
       case "smith_result": {
         const owned = [...this.worn, ...this.inventory.list()].find((x) => x.id === msg.id);

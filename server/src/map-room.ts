@@ -150,12 +150,12 @@ import {
 import { SECT_RANK, SECT_ROLE_NAMES, SECT_SAY, sectKillCounts, sectKillOpen, sectTaskMode, type SectError, type Tuning, bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
-import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
+import { collectBrewStatements, getBrewJob, getCraftExp, listBrewJobs, startBrewStatements } from "./brew";
 import { getNpcs } from "./npcs";
 import { grantExp, saveMounted, savePkScores } from "./characters";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import type { SpiritualRoot } from "@game/shared";
-import { DEFAULT_MAX_BATCH, type Craft, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
+import { DEFAULT_MAX_BATCH, type Craft, canCraft, craftLevelOf, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -2817,8 +2817,8 @@ export class MapRoom extends DurableObject<Env> {
 
   /** The alchemist's brewing tab: the brewings this character has going (waiting or ready) and, in the tuning, the recipes. */
   private async sendBrew(ws: WebSocket, id: string, npcId: string, craft: Craft = "alchemy"): Promise<void> {
-    const [jobs, tune] = await Promise.all([listBrewJobs(this.env.DB, id, craft), getTuning(this.env.DB)]);
-    this.send(ws, { t: "brew", npc: npcId, craft, jobs, tuning: tune, tabs: npcTabs(craft === "forge" ? "smith" : "alchemist", true), now: Date.now() });
+    const [jobs, tune, craftExp] = await Promise.all([listBrewJobs(this.env.DB, id, craft), getTuning(this.env.DB), getCraftExp(this.env.DB, id, craft)]);
+    this.send(ws, { t: "brew", npc: npcId, craft, craftExp, jobs, tuning: tune, tabs: npcTabs(craft === "forge" ? "smith" : "alchemist", true), now: Date.now() });
   }
 
   /** The martial master's window: the courses of this master the character does not have yet, and whether the realm allows each now. */
@@ -3610,6 +3610,8 @@ export class MapRoom extends DurableObject<Env> {
       return def !== undefined && def.disabled !== true;
     };
     if (!recipe || !usable(recipe.output) || !recipe.inputs.every((i) => usable(i.item))) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    // The trade level: a recipe above it is not open yet (the exp only grows, so reading it before the batch cannot race).
+    if (!canCraft(recipe, craftLevelOf(cfg, await getCraftExp(this.env.DB, id, craft)))) return this.send(ws, { t: "inv_error", reason: "craft_level" });
     // A piece of gear does not stack: one a run, of a kind this character can wear (the id of a gendered kind carries its style).
     const gear = equipmentInfo(recipe.output);
     if (gear) {
