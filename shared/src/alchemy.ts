@@ -33,7 +33,27 @@ export interface AlchemyCfg {
    * The exp is kept per character and trade; a finished run gives the exp its recipe had when the run started.
    */
   levels?: number[];
+  /**
+   * Quality by level (the forge): a piece made by someone whose trade level is above the level the recipe asks for has its stats rolled towards the top of their range,
+   * more with every level above (`perLevel`, see `biasedRoll`). Absent: the forge default; 0 turns it off.
+   */
+  quality?: { perLevel: number };
   recipes: BrewRecipe[];
+}
+
+/**
+ * A uniform [0, 1) roll pushed towards 1 by `k` (the exponent grows to 1 + k): `1 - (1 - r)^(1 + k)`. k = 0 is the plain roll; the average goes from 0.5 to 1 - 1/(2 + k),
+ * and the roll never leaves [0, 1], so a stat stays inside its master range.
+ */
+export function biasedRoll(rand: () => number, k: number): () => number {
+  const e = 1 + Math.max(0, k);
+  return () => 1 - Math.pow(1 - rand(), e);
+}
+
+/** The push of a piece forged at `level` from a recipe that asks for `minLevel` (0 when the group has no quality setting and is not the forge's). */
+export function craftQualityBias(cfg: Pick<AlchemyCfg, "quality" | "levels">, level: number, minLevel: number, fallbackPerLevel = 0): number {
+  const per = cfg.quality?.perLevel ?? fallbackPerLevel;
+  return Math.max(0, per * Math.max(0, level - minLevel));
 }
 
 /** The trade level of a character with `exp` (1 when the group has no levels). */
@@ -108,8 +128,11 @@ export function validBrewRecipe(r: unknown): r is BrewRecipe {
 /** Whether a whole `alchemy` group is well formed (structure only; whether the items exist is checked when an admin saves). */
 export function validAlchemy(v: unknown): v is AlchemyCfg {
   if (!isObj(v)) return false;
-  return isInt(v.maxJobs, 1, 20) && (v.maxBatch === undefined || isInt(v.maxBatch, 1, 100)) && (v.batchTimeStep === undefined || (typeof v.batchTimeStep === "number" && v.batchTimeStep >= 0 && v.batchTimeStep <= 5)) && Array.isArray(v.recipes) && v.recipes.length <= 200 && v.recipes.every(validBrewRecipe) && new Set((v.recipes as BrewRecipe[]).map((r) => r.id)).size === v.recipes.length && validLevels(v);
+  return isInt(v.maxJobs, 1, 20) && (v.maxBatch === undefined || isInt(v.maxBatch, 1, 100)) && (v.batchTimeStep === undefined || (typeof v.batchTimeStep === "number" && v.batchTimeStep >= 0 && v.batchTimeStep <= 5)) && Array.isArray(v.recipes) && v.recipes.length <= 200 && v.recipes.every(validBrewRecipe) && new Set((v.recipes as BrewRecipe[]).map((r) => r.id)).size === v.recipes.length && validLevels(v) && validQuality(v.quality);
 }
+
+/** The quality setting is a small non-negative number. */
+const validQuality = (q: unknown): boolean => q === undefined || (isObj(q) && typeof q.perLevel === "number" && q.perLevel >= 0 && q.perLevel <= 5);
 
 /** The trade levels: strictly increasing positive exp (at most 19 levels above the first), and no recipe asks for a level the group cannot reach. */
 function validLevels(v: Record<string, unknown>): boolean {
@@ -140,6 +163,7 @@ export interface BrewJobView {
 export const DEFAULT_FORGE: AlchemyCfg = {
   maxJobs: 2,
   maxBatch: 1,
+  quality: { perLevel: 0.5 },
   // Level 2 after 30 exp (three rings), then 100, 250, 600 and 1400: each realm's recipe opens one level after the one before it, the pháp bảo at the levels of Kim Đan and Nguyên Anh.
   levels: [30, 100, 250, 600, 1400],
   recipes: [

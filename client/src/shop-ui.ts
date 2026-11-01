@@ -3,7 +3,9 @@ import {
   REALMS,
   DEFAULT_MAX_BATCH,
   scaleBrew,
+  DEFAULT_FORGE,
   canCraft,
+  craftQualityBias,
   craftLevelOf,
   craftNextExp,
   SHOP_CATEGORIES,
@@ -381,6 +383,7 @@ export function initShop(send: (msg: ClientMessage) => void, getBag: () => BagIt
       main.append(el("div", "muted", `${mats} · ${vi.brew.cost(recipe.linhThach)} · ${vi.brew.left(recipe.seconds)}${recipe.exp ? ` · ${vi.brew.expGain(recipe.exp)}` : ""}`));
       const open = canCraft(base, level);
       if (!open) main.append(el("div", "muted", vi.brew.needLevel(base.minLevel ?? 1)));
+      else if (level > (base.minLevel ?? 1) && craftQualityBias(cfg, level, base.minLevel ?? 1, craft === "forge" ? DEFAULT_FORGE.quality!.perLevel : 0) > 0) main.append(el("div", "muted", vi.brew.better(level - (base.minLevel ?? 1))));
       const step = (to: number) => {
         batches.set(base.id, Math.max(1, Math.min(maxBatch, to)));
         render();

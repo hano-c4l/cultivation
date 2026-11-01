@@ -745,6 +745,7 @@ export const vi = {
     collected: (name: string, qty: number) => `Đã nhận ${qty} ${name}.`,
     level: (n: number, exp: number, next: number | null) => `Cấp luyện khí ${n}${next === null ? " (cao nhất)" : ` (${exp.toLocaleString("vi-VN")}/${next.toLocaleString("vi-VN")} kinh nghiệm)`}`,
     needLevel: (n: number) => `Cần cấp nghề ${n}.`,
+    better: (n: number) => `Cấp nghề cao hơn công thức ${n} cấp: chỉ số món làm ra có xu hướng cao hơn.`,
     expGain: (n: number) => `+${n} kinh nghiệm nghề`,
     /** The words that differ at the blacksmith's forge (Luyện khí). */
     forge: {
