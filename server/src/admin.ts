@@ -4,6 +4,7 @@ import { kickCharacter } from "./accounts-admin";
 import { PBKDF2_ITERATIONS, toBase64 } from "./password-hasher";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
 import { moneyOverview } from "./money-dashboard";
+import { adminListings, adminSales, adminTakedown, adminTrades } from "./market-admin";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
@@ -258,6 +259,37 @@ export async function adminMoney(request: Request, env: Env): Promise<Response> 
   const admin = await requireAdmin(request, env);
   if (admin instanceof Response) return admin;
   return json(await moneyOverview(env.DB));
+}
+
+/** The market and trade records (GET `view` = listings | sales | trades, `q` filters by item or character name, `all=1` also lists closed listings). Read-only. */
+export async function adminMarket(request: Request, env: Env, url: URL): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  const q = (url.searchParams.get("q") ?? "").trim().slice(0, 40);
+  const view = url.searchParams.get("view");
+  if (view === "sales") return json({ sales: await adminSales(env.DB, q) });
+  if (view === "trades") return json({ trades: await adminTrades(env.DB, q) });
+  return json({ listings: await adminListings(env.DB, url.searchParams.get("all") !== "1", q) });
+}
+
+/** POST `{id, reason?}`: takes an open market listing down (the item goes back to the seller by mail, a top bidder is refunded). */
+export async function adminMarketTakedown(request: Request, env: Env): Promise<Response> {
+  const session = await requireAdminSession(request, env);
+  if (session instanceof Response) return session;
+  const body = await readJson(request, 4 * 1024);
+  if (!body || typeof body.id !== "string" || body.id.length < 1 || body.id.length > 80) return errorResponse("invalid_body", 400);
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  const result = await adminTakedown(env.DB, session.email, body.id, reason);
+  if (!result.ok) return json({ error: result.error }, 409);
+  try {
+    const hub = env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" });
+    await hub.notifyMail(result.notify);
+    await hub.marketChanged(null);
+  } catch (err) {
+    console.error("market takedown notify failed", err);
+  }
+  console.log("market takedown", session.accountId, body.id);
+  return json({ ok: true });
 }
 
 /** The adjustable game settings with their effective values (GET), or a change of one of them (POST {key, value}). */

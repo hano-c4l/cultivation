@@ -75,6 +75,22 @@ describe("the NPC screen", () => {
     expect(await saveNpc(db, ADMIN, input(last, { enabled: false }), false, last.updatedAt)).toMatchObject({ ok: false, error: "in_use" });
   });
 
+  it("will not take the last blacksmith out of play while a forging waits to be collected, and the alchemist's pills do not count", async () => {
+    raw.exec(`INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, created_at) VALUES ('acc-s', 's@x.test', 'h', 's', 1, 0)`);
+    raw.exec(`INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at) VALUES ('cs', 'acc-s', 'Smith', 'kim', 0, 0, 0, 0)`);
+    raw.exec(`INSERT INTO brew_jobs (id, character_id, npc_id, recipe_id, item, qty, started_at, ready_at, collected_at, craft, exp) VALUES ('f1', 'cs', 'smith', 'forge_ring_lk', 'eq.ring.u.0.3.2', 1, 0, 1, NULL, 'forge', 0)`);
+    for (const [map, id] of [["town", "smith"], ["town2", "smith2"]] as const) {
+      const spot = await find(map, id);
+      expect((await saveNpc(db, ADMIN, input(spot, { enabled: false }), false, spot.updatedAt)).ok).toBe(true); // another smith is still in play
+    }
+    const last = await find("town3", "smith3");
+    const refused = await saveNpc(db, ADMIN, input(last, { enabled: false }), false, last.updatedAt);
+    expect(refused).toMatchObject({ ok: false, error: "in_use" });
+    expect((refused as { problems: string[] }).problems[0]).toContain("luyện khí");
+    raw.exec(`UPDATE brew_jobs SET collected_at = 2 WHERE id = 'f1'`);
+    expect((await saveNpc(db, ADMIN, input(last, { enabled: false }), false, last.updatedAt)).ok).toBe(true);
+  });
+
   it("adds an NPC of an addable kind (a merchant gets a stock record), deletes it, and never deletes one the game starts with", async () => {
     const m = await find("town", "merchant");
     const created = await saveNpc(db, ADMIN, { id: "herbalist", mapId: "town", kind: "merchant", name: "Dược sư", x: m.x + 4, y: m.y, sort: 9, enabled: true }, true, 0);
@@ -152,6 +168,9 @@ describe("the alchemist's recipes and brewings", () => {
 
   it("starts at most maxJobs brewings, collects a ready one once, and keeps a brewing's result when the recipe later changes", async () => {
     const recipe = DEFAULT_ALCHEMY.recipes[0]!;
+    expect(recipe.exp).toBeGreaterThan(0); // collecting also gives trade exp, which needs the character row
+    raw.exec(`INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, created_at) VALUES ('acc-b', 'b@x.test', 'h', 's', 1, 0)`);
+    raw.exec(`INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at) VALUES ('c1', 'acc-b', 'Brewer', 'kim', 0, 0, 0, 0)`);
     const now = 1_000_000;
     const run = (statements: D1PreparedStatement[]) => db.batch(statements);
     await run(startBrewStatements(db, "c1", "alchemist", recipe, "j1", 2, now));

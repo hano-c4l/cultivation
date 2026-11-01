@@ -2,6 +2,7 @@ import "./style.css";
 import { api, h } from "./kit";
 import { auditPage, detailPage, logPage, searchPage } from "./currency";
 import { moneyPage } from "./money";
+import { marketPage } from "./market";
 import { MENU } from "./menu";
 import { giftsPage } from "./gifts";
 import { itemEditPage, itemListPage } from "./items";
@@ -77,6 +78,9 @@ async function render(): Promise<void> {
   } else if (path === "/admin/money") {
     title = "Tổng quan tiền";
     content = moneyPage();
+  } else if (path === "/admin/market") {
+    title = "Chợ và giao dịch";
+    content = marketPage();
   } else if (path === "/admin/currency") {
     title = "Quản lý tiền tệ";
     content = searchPage();

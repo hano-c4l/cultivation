@@ -40,7 +40,7 @@ describe("brewing in batches", () => {
   it("never goes past the most batches, and an old stored config without the new fields still validates", () => {
     expect(scaleBrew(recipe, 999, { maxBatch: 5 }).qty).toBe(recipe.qty * 5);
     expect(scaleBrew(recipe, 0, {}).qty).toBe(recipe.qty);
-    expect(validAlchemy({ maxJobs: 3, recipes: DEFAULT_ALCHEMY.recipes })).toBe(true);
+    expect(validAlchemy({ maxJobs: 3, recipes: DEFAULT_ALCHEMY.recipes.map(({ minLevel: _m, exp: _e, ...r }) => r) })).toBe(true);
     expect(validAlchemy({ ...DEFAULT_ALCHEMY, maxBatch: 0 })).toBe(false);
   });
 });

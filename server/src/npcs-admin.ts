@@ -172,6 +172,14 @@ async function usedBy(db: D1Database, mapId: string, id: string, kind: string): 
     ]);
     if (!others && (waiting?.n ?? 0) > 0) out.push(`${waiting!.n} mẻ đan đang chờ nhận (không còn Đan Sư nào để nhận)`);
   }
+  // The last blacksmith in play: forgings (Luyện khí) waiting to be collected would have nobody to collect them from.
+  if (kind === "smith") {
+    const [others, waiting] = await Promise.all([
+      db.prepare("SELECT 1 AS x FROM npc_spots WHERE kind = 'smith' AND enabled = 1 AND NOT (map_id = ? AND npc_id = ?) LIMIT 1").bind(mapId, id).first(),
+      db.prepare("SELECT COUNT(*) AS n FROM brew_jobs WHERE craft = 'forge' AND collected_at IS NULL").first<{ n: number }>(),
+    ]);
+    if (!others && (waiting?.n ?? 0) > 0) out.push(`${waiting!.n} mẻ luyện khí đang chờ nhận (không còn Thợ Rèn nào để nhận)`);
+  }
   return out;
 }
 

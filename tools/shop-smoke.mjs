@@ -3,7 +3,7 @@
 // Usage: node tools/shop-smoke.mjs [ws://localhost:8787]
 // Registers throwaway accounts and uses dev-only endpoints, so it only runs against localhost with
 // DISABLE_RATE_LIMIT=1 and ENABLE_DEV_GRANT=1 in .dev.vars. Never run it against preview or production.
-import { FOREST_ARRIVAL, FOREST_BY_WOLVES, T } from "./world.mjs";
+import { FOREST_ARRIVAL, FOREST_BY_WOLVES, openWhenThere, townNear } from "./world.mjs";
 import { execFileSync } from "node:child_process";
 
 const sql = (q) => execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", `"${q}"`], { stdio: "ignore", shell: true });
@@ -104,16 +104,17 @@ check("opening the shop from far away is refused", r.some((m) => m.t === "inv_er
 r = await after(c, { t: "shop_buy", npc: "merchant", offer: "hoi_huyet_dan", qty: 1 });
 check("buying from far away is refused and nothing is charged", r.some((m) => m.t === "inv_error" && m.reason === "far") && balanceOf(c) === 5000);
 
-// --- walk to a spot between the merchant and the alchemist (the plain pills with daily limits are the alchemist's now) ---
-c.send({ t: "move", x: 25.5 + T, y: 19 + T, fx: 20.5 + T, fy: 20.5 + T, seq: 1 });
-await sleep(2500);
-r = await after(c, { t: "npc_open", npc: "alchemist" });
-const stock = r.find((m) => m.t === "shop");
+// --- walk to the alchemist (the plain pills with daily limits are the alchemist's now); the NPC spots come from the welcome, since an admin can move them ---
+const spawnAt = c.welcome.players.find((p) => p.id === c.welcome.self).path[0];
+const nearAlchemist = townNear("alchemist", c.welcome.npcs);
+c.send({ t: "move", x: nearAlchemist[0], y: nearAlchemist[1], fx: spawnAt[0], fy: spawnAt[1], seq: 1 });
+const stock = await openWhenThere(c, { t: "npc_open", npc: "alchemist" }, "shop");
+await sleep(1200); // the repeated opens while walking are rate limited together with the buys
 check("near the alchemist the shop opens and reports the daily stock", !!stock && stock.left.ngo_dao_dan === 2 && stock.left.dai_hoi_huyet_dan === 20, JSON.stringify(stock?.left));
 
 // --- buying ---
 r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "not_an_offer", qty: 1 });
-check("an unknown offer is refused", r.some((m) => m.t === "inv_error" && m.reason === "invalid"));
+check("an unknown offer is refused", r.some((m) => m.t === "inv_error" && m.reason === "invalid"), JSON.stringify(r).slice(0, 300));
 r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "hoi_huyet_dan", qty: 5 });
 check("buying 5 Hồi Huyết Đan costs 50 and puts them in the bag", r.some((m) => m.t === "shop_ok" && m.op === "buy" && m.total === 50) && balanceOf(c) === 4950 && countOf(c, "hoi_huyet_dan") === 5, `balance ${balanceOf(c)}`);
 r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "ngo_dao_dan", qty: 2 });
@@ -125,6 +126,11 @@ r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "dai_hoi_huyet_dan"
 check("buying the daily 20 Đại Hồi Huyết Đan costs 1200", r.some((m) => m.t === "shop_ok" && m.total === 1200) && balanceOf(c) === 750, `balance ${balanceOf(c)}`);
 r = await after(c, { t: "shop_buy", npc: "alchemist", offer: "hoi_huyet_dan", qty: 99 });
 check("buying more than the money allows (990 > 750) is refused with no change", r.some((m) => m.t === "inv_error" && m.reason === "funds") && balanceOf(c) === 750 && countOf(c, "hoi_huyet_dan") === 5);
+// the merchant's goods: walk to the merchant
+const nearMerchant = townNear("merchant", c.welcome.npcs);
+c.send({ t: "move", x: nearMerchant[0], y: nearMerchant[1], fx: nearAlchemist[0], fy: nearAlchemist[1], seq: 2 });
+await openWhenThere(c, { t: "npc_open", npc: "merchant" }, "shop");
+await sleep(1200);
 r = await after(c, { t: "shop_buy", npc: "merchant", offer: "eq.hat.f.0.1.1.kim", qty: 1 });
 check("gear of the other style is not an offer for a male character", r.some((m) => m.t === "inv_error" && m.reason === "invalid"));
 r = await after(c, { t: "shop_buy", npc: "merchant", offer: "eq.hat.m.0.1.1.hoa", qty: 1 });
@@ -137,9 +143,7 @@ check("a weapon of a chosen element and family can be bought", r.some((m) => m.t
 await post("/api/admin/grant", { characterId: charId, currency: "linh_thach", amount: 15000, reason: "smoke", idempotencyKey: crypto.randomUUID() }, adminReg.cookie);
 await sleep(300);
 r = await after(c, { t: "shop_buy", npc: "merchant", offer: "bt_cuong_than", qty: 1 });
-check("a basic skill book can be bought", r.some((m) => m.t === "shop_ok") && countOf(c, "bt_cuong_than") === 1);
-r = await after(c, { t: "shop_buy", npc: "merchant", offer: "bt_cuong_than", qty: 1 });
-check("books have no daily limit (a second one is sold)", r.some((m) => m.t === "shop_ok") && countOf(c, "bt_cuong_than") === 2);
+check("skill books are not sold by the merchant any more (the Võ Sư teaches them, phase 2p)", r.some((m) => m.t === "inv_error" && m.reason === "invalid") && countOf(c, "bt_cuong_than") === 0, JSON.stringify(r).slice(0, 200));
 r = await after(c, { t: "shop_buy", npc: "merchant", offer: "ttp_town", qty: 2 });
 check("the town's teleport talisman is sold here for 2000 each", r.some((m) => m.t === "shop_ok" && m.total === 4000) && countOf(c, "ttp_town") === 2);
 const scroll = bagOf(c).find((i) => i.type === "ttp_town");
