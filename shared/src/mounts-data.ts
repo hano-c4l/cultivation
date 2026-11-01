@@ -29,8 +29,8 @@ export const DEFAULT_MOUNTS: MountsCfg = {
   list: [
     { id: "linh_loc", nameVi: "Linh Lộc", descVi: "Con hươu linh khí hiền lành, chạy nhanh hơn người đi bộ.", minRealm: 0, speedPct: 30, price: 20_000, sprite: "dog", color: "#d8b878", size: 0.9, enabled: true },
     { id: "hac_phong_lang", nameVi: "Hắc Phong Lang", descVi: "Sói đen chạy nhanh như gió, thuần phục được từ Trúc Cơ.", minRealm: 1, speedPct: 45, price: 150_000, sprite: "wolf", color: "#8a8fa8", size: 1.1, enabled: true },
-    { id: "xich_van_ma", nameVi: "Xích Vân Mã", descVi: "Ngựa đỏ bốc lửa, phi như mây trời Kim Đan.", minRealm: 2, speedPct: 60, price: 1_000_000, sprite: "wolf", color: "#e0603c", size: 1.3, enabled: true },
-    { id: "bach_ho", nameVi: "Bạch Hổ", descVi: "Hổ trắng thần thú, chỉ Nguyên Anh mới ngự được.", minRealm: 3, speedPct: 80, price: 6_000_000, sprite: "cat", color: "#ffffff", size: 1.5, enabled: true },
+    { id: "xich_van_ma", nameVi: "Xích Vân Mã", descVi: "Ngựa đỏ bốc lửa, phi như mây trời Kim Đan.", minRealm: 2, speedPct: 60, price: 1_000_000, sprite: "horse", color: "#e8704a", size: 1.1, enabled: true },
+    { id: "bach_ho", nameVi: "Bạch Hổ", descVi: "Hổ trắng thần thú, chỉ Nguyên Anh mới ngự được.", minRealm: 3, speedPct: 80, price: 6_000_000, sprite: "zebra", color: "#ffffff", size: 1.2, enabled: true },
   ],
 };
 
