@@ -8,6 +8,8 @@ export interface MapArt {
   obstacle: ObstacleStyle;
   /** The looks small spots are drawn as, each spot picking one by its position (a style listed twice is twice as common). Never empty. */
   mix: ObstacleStyle[];
+  /** What the large blocked spots are drawn as: `wall` the flat extruded block of old, `house` roofs and walls with doors (and ponds where the spot is round). Maps without it: wall. */
+  big: "wall" | "house";
 }
 
 /**
@@ -15,11 +17,20 @@ export interface MapArt {
  * existed has none: the default mix of that map stands in (if its style is unchanged), else the single style.
  */
 export function mapArtOf(mapId: string): MapArt {
-  const entry = tuning().mapArt.maps[mapId];
-  const obstacle = entry?.obstacle ?? "plain";
   const stock = DEFAULT_TUNING.mapArt.maps[mapId];
+  // A map of the game that the stored table does not list yet (a map added after the table was first saved) is drawn as the code says; only a map an admin made has no look at all.
+  const entry = tuning().mapArt.maps[mapId] ?? stock;
+  const obstacle = entry?.obstacle ?? "plain";
   const mix = entry?.mix ?? (stock?.obstacle === obstacle ? stock.mix : undefined); // only while the stored style is still the stock one
-  return { ground: entry?.ground ?? "plain", obstacle, mix: obstacle === "plain" ? ["plain"] : mix && mix.length > 0 ? mix : [obstacle] };
+  const big = entry?.big ?? (stock?.obstacle === obstacle ? stock.big : undefined) ?? "wall";
+  return { ground: entry?.ground ?? "plain", obstacle, big, mix: obstacle === "plain" ? ["plain"] : mix && mix.length > 0 ? mix : [obstacle] };
+}
+
+/** How a large blocked spot is drawn: the rim and any spot of a map not drawn as houses stay walls; a round spot is a pond; the rest (rectangles, turned or not) are houses. */
+export function bigLookOf(art: Pick<MapArt, "big">, blob: Pick<Blob, "radius" | "fill">): "wall" | "house" | "water" {
+  if (art.big !== "house" || blob.radius > 14) return "wall";
+  // A disc fills about 0.79 of its bounding box (a little more once cut into cells); a rectangle about 1 and one turned on the diamond grid about 0.5: both are houses.
+  return blob.fill >= 0.74 && blob.fill < 0.88 ? "water" : "house";
 }
 
 /** Looks that only make sense small: a big spot is never drawn as one of these (a giant bush or stump), when the mix has anything else. */
@@ -48,6 +59,8 @@ export interface Blob {
   small: boolean;
   /** 0..3, picked by a hash of the position: the same spot always looks the same, on every device. */
   variant: number;
+  /** How much of its bounding box it fills: about 1 for a rectangle, 0.79 for a disc. */
+  fill: number;
 }
 
 export interface Obstacles {
@@ -109,7 +122,7 @@ export function obstacleBlobs(map: MapData): Obstacles {
       }
       const x = (sx / n + 0.5) / CELLS_PER_TILE;
       const y = (sy / n + 0.5) / CELLS_PER_TILE;
-      blobs.push({ cells: n, x, y, radius: Math.max(maxX - minX + 1, maxY - minY + 1) / 2 / CELLS_PER_TILE, small: n < SMALL_BLOB_CELLS, variant: hash2(x, y) % 4 });
+      blobs.push({ cells: n, x, y, radius: Math.max(maxX - minX + 1, maxY - minY + 1) / 2 / CELLS_PER_TILE, small: n < SMALL_BLOB_CELLS, variant: hash2(x, y) % 4, fill: n / ((maxX - minX + 1) * (maxY - minY + 1)) });
     }
   }
   return { blobs, blobOf };

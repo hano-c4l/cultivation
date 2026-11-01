@@ -1,3 +1,4 @@
+import { mountOf } from "./mounts";
 import { tuning } from "./tuning";
 import { equipmentInfo, type EquipKind } from "./equipment-data";
 import { getItemDef } from "./items";
@@ -84,6 +85,8 @@ export function itemValue(type: string): number {
     const realm = skill?.learn?.realm ?? skill?.realm ?? 0;
     return items[type] ?? items[`book_realm_${realm}`] ?? BOOK_VALUE_BY_REALM[Math.min(realm, BOOK_VALUE_BY_REALM.length - 1)] ?? 0;
   }
+  const mount = getItemDef(type)?.mount;
+  if (mount) return items[type] ?? mountOf(mount)?.price ?? 0; // a mount token is worth its price in the mounts tuning
   return items[type] ?? 0;
 }
 

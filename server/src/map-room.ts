@@ -147,15 +147,16 @@ import {
   type ViewEntity,
   diffView,
 } from "@game/shared";
-import { bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
+import { SECT_RANK, SECT_ROLE_NAMES, SECT_SAY, sectKillCounts, sectKillOpen, sectTaskMode, type SectError, type Tuning, bodyOf, flightStyleOf, outfitOf, MAP_NAMES, npcTabs, overrideRecipe, tuning, npcsOf, itemOverlays, elementTuning, isWaygateTown, meetsQuestLevel, waygateDestinations, waygatePrice, bossRegenPerS, bossKind, bossKillText, bossSpawnText, getMonsterDef, deathDurabilityOf, GUARDS, nameTierOrangeFrom, applyGuardKill, planPkLoss, satNhanAfterDeath, grayWindowMs, satNhanDecayPerMin, planPkDrop, type NameTier, TALISMAN_CAST_MS, applyPvpKill, findOffer, isMonsterId, isPkProtected, nameTier, npcNear, merchantPays, type Gender, type PkMode, type PkScores } from "@game/shared";
 import { getPurchased, limitStatements, stockLeft } from "./shop";
 import { getMerchants } from "./merchants";
-import { collectBrewStatements, getBrewJob, listBrewJobs, startBrewStatements } from "./brew";
+import { collectBrewStatements, getBrewJob, getCraftExp, listBrewJobs, startBrewStatements } from "./brew";
 import { getNpcs } from "./npcs";
-import { grantExp, saveMounted, savePkScores } from "./characters";
+import { grantExp, saveBeast, saveMounted, savePkScores } from "./characters";
+import { learnMountStatement, ownedMounts, ownsMount } from "./mounts";
 import { abandonQuest, acceptQuest, commitTurnIn, getQuestCatalog, loadQuestProgress, pathItemGiven, planTurnIn, resetQuestStatements, saveQuestProgress } from "./quests";
 import type { SpiritualRoot } from "@game/shared";
-import { DEFAULT_MAX_BATCH, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
+import { DEFAULT_FORGE, DEFAULT_MAX_BATCH, mountBlock, mountOf, mountSpeedPct, type Craft, biasedRoll, canCraft, craftLevelOf, craftQualityBias, coursesOf, meditationExpPerSecond, scaleBrew } from "@game/shared";
 import { givesPathItem, killCounts, objectiveTarget, questStatus, type QuestDef, type QuestProgressView } from "@game/shared";
 import { commitPathBatch, commitPathChoice, levelUpStatements, rearrangeStatements } from "./paths";
 import { commitBreakthroughFailure, commitBreakthroughSuccess, isStaleBreakthrough, planTakePills, startStatements } from "./breakthrough";
@@ -198,6 +199,13 @@ import { loadLiveConfig } from "./live-config";
 import { getGearMaster, rollGear } from "./gear-master";
 import { getEnhanceTable, loadPity } from "./enhance";
 import { getTuning } from "./tuning";
+import { NPC_NAMES_VI, auctionOpen, getItemDef as marketItemDef, type MarketError, type TradeEnd, type TradeError, type TradeSideView } from "@game/shared";
+import { planTask, prepareTask, sectRanking } from "./sect-task";
+import { buyShelf, disbandSect, putItem, setAccept, setShelf, takeItem, vaultViews } from "./sect-vault";
+import { claimKillTask, saveSectKills } from "./sect-task";
+import { acceptInvite, answerRequest, applyTo, buySectSkill, skillShopCheck, claimWeekly, contributionOf, cooldownUntil, createSect, donate, setWeekly, shopCheck, shopPayStatements, upgradeSect, inviteProblem, kickMember, leaveSect, memberIds, memberOf, sectById, sectDirectory, sectNameOf, sectView, setNotice, setRole, succeedIdleLeader, transferLeader } from "./sect";
+import { hasRoomFor, newSession, otherSide, planTrade, setConfirm, setLock, setOffer, sideOf, type TradeSession } from "./trade";
+import { buyFixed, cancelListing, listingViews, placeBid, postListing, promoteListing, settleDue } from "./market";
 
 /** The look of the worn flight pháp bảo (none when nothing is worn there or it is broken): the others draw a rider on it. */
 function flightLookOf(equipped: ReadonlyArray<{ slot: string; type: string; dur?: number }>): string | undefined {
@@ -223,6 +231,11 @@ interface PlayerState {
   /** The account is an admin (set by the Worker when the socket opens; a role change counts from the next connection). */
   admin?: boolean;
   name: string;
+  /** The name of the sect (drawn above the name); `syncSectLabel` keeps it current. */
+  sc?: string;
+  /** When the last sect command was answered (they read and write D1). */
+  lastSectAt?: number;
+  lastSectReadAt?: number;
   /** Drawn with the female body (from the gender at join; it never changes while connected). */
   female?: boolean;
   /** The weapon family in the hand, as the others see it (a broken weapon counts as none); `applyGear` keeps it current. */
@@ -243,11 +256,17 @@ interface PlayerState {
   speed: number;
   /** Riding the flight pháp bảo (kept per connection: a map change gets off). */
   mounted?: boolean;
+  /** The beast mount ridden (a `mounts` id); never together with `mounted` (one ride at a time). */
+  beast?: string;
   lastMountAt?: number;
   lastMeditateAt?: number;
   lastMoveAt: number;
   /** Last bag command, to rate-limit them (each one is a D1 write). */
   lastInvAt?: number;
+  /** Last `market_list` answered (a read only, so it has a lighter limit than the bag commands). */
+  lastMarketListAt?: number;
+  /** Last change of a trade offer by this player (each one is a stored write). */
+  lastTradeAt?: number;
   /** Last skill / hotbar command, to rate-limit them. */
   lastCastAt?: number;
   lastHotbarAt?: number;
@@ -422,6 +441,9 @@ export class MapRoom extends DurableObject<Env> {
   /** Quest progress of the characters in the room (loaded lazily from D1; absolute values are written back) and which quests changed. */
   private questRows = new Map<string, Record<string, QuestProgressView>>();
   private questDirty = new Map<string, Set<string>>();
+  /** Kills counted for sect kill tasks and not written yet, by character (key `task|day`), and who is in which sect (looked at for a minute at a time: no D1 read per kill). */
+  private sectKills = new Map<string, Map<string, { task: string; day: number; add: number; cap: number }>>();
+  private sectKillCtx = new Map<string, { sectId: string; level: number; at: number; day: number; totals: Map<string, number> } | null>();
   private hotbars = new Map<string, string[]>();
   /** Per character: the vitals as last written to D1 (without the timestamp), so an unchanged state is not written again. */
   private vitalKeys = new Map<string, string>();
@@ -514,10 +536,21 @@ export class MapRoom extends DurableObject<Env> {
         console.error("wallet read failed", err);
         return { ...EMPTY_WALLET };
       });
+      // The Cống Hiến slot of the wallet shows the member's cống hiến in their sect (0 with none).
+      wallet.cong_hien = await contributionOf(this.env.DB, row.id).catch(() => 0);
 
       // The bag and the mail are read here too (before accepting), for the same reason as the wallet.
       const joinedAt = Date.now();
       await deleteExpiredMail(this.env.DB, joinedAt, row.id).catch((err) => console.error("mail sweep failed", err));
+      // Vạn Bảo Lâu: close the listings that ran out of time before the mail is read, so a seller or a winner logging in meets the result.
+      await getTuning(this.env.DB)
+        .then((t) => settleDue(this.env.DB, t.market, joinedAt))
+        .then(async (ids) => {
+          await this.notifyMail(ids.filter((x) => x !== row.id));
+          if (ids.length > 0) await this.marketChanged(null);
+        })
+        .catch((err) => console.error("market settle failed", err));
+      const sectName = await sectNameOf(this.env.DB, row.id).catch(() => undefined);
       const [bag, mail] = await Promise.all([
         loadBag(this.env.DB, row.id),
         listMail(this.env.DB, row.id, joinedAt).catch((err) => {
@@ -565,6 +598,8 @@ export class MapRoom extends DurableObject<Env> {
       const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
       this.ctx.acceptWebSocket(server);
       const position = restorePosition(map, row.x, row.y);
+      // The beast being ridden when the character left is kept only while the character still owns it and the realm allows it (a flight ride is restored the same way below).
+      const beastNow = row.riding_beast && !mountBlock(mountOf(row.riding_beast), row.realm) && (await ownsMount(this.env.DB, row.id, row.riding_beast)) ? row.riding_beast : undefined;
       const state: PlayerState = {
         id: row.id,
         admin: request.headers.get("x-char-admin") === "1",
@@ -574,6 +609,7 @@ export class MapRoom extends DurableObject<Env> {
         snAt: Date.now(),
         ah: row.anh_hung,
         name: row.name,
+        ...(sectName ? { sc: sectName } : {}),
         ...(bodyOf(row.gender) === "female" ? { female: true } : {}),
         ...(weaponFamily(bagNow.equipped) ? { w: weaponFamily(bagNow.equipped) as string } : {}),
         ...(outfitOf(bagNow.equipped) ? { o: outfitOf(bagNow.equipped) as string } : {}),
@@ -584,8 +620,9 @@ export class MapRoom extends DurableObject<Env> {
         mapId,
         path: [position],
         startedAt: Date.now(),
-        mounted: row.mounted === 1 && bagNow.equipped.some((e) => e.slot === "flight") ? true : undefined,
-        speed: walkSpeed(baseOf(row), equipmentBonus(bagNow.equipped, wearerOfRow(row)).moveSpeed),
+        mounted: !beastNow && row.mounted === 1 && bagNow.equipped.some((e) => e.slot === "flight") ? true : undefined,
+        ...(beastNow ? { beast: beastNow } : {}),
+        speed: walkSpeed(baseOf(row), equipmentBonus(bagNow.equipped, wearerOfRow(row)).moveSpeed + mountSpeedPct(beastNow)),
         lastMoveAt: 0,
         dirty: false,
         chatTimes: [],
@@ -718,9 +755,53 @@ export class MapRoom extends DurableObject<Env> {
       case "inv_split":
       case "inv_expand":
       case "mail_claim":
+      case "mail_claim_all":
         return this.handleInventory(ws, state, msg);
       case "mail_refresh":
         return this.handleMailRefresh(ws, state);
+      case "market_list":
+        return this.handleMarketList(ws, state, msg.npc);
+      case "trade_invite":
+      case "trade_reply":
+      case "trade_offer":
+      case "trade_add":
+      case "trade_lock":
+      case "trade_confirm":
+      case "trade_cancel":
+        return this.handleTrade(ws, state, msg);
+      case "sect_get":
+      case "sect_list":
+      case "sect_create":
+      case "sect_apply":
+      case "sect_answer":
+      case "sect_invite":
+      case "sect_reply":
+      case "sect_leave":
+      case "sect_kick":
+      case "sect_role":
+      case "sect_transfer":
+      case "sect_disband":
+      case "sect_notice":
+      case "sect_donate":
+      case "sect_upgrade":
+      case "sect_weekly":
+      case "sect_weekly_set":
+      case "sect_buy":
+      case "sect_skill_buy":
+      case "sect_vault":
+      case "sect_put":
+      case "sect_take":
+      case "sect_shelf":
+      case "sect_shelf_buy":
+      case "sect_accept":
+      case "sect_task":
+      case "sect_rank":
+        return this.handleSect(ws, state, msg);
+      case "beast":
+        this.standUp(ws, "moved");
+        return this.handleBeast(ws, state, msg.id);
+      case "mount_list":
+        return void this.sendMounts(ws, state.id);
       case "mount":
         this.standUp(ws, "moved");
         return this.handleMount(ws, state, msg.on, msg.fx !== undefined && msg.fy !== undefined ? [msg.fx, msg.fy] : undefined);
@@ -737,6 +818,12 @@ export class MapRoom extends DurableObject<Env> {
         return this.handleBrew(ws, state, msg);
       case "dojo_learn":
         return this.handleDojoLearn(ws, state, msg);
+      case "market_post":
+      case "market_buy":
+      case "market_bid":
+      case "market_cancel":
+      case "market_promote":
+        return this.handleMarket(ws, state, msg);
       case "waygate_go":
         return void this.startWaygate(ws, state, msg);
       case "npc_open":
@@ -1431,6 +1518,8 @@ export class MapRoom extends DurableObject<Env> {
     this.skillDirty.clear();
     this.questRows.clear();
     this.questDirty.clear();
+    this.sectKills.clear();
+    this.sectKillCtx.clear();
     this.vitalKeys.clear();
     this.aoi.clear();
     return true;
@@ -1610,6 +1699,7 @@ export class MapRoom extends DurableObject<Env> {
       case "kill": {
         const mapId = sockets.get(ev.playerId)?.state.mapId;
         if (mapId) later.push(this.noteKill(ev.playerId, mapId, ev.rare).catch((err) => console.error("quest kill failed", ev.playerId, err)));
+        if (mapId) later.push(this.noteSectKill(ev.playerId, mapId, ev.rare).catch((err) => console.error("sect kill failed", ev.playerId, err)));
         return;
       }
       case "player_dead": {
@@ -1694,6 +1784,8 @@ export class MapRoom extends DurableObject<Env> {
     this.skillDirty.delete(id);
     this.questRows.delete(id);
     this.questDirty.delete(id);
+    this.sectKills.delete(id);
+    this.sectKillCtx.delete(id);
     this.hotbars.delete(id);
     this.vitalKeys.delete(id);
   }
@@ -1807,7 +1899,7 @@ export class MapRoom extends DurableObject<Env> {
     const bag = await this.getBag(first.id);
     const state = ws.deserializeAttachment() as PlayerState | null;
     if (!w || !state || state.transferring) return;
-    const speed = walkSpeed(w.base, equipmentBonus(bag.equipped, { ...w, mounted: state.mounted }).moveSpeed);
+    const speed = walkSpeed(w.base, equipmentBonus(bag.equipped, { ...w, mounted: state.mounted }).moveSpeed + mountSpeedPct(state.beast));
     if (speed === state.speed && !opts.force) return;
     let accepted = false;
     if (speed !== state.speed) {
@@ -1859,8 +1951,10 @@ export class MapRoom extends DurableObject<Env> {
   /** Gets off at once (a breakthrough starts, or the character died): the flag is saved and the speed and stats follow. */
   private async forceDismount(id: string): Promise<void> {
     const sock = this.socketOf(id);
+    if (sock?.state.beast) await this.clearBeast(sock.ws, sock.state); // a breakthrough or a death gets off a beast too
     if (!sock?.state.mounted) {
       await saveMounted(this.env.DB, id, false).catch(() => undefined);
+      if (!sock) await saveBeast(this.env.DB, id, null).catch(() => undefined);
       return;
     }
     const { ws } = sock;
@@ -1985,6 +2079,67 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
+  /** Gets off the beast (the flag is saved, the client and the others hear of it, the speed follows). */
+  private async clearBeast(ws: WebSocket, state: PlayerState): Promise<void> {
+    const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+    if (!fresh.beast) return;
+    delete fresh.beast;
+    ws.serializeAttachment(fresh);
+    await saveBeast(this.env.DB, fresh.id, null).catch((err) => console.error("save beast failed", fresh.id, err));
+    this.send(ws, { t: "beast", id: null });
+    await this.refreshSpeed(ws, { force: true });
+  }
+
+  /** The mounts of a character and the one it rides. */
+  private async sendMounts(ws: WebSocket, id: string): Promise<void> {
+    this.send(ws, { t: "mounts", owned: await ownedMounts(this.env.DB, id), riding: this.socketOf(id)?.state.beast ?? null });
+  }
+
+  /** Ride a beast mount the character owns (and its realm allows), or get off it. The flight pháp bảo is left first: one ride at a time. */
+  private async handleBeast(ws: WebSocket, state: PlayerState, id: string | null): Promise<void> {
+    const now = Date.now();
+    if (now - (state.lastMountAt ?? 0) < 500) return;
+    state.lastMountAt = now;
+    ws.serializeAttachment(state);
+    if (id === null) return void (await this.clearBeast(ws, state));
+    if (state.beast === id) return this.send(ws, { t: "beast", id });
+    if (state.bt || state.tp) return this.send(ws, { t: "beast", id: state.beast ?? null, error: "busy" });
+    const w = await this.wearerOf(state.id);
+    const block = mountBlock(mountOf(id), w?.realm ?? 0);
+    if (block) return this.send(ws, { t: "beast", id: state.beast ?? null, error: block });
+    if (!(await ownsMount(this.env.DB, state.id, id))) return this.send(ws, { t: "beast", id: state.beast ?? null, error: "not_owned" });
+    const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
+    if (fresh.transferring) return;
+    if (fresh.mounted) {
+      fresh.mounted = false; // off the flight pháp bảo
+      await saveMounted(this.env.DB, fresh.id, false).catch((err) => console.error("save mounted failed", fresh.id, err));
+      this.send(ws, { t: "mounted", on: false });
+    }
+    fresh.beast = id;
+    ws.serializeAttachment(fresh);
+    await saveBeast(this.env.DB, fresh.id, id).catch((err) => console.error("save beast failed", fresh.id, err));
+    this.send(ws, { t: "beast", id });
+    await this.refreshSpeed(ws, { force: true }); // not quiet: the client does not predict the speed of a beast, it takes the track the server sends
+    this.applyGear(fresh.id, await this.getBag(fresh.id), ws); // the stats of the flight pháp bảo go with the flag
+  }
+
+  /** Reads a mount token: the mount is learned for good and the token used up, in one batch (a mount already known rolls it back). */
+  private async learnMount(ws: WebSocket, id: string, tab: number, cell: number, mountId: string): Promise<void> {
+    const w = await this.wearerOf(id);
+    const block = mountBlock(mountOf(mountId), w?.realm ?? 0);
+    if (block) return this.send(ws, { t: "inv_error", reason: block === "realm" ? "mount_realm" : "invalid" });
+    const res = await this.mutateBag(id, (bag) => {
+      const ops = planRemove(bag.items, bag.tabs, { tab, cell }, 1);
+      return ops ? { ops, extra: [learnMountStatement(this.env.DB, id, mountId, Date.now())] } : null;
+    });
+    if (!res.ok) {
+      if (res.reason === "duplicate") return this.send(ws, { t: "inv_error", reason: "mount_known" });
+      return this.resync(ws, id, res.reason === "invalid" ? "invalid" : "busy");
+    }
+    this.sendBagDelta(id, res.before, res.after);
+    await this.sendMounts(ws, id);
+  }
+
   /** Get on or off the flight pháp bảo. Stats and speed follow at once. */
   private async handleMount(ws: WebSocket, state: PlayerState, on: boolean, claim?: [number, number]): Promise<void> {
     const now = Date.now();
@@ -2008,6 +2163,7 @@ export class MapRoom extends DurableObject<Env> {
       if (!w || !flight || !info) return refuse("no_flight");
       const block = equipBlock(info, flight.slot as EquipSlot, flight.dur, w);
       if (block) return refuse(block === "broken" ? "broken" : "requirements");
+      if (state.beast) await this.clearBeast(ws, state); // one ride at a time: the flight pháp bảo and a beast do not go together (after the checks above: a refusal leaves the beast ridden)
     }
     const fresh = (ws.deserializeAttachment() as PlayerState | null) ?? state;
     if (fresh.transferring) return;
@@ -2163,7 +2319,7 @@ export class MapRoom extends DurableObject<Env> {
     });
   }
 
-  private handleInventory(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "inv_use" | "inv_drop" | "inv_move" | "inv_sort" | "inv_split" | "inv_expand" | "mail_claim" }>): void {
+  private handleInventory(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "inv_use" | "inv_drop" | "inv_move" | "inv_sort" | "inv_split" | "inv_expand" | "mail_claim" | "mail_claim_all" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     if (msg.t === "inv_sort") {
@@ -2179,7 +2335,8 @@ export class MapRoom extends DurableObject<Env> {
     ws.serializeAttachment(state);
     const id = state.id;
     void this.bagTask(id, async () => {
-      if (msg.t === "mail_claim") return this.claimMail(ws, id, msg.id);
+      if (msg.t === "mail_claim") return void (await this.claimMail(ws, id, msg.id));
+      if (msg.t === "mail_claim_all") return this.claimAllMail(ws, id);
       if (msg.t === "inv_expand") return this.buyBagTab(ws, id, msg.price);
       if (msg.t === "inv_move") {
         const res = await this.mutateBag(id, (bag) => {
@@ -2273,6 +2430,7 @@ export class MapRoom extends DurableObject<Env> {
 
   /** Writes the quest progress changed since the last write (absolute values). A failed write keeps the quests dirty. */
   private async flushQuests(id: string): Promise<void> {
+    await this.flushSectKills(id); // the kills of the sect tasks go with the progress of the quests, on every way out of the room
     const dirty = this.questDirty.get(id);
     if (!dirty || dirty.size === 0) return;
     const rows = this.questRows.get(id) ?? {};
@@ -2285,6 +2443,66 @@ export class MapRoom extends DurableObject<Env> {
       const again = this.questDirty.get(id) ?? new Set<string>();
       for (const q of list) again.add(q.id);
       this.questDirty.set(id, again);
+    }
+  }
+
+  /**
+   * A kill counted for the sect kill tasks (docs/PHASE5.md, 5c-6): every task that is a kill day today for this member, whose filter the kill matches and whose sect level is reached,
+   * gains one (up to what it can still ask for that day). Kept in memory and written by `flushSectKills` with the quest progress.
+   */
+  private async noteSectKill(id: string, mapId: string, rare: boolean): Promise<void> {
+    const cfg = tuning().sect;
+    const tasks = cfg.tasks.filter((t) => t.kill && sectKillCounts(t, mapId, rare));
+    if (tasks.length === 0) return;
+    const now = Date.now();
+    const day = Math.floor((now + 7 * 3_600_000) / 86_400_000);
+    let ctx = this.sectKillCtx.get(id);
+    if (ctx === undefined || (ctx !== null && (now - ctx.at > 60_000 || ctx.day !== day)) || (ctx === null && now - (this.sectKillCtxAt.get(id) ?? 0) > 60_000)) {
+      const mine = await memberOf(this.env.DB, id);
+      const sect = mine ? await sectById(this.env.DB, mine.sect_id) : null;
+      // the day's totals so far (kills counted by any room, written or not), so a member past what the tasks can ask for causes no more writes
+      const totals = new Map<string, number>();
+      if (sect) for (const r of (await this.env.DB.prepare("SELECT task_id, kills FROM sect_task_log WHERE character_id = ? AND day = ?").bind(id, day).all<{ task_id: string; kills: number }>()).results) totals.set(r.task_id, r.kills);
+      ctx = sect ? { sectId: sect.id, level: sect.level, at: now, day, totals } : null;
+      this.sectKillCtx.set(id, ctx);
+      this.sectKillCtxAt.set(id, now);
+    }
+    if (!ctx) return;
+    const pending = this.sectKills.get(id) ?? new Map<string, { task: string; day: number; add: number; cap: number }>();
+    let touched = false;
+    for (const t of tasks) {
+      if (ctx.level < t.minLevel || sectTaskMode(t, id, day) !== "kill") continue;
+      const total = ctx.totals.get(t.id) ?? 0;
+      if (!sectKillOpen(t, total)) continue; // everything the task can ask for today is counted already: no more writes
+      ctx.totals.set(t.id, total + 1);
+      const cap = t.kill!.count * t.perDay;
+      const key = `${t.id}|${day}`;
+      const cur = pending.get(key) ?? { task: t.id, day, add: 0, cap };
+      cur.add += 1;
+      pending.set(key, cur);
+      touched = true;
+    }
+    if (!touched) return;
+    this.sectKills.set(id, pending);
+    await this.ensureSaveAlarm(now);
+  }
+  private sectKillCtxAt = new Map<string, number>();
+
+  /** Writes the kills counted for the sect tasks since the last write. A failed write keeps them for the next try. */
+  private async flushSectKills(id: string): Promise<void> {
+    const pending = this.sectKills.get(id);
+    if (!pending || pending.size === 0) return;
+    this.sectKills.delete(id);
+    try {
+      await saveSectKills(this.env.DB, id, [...pending.values()]);
+    } catch (err) {
+      console.error("sect kills save failed", id, err);
+      const again = this.sectKills.get(id) ?? new Map();
+      for (const [k, v] of pending) {
+        const cur = again.get(k);
+        again.set(k, cur ? { ...cur, add: Math.min(cur.cap, cur.add + v.add) } : v);
+      }
+      this.sectKills.set(id, again);
     }
   }
 
@@ -2470,7 +2688,6 @@ export class MapRoom extends DurableObject<Env> {
       this.bags.set(id, after);
       this.sendBagDelta(id, bag, after);
       if (r.balance !== null) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: r.balance, gained: def.rewards.linhThach });
-      if (r.congHien !== null) this.sendToCharacter(id, { t: "wallet", currency: "cong_hien", balance: r.congHien, gained: def.rewards.congHien });
       if (plan.exp) this.sendToCharacter(id, { t: "stats", character: toCharacterSheet({ ...row, stage: plan.exp.to.stage, exp: plan.exp.to.exp, potential_points: row.potential_points + plan.exp.to.points }) });
       rows[def.id] = { state: "done", progress: mine.progress, at: mine.at, done: Date.now() };
       this.sendToCharacter(id, { t: "quest_done", quest: def.id });
@@ -2496,7 +2713,7 @@ export class MapRoom extends DurableObject<Env> {
     const spot = npcNear(this.mapOf(state.mapId), npcId, here.x, here.y);
     if (!spot) return this.send(ws, { t: "inv_error", reason: "far" });
     // Orange and red names (sát nhân over 200) may not deal with any NPC.
-    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, spot.kind === "quest" ? { t: "quest_error", reason: "murderer" } : { t: "inv_error", reason: "murderer" });
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, spot.kind === "quest" ? { t: "quest_error", reason: "murderer" } : spot.kind === "market" ? { t: "market_error", reason: "murderer" } : { t: "inv_error", reason: "murderer" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
@@ -2505,10 +2722,11 @@ export class MapRoom extends DurableObject<Env> {
         // Opening any NPC counts as talking to it (a talk quest may be waiting for that).
         await this.noteTalk(id, npcId).catch((err) => console.error("quest talk failed", id, err));
         if (spot.kind === "quest") return this.sendQuests(ws, id, npcId);
-        if (spot.kind === "smith" && msg.view !== "shop") return this.sendSmith(ws, id, npcId);
+        if (spot.kind === "smith" && msg.view !== "shop" && msg.view !== "brew") return this.sendSmith(ws, id, npcId);
         if (spot.kind === "waygate") return this.sendWaygate(ws, state.mapId, npcId);
-        if (spot.kind === "alchemist" && msg.view === "brew") return this.sendBrew(ws, id, npcId);
+        if ((spot.kind === "alchemist" || spot.kind === "smith") && msg.view === "brew") return this.sendBrew(ws, id, npcId, spot.kind === "smith" ? "forge" : "alchemy");
         if (spot.kind === "master") return this.sendDojo(ws, id, npcId);
+        if (spot.kind === "market") return this.sendMarket(ws, id, npcId, state.mapId);
       }
       // The blacksmith and the alchemist deal in goods too when they have a stock (a merchant record under their id): the shop tab of their window.
       if (spot.kind !== "merchant" && spot.kind !== "alchemist" && spot.kind !== "smith") return;
@@ -2673,9 +2891,9 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** The alchemist's brewing tab: the brewings this character has going (waiting or ready) and, in the tuning, the recipes. */
-  private async sendBrew(ws: WebSocket, id: string, npcId: string): Promise<void> {
-    const [jobs, tune] = await Promise.all([listBrewJobs(this.env.DB, id), getTuning(this.env.DB)]);
-    this.send(ws, { t: "brew", npc: npcId, jobs, tuning: tune, tabs: npcTabs("alchemist", true), now: Date.now() });
+  private async sendBrew(ws: WebSocket, id: string, npcId: string, craft: Craft = "alchemy"): Promise<void> {
+    const [jobs, tune, craftExp] = await Promise.all([listBrewJobs(this.env.DB, id, craft), getTuning(this.env.DB), getCraftExp(this.env.DB, id, craft)]);
+    this.send(ws, { t: "brew", npc: npcId, craft, craftExp, jobs, tuning: tune, tabs: npcTabs(craft === "forge" ? "smith" : "alchemist", true), now: Date.now() });
   }
 
   /** The martial master's window: the courses of this master the character does not have yet, and whether the realm allows each now. */
@@ -2731,26 +2949,734 @@ export class MapRoom extends DurableObject<Env> {
     });
   }
 
+  /** Tells the online characters among `ids` to read their mail again (a market sale, refund or return left them mail). Never throws. */
+  private async notifyMail(ids: readonly string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      await this.env.CHAT_HUB.get(this.env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).notifyMail([...ids]);
+    } catch (err) {
+      console.error("mail notice failed", err);
+    }
+  }
+
+  // ---- Sects (docs/PHASE5.md, 5c-1) ------------------------------------------------------------------------------------------------------------------------
+  /** Invitations to a sect not answered yet, by the invited character. Memory only: a lost invitation reads as expired. */
+  private sectInvites = new Map<string, { from: string; name: string; sect: string; at: number }>();
+
+  private chatHub() {
+    return this.env.CHAT_HUB.get(this.env.CHAT_HUB.idFromName("global"), { locationHint: "apac" });
+  }
+
+  /** The name above a player follows the sect they are in now: read, and told to everyone who sees the player when it changed. */
+  private async syncSectLabel(id: string): Promise<void> {
+    const sock = this.socketOf(id);
+    if (!sock) return;
+    const name = await sectNameOf(this.env.DB, id).catch(() => undefined);
+    if (sock.state.sc === name) return;
+    this.patchState(sock.ws, (s) => {
+      if (name) s.sc = name;
+      else delete s.sc;
+    });
+    this.broadcastAbout([id], { t: "sect_label", id, ...(name ? { sc: name } : {}) });
+  }
+
+  /** Tells the characters (online anywhere) that their sect changed, and puts a line in their sect channel; each entry is a character and the sect they are in now (null: none). */
+  private async sectTell(entries: Array<[string, string | null]>, say?: { ids: string[]; text: string }, affected: string[] = []): Promise<void> {
+    try {
+      const hub = this.chatHub();
+      if (say) await hub.sectSay(say.ids, say.text);
+      await hub.sectChanged(entries, affected);
+    } catch (err) {
+      console.error("sect notify failed", err);
+    }
+    await Promise.all(entries.map(([id]) => this.syncSectLabel(id)));
+  }
+
+  /** The sect window for this player (their sect and the wait before another), after the leader's absence is settled. */
+  private async sendSect(ws: WebSocket, id: string, cfg: Tuning["sect"], now: number): Promise<void> {
+    const mine = await memberOf(this.env.DB, id);
+    // A leader away for a long time hands the sect on, found out when another member opens it (never by the leader coming back, and never while the leader is online).
+    const leaderId = mine && mine.rank < SECT_RANK.leader ? (await sectById(this.env.DB, mine.sect_id))?.leader_id : undefined;
+    const leaderOnline = leaderId ? (await this.chatHub().onlineOf([leaderId]).catch(() => [leaderId])).length > 0 : true;
+    if (mine && !leaderOnline) {
+      const next = await succeedIdleLeader(this.env.DB, cfg, mine.sect_id, now);
+      if (next) {
+        const ids = await memberIds(this.env.DB, mine.sect_id);
+        const name = (await this.env.DB.prepare("SELECT name FROM characters WHERE id = ?").bind(next).first<{ name: string }>())?.name ?? "";
+        await this.sectTell(ids.map((x): [string, string] => [x, mine.sect_id]), { ids, text: SECT_SAY.succeed(name) });
+      }
+    }
+    await this.flushSectKills(id); // so the progress of the kill tasks in the window includes what this room counted
+    this.sectKillCtx.delete(id); // and the next kill looks at the sect again
+    const view = await sectView(this.env.DB, cfg, id, new Set(), now);
+    if (view) {
+      const online = await this.chatHub().onlineOf(view.members.map((m) => m.id)).catch(() => [] as string[]);
+      const set = new Set(online);
+      for (const m of view.members) m.online = set.has(m.id);
+    }
+    this.send(ws, { t: "sect", view, cooldownUntil: view ? 0 : await cooldownUntil(this.env.DB, id) });
+    this.send(ws, { t: "wallet", currency: "cong_hien", balance: view?.contribution ?? 0 });
+    if (!view) await this.dropSectSkills(ws, id);
+    // A player with no sect is shown the sects to apply to along with it (one read of the window instead of two).
+    if (!view) this.send(ws, { t: "sect_dir", sects: await sectDirectory(this.env.DB, cfg, id) });
+    await this.syncSectLabel(id);
+  }
+
+  private handleSect(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: `sect_${string}` }>): void {
+    const now = Date.now();
+    const me = state.id;
+    // Reads and writes have a gap each (a write waits 300 ms for the last write, a read 250 ms for the last read).
+    const reads = msg.t === "sect_get" || msg.t === "sect_list" || msg.t === "sect_rank";
+    if (now - (reads ? (state.lastSectReadAt ?? 0) : (state.lastSectAt ?? 0)) < (reads ? 250 : 300)) return reads ? undefined : this.send(ws, { t: "sect_error", reason: "rate" }); // a read that comes too soon is dropped without a word (the client asks again on its own)
+    if (reads) state.lastSectReadAt = now;
+    else state.lastSectAt = now;
+    ws.serializeAttachment(state);
+    const fail = (reason: SectError) => this.send(ws, { t: "sect_error", reason });
+    void (async () => {
+      const cfg = (await getTuning(this.env.DB)).sect;
+      const nameOf = async (id: string) => (await this.env.DB.prepare("SELECT name FROM characters WHERE id = ?").bind(id).first<{ name: string }>())?.name ?? "";
+      /** After a change in the sect: its members read it again; `gone` are those who are in none now. */
+      const refresh = async (sectId: string, gone: string[], say?: string, affected: string[] = []) => {
+        const ids = await memberIds(this.env.DB, sectId);
+        await this.sectTell([...ids.map((x): [string, string | null] => [x, sectId]), ...gone.map((x): [string, string | null] => [x, null])], say ? { ids: [...ids, ...gone], text: say } : undefined, [...gone, ...affected]);
+      };
+      const fmtN = (n: number) => n.toLocaleString("vi-VN");
+      /** The Linh Thạch of the wallet and the Cống Hiến slot, after a command moved either. */
+      const sendWallets = async (linh: number | null) => {
+        if (linh !== null) this.send(ws, { t: "wallet", currency: "linh_thach", balance: linh });
+        this.send(ws, { t: "wallet", currency: "cong_hien", balance: await contributionOf(this.env.DB, me) });
+      };
+      switch (msg.t) {
+        case "sect_get":
+          return this.sendSect(ws, me, cfg, now);
+        case "sect_list":
+          return void this.send(ws, { t: "sect_dir", sects: await sectDirectory(this.env.DB, cfg, me) });
+        case "sect_create": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          const res = await createSect(this.env.DB, cfg, { leaderId: me, name: msg.name, now });
+          if (!res.ok) return fail(res.reason);
+          const wallet = await getWallet(this.env.DB, me).catch(() => null);
+          if (wallet) this.send(ws, { t: "wallet", currency: "linh_thach", balance: wallet.linh_thach });
+          await this.sectTell([[me, res.id]], undefined, [me]);
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_apply": {
+          const res = await applyTo(this.env.DB, cfg, { characterId: me, sectId: msg.sect, on: msg.on, now });
+          if (!res.ok) return fail(res.reason);
+          if (msg.on) await refresh(msg.sect, []); // those who approve read their window again
+          return void this.send(ws, { t: "sect_dir", sects: await sectDirectory(this.env.DB, cfg, me) });
+        }
+        case "sect_answer": {
+          const res = await answerRequest(this.env.DB, cfg, { actorId: me, applicantId: msg.id, ok: msg.ok, now });
+          if (!res.ok) return fail(res.reason);
+          const mine = await memberOf(this.env.DB, me);
+          if (mine) await refresh(mine.sect_id, [], msg.ok ? SECT_SAY.joined(await nameOf(msg.id)) : undefined, msg.ok ? [msg.id] : []);
+          return;
+        }
+        case "sect_invite": {
+          const target = this.socketOf(msg.to);
+          const mine = this.socketOf(me);
+          if (!target || !mine || msg.to === me) return fail("gone");
+          const [ax, ay] = this.hereOf(mine.state, now);
+          const [bx, by] = this.hereOf(target.state, now);
+          if (mine.state.mapId !== target.state.mapId || Math.hypot(ax - bx, ay - by) > cfg.inviteRange) return fail("far");
+          const problem = await inviteProblem(this.env.DB, cfg, me, msg.to, now);
+          if (problem) return fail(problem);
+          const sect = await memberOf(this.env.DB, me);
+          const pending = this.sectInvites.get(msg.to);
+          if (pending && now - pending.at < cfg.inviteSec * 1000) return fail("busy");
+          this.sectInvites.set(msg.to, { from: me, name: state.name, sect: sect!.sect_id, at: now });
+          this.send(target.ws, { t: "sect_invite", from: me, name: state.name, sect: (await sectNameOf(this.env.DB, me)) ?? "", ttlMs: cfg.inviteSec * 1000 });
+          return;
+        }
+        case "sect_reply": {
+          const inv = this.sectInvites.get(me);
+          if (!inv || inv.from !== msg.from || now - inv.at > cfg.inviteSec * 1000) {
+            this.sectInvites.delete(me);
+            return fail("gone");
+          }
+          this.sectInvites.delete(me);
+          if (!msg.accept) return;
+          const res = await acceptInvite(this.env.DB, cfg, { sectId: inv.sect, inviterId: inv.from, characterId: me, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(inv.sect, [], SECT_SAY.joined(state.name), [me]);
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_leave": {
+          const res = await leaveSect(this.env.DB, cfg, { characterId: me, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [me], SECT_SAY.left(state.name));
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_kick": {
+          const res = await kickMember(this.env.DB, cfg, { actorId: me, targetId: msg.id, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [msg.id], SECT_SAY.kicked(await nameOf(msg.id), state.name), [msg.id]);
+          return;
+        }
+        case "sect_role": {
+          const res = await setRole(this.env.DB, cfg, { actorId: me, targetId: msg.id, role: msg.role, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [], SECT_SAY.role(await nameOf(msg.id), SECT_ROLE_NAMES[msg.role]), [msg.id]);
+          return;
+        }
+        case "sect_transfer": {
+          const res = await transferLeader(this.env.DB, { actorId: me, targetId: msg.id, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [], SECT_SAY.transfer(state.name, await nameOf(msg.id)), [me, msg.id]);
+          return;
+        }
+        case "sect_disband": {
+          const res = await disbandSect(this.env.DB, cfg, { actorId: me, mode: msg.mode, now });
+          if (!res.ok) return fail(res.reason);
+          await this.sectTell(
+            res.members.map((x): [string, null] => [x, null]),
+            { ids: res.members, text: SECT_SAY.disband(res.name) },
+            res.members,
+          );
+          await this.notifyMail(res.recipients); // the Linh Thạch and the stacks of the sect arrive by mail
+          return;
+        }
+        case "sect_vault": {
+          const mine = await memberOf(this.env.DB, me);
+          return void this.send(ws, { t: "sect_vault", items: mine ? await vaultViews(this.env.DB, mine.sect_id) : [] });
+        }
+        case "sect_put": {
+          await this.bagTask(me, async () => {
+            const bag = await this.getBag(me);
+            const res = await putItem(this.env.DB, cfg, { characterId: me, bag, itemId: msg.id, qty: msg.qty, now });
+            if (!res.ok) {
+              if (res.reason === "busy") this.bags.delete(me); // the cached bag was stale
+              return fail(res.reason);
+            }
+            const next = applyBag({ items: bag.items, equipped: bag.equipped }, res.ops);
+            const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+            this.bags.set(me, after);
+            this.sendBagDelta(me, bag, after);
+            await refresh(res.sectId, []);
+            await this.sendSect(ws, me, cfg, now);
+            this.send(ws, { t: "sect_vault", items: await vaultViews(this.env.DB, res.sectId) });
+          });
+          return;
+        }
+        case "sect_take": {
+          const res = await takeItem(this.env.DB, { actorId: me, itemId: msg.id, to: msg.to, now });
+          if (!res.ok) return fail(res.reason);
+          await this.notifyMail([msg.to]);
+          await refresh(res.sectId, []);
+          return void this.send(ws, { t: "sect_vault", items: await vaultViews(this.env.DB, res.sectId) });
+        }
+        case "sect_shelf": {
+          const res = await setShelf(this.env.DB, { actorId: me, itemId: msg.id, currency: msg.currency, price: msg.price, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, []);
+          return void this.send(ws, { t: "sect_vault", items: await vaultViews(this.env.DB, res.sectId) });
+        }
+        case "sect_shelf_buy": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          const res = await buyShelf(this.env.DB, { buyerId: me, itemId: msg.id, now });
+          if (!res.ok) return fail(res.reason);
+          await sendWallets(res.balance);
+          await this.sendMailList(me); // the stack is in this player's mail
+          await refresh(res.sectId, []);
+          await this.sendSect(ws, me, cfg, now);
+          return void this.send(ws, { t: "sect_vault", items: await vaultViews(this.env.DB, res.sectId) });
+        }
+        case "sect_rank":
+          return void this.send(ws, { t: "sect_ranks", ...(await sectRanking(this.env.DB, me, now)) });
+        case "sect_task": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          await this.flushSectKills(me); // the kills counted in this room are in D1 before the claim reads them
+          const prep = await prepareTask(this.env.DB, cfg, { characterId: me, taskId: msg.id, now });
+          if (!prep.ok) return fail(prep.reason);
+          if (prep.prep.mode === "kill") {
+            const res = await claimKillTask(this.env.DB, cfg, prep.prep, me, now);
+            if (!res.ok) return fail(res.reason);
+            await sendWallets((await getWallet(this.env.DB, me)).linh_thach);
+            await refresh(prep.prep.sectId, []);
+            return this.sendSect(ws, me, cfg, now);
+          }
+          await this.bagTask(me, async () => {
+            const res = await this.mutateBag(me, (bag) => {
+              const p = planTask(this.env.DB, cfg, prep.prep, me, bag, now);
+              return p ? { ops: p.ops, extra: p.extra } : null;
+            });
+            if (!res.ok) return fail(res.reason === "invalid" ? "lack" : "busy");
+            this.sendBagDelta(me, res.before, res.after);
+            await sendWallets((await getWallet(this.env.DB, me)).linh_thach);
+            await refresh(prep.prep.sectId, []);
+          });
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_accept": {
+          const res = await setAccept(this.env.DB, cfg, { actorId: me, cats: msg.cats, minGrade: msg.minGrade, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, []);
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_donate": {
+          const res = await donate(this.env.DB, cfg, { characterId: me, amount: msg.amount, now });
+          if (!res.ok) return fail(res.reason);
+          await sendWallets(res.balance);
+          await refresh(res.sectId, [], SECT_SAY.donated(state.name, fmtN(msg.amount)));
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_upgrade": {
+          const res = await upgradeSect(this.env.DB, cfg, { actorId: me, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, [], SECT_SAY.upgraded(res.level));
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_weekly": {
+          const res = await claimWeekly(this.env.DB, cfg, { characterId: me, now });
+          if (!res.ok) return fail(res.reason);
+          if (res.balance !== null) await sendWallets(res.balance);
+          if (res.item) await this.notifyMail([me]); // the item arrives by mail
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_weekly_set": {
+          const res = await setWeekly(this.env.DB, cfg, { actorId: me, amounts: msg.amounts, items: msg.items, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, []);
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_buy": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          const chk = await shopCheck(this.env.DB, cfg, me, msg.item);
+          if (!chk.ok) return fail(chk.reason);
+          if (!getItemDef(chk.entry.item)) return fail("item");
+          await this.bagTask(me, async () => {
+            const res = await this.mutateBag(me, (bag) => {
+              const ops = planAdd(bag.items, bag.tabs, chk.entry.item, chk.entry.qty, () => crypto.randomUUID());
+              return ops ? { ops, extra: shopPayStatements(this.env.DB, { characterId: me, sectId: chk.sectId, cost: chk.entry.cost, item: chk.entry.item, now }) } : null;
+            });
+            if (!res.ok) return fail(res.reason === "invalid" ? "bag" : "poor");
+            this.sendBagDelta(me, res.before, res.after);
+            await sendWallets(null);
+          });
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_skill_buy": {
+          const [hx, hy] = this.hereOf(state, now);
+          const spot = npcNear(this.mapOf(state.mapId), msg.npc, hx, hy);
+          if (!spot || spot.kind !== "sect") return fail("npc");
+          const skill = getSkill(msg.skill);
+          const chk = await skillShopCheck(this.env.DB, cfg, me, msg.skill);
+          if (!chk.ok || !skill) return fail(chk.ok ? "item" : chk.reason);
+          const who = await this.casterOf(me);
+          if (!who) return fail("gone");
+          if (who.granted.includes(skill.id)) return fail("known");
+          if (!canLearn(skill, who.realm, who.stage)) return fail("skill_level");
+          const res = await buySectSkill(this.env.DB, { characterId: me, sectId: chk.sectId, skill: skill.id, cost: chk.entry.cost, realm: skill.realm, now });
+          if (!res.ok) return fail(res.reason);
+          (await this.getSkillRows(me)).push({ skill_id: skill.id, source: "sect", realm: skill.realm, level: 0, mastery: 0 });
+          this.sim?.addGranted(me, skill.id);
+          this.sendToCharacter(me, { t: "skills", ids: availableSkills([...who.granted, skill.id], who.gear) });
+          this.sendToCharacter(me, { t: "skill_state", id: skill.id, lv: 0, xp: 0 });
+          await sendWallets(null);
+          return this.sendSect(ws, me, cfg, now);
+        }
+        case "sect_notice": {
+          const res = await setNotice(this.env.DB, cfg, { actorId: me, text: msg.text, now });
+          if (!res.ok) return fail(res.reason);
+          await refresh(res.sectId, []);
+          return;
+        }
+      }
+    })().catch((err) => {
+      console.error("sect command failed", msg.t, err);
+      fail("busy");
+    });
+  }
+
+  /**
+   * A character with no sect keeps no skill the sect taught: the rows were deleted with the membership (leaving, being sent away, the disbanding), and this
+   * clears what THIS room still holds (its copy of the rows, the simulation, the hotbar), which a member in another room had no way to be told about before.
+   */
+  private async dropSectSkills(ws: WebSocket, id: string): Promise<void> {
+    const rows = await this.getSkillRows(id);
+    const gone = rows.filter((r) => r.source === "sect" || getSkill(r.skill_id)?.source === "sect").map((r) => r.skill_id);
+    const current = await this.getHotbar(id);
+    const cleaned = current.map((slot) => (getSkill(parseSkillSlot(slot)?.id ?? "")?.source === "sect" ? "" : slot));
+    const barChanged = cleaned.some((slot, i) => slot !== current[i]);
+    if (gone.length === 0 && !barChanged) return;
+    for (let i = rows.length - 1; i >= 0; i--) if (gone.includes(rows[i]!.skill_id)) rows.splice(i, 1);
+    this.sim?.removeGranted(id, gone);
+    if (barChanged) {
+      await saveHotbar(this.env.DB, id, cleaned).catch((err) => console.error("hotbar save failed", id, err));
+      this.hotbars.set(id, cleaned);
+      this.send(ws, { t: "hotbar", slots: cleaned });
+    }
+    const live = this.sim?.getPlayer(id);
+    const gear = (await this.getBag(id)).equipped;
+    this.send(ws, { t: "skills", ids: live && this.sim ? this.sim.skillsOf(live) : availableSkills(rows.map((r) => r.skill_id), gearSkillIds(gear)) });
+  }
+
+  /** Where a player stands now. */
+  private hereOf(state: PlayerState, now: number): [number, number] {
+    const p = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    return [p.x, p.y];
+  }
+
+  // ---- Direct trade (docs/PHASE5.md, 5b) -------------------------------------------------------------------------------------------------------------------
+  /** Invitations not answered yet, by the invited character. Memory only: a lost invitation reads as expired. */
+  private tradeInvites = new Map<string, { from: string; name: string; at: number }>();
+  /** Sessions being carried out right now (the offer is frozen while the batch runs). */
+  private tradeRunning = new Set<string>();
+  private tradeChain: Promise<void> = Promise.resolve();
+
+  /** All trade commands of this room run one after another: two messages arriving together cannot overwrite each other's change to the stored session. */
+  private tradeTask(fn: () => Promise<void>): Promise<void> {
+    this.tradeChain = this.tradeChain.then(fn).catch((err) => console.error("trade task failed", err));
+    return this.tradeChain;
+  }
+
+  private async loadTrade(characterId: string): Promise<TradeSession | null> {
+    const sid = await this.ctx.storage.get<string>(`tradeof:${characterId}`);
+    const s = sid ? ((await this.ctx.storage.get<TradeSession>(`trade:${sid}`)) ?? null) : null;
+    // A session that outlived its players (the room was evicted while they trade) must not block them for good: after ten minutes it is forgotten.
+    if (s && Date.now() - s.createdAt > 600_000 && !this.tradeRunning.has(s.id)) {
+      await this.ctx.storage.delete([`trade:${s.id}`, `tradeof:${s.a.id}`, `tradeof:${s.b.id}`]);
+      return null;
+    }
+    return s;
+  }
+
+  private saveTrade(s: TradeSession): Promise<void> {
+    return this.ctx.storage.put({ [`trade:${s.id}`]: s, [`tradeof:${s.a.id}`]: s.id, [`tradeof:${s.b.id}`]: s.id });
+  }
+
+  /** Ends a session: it is forgotten and both players are told why. */
+  private async endTrade(s: TradeSession, reason: TradeEnd): Promise<void> {
+    await this.ctx.storage.delete([`trade:${s.id}`, `tradeof:${s.a.id}`, `tradeof:${s.b.id}`]);
+    for (const id of [s.a.id, s.b.id]) this.sendToCharacter(id, { t: "trade_end", reason });
+  }
+
+  /** A player left the room (any way): the trade and the invitations they were in end. */
+  private tradeLeft(id: string): void {
+    for (const [target, inv] of this.tradeInvites) if (target === id || inv.from === id) this.tradeInvites.delete(target);
+    void this.tradeTask(async () => {
+      const s = await this.loadTrade(id);
+      if (s && !this.tradeRunning.has(s.id)) await this.endTrade(s, "left");
+    });
+  }
+
+  /** Whether the two may trade now: both here, in one safe room, close enough, neither busy or a murderer. Null when they may. */
+  private tradeProblem(aId: string, bId: string, cfg: { range: number }, now: number): TradeError | null {
+    const a = this.socketOf(aId)?.state;
+    const b = this.socketOf(bId)?.state;
+    if (!a || !b || a.transferring || b.transferring) return "invalid";
+    if (a.mapId !== b.mapId || !this.mapOf(a.mapId).safe) return "unsafe";
+    if (a.bt || a.tp || b.bt || b.tp) return "busy";
+    if (this.satNhanOf(a, now) >= nameTierOrangeFrom() || this.satNhanOf(b, now) >= nameTierOrangeFrom()) return "murderer";
+    const pa = positionAlongPath(a.path, now - a.startedAt, a.speed);
+    const pb = positionAlongPath(b.path, now - b.startedAt, b.speed);
+    return Math.hypot(pa.x - pb.x, pa.y - pb.y) > cfg.range ? "far" : null;
+  }
+
+  /** One side's window as both players see it: the items are read from the cached bag of their owner. */
+  private async tradeSideView(side: TradeSession["a"]): Promise<TradeSideView> {
+    const bag = await this.getBag(side.id);
+    const items = side.items.flatMap((id) => {
+      const it = bag.items.find((i) => i.id === id);
+      if (!it) return [];
+      const { id: _id, type, tab: _t, cell: _c, qty, ...carry } = it;
+      return [{ id: it.id, type, qty, carry: carry as Record<string, unknown> }];
+    });
+    return { items, linh: side.linh, tienNgoc: side.tienNgoc, locked: side.locked, confirmed: side.confirmed };
+  }
+
+  private async pushTrade(s: TradeSession, cfg: { maxItems: number; maxLinh: number; maxTienNgoc?: number }): Promise<void> {
+    const [a, b] = await Promise.all([this.tradeSideView(s.a), this.tradeSideView(s.b)]);
+    const nameOf = (id: string) => this.socketOf(id)?.state.name ?? "";
+    const limits = { maxItems: cfg.maxItems, maxLinh: cfg.maxLinh, maxTienNgoc: cfg.maxTienNgoc ?? 10_000_000 };
+    this.sendToCharacter(s.a.id, { t: "trade", rev: s.rev, other: { id: s.b.id, name: nameOf(s.b.id) }, mine: a, theirs: b, cfg: limits });
+    this.sendToCharacter(s.b.id, { t: "trade", rev: s.rev, other: { id: s.a.id, name: nameOf(s.a.id) }, mine: b, theirs: a, cfg: limits });
+  }
+
+  private handleTrade(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "trade_invite" | "trade_reply" | "trade_offer" | "trade_add" | "trade_lock" | "trade_confirm" | "trade_cancel" }>): void {
+    const now = Date.now();
+    const me = state.id;
+    const fail = (reason: TradeError) => this.send(ws, { t: "trade_error", reason });
+    if (msg.t === "trade_offer" || msg.t === "trade_add") {
+      if (now - (state.lastTradeAt ?? 0) < 400) return fail("rate");
+      state.lastTradeAt = now;
+      ws.serializeAttachment(state);
+    }
+    void this.tradeTask(async () => {
+      const cfg = (await getTuning(this.env.DB)).trade;
+      const cur = await this.loadTrade(me);
+      if (msg.t === "trade_invite") {
+        if (msg.to === me) return fail("self");
+        if (cur || (await this.loadTrade(msg.to))) return fail("busy");
+        const pending = this.tradeInvites.get(msg.to);
+        if (pending && now - pending.at < cfg.inviteSec * 1000) return fail("busy");
+        const problem = this.tradeProblem(me, msg.to, cfg, now);
+        if (problem) return fail(problem);
+        this.tradeInvites.set(msg.to, { from: me, name: state.name, at: now });
+        this.sendToCharacter(msg.to, { t: "trade_invite", from: me, name: state.name, ttlMs: cfg.inviteSec * 1000 });
+        return;
+      }
+      if (msg.t === "trade_reply") {
+        const inv = this.tradeInvites.get(me);
+        if (!inv || inv.from !== msg.from || now - inv.at > cfg.inviteSec * 1000) {
+          this.tradeInvites.delete(me);
+          return void this.send(ws, { t: "trade_end", reason: "expired" });
+        }
+        this.tradeInvites.delete(me);
+        if (!msg.accept) return void this.sendToCharacter(inv.from, { t: "trade_end", reason: "declined" });
+        if (cur || (await this.loadTrade(inv.from))) return fail("busy");
+        const problem = this.tradeProblem(inv.from, me, cfg, now);
+        if (problem) return fail(problem);
+        const s = newSession(crypto.randomUUID(), inv.from, me, now);
+        await this.saveTrade(s);
+        return this.pushTrade(s, cfg);
+      }
+      if (!cur) return void this.send(ws, { t: "trade_end", reason: "gone" });
+      if (this.tradeRunning.has(cur.id)) return fail("busy");
+      if (msg.t === "trade_cancel") return this.endTrade(cur, "cancelled");
+      const problem = this.tradeProblem(cur.a.id, cur.b.id, cfg, now);
+      if (problem) return this.endTrade(cur, problem === "far" ? "far" : "busy");
+      if (msg.t === "trade_add") {
+        // On the player's bag queue (like every other bag change), so a sort or a move at the same moment cannot meet the split half way.
+        await this.bagTask(me, async () => {
+          const mine = sideOf(cur, me)!;
+          const bag = await this.getBag(me);
+          const item = bag.items.find((i) => i.id === msg.id);
+          if (!item || mine.items.includes(item.id) || mine.items.length >= cfg.maxItems || msg.qty > item.qty) return fail("invalid");
+          let offered = item.id;
+          if (msg.qty < item.qty) {
+            // a part of a stack: split it off into its own item first, and offer that one
+            const newId = crypto.randomUUID();
+            const res = await this.mutateBag(me, (b) => {
+              const ops = planSplit(b.items, b.tabs, { tab: item.tab, cell: item.cell }, msg.qty, () => newId);
+              return ops ? { ops } : null;
+            });
+            if (!res.ok) return fail(firstFreeCell(bag.items, bag.tabs) ? "invalid" : "full");
+            this.sendBagDelta(me, res.before, res.after);
+            offered = newId;
+          }
+          setOffer(cur, me, [...mine.items, offered], mine.linh, mine.tienNgoc);
+          await this.saveTrade(cur);
+          await this.pushTrade(cur, cfg);
+        });
+        return;
+      }
+      if (msg.t === "trade_offer") {
+        const bag = await this.getBag(me);
+        const ids = [...new Set(msg.items)];
+        if (ids.length > cfg.maxItems || ids.some((id) => !bag.items.some((i) => i.id === id))) return fail("invalid");
+        if (msg.linh > cfg.maxLinh || msg.tienNgoc > (cfg.maxTienNgoc ?? 10_000_000)) return fail("limit");
+        if (msg.linh > 0 || msg.tienNgoc > 0) {
+          const wallet = await getWallet(this.env.DB, me);
+          if (wallet.linh_thach < msg.linh || wallet.tien_ngoc < msg.tienNgoc) return fail("funds");
+        }
+        setOffer(cur, me, ids, msg.linh, msg.tienNgoc);
+        await this.saveTrade(cur);
+        return this.pushTrade(cur, cfg);
+      }
+      if (msg.rev !== cur.rev) {
+        await this.pushTrade(cur, cfg); // the window the player saw is out of date: show the real one
+        return fail("stale");
+      }
+      if (msg.t === "trade_lock") {
+        if (msg.on) {
+          const mine = sideOf(cur, me)!;
+          const theirs = otherSide(cur, me);
+          const [theirBag, myBag] = await Promise.all([this.getBag(theirs.id), this.getBag(me)]);
+          if (mine.items.some((id) => !myBag.items.some((i) => i.id === id))) return fail("stale");
+          if (!hasRoomFor(theirBag, mine.items.length) || !hasRoomFor(myBag, theirs.items.length)) return fail("full");
+        }
+        setLock(cur, me, msg.on);
+        await this.saveTrade(cur);
+        return this.pushTrade(cur, cfg);
+      }
+      // trade_confirm
+      const both = setConfirm(cur, me);
+      await this.saveTrade(cur);
+      await this.pushTrade(cur, cfg);
+      if (both) await this.runTrade(cur);
+    });
+  }
+
+  /** Carries a trade out: one guarded batch for both players (see trade.ts), run once, on both players' bag queues. */
+  private async runTrade(s: TradeSession): Promise<void> {
+    this.tradeRunning.add(s.id);
+    let outcome: TradeEnd = "stale";
+    try {
+      const [first, second] = [s.a.id, s.b.id].sort();
+      await this.bagTask(first!, () =>
+        this.bagTask(second!, async () => {
+          const now = Date.now();
+          const [bagA, bagB] = await Promise.all([this.getBag(s.a.id), this.getBag(s.b.id)]);
+          const plan = planTrade(this.env.DB, { tradeId: s.id, a: { id: s.a.id, bag: bagA, items: s.a.items, linh: s.a.linh, tienNgoc: s.a.tienNgoc }, b: { id: s.b.id, bag: bagB, items: s.b.items, linh: s.b.linh, tienNgoc: s.b.tienNgoc }, traceMin: await linhThachTraceMin(this.env.DB), now });
+          if (!plan.ok) {
+            outcome = plan.reason === "full" ? "full" : "stale";
+            return;
+          }
+          try {
+            await this.env.DB.batch(plan.statements);
+          } catch (err) {
+            const text = String(err);
+            this.bags.delete(s.a.id);
+            this.bags.delete(s.b.id);
+            if (/CHECK constraint failed/.test(text) && text.includes("balance")) outcome = "funds";
+            else if (!/inv_guard|idx_items_|item_instances\./.test(text)) console.error("trade failed", s.id, err);
+            return;
+          }
+          for (const [id, bag, ops] of [[s.a.id, bagA, plan.opsA], [s.b.id, bagB, plan.opsB]] as const) {
+            const next = applyBag({ items: bag.items, equipped: bag.equipped }, ops);
+            const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+            this.bags.set(id, after);
+            this.sendBagDelta(id, bag, after);
+            const wallet = await getWallet(this.env.DB, id);
+            this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance: wallet.linh_thach });
+            this.sendToCharacter(id, { t: "wallet", currency: "tien_ngoc", balance: wallet.tien_ngoc });
+          }
+          outcome = "done";
+        }),
+      );
+    } finally {
+      this.tradeRunning.delete(s.id);
+    }
+    await this.endTrade(s, outcome);
+  }
+
+  /** Tells every online player that a market changed (`town` null: any), so open windows read their list again. Never throws. */
+  private async marketChanged(town: string | null): Promise<void> {
+    try {
+      await this.env.CHAT_HUB.get(this.env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).marketChanged(town);
+    } catch (err) {
+      console.error("market notice failed", err);
+    }
+  }
+
+  /** A window that is open asks for the list again: only a read, for someone standing at the NPC, at most about once a second. */
+  private handleMarketList(ws: WebSocket, state: PlayerState, npcId: string): void {
+    const now = Date.now();
+    if (now - (state.lastMarketListAt ?? 0) < 700) return;
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(this.mapOf(state.mapId), npcId, here.x, here.y);
+    if (!spot || spot.kind !== "market" || this.satNhanOf(state, now) >= nameTierOrangeFrom()) return;
+    state.lastMarketListAt = now;
+    ws.serializeAttachment(state);
+    void this.sendMarket(ws, state.id, npcId, state.mapId).catch((err) => console.error("market list failed", state.id, err));
+  }
+
+  /** Vạn Bảo Lâu's window: the listings of this town (those that ran out of time are closed first). */
+  private async sendMarket(ws: WebSocket, id: string, npcId: string, town: string): Promise<void> {
+    const cfg = (await getTuning(this.env.DB)).market;
+    const now = Date.now();
+    const settled = await settleDue(this.env.DB, cfg, now);
+    await this.notifyMail(settled.filter((x) => x !== id));
+    if (settled.length > 0) await this.marketChanged(null);
+    if (settled.includes(id)) await this.sendMailList(id); // a sale or a return just left this character mail
+    const listings = await listingViews(this.env.DB, cfg, town, id);
+    this.send(ws, { t: "market", npc: npcId, listings, cfg, now, open: auctionOpen(cfg, now), tabs: npcTabs("market", false) });
+  }
+
+  /**
+   * Vạn Bảo Lâu commands. Each is ONE guarded D1 batch (see market.ts); what the batch hands over (items, proceeds, refunds) arrives by mail, so only
+   * the acting character's own bag changes here (putting a listing up). Same range, queue and rate limit as the other NPCs.
+   */
+  private handleMarket(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "market_post" | "market_buy" | "market_bid" | "market_cancel" | "market_promote" }>): void {
+    const now = Date.now();
+    const fail = (reason: MarketError) => this.send(ws, { t: "market_error", reason });
+    if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return fail("rate");
+    const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
+    const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
+    if (!spot || spot.kind !== "market") return fail("far");
+    if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return fail("murderer");
+    if (state.bt || state.tp) return fail("busy");
+    state.lastInvAt = now;
+    ws.serializeAttachment(state);
+    const id = state.id;
+    const town = state.mapId;
+    const sellerName = state.name;
+    void this.bagTask(id, async () => {
+      const cfg = (await getTuning(this.env.DB)).market;
+      const finish = async (op: "post" | "buy" | "bid" | "cancel" | "promote", notify: readonly string[], balance?: number, currency: "linh_thach" | "tien_ngoc" = "linh_thach") => {
+        if (balance !== undefined) this.sendToCharacter(id, { t: "wallet", currency, balance });
+        this.send(ws, { t: "market_ok", op });
+        await this.notifyMail(notify);
+        await this.marketChanged(town);
+        if (op !== "post" && op !== "promote") await this.sendMailList(id); // the goods or the returned item are already in this character's mail
+        await this.sendMarket(ws, id, msg.npc, town);
+      };
+      try {
+        if (msg.t === "market_post") {
+          const bag = await this.getBag(id);
+          const r = await postListing(this.env.DB, cfg, { sellerId: id, town, kind: msg.kind, currency: msg.currency, bag, tab: msg.tab, cell: msg.cell, qty: msg.qty, price: msg.price, now });
+          if (r.status !== "ok") {
+            if (r.status === "busy") this.bags.delete(id); // the cached bag was stale
+            return fail(r.status);
+          }
+          const next = applyBag({ items: bag.items, equipped: bag.equipped }, r.ops);
+          const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
+          this.bags.set(id, after);
+          this.sendBagDelta(id, bag, after);
+          return finish("post", [], r.balance, r.currency);
+        }
+        if (msg.t === "market_buy") {
+          const r = await buyFixed(this.env.DB, cfg, { buyerId: id, town, id: msg.id, now });
+          if (r.status !== "ok") return fail(r.status);
+          return finish("buy", r.notify.filter((x) => x !== id), r.balance, r.currency);
+        }
+        if (msg.t === "market_bid") {
+          const r = await placeBid(this.env.DB, cfg, { bidderId: id, town, id: msg.id, amount: msg.amount, now });
+          if (r.status !== "ok") return fail(r.status);
+          return finish("bid", r.notify.filter((x) => x !== id), r.balance, r.currency);
+        }
+        if (msg.t === "market_cancel") {
+          const r = await cancelListing(this.env.DB, cfg, { sellerId: id, town, id: msg.id, now });
+          if (r.status !== "ok") return fail(r.status);
+          return finish("cancel", []);
+        }
+        const r = await promoteListing(this.env.DB, cfg, { sellerId: id, town, id: msg.id, now });
+        if (r.status !== "ok") return fail(r.status);
+        const l = r.listing;
+        const item = `${marketItemDef(l.item_type)?.nameVi ?? l.item_type}${l.qty > 1 ? ` x${l.qty}` : ""}`;
+        const unit = l.currency === "tien_ngoc" ? "Tiên Ngọc" : "Linh Thạch";
+        const how = l.kind === "auction" ? `đấu giá, khởi điểm ${l.price.toLocaleString("vi-VN")} ${unit}` : `bán ${l.price.toLocaleString("vi-VN")} ${unit}`;
+        // The NPC speaks, not the player: the sender is the NPC (id `npc:...`), so the line looks different from a player's chat.
+        this.broadcast({ t: "chat", channel: "system", id: `npc:${msg.npc}`, name: spot.name ?? NPC_NAMES_VI[msg.npc] ?? "Vạn Bảo Lâu", text: `${sellerName} rao ${item}: ${how}. Mời quý khách ghé Vạn Bảo Lâu.`, ts: now });
+        return finish("promote", [], r.balance);
+      } catch (err) {
+        console.error("market command failed", id, msg.t, err);
+        fail("busy");
+      }
+    });
+  }
+
   /** Alchemist commands: start a brewing (materials and Linh Thạch taken now) and collect a finished one. Same checks as the other NPCs. */
   private handleBrew(ws: WebSocket, state: PlayerState, msg: Extract<ClientMessage, { t: "brew_start" | "brew_collect" }>): void {
     const now = Date.now();
     if (now - (state.lastInvAt ?? 0) < INV_MIN_GAP_MS) return this.send(ws, { t: "inv_error", reason: "rate" });
     const here = positionAlongPath(state.path, now - state.startedAt, state.speed);
     const spot = npcNear(this.mapOf(state.mapId), msg.npc, here.x, here.y);
-    if (!spot || spot.kind !== "alchemist") return this.send(ws, { t: "inv_error", reason: "far" });
+    if (!spot || (spot.kind !== "alchemist" && spot.kind !== "smith")) return this.send(ws, { t: "inv_error", reason: "far" });
+    const craft: Craft = spot.kind === "smith" ? "forge" : "alchemy"; // the alchemist brews, the blacksmith forges
     if (this.satNhanOf(state, now) >= nameTierOrangeFrom()) return this.send(ws, { t: "inv_error", reason: "murderer" });
     if (state.bt || state.tp) return this.send(ws, { t: "inv_error", reason: "busy" });
     state.lastInvAt = now;
     ws.serializeAttachment(state);
     const id = state.id;
     void this.bagTask(id, async () => {
-      if (msg.t === "brew_collect") return this.brewCollect(ws, id, msg.npc, msg.job);
-      return this.brewStart(ws, id, msg.npc, msg.recipe, msg.count ?? 1);
+      if (msg.t === "brew_collect") return this.brewCollect(ws, id, msg.npc, msg.job, craft);
+      return this.brewStart(ws, id, msg.npc, msg.recipe, msg.count ?? 1, craft);
     });
   }
 
-  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string, count: number): Promise<void> {
-    const cfg = (await getTuning(this.env.DB)).alchemy;
+  private async brewStart(ws: WebSocket, id: string, npcId: string, recipeId: string, count: number, craft: Craft): Promise<void> {
+    const cfg = (await getTuning(this.env.DB))[craft];
     const base = cfg.recipes.find((r) => r.id === recipeId && r.enabled);
     if (base && count > (cfg.maxBatch ?? DEFAULT_MAX_BATCH)) return this.send(ws, { t: "inv_error", reason: "invalid" });
     const recipe = base ? scaleBrew(base, count, cfg) : undefined; // a run of several batches: more of everything, and the time grows less
@@ -2759,7 +3685,15 @@ export class MapRoom extends DurableObject<Env> {
       return def !== undefined && def.disabled !== true;
     };
     if (!recipe || !usable(recipe.output) || !recipe.inputs.every((i) => usable(i.item))) return this.send(ws, { t: "inv_error", reason: "invalid" });
-    if ((await listBrewJobs(this.env.DB, id)).length >= cfg.maxJobs) return this.send(ws, { t: "inv_error", reason: "brew_limit" });
+    // The trade level: a recipe above it is not open yet (the exp only grows, so reading it before the batch cannot race).
+    if (!canCraft(recipe, craftLevelOf(cfg, await getCraftExp(this.env.DB, id, craft)))) return this.send(ws, { t: "inv_error", reason: "craft_level" });
+    // A piece of gear does not stack: one a run, of a kind this character can wear (the id of a gendered kind carries its style).
+    const gear = equipmentInfo(recipe.output);
+    if (gear) {
+      const wearer = await this.wearerOf(id);
+      if (recipe.qty !== 1 || (gear.style === "m" && wearer?.gender !== "male") || (gear.style === "f" && wearer?.gender !== "female")) return this.send(ws, { t: "inv_error", reason: "invalid" });
+    }
+    if ((await listBrewJobs(this.env.DB, id, craft)).length >= cfg.maxJobs) return this.send(ws, { t: "inv_error", reason: "brew_limit" });
     const bag = await this.getBag(id);
     const ops: BagOp[] = [];
     for (const input of recipe.inputs) {
@@ -2768,11 +3702,11 @@ export class MapRoom extends DurableObject<Env> {
       ops.push(...taken);
     }
     const now = Date.now();
-    const extra = [...startBrewStatements(this.env.DB, id, npcId, recipe, crypto.randomUUID(), cfg.maxJobs, now), ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now))];
+    const extra = [...startBrewStatements(this.env.DB, id, npcId, recipe, crypto.randomUUID(), cfg.maxJobs, now, craft), ...ops.flatMap((op) => opStatements(this.env.DB, id, op, now))];
     try {
       let balance: number | undefined;
       if (recipe.linhThach > 0) {
-        const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -recipe.linhThach, reason: `brew:${recipe.id}`, actor: "system" }, extra);
+        const r = await applyCurrencyDelta(this.env.DB, { characterId: id, currency: "linh_thach", delta: -recipe.linhThach, reason: `${craft === "forge" ? "forge" : "brew"}:${recipe.id}`, actor: "system" }, extra);
         if (r.status === "insufficient") return this.send(ws, { t: "inv_error", reason: "funds" });
         if (r.status !== "applied") return this.resync(ws, id, "busy");
         balance = r.balance;
@@ -2782,7 +3716,7 @@ export class MapRoom extends DurableObject<Env> {
       this.bags.set(id, after);
       this.sendBagDelta(id, bag, after);
       if (balance !== undefined) this.sendToCharacter(id, { t: "wallet", currency: "linh_thach", balance });
-      await this.sendBrew(ws, id, npcId);
+      await this.sendBrew(ws, id, npcId, craft);
     } catch (err) {
       if (!/inv_guard|idx_items_|item_instances\./.test(String(err))) console.error("brew start failed", id, err);
       this.bags.delete(id);
@@ -2790,14 +3724,21 @@ export class MapRoom extends DurableObject<Env> {
     }
   }
 
-  private async brewCollect(ws: WebSocket, id: string, npcId: string, jobId: string): Promise<void> {
-    const job = await getBrewJob(this.env.DB, id, jobId);
+  private async brewCollect(ws: WebSocket, id: string, npcId: string, jobId: string, craft: Craft): Promise<void> {
+    const job = await getBrewJob(this.env.DB, id, jobId, craft);
     if (!job) return this.send(ws, { t: "inv_error", reason: "invalid" });
     const now = Date.now();
     if (job.readyAt > now) return this.send(ws, { t: "inv_error", reason: "brew_wait", retryMs: job.readyAt - now });
     let full = false;
+    // A piece of gear comes out with full durability and the stats rolled from the master table, as the merchants and the blacksmith give it.
+    const max = equipmentInfo(job.output)?.maxDurability;
+    // A higher trade level than the recipe asks for pushes the rolls towards the top of their ranges (the level before this run's own exp is added).
+    const cfg = (await getTuning(this.env.DB))[craft];
+    const level = craftLevelOf(cfg, await getCraftExp(this.env.DB, id, craft));
+    const bias = craftQualityBias(cfg, level, cfg.recipes.find((r) => r.id === job.recipe)?.minLevel ?? 1, craft === "forge" ? DEFAULT_FORGE.quality!.perLevel : 0);
+    const rs = max != null ? await rollGear(this.env.DB, job.output, biasedRoll(Math.random, bias)) : undefined;
     const res = await this.mutateBag(id, (bag) => {
-      const ops = planAdd(bag.items, bag.tabs, job.output, job.qty, () => crypto.randomUUID());
+      const ops = planAdd(bag.items, bag.tabs, job.output, job.qty, () => crypto.randomUUID(), max != null ? { dur: max, max, ...(rs ? { rs } : {}) } : undefined);
       if (!ops) {
         full = true;
         return null;
@@ -2807,7 +3748,7 @@ export class MapRoom extends DurableObject<Env> {
     if (!res.ok) return full ? this.send(ws, { t: "inv_error", reason: "full" }) : this.resync(ws, id, "busy");
     this.sendBagDelta(id, res.before, res.after);
     this.sendToCharacter(id, { t: "shop_ok", op: "buy", item: job.output, qty: job.qty, total: 0 });
-    await this.sendBrew(ws, id, npcId);
+    await this.sendBrew(ws, id, npcId, craft);
   }
 
   /** Blacksmith commands: upgrading a piece and repairing. Same checks as the merchant (close enough, no murderers, rate limit). */
@@ -3201,6 +4142,7 @@ export class MapRoom extends DurableObject<Env> {
     const bag = await this.getBag(id);
     const item = itemAt(bag.items, { tab, cell });
     if (item && getItemDef(item.type)?.teaches) return this.learnBook(ws, id, tab, cell, getItemDef(item.type)!.teaches!);
+    if (item && getItemDef(item.type)?.mount) return this.learnMount(ws, id, tab, cell, getItemDef(item.type)!.mount!);
     const teleport = item ? getItemDef(item.type)?.teleportTo : undefined;
     if (item && teleport) return this.useTalisman(ws, id, tab, cell, teleport);
     const heal = item ? getItemDef(item.type)?.healFraction : undefined;
@@ -3373,7 +4315,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   /** An admin gift (docs/PHASE3.md 3d): all its currencies and items, or nothing. */
-  private async claimGift(ws: WebSocket, id: string, mailId: string): Promise<void> {
+  private async claimGift(ws: WebSocket | null, id: string, mailId: string): Promise<"ok" | "full" | "fail"> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const bag = await this.getBag(id);
       const r = await claimGiftMail(this.env.DB, id, mailId, bag);
@@ -3382,25 +4324,33 @@ export class MapRoom extends DurableObject<Env> {
         const after: BagState = { tabs: bag.tabs, items: next.items, equipped: next.equipped };
         this.bags.set(id, after);
         this.sendBagDelta(id, bag, after);
-        for (const currency of ["linh_thach", "cong_hien", "tien_ngoc"] as const) {
+        for (const currency of ["linh_thach", "tien_ngoc"] as const) {
+          // (Cống Hiến is not sent: the slot shows the sect member's cống hiến, not the old ledger balance an old gift may still have credited.)
           const gained = r.given[currency];
           if (gained) this.sendToCharacter(id, { t: "wallet", currency, balance: r.wallet[currency], gained });
         }
         if (r.given.items.length > 0) this.sendToCharacter(id, { t: "loot", items: r.given.items.map((i) => ({ type: i.type, qty: i.qty, mailed: false })) });
-        return this.sendMailList(id);
+        await this.sendMailList(id);
+        return "ok";
       }
       if (r.status === "stale") {
         this.bags.delete(id);
         continue;
       }
-      if (r.status === "bag_full") return this.send(ws, { t: "inv_error", reason: "full" });
+      if (r.status === "bag_full") {
+        if (ws) this.send(ws, { t: "inv_error", reason: "full" });
+        return "full";
+      }
       await this.sendMailList(id);
-      return this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+      if (ws) this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+      return "fail";
     }
-    this.send(ws, { t: "inv_error", reason: "busy" });
+    if (ws) this.send(ws, { t: "inv_error", reason: "busy" });
+    return "fail";
   }
 
-  private async claimMail(ws: WebSocket, id: string, mailId: string): Promise<void> {
+  /** Claims one mail. `ws` null: nothing is said to the player on a refusal (the caller summarises). */
+  private async claimMail(ws: WebSocket | null, id: string, mailId: string): Promise<"ok" | "full" | "fail"> {
     if (mailId.includes(":")) return this.claimGift(ws, id, mailId); // gift mail ids are '<batch>:<character>'; the mails of drops are plain uuids
     for (let attempt = 0; attempt < 2; attempt++) {
       const bag = await this.getBag(id);
@@ -3411,17 +4361,34 @@ export class MapRoom extends DurableObject<Env> {
         this.bags.set(id, after);
         this.sendBagDelta(id, bag, after);
         this.sendToCharacter(id, { t: "loot", items: [{ type: r.type, qty: r.qty, mailed: false }] });
-        return this.sendMailList(id);
+        await this.sendMailList(id);
+        return "ok";
       }
       if (r.status === "stale") {
         this.bags.delete(id);
         continue;
       }
-      if (r.status === "bag_full") return this.send(ws, { t: "inv_error", reason: "full" });
+      if (r.status === "bag_full") {
+        if (ws) this.send(ws, { t: "inv_error", reason: "full" });
+        return "full";
+      }
       await this.sendMailList(id); // expired, already claimed or unknown: show what is really there
-      return this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+      if (ws) this.send(ws, { t: "inv_error", reason: r.status === "expired" ? "expired" : "invalid" });
+      return "fail";
     }
-    this.send(ws, { t: "inv_error", reason: "busy" });
+    if (ws) this.send(ws, { t: "inv_error", reason: "busy" });
+    return "fail";
+  }
+
+  /** "Nhận nhanh": claims every mail in turn (at most 100); mail that does not fit the bag stays, and the player is told once. */
+  private async claimAllMail(ws: WebSocket, id: string): Promise<void> {
+    const mail = (await listMail(this.env.DB, id, Date.now())).slice(0, 100);
+    let full = false;
+    for (const m of mail) {
+      if ((await this.claimMail(null, id, m.id)) === "full") full = true;
+    }
+    if (full) this.send(ws, { t: "inv_error", reason: "full" });
+    else if (mail.length === 0) await this.sendMailList(id);
   }
 
   private async flushProgress(id: string): Promise<void> {
@@ -4242,6 +5209,8 @@ export class MapRoom extends DurableObject<Env> {
 
   /** A player left the room (closed, kicked or went through a portal): those who knew of them are told, and the records forget them. */
   private playerGone(id: string, ws: WebSocket): void {
+    this.tradeLeft(id);
+    for (const [target, inv] of this.sectInvites) if (target === id || inv.from === id) this.sectInvites.delete(target);
     this.broadcastAbout([id], { t: "left", id }, ws);
     this.forgetEntity(id);
     this.aoi.delete(id);
@@ -4331,7 +5300,7 @@ export class MapRoom extends DurableObject<Env> {
   }
 
   private snapshot(p: PlayerState): PlayerSnapshot {
-    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.lk ? { lk: p.lk } : {}), ...(p.med ? { med: true as const } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}) };
+    return { id: p.id, name: p.name, path: p.path, ageMs: Date.now() - p.startedAt, speed: p.speed, ...(p.mounted ? { mounted: true as const } : {}), ...(p.beast ? { bs: p.beast } : {}), ...(p.female ? { f: true as const } : {}), ...(p.w ? { w: p.w } : {}), ...(p.o ? { o: p.o } : {}), ...(p.lk ? { lk: p.lk } : {}), ...(p.med ? { med: true as const } : {}), ...(p.fl ? { fl: p.fl } : {}), ...(p.lv !== undefined ? { lv: p.lv } : {}), sn: Math.round(this.satNhanOf(p, Date.now())), ...(p.pk ? { pk: p.pk } : {}), ...(p.sc ? { sc: p.sc } : {}) };
   }
 
   /** A character sheet went out (a level, a breakthrough): when the realm or stage changed, everyone who sees the player gets the new look with it. */

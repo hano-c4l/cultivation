@@ -35,6 +35,8 @@ export type StockRule =
       elements?: string[];
       /** Multiplies the value of each piece (1 when absent). */
       priceMult?: number;
+      /** Only these kinds of piece (`bonded` the bản mệnh, `flight` the flight pháp bảo, `charm` the ordinary pháp bảo); absent: the armour, the weapons and the charm, as before. */
+      kinds?: string[];
     }
   /** The Hộ Cấp Phù, sold for Tiên Ngọc at the price in the tuning (`keepLevel`). */
   | { id: string; kind: "keep_level" };
@@ -95,6 +97,8 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
       { id: "ttp_town", kind: "item", item: "ttp_town" },
       { id: "keep_level", kind: "keep_level" },
       { id: "hoi_linh_dan", kind: "item", item: "hoi_linh_dan" },
+      { id: "mt_linh_loc", kind: "item", item: "mt_linh_loc", dailyLimit: 2 },
+      { id: "mt_hac_phong_lang", kind: "item", item: "mt_hac_phong_lang", dailyLimit: 2 },
     ],
   },
   merchant2: {
@@ -109,6 +113,7 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
       { id: "ttp_town2", kind: "item", item: "ttp_town2" },
       { id: "keep_level", kind: "keep_level" },
       { id: "dai_hoi_linh_dan", kind: "item", item: "dai_hoi_linh_dan", dailyLimit: 30 },
+      { id: "mt_xich_van_ma", kind: "item", item: "mt_xich_van_ma", dailyLimit: 2 },
     ],
   },
   // The alchemist sells and buys pills and materials (and brews: alchemy.ts); the blacksmith's goods are gear and pháp bảo.
@@ -123,6 +128,8 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
     stock: [
       { id: "gear_low", kind: "gear", realms: [0, 1], tiers: [1, 2], grade: 1 },
       { id: "gear_low_mutant", kind: "gear", realms: [0, 1], tiers: [1, 2], grade: 1, elements: [...MUTANT_ROOTS], priceMult: 1.5 },
+      // The bản mệnh and the flight pháp bảo of the realms of this town (the ordinary charms come with the gear rule above).
+      { id: "artifact_low", kind: "gear", realms: [0, 1], tiers: [1, 2], grade: 1, kinds: ["bonded", "flight"] },
     ],
   },
   merchant3: {
@@ -137,6 +144,7 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
       { id: "ttp_town3", kind: "item", item: "ttp_town3" },
       { id: "keep_level", kind: "keep_level" },
       { id: "than_linh_dan", kind: "item", item: "than_linh_dan", dailyLimit: 30 },
+      { id: "mt_bach_ho", kind: "item", item: "mt_bach_ho", dailyLimit: 2 },
     ],
   },
   alchemist3: { id: "alchemist3", mapId: "town3", nameVi: "Đan Sư", sellRate: SELL_RATE, buys: ["pill", "material"], stock: [...PLAIN_TOP] },
@@ -149,6 +157,8 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
     stock: [
       { id: "gear_top", kind: "gear", realms: [4, 5], tiers: [1, 2], grade: 1 },
       { id: "gear_top_mutant", kind: "gear", realms: [4, 5], tiers: [1, 2], grade: 1, elements: [...MUTANT_ROOTS], priceMult: 1.5 },
+      // The bản mệnh and the flight pháp bảo of the realms of this town (the ordinary charms come with the gear rule above).
+      { id: "artifact_top", kind: "gear", realms: [4, 5], tiers: [1, 2], grade: 1, kinds: ["bonded", "flight"] },
     ],
   },
   smith2: {
@@ -160,6 +170,8 @@ export const DEFAULT_MERCHANTS: Readonly<Record<string, MerchantDef>> = {
     stock: [
       { id: "gear_high", kind: "gear", realms: [2, 3], tiers: [1, 2], grade: 1 },
       { id: "gear_high_mutant", kind: "gear", realms: [2, 3], tiers: [1, 2], grade: 1, elements: [...MUTANT_ROOTS], priceMult: 1.5 },
+      // The bản mệnh and the flight pháp bảo of the realms of this town (the ordinary charms come with the gear rule above).
+      { id: "artifact_high", kind: "gear", realms: [2, 3], tiers: [1, 2], grade: 1, kinds: ["bonded", "flight"] },
     ],
   },
 };
@@ -183,7 +195,7 @@ export function validStockRule(r: unknown): r is StockRule {
       );
     case "gear": {
       const list = (v: unknown, min: number, max: number) => Array.isArray(v) && v.length >= 1 && v.every((n) => isInt(n, min, max));
-      return list(o.realms, 0, 20) && list(o.tiers, 1, 9) && isInt(o.grade, 1, 4) && (o.elements === undefined || (Array.isArray(o.elements) && o.elements.length >= 1 && o.elements.every((e) => (ALL_ROOTS as readonly string[]).includes(e)))) && (o.priceMult === undefined || (typeof o.priceMult === "number" && o.priceMult > 0 && o.priceMult <= 1000));
+      return list(o.realms, 0, 20) && list(o.tiers, 1, 9) && isInt(o.grade, 1, 4) && (o.elements === undefined || (Array.isArray(o.elements) && o.elements.length >= 1 && o.elements.every((e) => (ALL_ROOTS as readonly string[]).includes(e)))) && (o.priceMult === undefined || (typeof o.priceMult === "number" && o.priceMult > 0 && o.priceMult <= 1000)) && (o.kinds === undefined || (Array.isArray(o.kinds) && o.kinds.length >= 1 && o.kinds.every((k) => k === "bonded" || k === "flight" || k === "charm")));
     }
     case "keep_level":
       return true;
@@ -223,6 +235,10 @@ function gearOffers(style: "m" | "f", rule: Extract<StockRule, { kind: "gear" }>
   for (const realm of rule.realms) {
     for (const el of rule.elements ?? SPIRITUAL_ROOTS) {
       for (const tier of rule.tiers) {
+        if (rule.kinds) {
+          for (const kind of rule.kinds) add(makeEquipmentId(kind as EquipKind, "u", realm, tier, rule.grade, el));
+          continue;
+        }
         for (const kind of GEAR_KINDS) add(makeEquipmentId(kind, GENDERED_KINDS.has(kind) ? style : "u", realm, tier, rule.grade, el));
         for (const wt of WEAPON_TYPES) add(makeEquipmentId("weapon", "u", realm, tier, rule.grade, el, wt));
         add(makeEquipmentId("charm", "u", realm, tier, rule.grade, el));

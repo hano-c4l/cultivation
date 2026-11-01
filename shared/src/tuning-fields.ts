@@ -433,6 +433,14 @@ export const MONSTER_SCREENS: readonly TuningScreenGroup[] = [
 const PATH_NAMES: ReadonlyArray<[string, string]> = [["kiem", "Kiếm tu"], ["thuat", "Thuật tu"], ["dan", "Đan tu"]];
 
 /** The numbers of the NPCs that are not a stock or a position (screen "NPC · Con số"): the blacksmith's costs and the path masters' fees and bonuses. */
+/** The text leaves of the sect group (ids, names, item ids): the Admin screen edits only its numbers. */
+const SECT_TEXT_PATHS: string[] = [
+  "shop.0.item", "shop.1.item", "shop.2.item",
+  ...DEFAULT_TUNING.sect.skills.map((_, i) => `skills.${i}.skill`),
+  ...DEFAULT_TUNING.sect.tasks.flatMap((t, i) => [`tasks.${i}.id`, `tasks.${i}.kind`, `tasks.${i}.name`, `tasks.${i}.item`, ...(t.reward.vault ? [`tasks.${i}.reward.vault.item`] : [])]),
+  ...DEFAULT_TUNING.sect.levels.flatMap((l, i) => l.costItems.map((_, j) => `levels.${i}.costItems.${j}.item`)),
+];
+
 const NPC_SCREENS: readonly TuningScreenGroup[] = [
   {
     group: "enhanceCost",
@@ -483,6 +491,136 @@ const NPC_SCREENS: readonly TuningScreenGroup[] = [
       { path: `${id}.potionHealPct`, label: `${name}: hồi máu từ đan`, kind: "num", unit: "%" },
       { path: `${id}.masteryPct`, label: `${name}: điểm thuần thục`, kind: "num", unit: "%" },
     ]),
+  },
+  {
+    group: "trade",
+    page: "npcs",
+    title: "Giao dịch trực tiếp giữa hai người",
+    note: "Hai người ở cùng phòng thành an toàn, gần nhau. Tối đa 6 món mỗi bên vì một lô ghi D1 chỉ chứa 50 câu lệnh (mỗi món tốn hai).",
+    fields: [
+      { path: "maxItems", label: "Số món tối đa mỗi bên (1-6)", kind: "int" },
+      { path: "range", label: "Hai người cách nhau tối đa", kind: "int", unit: "ô" },
+      { path: "inviteSec", label: "Thời gian chờ trả lời lời mời", kind: "int", unit: "giây" },
+      { path: "maxLinh", label: "Linh Thạch tối đa mỗi bên đưa vào", kind: "int", unit: "Linh Thạch" },
+      { path: "maxTienNgoc", label: "Tiên Ngọc tối đa mỗi bên đưa vào", kind: "int", unit: "Tiên Ngọc" },
+      { path: "offerGapMs", label: "Thời gian tối thiểu giữa hai lần đổi đồ/tiền của một bên", kind: "int", unit: "ms" },
+    ],
+  },
+  {
+    group: "mounts",
+    page: "npcs",
+    skip: DEFAULT_TUNING.mounts.list.flatMap((_, i) => [`list.${i}.id`, `list.${i}.nameVi`, `list.${i}.descVi`, `list.${i}.color`, `list.${i}.sprite`, `list.${i}.enabled`]), // the ids, names and colours are in the defaults for now
+    title: "Thú cưỡi (Ngự Thú Phù ở Thương nhân)",
+    note: "Mỗi con: cảnh giới tối thiểu để thuần phục và cưỡi (0 Luyện Khí, 1 Trúc Cơ...), tốc độ di chuyển cộng thêm khi cưỡi (cộng với tốc độ đi bộ, không cộng chung với pháp bảo phi hành vì chỉ cưỡi một thứ một lúc), và giá phù (Linh Thạch, là giá Thương nhân bán).",
+    fields: DEFAULT_TUNING.mounts.list.flatMap((m, i): TuningField[] => [
+      { path: `list.${i}.minRealm`, label: `${m.nameVi}: cảnh giới tối thiểu`, kind: "int" },
+      { path: `list.${i}.speedPct`, label: `${m.nameVi}: tốc độ cộng thêm`, kind: "int", unit: "%" },
+      { path: `list.${i}.price`, label: `${m.nameVi}: giá phù`, kind: "int", unit: "Linh Thạch" },
+      { path: `list.${i}.size`, label: `${m.nameVi}: kích thước hình tạm (1 là cỡ thường)`, kind: "num" },
+    ]),
+  },
+  {
+    group: "sect",
+    page: "npcs",
+    skip: SECT_TEXT_PATHS, // which item a line or a task uses, and the names, are in the defaults for now (the Admin edits the numbers)
+    title: "Tông môn: lập, thành viên, chức vụ",
+    note: "Cấp chức vụ: 0 Đệ tử, 1 Nội môn, 2 Tinh anh, 3 Trưởng lão, 4 Phó tông chủ, 5 Tông chủ. Mỗi quyền ghi chức thấp nhất làm được. Người rời, bị đuổi hoặc ở tông môn bị giải tán phải chờ hết thời gian chờ mới vào tông môn khác.",
+    fields: [
+      { path: "createRealm", label: "Cảnh giới tối thiểu để lập tông môn (0 Luyện Khí, 1 Trúc Cơ...)", kind: "int" },
+      { path: "createFee", label: "Phí lập tông môn", kind: "int", unit: "Linh Thạch" },
+      { path: "nameMin", label: "Tên tông môn: ít nhất", kind: "int", unit: "ký tự" },
+      { path: "nameMax", label: "Tên tông môn: nhiều nhất", kind: "int", unit: "ký tự" },
+      { path: "noticeMax", label: "Thông báo tông môn: dài nhất", kind: "int", unit: "ký tự" },
+      { path: "rejoinHours", label: "Thời gian chờ để vào tông môn khác", kind: "int", unit: "giờ" },
+      { path: "inviteSec", label: "Thời gian chờ trả lời lời mời", kind: "int", unit: "giây" },
+      { path: "inviteRange", label: "Người mời và người được mời cách nhau tối đa", kind: "int", unit: "ô" },
+      { path: "applyMax", label: "Số đơn xin vào mở cùng lúc của một nhân vật", kind: "int" },
+      { path: "requestsMax", label: "Số đơn xin vào tối đa một tông môn giữ", kind: "int" },
+      ...[0, 1, 2, 3, 4].flatMap((i): TuningField[] => [
+        { path: `levels.${i}.maxMembers`, label: `Cấp ${i + 1}: số thành viên tối đa`, kind: "int" },
+        { path: `levels.${i}.expNeed`, label: `Cấp ${i + 1}: kinh nghiệm cần để lên cấp sau (0 ở cấp cuối)`, kind: "int" },
+        { path: `levels.${i}.costLinh`, label: `Cấp ${i + 1}: Linh Thạch trong quỹ tốn để lên cấp sau`, kind: "int", unit: "Linh Thạch" },
+      ]),
+      { path: "balance.upgradeCostPct", label: "Cân bằng: chi phí Linh Thạch lên cấp tông môn so với bảng (100 = đúng bảng)", kind: "int", unit: "%" },
+      { path: "balance.incomePct", label: "Cân bằng: Linh Thạch và vật phẩm hệ thống đưa vào quỹ, kho tông môn (nhiệm vụ tông môn) so với bảng", kind: "int", unit: "%" },
+      ...[0, 1, 2, 3, 4].map((i): TuningField => ({ path: `vault.slots.${i}`, label: `Kho: số chồng đồ chứa được, cấp tông môn ${i + 1}`, kind: "int" })),
+      ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i): TuningField => ({ path: `vault.pointsByGrade.${i}`, label: `Kho: cống hiến mỗi món, phẩm cấp ${i + 1}`, kind: "int", unit: "cống hiến" })),
+      ...(["thường", "tốt", "hiếm", "cực phẩm"] as const).map((n, i): TuningField => ({ path: `vault.rarityPct.${i}`, label: `Kho: nhân cống hiến theo độ hiếm "${n}"`, kind: "int", unit: "%" })),
+      { path: "vault.catMax", label: "Kho: tông chủ đặt phần trăm cho một loại đồ tối đa", kind: "int", unit: "%" },
+      { path: "vault.expPerPoint", label: "Kho: kinh nghiệm tông môn cho mỗi cống hiến từ gửi đồ", kind: "int" },
+      { path: "vault.dailyCap", label: "Kho: cống hiến tối đa một người kiếm từ gửi đồ mỗi ngày", kind: "int", unit: "cống hiến" },
+      { path: "disband.poolPct", label: "Giải tán chia theo cống hiến: phần chia theo tổng cống hiến cả tông môn (ba số cộng lại phải bằng 100)", kind: "int", unit: "%" },
+      { path: "disband.leaderPct", label: "Giải tán chia theo cống hiến: phần cố định của tông chủ", kind: "int", unit: "%" },
+      { path: "disband.deputyPct", label: "Giải tán chia theo cống hiến: phần cố định của phó tông chủ (chia đều nếu nhiều người)", kind: "int", unit: "%" },
+      ...DEFAULT_TUNING.sect.levels.flatMap((l, i) => l.costItems.map((_, j): TuningField => ({ path: `levels.${i}.costItems.${j}.qty`, label: `Cấp ${i + 1}: số vật phẩm lấy từ kho để lên cấp sau (loại ${j + 1})`, kind: "int" }))),
+      ...DEFAULT_TUNING.sect.taskIncomeCap.map((_, i): TuningField => ({ path: `taskIncomeCap.${i}`, label: `Nhiệm vụ tông môn: Linh Thạch hệ thống thêm vào quỹ tối đa mỗi ngày, cấp tông môn ${i + 1}`, kind: "int", unit: "Linh Thạch" })),
+      ...DEFAULT_TUNING.sect.tasks.flatMap((t, i): TuningField[] => [
+        { path: `tasks.${i}.qty`, label: `Nhiệm vụ "${t.name}": số vật phẩm phải nộp`, kind: "int" },
+        ...(t.kill
+          ? ([
+              { path: `tasks.${i}.kill.count`, label: `Nhiệm vụ "${t.name}": số quái phải giết vào ngày giết quái`, kind: "int" },
+              { path: `tasks.${i}.kill.pct`, label: `Nhiệm vụ "${t.name}": xác suất một ngày là ngày giết quái thay vì nộp vật phẩm`, kind: "int", unit: "%" },
+            ] as TuningField[])
+          : []),
+        { path: `tasks.${i}.perDay`, label: `Nhiệm vụ "${t.name}": số lần mỗi người mỗi ngày`, kind: "int" },
+        { path: `tasks.${i}.minLevel`, label: `Nhiệm vụ "${t.name}": cấp tông môn tối thiểu`, kind: "int" },
+        { path: `tasks.${i}.reward.contribution`, label: `Nhiệm vụ "${t.name}": cống hiến cho người làm`, kind: "int", unit: "cống hiến" },
+        { path: `tasks.${i}.reward.exp`, label: `Nhiệm vụ "${t.name}": kinh nghiệm cho tông môn`, kind: "int" },
+        { path: `tasks.${i}.reward.fundLinh`, label: `Nhiệm vụ "${t.name}": Linh Thạch hệ thống thêm vào quỹ`, kind: "int", unit: "Linh Thạch" },
+        { path: `tasks.${i}.reward.memberLinh`, label: `Nhiệm vụ "${t.name}": Linh Thạch trả cho người làm, lấy từ quỹ`, kind: "int", unit: "Linh Thạch" },
+        ...(t.reward.vault ? [{ path: `tasks.${i}.reward.vault.qty`, label: `Nhiệm vụ "${t.name}": số vật phẩm hệ thống thêm vào kho`, kind: "int" as const }] : []),
+      ]),
+      { path: "autoRanks.inner", label: "Đệ tử lên nội môn khi tổng cống hiến đã kiếm đạt", kind: "int", unit: "cống hiến" },
+      { path: "autoRanks.elite", label: "Nội môn lên tinh anh khi tổng cống hiến đã kiếm đạt", kind: "int", unit: "cống hiến" },
+      { path: "upgradeRank", label: "Chức thấp nhất được nâng cấp tông môn", kind: "int" },
+      { path: "donate.min", label: "Góp Linh Thạch: ít nhất mỗi lần", kind: "int", unit: "Linh Thạch" },
+      { path: "donate.linhPerPoint", label: "Góp Linh Thạch: bao nhiêu Linh Thạch được 1 cống hiến", kind: "int", unit: "Linh Thạch" },
+      { path: "donate.linhPerExp", label: "Góp Linh Thạch: bao nhiêu Linh Thạch thành 1 kinh nghiệm tông môn", kind: "int", unit: "Linh Thạch" },
+      ...[0, 1, 2, 3, 4, 5].map((i): TuningField => ({ path: `weeklyMax.${i}`, label: `Thưởng tuần tối đa tông chủ đặt được cho chức bậc ${i}`, kind: "int", unit: "Linh Thạch" })),
+      ...[0, 1, 2].flatMap((i): TuningField[] => [
+        { path: `shop.${i}.cost`, label: `Cửa hàng, món ${i + 1}: giá`, kind: "int", unit: "cống hiến" },
+        { path: `shop.${i}.qty`, label: `Cửa hàng, món ${i + 1}: số lượng mỗi lần mua`, kind: "int" },
+        { path: `shop.${i}.minLevel`, label: `Cửa hàng, món ${i + 1}: cấp tông môn tối thiểu`, kind: "int" },
+        { path: `shop.${i}.minRank`, label: `Cửa hàng, món ${i + 1}: chức tối thiểu`, kind: "int" },
+      ]),
+      ...DEFAULT_TUNING.sect.skills.flatMap((k, i): TuningField[] => [
+        { path: `skills.${i}.cost`, label: `Kỹ năng tông môn ${i + 1} (${k.skill}): giá`, kind: "int", unit: "cống hiến" },
+        { path: `skills.${i}.minLevel`, label: `Kỹ năng tông môn ${i + 1}: cấp tông môn tối thiểu`, kind: "int" },
+        { path: `skills.${i}.minRank`, label: `Kỹ năng tông môn ${i + 1}: chức tối thiểu`, kind: "int" },
+      ]),
+      { path: "perms.invite", label: "Chức thấp nhất được mời người", kind: "int" },
+      { path: "perms.approve", label: "Chức thấp nhất được duyệt đơn xin vào", kind: "int" },
+      { path: "perms.kick", label: "Chức thấp nhất được đuổi người (chỉ đuổi được người thấp hơn mình)", kind: "int" },
+      { path: "perms.notice", label: "Chức thấp nhất được sửa thông báo", kind: "int" },
+      { path: "perms.appoint", label: "Chức thấp nhất được bổ nhiệm (5 = chỉ tông chủ)", kind: "int" },
+      { path: "maxDeputies", label: "Số phó tông chủ tối đa", kind: "int" },
+      { path: "maxElders", label: "Số trưởng lão tối đa", kind: "int" },
+      { path: "leaderIdleDays", label: "Tông chủ vắng mặt quá số ngày này thì chức tông chủ chuyển cho người kế vị", kind: "int", unit: "ngày" },
+    ],
+  },
+  {
+    group: "market",
+    page: "npcs",
+    title: "Vạn Bảo Lâu: phí, thời hạn, giờ đấu giá",
+    note: "Phí gửi bán thu ngay khi đăng (không hoàn); thuế thu khi bán thành công, trừ vào tiền người bán. Tin mua ngay hết hạn thì đồ về thư người bán. Đấu giá mở từ giờ mở đến giờ chốt mỗi ngày (giờ trong ngày theo múi giờ bên dưới); giờ chốt phải lớn hơn giờ mở.",
+    fields: [
+      { path: "listFeePct", label: "Phí gửi bán (mua ngay và đấu giá): phần trăm giá niêm yết", kind: "int", unit: "%" },
+      { path: "minListFee", label: "Phí gửi bán tối thiểu", kind: "int", unit: "Linh Thạch" },
+      { path: "taxPct", label: "Thuế khi bán thành công (trừ vào tiền người bán)", kind: "int", unit: "%" },
+      { path: "fixedDays", label: "Thời hạn tin mua ngay", kind: "int", unit: "ngày" },
+      { path: "maxListings", label: "Số tin tối đa mỗi nhân vật", kind: "int" },
+      { path: "maxPrice", label: "Giá niêm yết tối đa (tin tính bằng Linh Thạch)", kind: "int", unit: "Linh Thạch" },
+      { path: "minListFeeTienNgoc", label: "Phí gửi bán tối thiểu (tin tính bằng Tiên Ngọc)", kind: "int", unit: "Tiên Ngọc" },
+      { path: "maxPriceTienNgoc", label: "Giá niêm yết tối đa (tin tính bằng Tiên Ngọc)", kind: "int", unit: "Tiên Ngọc" },
+      { path: "bidSuggestPct", label: "Đấu giá: ô giá đặt sẵn tăng so với giá cao nhất (người mua vẫn sửa tay được)", kind: "int", unit: "%" },
+      { path: "bidStepPct", label: "Đấu giá: bước giá tối thiểu so với giá cao nhất", kind: "int", unit: "%" },
+      { path: "openHour", label: "Đấu giá: giờ mở nhận giá (0-23)", kind: "int", unit: "giờ" },
+      { path: "closeHour", label: "Đấu giá: giờ chốt (1-24, lớn hơn giờ mở)", kind: "int", unit: "giờ" },
+      { path: "tzHours", label: "Múi giờ: số giờ lệch so với UTC (Việt Nam là 7)", kind: "int", unit: "giờ" },
+      { path: "promote.fee", label: "Tin quảng bá: phí", kind: "int", unit: "Linh Thạch" },
+      { path: "promote.minGrade", label: "Tin quảng bá: phẩm cấp vật phẩm tối thiểu (1-9)", kind: "int" },
+      { path: "promote.cooldownSec", label: "Tin quảng bá: thời gian chờ giữa hai lần của một nhân vật", kind: "int", unit: "giây" },
+    ],
   },
 ];
 

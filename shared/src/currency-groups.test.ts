@@ -12,6 +12,7 @@ describe("currency groups", () => {
       smith_refine: "enhance",
       repair: "enhance",
       breakthrough: "enhance",
+      "forge:forge_ring_lk": "enhance",
       path_choose: "enhance",
       path_swap: "enhance",
       path_drop: "enhance",
@@ -31,7 +32,10 @@ describe("currency groups", () => {
     expect(currencyGroupOf("something_new")).toBe("other");
     expect(currencyGroupOf("")).toBe("other");
     expect(currencyGroupOf(":x")).toBe("other");
-    for (const r of ["trade", "market:buy", "auction"]) expect(currencyGroupOf(r)).toBe("trade");
+    expect(currencyGroupOf("trade:a")).toBe("trade");
+    // the market (5a) and the sects (5c) have groups of their own, so the dashboard can tell their taxes and fees from the rest
+    for (const r of ["market", "market:sale", "market_fee", "market_buy:x", "market_promote", "auction_bid:x", "auction"]) expect(currencyGroupOf(r), r).toBe("market");
+    for (const r of ["sect:create", "sect:donate", "sect:weekly", "sect:task", "sect:shelf", "sect:disband"]) expect(currencyGroupOf(r), r).toBe("sect");
   });
 
   it("matches by the kind before the first colon only, not by a prefix of a plain word", () => {

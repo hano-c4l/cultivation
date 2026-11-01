@@ -11,6 +11,9 @@ import type { Currency, Wallet } from "./economy";
 import type { EnhanceLevelDef } from "./smith";
 import type { Tuning } from "./tuning";
 import type { BrewJobView } from "./alchemy";
+import type { MarketCfg, MarketCurrency, MarketKind, MarketListingView } from "./market";
+import type { TradeEnd, TradeError, TradeSideView } from "./trade";
+import { SECT_APPOINTABLE, type SectError, type SectListItem, type SectRankItem, type SectRole, type SectVaultItemView, type SectView } from "./sect";
 import type { MerchantDef } from "./merchants";
 import type { MapRecipe, NpcSpot } from "./map";
 import type { ItemOverlay } from "./items";
@@ -49,13 +52,13 @@ export const CHAT_TARGET_MAX_LENGTH = 32;
 
 /**
  * Where a chat line goes: everyone online (world), the sender's map room (map), one named player (whisper), or an
- * announcement to everyone shown in the system tab (system, only accepted from admins).
+ * announcement to everyone shown in the system tab (system, only accepted from admins), or the members of the sender's sect (sect).
  */
-export type ChatChannel = "world" | "map" | "whisper" | "system";
+export type ChatChannel = "world" | "map" | "whisper" | "system" | "sect";
 
 /** The windows one NPC can open (tabs of the same NPC): buying and selling, the blacksmith's work, brewing pills. */
-export type NpcView = "shop" | "smith" | "brew" | "learn";
-export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper", "system"];
+export type NpcView = "shop" | "smith" | "brew" | "learn" | "market";
+export const CHAT_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper", "system", "sect"];
 /** How far (tiles) the client-claimed start tile may differ from the server position and still be trusted. */
 export const MAX_DESYNC_TILES = 3;
 /** Minimum gap between stat allocations; each one is a D1 write. */
@@ -86,6 +89,72 @@ export type ClientMessage =
   | { t: "inv_expand"; price: number }
   /** Claim the item attached to a mail into the bag. */
   | { t: "mail_claim"; id: string }
+  /** Direct trade: ask the player `to` (a character id in this room) to trade. */
+  | { t: "trade_invite"; to: string }
+  /** Direct trade: answer the invitation of `from`. */
+  | { t: "trade_reply"; from: string; accept: boolean }
+  /** Direct trade: put these bag items (by id, whole stacks) and this much Linh Thạch in your side; both sides' locks and agreements are undone. */
+  | { t: "trade_offer"; items: string[]; linh: number; tienNgoc: number }
+  /** Direct trade: put `qty` of the bag item `id` in your side (a part of a stack is split off first); undoes the locks like an offer. */
+  | { t: "trade_add"; id: string; qty: number }
+  /** Direct trade: lock (or unlock) your side. `rev` is the version of the window you saw: a change in between makes the server refuse. */
+  | { t: "trade_lock"; rev: number; on: boolean }
+  /** Direct trade: agree to the trade as it stands (needs both sides locked). When both agree it happens. */
+  | { t: "trade_confirm"; rev: number }
+  | { t: "trade_cancel" }
+  /** Sect: ask for the player's own sect (and the wait before joining another), refreshed whenever the window opens. */
+  | { t: "sect_get" }
+  /** Sect: the list of sects open to applications. */
+  | { t: "sect_list" }
+  /** Sect: found one (the player must stand by a sect NPC, `npc`). */
+  | { t: "sect_create"; npc: string; name: string }
+  /** Sect: apply to join (or withdraw the application). */
+  | { t: "sect_apply"; sect: string; on: boolean }
+  /** Sect: accept or turn down the application of `id`. */
+  | { t: "sect_answer"; id: string; ok: boolean }
+  /** Sect: invite a player standing near. */
+  | { t: "sect_invite"; to: string }
+  /** Sect: answer the invitation of `from`. */
+  | { t: "sect_reply"; from: string; accept: boolean }
+  | { t: "sect_leave" }
+  | { t: "sect_kick"; id: string }
+  | { t: "sect_role"; id: string; role: SectRole }
+  /** Sect: hand the leadership to a member (the leader becomes a deputy). */
+  | { t: "sect_transfer"; id: string }
+  /** Sect (leader): close the sect and divide its fund and warehouse: all to the leader, or by cống hiến. */
+  | { t: "sect_disband"; mode: "leader" | "share" }
+  | { t: "sect_notice"; text: string }
+  /** Sect: give Linh Thạch to the sect (cống hiến, the fund and the exp grow). */
+  | { t: "sect_donate"; amount: number }
+  /** Sect: raise the sect to the next level. */
+  | { t: "sect_upgrade" }
+  /** Sect: take this week's pay of the player's rank. */
+  | { t: "sect_weekly" }
+  /** Sect (leader): what each rank is paid a week, by rank (index 0 disciple .. 5 leader). */
+  | { t: "sect_weekly_set"; amounts: number[]; items?: Array<{ item: string; qty: number } | null> }
+  /** Sect: buy a line of the sect shop with cống hiến (the player must stand by a sect NPC, `npc`). */
+  | { t: "sect_buy"; npc: string; item: string }
+  | { t: "sect_skill_buy"; npc: string; skill: string }
+  /** Sect: ask for the warehouse list (the Kho tab and the shelf of the shop). */
+  | { t: "sect_vault" }
+  /** Sect: hand in the items of a daily task (the player must stand by a sect NPC, `npc`). */
+  | { t: "sect_task"; npc: string; id: string }
+  /** Sect: the ranking of the sects. */
+  | { t: "sect_rank" }
+  /** Sect: put `qty` of a bag item in the warehouse (it earns cống hiến if the leader's list takes it). */
+  | { t: "sect_put"; id: string; qty: number }
+  /** Sect (leader): take a warehouse stack out, to a member (the leader included) by mail. */
+  | { t: "sect_take"; id: string; to: string }
+  /** Sect (leader): put a warehouse stack on the shop shelf for Linh Thạch or cống hiến, or take it off the shelf (`currency` null). */
+  | { t: "sect_shelf"; id: string; currency: "linh_thach" | "cong_hien" | null; price: number }
+  /** Sect: buy a shelf stack (by mail; the player must stand by a sect NPC, `npc`). */
+  | { t: "sect_shelf_buy"; npc: string; id: string }
+  /** Sect (leader): what the warehouse takes: a percent for each kind of item and the lowest grade. */
+  | { t: "sect_accept"; cats: Record<string, number>; minGrade: number }
+  /** Claim every mail in one go (the ones that do not fit stay in the mailbox). */
+  | { t: "mail_claim_all" }
+  /** Vạn Bảo Lâu: read this town's listings again (the window asks while it is open; cheaper to call than `npc_open`). */
+  | { t: "market_list"; npc: string }
   /** Ask for the mail list again (a gift was sent while the player is online); the server answers with `mail` and limits how often. */
   | { t: "mail_refresh" }
   /** Wear the bag item at (tab, cell). Without `slot` the server picks the first empty slot of its kind (or replaces the first). */
@@ -126,6 +195,10 @@ export type ClientMessage =
   | { t: "bt_cancel" }
   /** Get on (true) or off (false) the flight pháp bảo. Its stats and speed only count while riding. */
   | { t: "mount"; on: boolean; fx?: number; fy?: number }
+  /** Ride the beast mount `id`, or (null) get off it. */
+  | { t: "beast"; id: string | null }
+  /** Asks for the list of the character's mounts. */
+  | { t: "mount_list" }
   /** Sit down to meditate (HP and MP regenerate) or stand up again. Walking, attacking or being hit stands the character up. */
   | { t: "meditate"; on: boolean }
   /** Sent now and then while sitting: the server settles the EXP of the stretch since the last one (it also does at standing up). */
@@ -145,6 +218,16 @@ export type ClientMessage =
   | { t: "brew_start"; npc: string; recipe: string; /** Batches made in one run (absent: 1). */ count?: number }
   | { t: "brew_collect"; npc: string; job: string }
   | { t: "dojo_learn"; npc: string; skill: string }
+  /** Vạn Bảo Lâu: put the stack at (tab, cell) up for sale, `qty` of it, asking `price` Linh Thạch (an auction: the start price). */
+  | { t: "market_post"; npc: string; kind: MarketKind; currency: MarketCurrency; tab: number; cell: number; qty: number; price: number }
+  /** Buy a fixed-price listing of this town. */
+  | { t: "market_buy"; npc: string; id: string }
+  /** Bid on an auction listing of this town (the amount is paid now; an outbid bidder gets it back by mail). */
+  | { t: "market_bid"; npc: string; id: string; amount: number }
+  /** Take your own listing down (an auction only while nobody has bid). The item comes back by mail. */
+  | { t: "market_cancel"; npc: string; id: string }
+  /** Announce your own listing to the town (the NPC speaks); costs a fee and needs a high-grade item. */
+  | { t: "market_promote"; npc: string; id: string }
   /** Use the teleport array of a town to go to another main town (the server prices the trip and takes the Linh Thạch when the channel ends). */
   | { t: "waygate_go"; npc: string; to: string }
   /** Buy `qty` of one of the merchant's offers (named by id, priced by the server). */
@@ -223,6 +306,8 @@ export interface PlayerSnapshot {
   speed: number;
   /** Riding the flight pháp bảo (left out when on foot). */
   mounted?: true;
+  /** The beast mount ridden (a `mounts` tuning id; left out when on foot or on the flight pháp bảo). */
+  bs?: string;
   /** Drawn with the female body (left out for the male body; the gender itself is never sent). */
   f?: true;
   /** The weapon family in the hand (WEAPON_TYPES), left out with no weapon or a broken one: it picks the weapon sprite drawn over the body. */
@@ -237,6 +322,8 @@ export interface PlayerSnapshot {
   lk?: GearLook;
   /** The cultivation level, `realm * 10 + stage`: it sets the colour and strength of the qi drawn round the figure. */
   lv?: number;
+  /** The name of the sect the player is in, left out for none: drawn above the name. */
+  sc?: string;
 }
 
 export type ServerMessage =
@@ -258,6 +345,10 @@ export type ServerMessage =
   | { t: "stats"; character: CharacterSheet }
   /** Whether you are riding the flight pháp bảo now (also sent when it comes off by itself), or why getting on failed. */
   | { t: "mounted"; on: boolean; error?: "no_flight" | "broken" | "busy" | "requirements" }
+  /** The beast being ridden now (null: none), or why a request to ride was refused. */
+  | { t: "beast"; id: string | null; error?: "unknown" | "realm" | "not_owned" | "busy" }
+  /** The mounts the character has, and the one it rides. */
+  | { t: "mounts"; owned: string[]; riding: string | null }
   /** Whether the character meditates now. `reason` when it stopped by itself: hit, moved (also an attack or a skill), died, or refused (`safe`: a town needs no meditation, `busy`: a breakthrough or a talisman runs). */
   | { t: "meditating"; on: boolean; reason?: "hit" | "moved" | "died" | "safe" | "busy" }
   /** A player sat down to meditate or stood up (the others draw the pose and the motes). */
@@ -283,6 +374,26 @@ export type ServerMessage =
   | { t: "mail"; mail: MailView[] }
   /** Sent on the chat socket when a gift was sent to the player: the client answers with `mail_refresh` on the game socket. */
   | { t: "mail_new" }
+  /** Someone asks this player to trade (answer with `trade_reply`; `ttlMs` is how long it stands). */
+  | { t: "trade_invite"; from: string; name: string; ttlMs: number }
+  /** The trade window: `rev` changes with every offer; `mine` and `theirs` are the two sides. */
+  | { t: "trade"; rev: number; other: { id: string; name: string }; mine: TradeSideView; theirs: TradeSideView; cfg: { maxItems: number; maxLinh: number; maxTienNgoc: number } }
+  | { t: "trade_end"; reason: TradeEnd }
+  | { t: "trade_error"; reason: TradeError }
+  /** The player's sect (null: none) and, when it is none, when they may join one. */
+  | { t: "sect"; view: SectView | null; cooldownUntil: number }
+  | { t: "sect_dir"; sects: SectListItem[] }
+  | { t: "sect_vault"; items: SectVaultItemView[] }
+  | { t: "sect_ranks"; sects: SectRankItem[]; mine: number | null }
+  | { t: "sect_error"; reason: SectError }
+  /** Someone invites this player to a sect. */
+  | { t: "sect_invite"; from: string; name: string; sect: string; ttlMs: number }
+  /** Something about the player's sect changed (comes on the chat socket). `you`: it is about this player (they joined, left, were sent away or appointed): read it again at once; otherwise only a window that is open needs to. */
+  | { t: "sect_changed"; you?: true }
+  /** The sect shown above a player changed (left out: none). */
+  | { t: "sect_label"; id: string; sc?: string }
+  /** Some listing of the town's Vạn Bảo Lâu changed (`town` absent: any town): a window that is open reads the list again. */
+  | { t: "market_changed"; town?: string }
   /** The merchant's stock for today: units this character can still buy of each offer that has a daily limit. */
   | { t: "shop"; npc: string; left: Record<string, number>; tuning: Tuning; merchant: MerchantDef; tabs: NpcView[] }
   /** A trade went through: `total` Linh Thạch paid (buy) or received (sell). */
@@ -333,7 +444,7 @@ export type ServerMessage =
   | { t: "waygate"; npc: string; dests: WaygateDest[] }
   /** The channelling ended: `ok` means the character is on its way (the talisman is used up); otherwise `reason` says why it stopped and nothing was lost. */
   | { t: "tp_end"; ok: boolean; reason?: "moved" | "hit" | "dead" | "no_item" | "money" | "other" }
-  | { t: "inv_error"; reason: "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden" | "brew_mats" | "brew_limit" | "brew_wait"; retryMs?: number }
+  | { t: "inv_error"; reason: "craft_level" | "mount_known" | "mount_realm" | "moving" | "breaking" | "far" | "sold_out" | "unsellable" | "invalid" | "rate" | "full" | "not_needed" | "cooldown" | "expired" | "busy" | "wait" | "no_room" | "max_tabs" | "price_changed" | "no_pill" | "no_skill" | EquipBlock | "nothing" | "funds" | "known" | "level_low" | "murderer" | "smith_max" | "smith_full" | "smith_mats" | "smith_scroll" | "smith_item" | "forbidden" | "brew_mats" | "brew_limit" | "brew_wait"; retryMs?: number }
   /** The skills the character can use (unlocked basic ones plus learned books); sent on join, on a stage-up and after learning one. */
   | { t: "skills"; ids: string[] }
   /** Mastery of one skill changed (`up`: it reached a new level). */
@@ -358,10 +469,15 @@ export type ServerMessage =
   /** A repair was paid for. */
   | { t: "repaired"; cost: number }
   /** The blacksmith's window: the upgrade rules and the extra success chance (percent) each of your pieces has built up from failures. */
-  | { t: "brew"; npc: string; jobs: BrewJobView[]; tuning: Tuning; tabs: NpcView[]; now: number }
+  | { t: "brew"; npc: string; craft: "alchemy" | "forge"; /** The character's exp in this trade (the level follows from the tuning). */ craftExp: number; jobs: BrewJobView[]; tuning: Tuning; tabs: NpcView[]; now: number }
   /** The martial master's courses this character can still take (what is already known is left out), each with its cost in Linh Thạch. */
   | { t: "dojo"; npc: string; courses: Array<{ skill: string; cost: number; ok: boolean }> }
   | { t: "dojo_ok"; skill: string; cost: number }
+  /** Vạn Bảo Lâu's window: every open listing of this town, the numbers (tuning `market`) and whether bids are being taken now. */
+  | { t: "market"; npc: string; listings: MarketListingView[]; cfg: MarketCfg; now: number; open: boolean; tabs: NpcView[] }
+  /** A market action went through (`op` is what was done). */
+  | { t: "market_ok"; op: "post" | "buy" | "bid" | "cancel" | "promote" }
+  | { t: "market_error"; reason: MarketError }
   | { t: "smith"; npc: string; levels: EnhanceLevelDef[]; pity: Record<string, number>; tuning: Tuning; tabs: NpcView[] }
   /** The outcome of a refining: what each stat gained (empty: nothing rose this time). */
   | { t: "smith_refined"; id: string; gains: Record<string, number> }
@@ -378,6 +494,11 @@ export type ServerMessage =
   /** A path item was handed out. */
   | { t: "path_claimed"; path: PathId }
   | { t: "bt_claimed"; item: string }
+
+/** Why a market action was refused. */
+export type MarketError = "far" | "rate" | "invalid" | "funds" | "gone" | "mine" | "low" | "closed" | "limit" | "grade" | "cooldown" | "untradable" | "busy" | "murderer" | "top";
+
+const isId = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9-]{1,64}$/.test(v);
 
 function isInt(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v);
@@ -497,6 +618,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return { t: "med_tick" };
     case "meditate":
       return typeof m.on === "boolean" ? { t: "meditate", on: m.on } : null;
+    case "beast":
+      return m.id === null ? { t: "beast", id: null } : typeof m.id === "string" && /^[a-z0-9_]{1,32}$/.test(m.id) ? { t: "beast", id: m.id } : null;
+    case "mount_list":
+      return { t: "mount_list" };
     case "mount":
       if (typeof m.on !== "boolean") return null;
       if (m.fx !== undefined || m.fy !== undefined) return isCoord(m.fx) && isCoord(m.fy) ? { t: "mount", on: m.on, fx: m.fx, fy: m.fy } : null;
@@ -541,7 +666,17 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case "npc_open":
       if (!isNpcId(m.npc)) return null;
       if (m.view === undefined) return { t: "npc_open", npc: m.npc };
-      return m.view === "shop" || m.view === "smith" || m.view === "brew" || m.view === "learn" ? { t: "npc_open", npc: m.npc, view: m.view } : null;
+      return m.view === "shop" || m.view === "smith" || m.view === "brew" || m.view === "learn" || m.view === "market" ? { t: "npc_open", npc: m.npc, view: m.view } : null;
+    case "market_post":
+      return isNpcId(m.npc) && (m.kind === "fixed" || m.kind === "auction") && (m.currency === "linh_thach" || m.currency === "tien_ngoc") && isInt(m.tab) && isInt(m.cell) && cellOk(m.tab, m.cell) && isInt(m.qty) && m.qty >= 1 && m.qty <= 9999 && isInt(m.price) && m.price >= 1 && m.price <= 1_000_000_000
+        ? { t: "market_post", npc: m.npc, kind: m.kind, currency: m.currency, tab: m.tab, cell: m.cell, qty: m.qty, price: m.price }
+        : null;
+    case "market_buy":
+    case "market_cancel":
+    case "market_promote":
+      return isNpcId(m.npc) && typeof m.id === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.id) ? { t: m.t, npc: m.npc, id: m.id } : null;
+    case "market_bid":
+      return isNpcId(m.npc) && typeof m.id === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.id) && isInt(m.amount) && m.amount >= 1 && m.amount <= 1_000_000_000 ? { t: "market_bid", npc: m.npc, id: m.id, amount: m.amount } : null;
     case "brew_start":
       return isNpcId(m.npc) && typeof m.recipe === "string" && /^[a-z0-9_]{1,40}$/.test(m.recipe) ? { t: "brew_start", npc: m.npc, recipe: m.recipe, ...(typeof m.count === "number" && Number.isInteger(m.count) && m.count >= 1 && m.count <= 100 ? { count: m.count } : {}) } : null;
     case "dojo_learn":
@@ -575,6 +710,90 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return typeof m.quest === "string" && /^[a-z0-9_]{1,40}$/.test(m.quest) ? { t: "quest_abandon", quest: m.quest } : null;
     case "mail_refresh":
       return { t: "mail_refresh" };
+    case "trade_invite":
+      return typeof m.to === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.to) ? { t: "trade_invite", to: m.to } : null;
+    case "trade_reply":
+      return typeof m.from === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.from) && typeof m.accept === "boolean" ? { t: "trade_reply", from: m.from, accept: m.accept } : null;
+    case "trade_offer":
+      return Array.isArray(m.items) && m.items.length <= 6 && m.items.every((x) => typeof x === "string" && /^[A-Za-z0-9-]{1,64}$/.test(x)) && isInt(m.linh) && m.linh >= 0 && m.linh <= 1_000_000_000 && isInt(m.tienNgoc) && m.tienNgoc >= 0 && m.tienNgoc <= 1_000_000_000
+        ? { t: "trade_offer", items: m.items as string[], linh: m.linh, tienNgoc: m.tienNgoc }
+        : null;
+    case "trade_add":
+      return typeof m.id === "string" && /^[A-Za-z0-9-]{1,64}$/.test(m.id) && isInt(m.qty) && m.qty >= 1 && m.qty <= 1_000_000 ? { t: "trade_add", id: m.id, qty: m.qty } : null;
+    case "sect_get":
+      return { t: "sect_get" };
+    case "sect_list":
+      return { t: "sect_list" };
+    case "sect_create":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.name === "string" && m.name.length <= 60 ? { t: "sect_create", npc: m.npc, name: m.name } : null;
+    case "sect_apply":
+      return isId(m.sect) && typeof m.on === "boolean" ? { t: "sect_apply", sect: m.sect, on: m.on } : null;
+    case "sect_answer":
+      return isId(m.id) && typeof m.ok === "boolean" ? { t: "sect_answer", id: m.id, ok: m.ok } : null;
+    case "sect_invite":
+      return isId(m.to) ? { t: "sect_invite", to: m.to } : null;
+    case "sect_reply":
+      return isId(m.from) && typeof m.accept === "boolean" ? { t: "sect_reply", from: m.from, accept: m.accept } : null;
+    case "sect_leave":
+      return { t: "sect_leave" };
+    case "sect_kick":
+      return isId(m.id) ? { t: "sect_kick", id: m.id } : null;
+    case "sect_role":
+      return isId(m.id) && typeof m.role === "string" && (SECT_APPOINTABLE as readonly string[]).includes(m.role) ? { t: "sect_role", id: m.id, role: m.role as SectRole } : null;
+    case "sect_transfer":
+      return isId(m.id) ? { t: "sect_transfer", id: m.id } : null;
+    case "sect_disband":
+      return m.mode === "leader" || m.mode === "share" ? { t: "sect_disband", mode: m.mode } : null;
+    case "sect_notice":
+      return typeof m.text === "string" && m.text.length <= 400 ? { t: "sect_notice", text: m.text } : null;
+    case "sect_donate":
+      return isInt(m.amount) && m.amount >= 1 && m.amount <= 1_000_000_000 ? { t: "sect_donate", amount: m.amount } : null;
+    case "sect_upgrade":
+      return { t: "sect_upgrade" };
+    case "sect_weekly":
+      return { t: "sect_weekly" };
+    case "sect_weekly_set":
+    {
+      if (!(Array.isArray(m.amounts) && m.amounts.length === 6 && m.amounts.every((n) => isInt(n) && n >= 0 && n <= 1_000_000_000))) return null;
+      if (m.items === undefined) return { t: "sect_weekly_set", amounts: m.amounts as number[] };
+      const okItem = (x: unknown) => x === null || (typeof x === "object" && x !== null && typeof (x as Record<string, unknown>).item === "string" && /^[A-Za-z0-9_.]{1,80}$/.test((x as Record<string, unknown>).item as string) && isInt((x as Record<string, unknown>).qty) && ((x as Record<string, number>).qty as number) >= 1 && ((x as Record<string, number>).qty as number) <= 999);
+      return Array.isArray(m.items) && m.items.length === 6 && m.items.every(okItem) ? { t: "sect_weekly_set", amounts: m.amounts as number[], items: m.items as Array<{ item: string; qty: number } | null> } : null;
+    }
+    case "sect_vault":
+      return { t: "sect_vault" };
+    case "sect_task":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.id === "string" && /^[a-z0-9_]{1,24}$/.test(m.id) ? { t: "sect_task", npc: m.npc, id: m.id } : null;
+    case "sect_rank":
+      return { t: "sect_rank" };
+    case "sect_put":
+      return isId(m.id) && isInt(m.qty) && m.qty >= 1 && m.qty <= 1_000_000 ? { t: "sect_put", id: m.id, qty: m.qty } : null;
+    case "sect_take":
+      return isId(m.id) && isId(m.to) ? { t: "sect_take", id: m.id, to: m.to } : null;
+    case "sect_shelf":
+      return isId(m.id) && (m.currency === null || m.currency === "linh_thach" || m.currency === "cong_hien") && isInt(m.price) && m.price >= 0 && m.price <= 1_000_000_000 ? { t: "sect_shelf", id: m.id, currency: m.currency, price: m.price } : null;
+    case "sect_shelf_buy":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && isId(m.id) ? { t: "sect_shelf_buy", npc: m.npc, id: m.id } : null;
+    case "sect_accept": {
+      const cats = m.cats;
+      if (typeof cats !== "object" || cats === null || Array.isArray(cats) || !isInt(m.minGrade) || m.minGrade < 1 || m.minGrade > 9) return null;
+      const entries = Object.entries(cats as Record<string, unknown>);
+      if (entries.length > 8 || !entries.every(([k, v]) => /^[a-z_]{1,16}$/.test(k) && isInt(v) && v >= 0 && v <= 1000)) return null;
+      return { t: "sect_accept", cats: Object.fromEntries(entries) as Record<string, number>, minGrade: m.minGrade };
+    }
+    case "sect_skill_buy":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.skill === "string" && /^[a-z0-9_]{1,32}$/.test(m.skill) ? { t: "sect_skill_buy", npc: m.npc, skill: m.skill } : null;
+    case "sect_buy":
+      return typeof m.npc === "string" && /^[a-z0-9_]{1,24}$/.test(m.npc) && typeof m.item === "string" && /^[A-Za-z0-9_.]{1,80}$/.test(m.item) ? { t: "sect_buy", npc: m.npc, item: m.item } : null;
+    case "trade_lock":
+      return isInt(m.rev) && m.rev >= 0 && typeof m.on === "boolean" ? { t: "trade_lock", rev: m.rev, on: m.on } : null;
+    case "trade_confirm":
+      return isInt(m.rev) && m.rev >= 0 ? { t: "trade_confirm", rev: m.rev } : null;
+    case "trade_cancel":
+      return { t: "trade_cancel" };
+    case "mail_claim_all":
+      return { t: "mail_claim_all" };
+    case "market_list":
+      return isNpcId(m.npc) ? { t: "market_list", npc: m.npc } : null;
     case "mail_claim":
       return typeof m.id === "string" && m.id.length > 0 && m.id.length <= 64 ? { t: "mail_claim", id: m.id } : null;
     default:

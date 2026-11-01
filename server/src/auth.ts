@@ -1,4 +1,7 @@
 import { applyElementSettings } from "./element-settings";
+import { closeListingsOf } from "./market";
+import { removeCharacter as removeSectMember } from "./sect";
+import { getTuning } from "./tuning";
 import {
   SPIRITUAL_ROOTS,
   isGender,
@@ -20,7 +23,7 @@ import {
   validatePassword,
 } from "@game/shared";
 import { getConstitutionCatalog } from "./constitution-catalog";
-import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminMapCreate, adminMapDelete, adminAccounts, adminAccountDetail, adminAccountAction, adminCharacter, adminCharacterAction, adminGear, adminGearSave, adminLooks } from "./admin";
+import { adminBagTabs, adminConstitutions, adminCurrencyAudit, adminCurrencyAuditRun, adminCurrencyConfirm, adminCurrencyDetail, adminCurrencyHandle, adminCurrencyHistory, adminCurrencyMeta, adminCurrencySearch, adminLog, adminMe, adminGrant, adminLookup, adminSettings, adminSupply, adminMoney, adminTuning, adminGiftHistory, adminGiftMeta, adminGiftResolve, adminGiftSend, adminQuestDelete, adminQuestSave, adminQuests, adminItemDelete, adminItemSave, adminItems, adminSkillSave, adminSkills, adminLoot, adminLootSave, adminMonsterSave, adminMonsters, adminNpcs, adminNpcSave, adminNpcDelete, adminMerchant, adminMerchantSave, adminAlchemy, adminAlchemySave, adminMaps, adminMapRecipe, adminMapSave, adminMapCreate, adminMapDelete, adminAccounts, adminAccountDetail, adminAccountAction, adminCharacter, adminCharacterAction, adminGear, adminGearSave, adminLooks } from "./admin";
 import { kick } from "./accounts-admin";
 import { getOwnCharacter, grantExp, listCharacters, resolveActiveCharacter, STAND_IN_ROOT, toCharacterSheet } from "./characters";
 import { getSetting } from "./settings";
@@ -227,6 +230,12 @@ async function deleteOwnCharacter(request: Request, env: Env): Promise<Response>
   if ((done[0]?.meta?.changes ?? 0) === 0) return errorResponse("not_found", 404);
   // After the batch, so a reconnect of another session is already refused (the character is gone from the account); the room saves it as it leaves.
   await kick(env, character.id);
+  // Vạn Bảo Lâu: take the character's open listings down, so a standing top bidder gets the bid back.
+  await closeListingsOf(env.DB, character.id, now)
+    .then((ids) => (ids.length > 0 ? env.CHAT_HUB.get(env.CHAT_HUB.idFromName("global"), { locationHint: "apac" }).notifyMail(ids) : undefined))
+    .catch((err) => console.error("market close failed", character.id, err));
+  // Sect: a member leaves without the wait; a leader hands the sect on (or it closes when nobody is left).
+  await removeSectMember(env.DB, (await getTuning(env.DB)).sect, character.id, now).catch((err) => console.error("sect removal failed", character.id, err));
   return json({ ok: true });
 }
 
@@ -443,7 +452,7 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     case "POST /api/admin/merchant/save":
       return adminMerchantSave(request, env);
     case "GET /api/admin/alchemy":
-      return adminAlchemy(request, env);
+      return adminAlchemy(request, env, url);
     case "POST /api/admin/alchemy/save":
       return adminAlchemySave(request, env);
     case "GET /api/admin/monsters":
@@ -463,6 +472,8 @@ export async function handleApi(request: Request, env: Env, url: URL): Promise<R
     case "GET /api/admin/constitutions":
     case "POST /api/admin/constitutions":
       return adminConstitutions(request, env);
+    case "GET /api/admin/money":
+      return adminMoney(request, env);
     case "GET /api/admin/supply":
       return adminSupply(request, env);
     case "POST /api/dev/grant-exp":

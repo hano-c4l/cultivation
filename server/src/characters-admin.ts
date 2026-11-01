@@ -1,4 +1,7 @@
 import { ALL_ROOTS, CURRENCIES, parseRoots, type SpiritualRoot, MUTANT_ROOTS, ROOT_GRADES, SPIRITUAL_ROOTS, equipmentInfo, getItemDef, isGender, validateCharacterName, isCurrency, isEquipmentType, planAdd, planRemove, getSkill, applyOps, type BagOp, maxSkillLevel, skillGrade, refineLevelOf, ENHANCE_MAX, REALMS, type BagItem, type EquippedItem } from "@game/shared";
+import { closeListingsOf } from "./market";
+import { removeCharacter as removeSectMember } from "./sect";
+import { getTuning } from "./tuning";
 import { logStatement } from "./admin-log";
 import { applyCurrencyDelta } from "./economy";
 import { commitBagOps, loadBag } from "./inventory";
@@ -16,7 +19,7 @@ import { getItemOverlays } from "./items-live";
 export const CHARACTER_LOG_SCREEN = "Nhân vật";
 export const REVIEW_MS = 30 * 60_000;
 /** The most pieces of gear one "add" puts in the bag. */
-export const MAX_GEAR_AT_ONCE = 50;
+export const MAX_GEAR_AT_ONCE = 45; // one statement a piece plus the guards and the log: a D1 batch holds 50
 
 interface Row {
   id: string;
@@ -279,7 +282,7 @@ export async function removeItem(db: D1Database, admin: string, id: string, inst
 
 export async function addSkill(db: D1Database, admin: string, id: string, skillId: unknown, now = Date.now()): Promise<CharacterResult> {
   const skill = typeof skillId === "string" ? getSkill(skillId) : undefined;
-  if (!skill) return { ok: false, error: "invalid" };
+  if (!skill || skill.source === "sect") return { ok: false, error: "invalid" };
   const c = await db.prepare("SELECT name FROM characters WHERE id = ?").bind(id).first<{ name: string }>();
   if (!c) return { ok: false, error: "not_found" };
   if (!(await reviewing(db, id, admin, now))) return { ok: false, error: "not_reviewing" };
@@ -464,6 +467,9 @@ export async function deleteCharacter(db: D1Database, admin: string, id: string,
   } catch (err) {
     return mapGuard(err);
   }
+  // Vạn Bảo Lâu: take its open listings down (a standing top bidder is refunded by mail).
+  await closeListingsOf(db, id, now).catch((err) => console.error("market close failed", id, err));
+  await removeSectMember(db, (await getTuning(db)).sect, id, now).catch((err) => console.error("sect removal failed", id, err));
   return { ok: true };
 }
 

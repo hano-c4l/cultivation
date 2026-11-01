@@ -5,8 +5,8 @@ const MAX_LINES = 120;
 
 /** What a tab shows. "all" shows every line; "system" is only written by the client. */
 export type ChatTab = "all" | ChatChannel | "system";
-const TABS: readonly ChatTab[] = ["all", "world", "map", "whisper", "system"];
-const PLAYER_SEND_CHANNELS: readonly ChatChannel[] = ["world", "map", "whisper"];
+const TABS: readonly ChatTab[] = ["all", "world", "map", "sect", "whisper", "system"];
+const PLAYER_SEND_CHANNELS: readonly ChatChannel[] = ["world", "map", "sect", "whisper"];
 
 /** "warning" is a red line for the system tab only (e.g. the sort lock); "error" belongs to the tab it came from. */
 export type SystemKind = "info" | "important" | "warning" | "error";
@@ -95,7 +95,7 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
     for (const t of TABS) renderTab(t);
     log.scrollTop = log.scrollHeight;
     // Opening a sendable tab also selects it as the channel to speak in.
-    if (tab === "world" || tab === "map" || tab === "whisper" || (tab === "system" && isAdmin)) setSendChannel(tab);
+    if (tab === "world" || tab === "map" || tab === "sect" || tab === "whisper" || (tab === "system" && isAdmin)) setSendChannel(tab);
   };
 
   // Clears every tab's lines and unread counts (the history only lives in this client, so nothing else is affected).
@@ -187,10 +187,17 @@ export function initChat(send: (channel: ChatChannel, text: string, to?: string)
       el.className = `line ch-${line.channel}`;
       const tag = document.createElement("span");
       tag.className = "tag";
-      tag.textContent = `[${vi.chat.channels[line.channel]}] `;
+      // An NPC speaking (its id starts with `npc:`, e.g. Vạn Bảo Lâu announcing a listing): its name replaces the channel tag and the line has its own look.
+      const byNpc = line.channel === "system" && line.id.startsWith("npc:");
+      if (byNpc) el.classList.add("npc");
+      tag.textContent = byNpc ? `[${line.name}] ` : `[${vi.chat.channels[line.channel]}] `;
       el.append(tag);
       const isSelf = line.id === selfId;
-      if (line.channel === "system") {
+      if (line.channel === "sect" && line.id === "system") {
+        // The sect itself speaking (someone joined, was appointed...): no sender.
+        el.classList.add("npc");
+        el.append(document.createTextNode(line.text));
+      } else if (line.channel === "system") {
         // An admin announcement: an important (red) line without the sender's name, shown in the all and system tabs.
         el.classList.add("important");
         el.append(document.createTextNode(line.text));

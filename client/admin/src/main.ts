@@ -1,6 +1,7 @@
 import "./style.css";
 import { api, h } from "./kit";
 import { auditPage, detailPage, logPage, searchPage } from "./currency";
+import { moneyPage } from "./money";
 import { MENU } from "./menu";
 import { giftsPage } from "./gifts";
 import { itemEditPage, itemListPage } from "./items";
@@ -73,6 +74,9 @@ async function render(): Promise<void> {
   if (path === "/admin") {
     title = "Trang chính";
     content = homePage();
+  } else if (path === "/admin/money") {
+    title = "Tổng quan tiền";
+    content = moneyPage();
   } else if (path === "/admin/currency") {
     title = "Quản lý tiền tệ";
     content = searchPage();
@@ -121,6 +125,9 @@ async function render(): Promise<void> {
   } else if (path === "/admin/npcs/alchemy") {
     title = "NPC · Công thức luyện đan";
     content = alchemyPage();
+  } else if (path === "/admin/npcs/forge") {
+    title = "NPC · Công thức luyện khí";
+    content = alchemyPage("forge");
   } else if (path === "/admin/monsters") {
     title = "Quái / BOSS · Loài quái";
     content = speciesListPage();

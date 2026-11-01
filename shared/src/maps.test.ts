@@ -104,7 +104,7 @@ describe("the world of two towns", () => {
     expect(getMap("town2").portals.map((p) => p.toMap).sort()).toEqual(["cave", "kimdan", "nguyenanh"]);
     expect(getMap("kimdan").realm).toBe(2);
     expect(getMap("nguyenanh").realm).toBe(3);
-    expect(getMap("town2").npcs.map((n) => n.id).sort()).toEqual(["alchemist2", "elder2", "master2", "merchant2", "path_dan", "path_kiem", "path_thuat", "smith2", "waygate2"]);
+    expect(getMap("town2").npcs.map((n) => n.id).sort()).toEqual(["alchemist2", "elder2", "market2", "master2", "merchant2", "path_dan", "path_kiem", "path_thuat", "sect2", "smith2", "waygate2"]);
   });
 });
 
@@ -144,3 +144,16 @@ describe("the monster groups are spread evenly", () => {
     expect(Math.max(...tiers.map((_, i) => tiers.filter((x) => x === tiers[i]).length))).toBeLessThanOrEqual(3);
   });
 });
+
+describe("the sect NPC", () => {
+  it("stands where a player can reach it, clear of the other NPCs, in each of the three towns", () => {
+    for (const [map, id] of [["town", "sect"], ["town2", "sect2"], ["town3", "sect3"]] as const) {
+      const npcs = getMap(map).npcs;
+      const spot = npcs.find((n) => n.id === id);
+      expect(spot?.kind, map).toBe("sect");
+      expect(nearestStandablePoint(getMap(map), spot!.x, spot!.y, 2), map).not.toBeNull(); // the NPC blocks its own cell; a player can stand beside it
+      for (const other of npcs.filter((n) => n.id !== id)) expect(Math.hypot(other.x - spot!.x, other.y - spot!.y), `${map} ${other.id}`).toBeGreaterThan(4);
+    }
+  });
+});
+

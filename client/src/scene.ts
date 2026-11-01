@@ -62,7 +62,7 @@ import {
   type ServerMessage,
   type Vec2,
   equipmentBonus,
-  walkSpeed,
+  mountOf, walkSpeed,
   type EquipStatKey,
   setTuning,
   setItemOverlays,
@@ -86,6 +86,11 @@ import { initQuests, type QuestUi } from "./quest-ui";
 import { initPk, type PkUi } from "./pk-ui";
 import { initWaygate, type WaygateUi } from "./waygate-ui";
 import { initDojo, type DojoUi } from "./dojo-ui";
+import { initMarket, type MarketUi } from "./market-ui";
+import { initPlayerMenu, type PlayerMenu } from "./player-menu";
+import { initMount, type MountUi } from "./mount-ui";
+import { initSect, type SectUi } from "./sect-ui";
+import { initTrade, type TradeUi } from "./trade-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
 import { HAT_ORN_TEX, HAT_TEX, ensureHatTextures } from "./hat-art";
@@ -152,6 +157,9 @@ function toTile(sx: number, sy: number): { x: number; y: number } {
   return { x: (a + b) / 2, y: (b - a) / 2 };
 }
 
+/** Whether the actor is raised on a ride: the flight pháp bảo or a beast mount. */
+const rides = (a: { mounted: boolean; beast?: string }): boolean => a.mounted || a.beast !== undefined;
+
 interface Actor {
   id: string;
   path: Vec2[];
@@ -166,9 +174,16 @@ interface Actor {
   /** The "PK" tag after the name: brown for PK, red for Đồ sát (hidden when off). */
   tag: Phaser.GameObjects.Text;
   pk: PkMode;
+  /** The sect name drawn above the name (made when the player is in a sect). */
+  sectTag?: Phaser.GameObjects.Text;
   /** Riding the flight pháp bảo: drawn on a small cloud under the feet and lifted off the ground. */
   mounted: boolean;
   cloud?: Phaser.GameObjects.Image;
+  /** The beast mount ridden (a `mounts` id) and the shape drawn under the rider until it has a sprite. */
+  beast?: string;
+  beastGfx?: Phaser.GameObjects.Graphics;
+  /** The sprite of the beast (a monster model, tinted) once its atlas is here; the shape above is hidden then. */
+  beastView?: GfxView;
   /** The joints, head and tail tip of the dragon pháp bảo (made when the rider's flight is the dragon; head last, tail tip first). */
   dragon?: Phaser.GameObjects.Image[];
   /** Where the rider was on screen last frame and the way they are heading (radians on screen), so a flying sword points where it flies. */
@@ -281,7 +296,15 @@ function applyTrack(actor: Actor, path: Vec2[], startedAt: number, speed: number
 }
 
 /** Radius (tiles) of the teleport array drawn on the ground and of the click that opens it. */
-const WAYGATE_RADIUS = 1.3;
+/** The teleport array is a wide circle on the ground (tiles): a click anywhere in it walks the character to its middle, and standing in the middle opens its window. */
+/** A player clicked in a safe map: the character walks up to PLAYER_MENU_STAND tiles from them, and the menu opens within PLAYER_MENU_REACH. */
+const PLAYER_MENU_REACH = 2.3;
+const PLAYER_MENU_STAND = 2;
+/** An NPC is walked up to about this far (not to its side), so a crowd does not hide it. */
+const NPC_STAND = 2;
+const WAYGATE_RADIUS = 2.6;
+/** How close to the middle of the array the character must stand for its window to open by itself after the walk. */
+const WAYGATE_CENTER_REACH = 0.7;
 export class GameScene extends Phaser.Scene {
   private gfx!: GfxKit;
   private map: MapData = getMap("town");
@@ -312,11 +335,23 @@ export class GameScene extends Phaser.Scene {
   private shop!: ShopUi;
   private smith!: SmithUi;
   private linhThach = 0;
+  private tienNgoc = 0;
   private quests!: QuestUi;
   private pk!: PkUi;
   private channel!: ChannelUi;
   private waygate!: WaygateUi;
+  /** The teleport array the character is walking to the middle of (its window opens on arrival). */
+  private playerMenu!: PlayerMenu;
+  /** A player the character is walking up to, to open the menu of what can be done with them. */
+  private pendingPlayer: { id: string } | null = null;
+  private playerWatch: Phaser.Time.TimerEvent | null = null;
+  private pendingWaygate: NpcSpot | null = null;
+  private waygateWatch: Phaser.Time.TimerEvent | null = null;
   private dojo!: DojoUi;
+  private market!: MarketUi;
+  private trade!: TradeUi;
+  private sect!: SectUi;
+  private mountUi!: MountUi;
   private minimap!: MinimapUi;
   private fx!: Effects;
   private rank!: RankUi;
@@ -457,6 +492,9 @@ export class GameScene extends Phaser.Scene {
     this.channel = initChannel();
     this.waygate = initWaygate((msg) => this.net.send(msg));
     this.dojo = initDojo((msg) => this.net.send(msg));
+    this.market = initMarket((msg) => this.net.send(msg), () => this.inventory.list());
+    this.playerMenu = initPlayerMenu();
+    this.trade = initTrade((msg) => this.net.send(msg), () => this.inventory.list(), (text, ok) => this.chat.system(text, ok ? "info" : "warning"));
     this.minimap = initMinimap();
     ensureFlightTextures(this);
     ensureHatTextures(this);
@@ -467,6 +505,8 @@ export class GameScene extends Phaser.Scene {
     void this.gfx.init();
     if (new URLSearchParams(location.search).get("perf") === "1") initPerf(this.game, this, () => ({ ...this.gfx.stats(), players: this.actors.size, monsters: this.monsters.size }));
     this.rank = initRank((msg) => this.net.send(msg), this.registry.get("isAdmin") === true);
+    this.mountUi = initMount((msg) => this.net.send(msg));
+    this.sect = initSect((msg) => this.net.send(msg), (text, ok) => this.chat.system(text, ok ? "info" : "warning"), () => this.linhThach, () => this.selfId, () => this.inventory.list(), () => this.knownSkills ?? []);
     this.charPanel = initCharacterPanel({
       sendAllocate: (points) => this.net.send({ t: "allocate", points }),
       startBreakthrough: (pills) => this.net.send({ t: "bt_start", pills }),
@@ -701,6 +741,7 @@ export class GameScene extends Phaser.Scene {
     this.quests.close();
     this.waygate.close();
     this.dojo.close();
+      this.market.close();
     this.drawMap();
     this.applyCameraBounds();
   }
@@ -754,6 +795,7 @@ export class GameScene extends Phaser.Scene {
   private handleClick(pointer: Phaser.Input.Pointer): void {
     if (this.transferring) return;
     if (this.guardBreakthrough()) return;
+    this.pendingPlayer = null; // any click cancels a walk toward a player; the menu closes itself on a click outside it
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const t = toTile(world.x, world.y);
     // Exact click point (not snapped to a tile centre); 2 decimals keeps messages small.
@@ -786,6 +828,15 @@ export class GameScene extends Phaser.Scene {
     }
     // With the PK state on (or against a player who hit you in the last 3 minutes: self-defence), a click on another player attacks them
     // (the server checks the rules and says why when it refuses).
+    // In a safe map a click on another player offers a trade instead (nobody can be attacked there).
+    if (this.map.safe) {
+      const other = this.pickPlayer(world.x, world.y, true);
+      if (other) {
+        this.stopAuto("manual");
+        this.approachPlayer(other);
+        return;
+      }
+    }
     const player = !this.map.safe ? this.pickPlayer(world.x, world.y) : null;
     const picked = player ?? this.pickMonster(world.x, world.y);
     if (picked) {
@@ -809,6 +860,7 @@ export class GameScene extends Phaser.Scene {
     this.shop.close();
     this.smith.close();
     if (view === "smith") this.smith.open(npc);
+    else if (view === "brew") this.shop.openForge(npc); // the forge: the shop window opens on its brewing tab
     else this.shop.open(npc, this.map.id);
   }
 
@@ -817,6 +869,28 @@ export class GameScene extends Phaser.Scene {
     const self = this.actors.get(this.selfId);
     if (!self) return;
     const here = currentPos(self, performance.now());
+    if (npc.kind === "waygate" && Math.hypot(here.x - npc.x, here.y - npc.y) > WAYGATE_CENTER_REACH) {
+      // The array: step into the middle of the circle (not beside it), and its window opens when the character arrives.
+      this.sendWalk(Math.round(npc.x * 100) / 100, Math.round(npc.y * 100) / 100);
+      this.pendingWaygate = npc;
+      this.waygateWatch?.remove(); // one watcher at a time: a second click must not leave the first one running
+      const watch: Phaser.Time.TimerEvent = this.time.addEvent({
+        delay: 120,
+        repeat: 80,
+        callback: () => {
+          const me = this.actors.get(this.selfId);
+          if (this.pendingWaygate !== npc || !me) return void watch.remove();
+          const p = currentPos(me, performance.now());
+          if (Math.hypot(p.x - npc.x, p.y - npc.y) <= WAYGATE_CENTER_REACH) {
+            this.pendingWaygate = null;
+            watch.remove();
+            this.talkTo(npc);
+          }
+        },
+      });
+      this.waygateWatch = watch;
+      return;
+    }
     if (Math.hypot(here.x - npc.x, here.y - npc.y) <= NPC_INTERACT_RADIUS - 0.4) {
       // One NPC window at a time (both would otherwise open on the same spot).
       this.shop.close();
@@ -824,10 +898,16 @@ export class GameScene extends Phaser.Scene {
       this.smith.close();
       this.waygate.close();
       this.dojo.close();
+      this.market.close();
       if (npc.kind === "quest") this.quests.open(npc.id);
       else if (npc.kind === "smith") this.smith.open(npc.id);
       else if (npc.kind === "waygate") this.waygate.open(npc.id);
       else if (npc.kind === "master") this.dojo.open(npc.id);
+      else if (npc.kind === "market") this.market.open(npc.id);
+      else if (npc.kind === "sect") {
+        this.sect.setNpc(npc.id);
+        this.sect.open();
+      }
       else this.shop.open(npc.id, this.map.id);
       return;
     }
@@ -836,8 +916,55 @@ export class GameScene extends Phaser.Scene {
     const dx = here.x - npc.x;
     const dy = here.y - npc.y;
     const len = Math.hypot(dx, dy) || 1;
-    const spot = nearestStandablePoint(this.map, npc.x + (dx / len) * 1.5, npc.y + (dy / len) * 1.5, 2);
+    const spot = nearestStandablePoint(this.map, npc.x + (dx / len) * NPC_STAND, npc.y + (dy / len) * NPC_STAND, 1);
     if (spot) this.sendWalk(Math.round(spot[0] * 100) / 100, Math.round(spot[1] * 100) / 100);
+  }
+
+  /**
+   * A click on another player (in a safe map): the character walks up to a short distance from them, and then the menu of what can be done with
+   * them opens (so nobody trades from across the map). Already close: it opens at once.
+   */
+  private approachPlayer(id: string): void {
+    const self = this.actors.get(this.selfId);
+    const other = this.actors.get(id);
+    if (!self || !other) return;
+    const open = () => {
+      const target = this.actors.get(id);
+      if (!target) return;
+      this.playerMenu.show(target.label.text, [{ label: vi.playerMenu.trade, run: () => this.net.send({ t: "trade_invite", to: id }) }, ...(this.sect.canInvite() ? [{ label: vi.playerMenu.sectInvite, run: () => this.net.send({ t: "sect_invite", to: id }) }] : [])]);
+    };
+    const near = (): boolean => {
+      const a = this.actors.get(this.selfId);
+      const b = this.actors.get(id);
+      if (!a || !b) return false;
+      const now = performance.now();
+      const p = currentPos(a, now);
+      const q = currentPos(b, now);
+      return Math.hypot(p.x - q.x, p.y - q.y) <= PLAYER_MENU_REACH;
+    };
+    this.playerMenu.close();
+    if (near()) return open();
+    const here = currentPos(self, performance.now());
+    const there = currentPos(other, performance.now());
+    const len = Math.hypot(here.x - there.x, here.y - there.y) || 1;
+    const spot = nearestStandablePoint(this.map, there.x + ((here.x - there.x) / len) * PLAYER_MENU_STAND, there.y + ((here.y - there.y) / len) * PLAYER_MENU_STAND, 2);
+    if (!spot) return open();
+    this.sendWalk(Math.round(spot[0] * 100) / 100, Math.round(spot[1] * 100) / 100);
+    const mark = { id };
+    this.pendingPlayer = mark;
+    this.playerWatch?.remove(); // one watcher at a time
+    const watch: Phaser.Time.TimerEvent = this.time.addEvent({
+      delay: 150,
+      repeat: 100,
+      callback: () => {
+        if (this.pendingPlayer !== mark || !this.actors.has(id)) return void watch.remove();
+        if (!near()) return;
+        this.pendingPlayer = null;
+        watch.remove();
+        open();
+      },
+    });
+    this.playerWatch = watch;
   }
 
   /** Walks to a point: predicts the path locally and tells the server. */
@@ -847,12 +974,15 @@ export class GameScene extends Phaser.Scene {
     if (now - this.lastMoveSentAt < MIN_MOVE_INTERVAL_MS + 20) return;
     const from = this.predictSelfMove(tx, ty);
     if (!from) return;
+    this.pendingWaygate = null; // a new walk cancels the one that was going to open the teleport array
+    this.pendingPlayer = null; // and the one toward a player
     this.lastMoveSentAt = now;
     this.shop.close(); // walking away from an NPC closes its window
     this.quests.close();
     this.smith.close();
     this.waygate.close();
     this.dojo.close();
+      this.market.close();
     this.net.send({ t: "move", x: tx, y: ty, fx: from[0], fy: from[1], seq: ++this.moveSeq });
     const c = toScreen(tx, ty);
     this.marker.clear().lineStyle(2, 0xffe08a, 1).strokeEllipse(c.x, c.y, TILE_W * 0.5, TILE_H * 0.5);
@@ -911,6 +1041,8 @@ export class GameScene extends Phaser.Scene {
         this.smith.setSheet(msg.character);
         this.quests.setSheet(msg.character);
         this.rank.show(msg.character.name);
+        this.sect.show();
+        this.mountUi.show();
         this.inventory.setSheet(msg.character);
         this.skillsUi.setSheet(msg.character);
         this.selfSheet = msg.character;
@@ -927,8 +1059,10 @@ export class GameScene extends Phaser.Scene {
         this.autoUi.show(true);
         this.vitals.setWallet(msg.wallet);
         this.linhThach = msg.wallet.linh_thach;
+        this.tienNgoc = msg.wallet.tien_ngoc;
         this.waygate.setBalance(this.linhThach);
         this.dojo.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach, this.tienNgoc);
         this.inventory.setBag(msg.bag);
         this.charPanel.refresh();
         this.equipment.setEquipped(msg.equipped);
@@ -1009,6 +1143,11 @@ export class GameScene extends Phaser.Scene {
           this.linhThach = msg.balance;
           this.waygate.setBalance(this.linhThach);
         this.dojo.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach, this.tienNgoc);
+        }
+        if (msg.currency === "tien_ngoc") {
+          this.tienNgoc = msg.balance;
+          this.market.setBalance(this.linhThach, this.tienNgoc);
         }
         this.vitals.setBalance(msg.currency, msg.balance);
         this.smith.refresh();
@@ -1062,6 +1201,16 @@ export class GameScene extends Phaser.Scene {
         this.upsertActor([msg.player]);
         this.refreshHud();
         break;
+      case "mounts":
+        this.mountUi.onList(msg.owned, msg.riding);
+        break;
+      case "beast": {
+        if (msg.error) this.chat.system(vi.beast.errors[msg.error] ?? msg.error);
+        this.mountUi.onRiding(msg.id);
+        const me = this.actors.get(this.selfId);
+        if (me) this.setActorBeast(me, msg.id ?? undefined);
+        break;
+      }
       case "mounted":
         if (msg.error) this.chat.system(vi.mount.errors[msg.error] ?? msg.error);
         this.applyMounted(msg.on, true);
@@ -1099,6 +1248,8 @@ export class GameScene extends Phaser.Scene {
         this.charPanel.refresh();
         this.equipment.refresh();
         this.shop.refresh();
+        this.market.refresh();
+        this.trade.refresh();
         this.quests.refresh();
         this.hotbar.refresh();
         this.skillsUi.refresh(); // the pill count
@@ -1238,17 +1389,61 @@ export class GameScene extends Phaser.Scene {
         break;
       case "dojo":
         this.dojo.setBalance(this.linhThach);
+        this.market.setBalance(this.linhThach, this.tienNgoc);
         this.dojo.setCourses(msg.npc, msg.courses);
         break;
       case "skill_forgot":
         this.chat.system(vi.skills.forgot(skillDisplayName(getSkill(msg.skill) ?? ({ id: msg.skill, nameVi: msg.skill } as SkillDef))));
+        break;
+      case "trade_invite":
+        this.trade.invited(msg.from, msg.name, msg.ttlMs);
+        break;
+      case "sect":
+        this.sect.onSect(msg.view, msg.cooldownUntil);
+        break;
+      case "sect_dir":
+        this.sect.onDir(msg.sects);
+        break;
+      case "sect_vault":
+        this.sect.onVault(msg.items);
+        break;
+      case "sect_ranks":
+        this.sect.onRanks(msg.sects, msg.mine);
+        break;
+      case "sect_error":
+        this.sect.onError(msg.reason);
+        break;
+      case "sect_invite":
+        this.sect.invited(msg.from, msg.name, msg.sect, msg.ttlMs);
+        break;
+      case "sect_label":
+        this.setActorSect(msg.id, msg.sc);
+        break;
+      case "trade":
+        this.trade.show(msg);
+        break;
+      case "trade_end":
+        this.trade.end(msg.reason);
+        break;
+      case "trade_error":
+        this.trade.error(msg.reason);
+        break;
+      case "market":
+        this.market.setBalance(this.linhThach, this.tienNgoc);
+        this.market.setListings(msg.npc, msg.listings, msg.cfg, msg.now, msg.open);
+        break;
+      case "market_ok":
+        this.market.done(msg.op);
+        break;
+      case "market_error":
+        this.market.fail(msg.reason);
         break;
       case "dojo_ok":
         this.dojo.notify(vi.dojo.learned(skillDisplayName(getSkill(msg.skill) ?? ({ id: msg.skill, nameVi: msg.skill } as SkillDef)), msg.cost.toLocaleString("vi-VN")), true);
         break;
       case "brew":
         setTuning(msg.tuning as unknown as Record<string, unknown>);
-        this.shop.setBrew(msg.npc, msg.jobs, msg.now, msg.tabs);
+        this.shop.setBrew(msg.npc, msg.jobs, msg.now, msg.tabs, msg.craft, msg.craftExp);
         break;
       case "smith_result": {
         const owned = [...this.worn, ...this.inventory.list()].find((x) => x.id === msg.id);
@@ -1422,6 +1617,15 @@ export class GameScene extends Phaser.Scene {
 
   /** Chat lines and chat errors arrive on both sockets (map chat on the game socket, world and whispers on the chat socket). */
   private handleChatMessage(msg: ServerMessage): void {
+    if (msg.t === "market_changed") {
+      this.market.invalidate();
+      return;
+    }
+    if (msg.t === "sect_changed") {
+      // The sect changed. About this player: read it again at once (the menu of a player and the name above the head follow it). About the others: only an open window needs the new list.
+      if (msg.you || this.sect.isOpen()) this.net.send({ t: "sect_get" });
+      return;
+    }
     if (msg.t === "mail_new") {
       // A gift was sent to this player: read the mail list again from the game socket and say so.
       this.net.send({ t: "mail_refresh" });
@@ -1474,7 +1678,9 @@ export class GameScene extends Phaser.Scene {
       actor.sn = p.sn ?? 0;
       actor.snAt = now;
       this.setActorPk(actor, p.pk ?? 0);
+      this.setActorSect(p.id, p.sc);
       this.setActorMounted(actor, p.mounted === true);
+      this.setActorBeast(actor, p.bs);
       this.recolorName(actor, now);
       if (isNew) {
         actor.path = p.path;
@@ -1498,7 +1704,10 @@ export class GameScene extends Phaser.Scene {
     actor.body.destroy();
     actor.label.destroy();
     actor.tag.destroy();
+    actor.sectTag?.destroy();
     actor.cloud?.destroy();
+    actor.beastGfx?.destroy();
+    actor.beastView?.destroy();
     this.clearDragon(actor);
     actor.hat?.destroy();
     actor.hatOrn?.destroy();
@@ -1681,10 +1890,72 @@ export class GameScene extends Phaser.Scene {
     return displayColor(nameTier(sn), actor.id === this.selfId ? undefined : hitAt, now);
   }
 
+  /** The name of the sect over a player's name (made when there is one, gone when there is none). */
+  private setActorSect(id: string, name: string | undefined): void {
+    const actor = this.actors.get(id);
+    if (!actor) return;
+    if (!name) {
+      actor.sectTag?.destroy();
+      actor.sectTag = undefined;
+      return;
+    }
+    if (!actor.sectTag) actor.sectTag = this.add.text(0, 0, name, { fontFamily: FONT, fontSize: "11px", color: "#9ad8c0", stroke: "#000000", strokeThickness: 3 }).setOrigin(0.5, 1).setResolution(2);
+    else actor.sectTag.setText(name);
+  }
+
   /** The tag after another player's name: "PK" in brown (PK) or red (Đồ sát). Not shown on yourself. */
   private setActorPk(actor: Actor, mode: PkMode): void {
     actor.pk = mode;
     actor.tag.setVisible(mode > 0 && actor.id !== this.selfId).setColor(mode === 2 ? "#ff5252" : "#c68642");
+  }
+
+  /** The shape of a beast mount drawn under the rider (a body, a head, four legs) in the colour and size of its definition, until the sprite comes. */
+  private setActorBeast(actor: Actor, id: string | undefined): void {
+    if (actor.beast === id) return;
+    actor.beast = id;
+    actor.beastGfx?.destroy();
+    actor.beastGfx = undefined;
+    actor.beastView?.destroy();
+    actor.beastView = undefined;
+    const def = id ? mountOf(id) : undefined;
+    if (!def) {
+      actor.beast = undefined;
+      return;
+    }
+    const color = Number.parseInt(def.color.slice(1), 16);
+    const k = def.size;
+    const g = this.add.graphics();
+    g.fillStyle(0x000000, 0.25).fillEllipse(0, 4, 38 * k, 12 * k);
+    g.fillStyle(color, 1).fillRoundedRect(-17 * k, -14 * k, 34 * k, 14 * k, 6 * k);
+    g.fillRect(-14 * k, -2 * k, 4 * k, 8 * k).fillRect(-4 * k, -2 * k, 4 * k, 8 * k).fillRect(5 * k, -2 * k, 4 * k, 8 * k).fillRect(12 * k, -2 * k, 4 * k, 8 * k);
+    g.fillRoundedRect(13 * k, -22 * k, 11 * k, 10 * k, 4 * k);
+    g.fillStyle(0xffffff, 0.85).fillCircle(21 * k, -18 * k, 1.4);
+    actor.beastGfx = g;
+  }
+
+  /** The beast under a rider: its sprite (the model of the mount, tinted, turned the way the rider goes) once the atlas is here, the drawn shape until then. */
+  private syncBeastView(actor: Actor, now: number, x: number, y: number, depth: number): void {
+    const def = actor.beast ? mountOf(actor.beast) : undefined;
+    if (!def) return;
+    if (!actor.beastView && def.sprite) {
+      const key = this.gfx.spriteKeyFor("monster", def.sprite); // asks for the atlas when it is not here yet
+      const view = key ? this.gfx.createView(key) : undefined;
+      if (view) {
+        actor.beastView = view;
+        actor.beastGfx?.setVisible(false);
+      }
+    }
+    if (actor.beastView && !actor.beastView.alive) {
+      actor.beastView = undefined;
+      actor.beastGfx?.setVisible(true);
+    }
+    if (actor.beastView) {
+      const moving = positionAlongPath(actor.path, now - actor.startedAt, actor.speed).moving;
+      actor.beastView.setScale(def.size);
+      actor.beastView.setTint(hexOf(def.color) ?? 0xffffff);
+      actor.beastView.play(moving ? "run" : "idle", headingAlongPath(actor.path, now - actor.startedAt, actor.speed) ?? actor.beastView.dir);
+      actor.beastView.place(x, y, depth);
+    } else actor.beastGfx?.setPosition(x, y).setDepth(depth);
   }
 
   /** Draws (or removes) the cloud under a rider; for yourself it also keeps the badge and the gear-stat views in step. */
@@ -1772,14 +2043,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** The player drawn under a click, other than yourself (used with the PK switch on). */
-  private pickPlayer(wx: number, wy: number): string | null {
+  private pickPlayer(wx: number, wy: number, anyone = false): string | null {
     const now = performance.now();
     let best: string | null = null;
     let bestD = MONSTER_PICK_PX;
     for (const a of this.actors.values()) {
       if (a.id === this.selfId) continue;
       const hitAt = this.hitMeAt.get(a.id);
-      if (this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < grayWindowMs())) continue;
+      if (!anyone && this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < grayWindowMs())) continue;
       const pos = currentPos(a, now);
       const s = toScreen(pos.x, pos.y);
       const d = Math.hypot(s.x - wx, s.y - 20 - wy);
@@ -1901,7 +2172,7 @@ export class GameScene extends Phaser.Scene {
     a.view.setSeated(sit);
     a.wview?.setSeated(sit);
     // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
-    const anim = moving && !a.mounted ? "run" : "idle";
+    const anim = moving && !rides(a) ? "run" : "idle";
     const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
     // The weapon is a second sprite over the body that shows the same frame as the body (frames line up by name); it follows what is in the hand.
     const wkey = a.weapon ? this.gfx.spriteKeyFor("weapon", a.weapon, a.female ? "female" : "male") : undefined;
@@ -1918,7 +2189,7 @@ export class GameScene extends Phaser.Scene {
       a.wview?.followFrame(a.view);
       this.applyReact(a.id, a.view, a.wview, now);
       // A rider stands 8 px above the ground on the pháp bảo; seated, the rider sits a little higher (on the pháp bảo itself, not in it).
-      const ride = a.mounted ? (sit ? 16 : 8) : 0;
+      const ride = rides(a) ? (sit ? 16 : 8) : 0;
       const lift = -ride;
       a.view.place(x, y - ride, depth);
       a.wview?.place(x, y - ride, depth + 0.02);
@@ -2025,9 +2296,9 @@ export class GameScene extends Phaser.Scene {
     // The crossed legs: a robe-coloured mound (a darker knee line in front) where the legs were cut away, a little wider than the body.
     const robe = mixTint(a.lk?.r !== undefined ? (hexOf(robeTintOf(a.lk.r)) ?? 0xd8d0bc) : 0xd8d0bc, 0x30303c, 0.25);
     if (!a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
-    a.legs.setPosition(x, y + lift - (a.mounted ? 1 : 3)).setFillStyle(robe).setDepth(depth + 0.01);
+    a.legs.setPosition(x, y + lift - (rides(a) ? 1 : 3)).setFillStyle(robe).setDepth(depth + 0.01);
     if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
-    a.seat.setPosition(x, y + 3 + (a.mounted ? lift + 2 : 0)).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
+    a.seat.setPosition(x, y + 3 + (rides(a) ? lift + 2 : 0)).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
     if ((a.moteAt ?? 0) > now) return;
     a.moteAt = now + 260 + Math.random() * 200;
     // For yourself the motes show what is coming back: green while HP is below the maximum, blue while MP is.
@@ -2128,7 +2399,7 @@ export class GameScene extends Phaser.Scene {
       a.hatOrn?.destroy();
       a.hatOrn = undefined;
     }
-    if (moving && !a.mounted && lk?.b !== undefined && Math.random() < 0.12) this.fx.puff("trail", x + (Math.random() - 0.5) * 10, y - 2, 1, hexOf(bootsTintOf(lk.b)) ?? 0xffffff);
+    if (moving && !rides(a) && lk?.b !== undefined && Math.random() < 0.12) this.fx.puff("trail", x + (Math.random() - 0.5) * 10, y - 2, 1, hexOf(bootsTintOf(lk.b)) ?? 0xffffff);
   }
 
   /** The same for a monster, a guard or a boss; the rank and boss sizes scale the sprite as they scale the square. */
@@ -2338,7 +2609,8 @@ export class GameScene extends Phaser.Scene {
     for (const actor of this.actors.values()) {
       const pos = currentPos(actor, now);
       const s = toScreen(pos.x, pos.y);
-      actor.body.setPosition(s.x, s.y - (actor.mounted ? 25 : 17));
+      actor.body.setPosition(s.x, s.y - (rides(actor) ? 25 : 17));
+      if (actor.beast) this.syncBeastView(actor, now, s.x, s.y + 2, 10 + pos.x + pos.y - 0.1);
       if (this.snapCamera && actor.id === this.selfId) {
         this.cameras.main.centerOn(actor.body.x, actor.body.y); // the first frame after a welcome: no slide in from the old view
         this.snapCamera = false;
@@ -2381,11 +2653,12 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);
-      this.syncQi(actor, now, s.x, s.y - (actor.mounted ? 8 : 0));
+      this.syncQi(actor, now, s.x, s.y - (rides(actor) ? 8 : 0));
       // The name stands just above the head: a sprite says how tall it is, the oval has a fixed height (a rider is lifted a little).
-      const rise = actor.view?.alive ? actor.view.rise() + 6 + (actor.mounted ? 8 : 0) : actor.mounted ? 46 : 38;
+      const rise = actor.view?.alive ? actor.view.rise() + 6 + (rides(actor) ? 8 : 0) : rides(actor) ? 46 : 38;
       actor.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);
       if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - rise - 1).setDepth(depth + 0.1);
+      actor.sectTag?.setPosition(s.x, s.y - rise - actor.label.height + 1).setDepth(depth + 0.1);
     }
 
     for (const m of this.monsters.values()) {

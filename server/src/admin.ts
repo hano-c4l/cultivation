@@ -3,6 +3,7 @@ import { getSession, hashPassword, type AuthedSession } from "./auth";
 import { kickCharacter } from "./accounts-admin";
 import { PBKDF2_ITERATIONS, toBase64 } from "./password-hasher";
 import { AUDIT_SCREEN, CURRENCY_LABEL_VI, confirmEntry, getDetail, handleEntry, listAudit, listTienNgocHistory, parseAuditList, parseCurrency, parseHistory, parseSearch, runAudit, searchTotals } from "./currency-admin";
+import { moneyOverview } from "./money-dashboard";
 import { listAdminLog, logAdmin, parseLogQuery } from "./admin-log";
 import { applyCurrencyDelta, getWallet } from "./economy";
 import { expandBag } from "./inventory";
@@ -17,7 +18,7 @@ import { deleteItem, listItems, saveItem } from "./items-admin";
 import { deleteQuest, listQuests, questMeta, saveQuest } from "./quests-admin";
 import { deleteNpc, listNpcs, npcMeta, saveNpc } from "./npcs-admin";
 import { getMerchantAdmin, merchantMeta, saveMerchant } from "./merchants-admin";
-import { getAlchemyAdmin, saveAlchemy } from "./alchemy-admin";
+import { getAlchemyAdmin, parseCraft, saveAlchemy } from "./alchemy-admin";
 import { getEnhanceView, getMasterView, getSetsView, saveEnhance, saveMaster, saveSets } from "./gear-admin";
 import { bulkAction } from "./characters-bulk";
 import { addItem, addSkill, adjustMoney, addEquipment, deleteCharacter, editConstitution, editItem, editRoots, editProfile, editStats, endReview, getCharacterView, removeItem, removeSkill, setSkillLevel, startReview, type ItemEditInput, type ProfileInput, type StatsInput } from "./characters-admin";
@@ -250,6 +251,13 @@ export async function adminSupply(request: Request, env: Env): Promise<Response>
     "SELECT currency, SUM(balance) AS total, COUNT(*) AS holders FROM currency_balances GROUP BY currency",
   ).all<{ currency: string; total: number; holders: number }>();
   return json({ supply: results });
+}
+
+/** The money overview (GET): supply, flows by group, top holders, the supply by day and the Tiên Ngọc the admins credited (docs/PHASE5.md, 5f). */
+export async function adminMoney(request: Request, env: Env): Promise<Response> {
+  const admin = await requireAdmin(request, env);
+  if (admin instanceof Response) return admin;
+  return json(await moneyOverview(env.DB));
 }
 
 /** The adjustable game settings with their effective values (GET), or a change of one of them (POST {key, value}). */
@@ -556,10 +564,10 @@ export async function adminMerchantSave(request: Request, env: Env): Promise<Res
   return json({ ok: true, updatedAt: result.updatedAt });
 }
 
-export async function adminAlchemy(request: Request, env: Env): Promise<Response> {
+export async function adminAlchemy(request: Request, env: Env, url: URL): Promise<Response> {
   const session = await requireAdminSession(request, env);
   if (session instanceof Response) return session;
-  return json(await getAlchemyAdmin(env.DB));
+  return json(await getAlchemyAdmin(env.DB, parseCraft(url.searchParams.get("craft"))));
 }
 
 export async function adminAlchemySave(request: Request, env: Env): Promise<Response> {
@@ -567,7 +575,7 @@ export async function adminAlchemySave(request: Request, env: Env): Promise<Resp
   if (session instanceof Response) return session;
   const body = await readJson(request, 128 * 1024);
   if (!body || typeof body.updatedAt !== "number") return errorResponse("invalid_body", 400);
-  const result = await saveAlchemy(env.DB, session.email, body.alchemy, body.updatedAt);
+  const result = await saveAlchemy(env.DB, session.email, body.alchemy, body.updatedAt, Date.now(), parseCraft(body.craft));
   if (!result.ok) return json({ error: result.error, problems: result.problems ?? [] }, NPC_ERROR_STATUS[result.error] ?? 400);
   console.log("alchemy saved", session.accountId);
   return json({ ok: true, updatedAt: result.updatedAt });

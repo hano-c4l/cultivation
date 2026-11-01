@@ -31,7 +31,7 @@ interface Meta {
 
 type Rule =
   | { id: string; kind: "item"; item: string; price?: number; currency?: "tien_ngoc"; dailyLimit?: number }
-  | { id: string; kind: "gear"; realms: number[]; tiers: number[]; grade: number; elements?: string[]; priceMult?: number }
+  | { id: string; kind: "gear"; realms: number[]; tiers: number[]; grade: number; elements?: string[]; priceMult?: number; kinds?: string[] }
   | { id: string; kind: "keep_level" };
 
 interface MerchantView {
@@ -85,9 +85,9 @@ function field(label: string, ...children: Array<Node | null>): HTMLElement {
   return h("label", { class: "filter wide-field" }, label, ...children);
 }
 
-function tabs(active: "npcs" | "alchemy" | "numbers"): HTMLElement {
+function tabs(active: "npcs" | "alchemy" | "forge" | "numbers"): HTMLElement {
   const link = (href: string, label: string, on: boolean) => h("a", { href, class: on ? "active" : "" }, label);
-  return h("div", { class: "toolbar" }, link("/admin/npcs", "NPC", active === "npcs"), link("/admin/npcs/alchemy", "Công thức luyện đan", active === "alchemy"), link("/admin/npcs/numbers", "Con số (Thợ Rèn, Đạo Sư)", active === "numbers"));
+  return h("div", { class: "toolbar" }, link("/admin/npcs", "NPC", active === "npcs"), link("/admin/npcs/alchemy", "Công thức luyện đan", active === "alchemy"), link("/admin/npcs/forge", "Công thức luyện khí", active === "forge"), link("/admin/npcs/numbers", "Con số (Thợ Rèn, Đạo Sư, Vạn Bảo Lâu)", active === "numbers"));
 }
 
 function messageBox(): { msg: HTMLElement; problems: HTMLElement; show: (text: string, cls: string, list?: string[]) => void } {
@@ -248,8 +248,9 @@ function ruleRow(rule: Rule, items: MerchantView["meta"]["items"], elements: str
   const grade = num(rule.kind === "gear" ? rule.grade : 1, { min: "1", max: "4", step: "1" });
   const els = text(rule.kind === "gear" && rule.elements ? rule.elements.join(",") : "", { size: "14", placeholder: `hệ (trống: ngũ hành); ${elements.join(",")}` });
   const mult = num(rule.kind === "gear" ? rule.priceMult : undefined, { min: "0.01", step: "any", placeholder: "nhân giá" });
+  const kinds = text(rule.kind === "gear" && rule.kinds ? rule.kinds.join(",") : "", { size: "12", placeholder: "loại (trống: đồ thường); bonded,flight,charm", title: "bonded: pháp bảo bản mệnh, flight: pháp bảo phi hành, charm: pháp bảo thường. Để trống: giáp, vũ khí và pháp bảo thường như cũ." });
   const itemBox = h("span", { class: "toolbar" }, item, list, price, h("label", { class: "radio" }, tienNgoc, "Tiên Ngọc"), daily);
-  const gearBox = h("span", { class: "toolbar" }, h("span", null, "CG:"), realms, h("span", null, "Bậc:"), tiers, h("span", null, "Phẩm:"), grade, els, mult);
+  const gearBox = h("span", { class: "toolbar" }, h("span", null, "CG:"), realms, h("span", null, "Bậc:"), tiers, h("span", null, "Phẩm:"), grade, els, mult, kinds);
   const sync = () => {
     itemBox.hidden = kind.value !== "item";
     gearBox.hidden = kind.value !== "gear";
@@ -265,7 +266,8 @@ function ruleRow(rule: Rule, items: MerchantView["meta"]["items"], elements: str
     if (kind.value === "gear") {
       const elList = els.value.split(",").map((t) => t.trim()).filter(Boolean);
       const pm = opt(mult);
-      return { id: id.value.trim(), kind: "gear", realms: ints(realms.value), tiers: ints(tiers.value), grade: Number(grade.value), ...(elList.length ? { elements: elList } : {}), ...(pm !== undefined ? { priceMult: pm } : {}) };
+      const kindList = kinds.value.split(",").map((t) => t.trim()).filter(Boolean);
+      return { id: id.value.trim(), kind: "gear", realms: ints(realms.value), tiers: ints(tiers.value), grade: Number(grade.value), ...(elList.length ? { elements: elList } : {}), ...(pm !== undefined ? { priceMult: pm } : {}), ...(kindList.length ? { kinds: kindList } : {}) };
     }
     const p = opt(price);
     const d = opt(daily);
@@ -342,32 +344,40 @@ interface Recipe {
   linhThach: number;
   seconds: number;
   enabled: boolean;
+  minLevel?: number;
+  exp?: number;
 }
 
 interface AlchemyView {
-  alchemy: { maxJobs: number; recipes: Recipe[] };
+  alchemy: { maxJobs: number; levels?: number[]; recipes: Recipe[] } & Record<string, unknown>;
   updatedAt: number;
   items: Array<{ id: string; nameVi: string }>;
 }
 
-export function alchemyPage(): HTMLElement {
+export function alchemyPage(craft: "alchemy" | "forge" = "alchemy"): HTMLElement {
+  const forge = craft === "forge";
+  const path = forge ? "/admin/npcs/forge" : "/admin/npcs/alchemy";
   const root = h("div", { class: "detail wide" });
-  void api<AlchemyView>("/api/admin/alchemy").then((res) => {
+  void api<AlchemyView>(`/api/admin/alchemy?craft=${craft}`).then((res) => {
     if (res.status !== 200) return void root.replaceChildren(h("p", { class: "err" }, "Không tải được dữ liệu."));
     const view = res.data;
     const { msg, problems, show } = messageBox();
     const dlId = "alchemy-items";
     const list = h("datalist", { id: dlId }, ...view.items.map((i) => h("option", { value: i.id }, i.nameVi)));
     const maxJobs = num(view.alchemy.maxJobs, { min: "1", max: "20", step: "1" });
+    const levels = text((view.alchemy.levels ?? []).join(", "), { size: "40", placeholder: "30, 100, 250, 600, 1400" });
+    const quality = num(Number((view.alchemy.quality as { perLevel?: number } | undefined)?.perLevel ?? 0.5), { min: "0", max: "5", step: "0.1" });
     const rows = h("div");
     const readers: Array<() => Recipe> = [];
     const addRecipe = (r: Recipe) => {
       const id = text(r.id, { maxlength: "40", size: "16", placeholder: "mã công thức" });
       const name = text(r.nameVi, { maxlength: "60", size: "22", placeholder: "tên" });
-      const output = text(r.output, { list: dlId, size: "16", placeholder: "đan làm ra" });
+      const output = text(r.output, { list: dlId, size: "16", placeholder: forge ? "trang bị làm ra (mã eq.…)" : "đan làm ra" });
       const qty = num(r.qty, { min: "1", step: "1", title: "Số lượng làm ra" });
       const linh = num(r.linhThach, { min: "0", step: "1", title: "Linh Thạch" });
       const secs = num(r.seconds, { min: "1", step: "1", title: "Thời gian (giây)" });
+      const minLevel = num(r.minLevel ?? 1, { min: "1", max: "20", step: "1", title: "Cấp nghề tối thiểu" });
+      const expGain = num(r.exp ?? 0, { min: "0", step: "1", title: "Kinh nghiệm nghề mỗi lần luyện xong" });
       const enabled = h("input", { type: "checkbox" });
       enabled.checked = r.enabled;
       const inputs = h("div");
@@ -390,13 +400,14 @@ export function alchemyPage(): HTMLElement {
         linhThach: Number(linh.value),
         seconds: Number(secs.value),
         enabled: enabled.checked,
+        ...(forge ? { minLevel: Number(minLevel.value), exp: Number(expGain.value) } : {}),
       });
       const rm = h("button", { type: "button" }, "Xóa công thức");
       rm.addEventListener("click", () => {
         box.remove();
         readers.splice(readers.indexOf(read), 1);
       });
-      box.append(h("div", { class: "toolbar" }, id, name, h("label", { class: "radio" }, enabled, "Bật"), rm), h("div", { class: "toolbar" }, h("span", null, "Làm ra:"), output, h("span", null, "×"), qty, h("span", null, "Linh Thạch:"), linh, h("span", null, "Giây:"), secs), h("div", { class: "muted" }, "Nguyên liệu bị lấy ngay khi bắt đầu luyện:"), inputs, addInputBtn);
+      box.append(h("div", { class: "toolbar" }, id, name, h("label", { class: "radio" }, enabled, "Bật"), rm), h("div", { class: "toolbar" }, h("span", null, "Làm ra:"), output, h("span", null, "×"), qty, h("span", null, "Linh Thạch:"), linh, h("span", null, "Giây:"), secs, ...(forge ? [h("span", null, "Cấp nghề cần:"), minLevel, h("span", null, "Kinh nghiệm:"), expGain] : [])), h("div", { class: "muted" }, "Nguyên liệu bị lấy ngay khi bắt đầu luyện:"), inputs, addInputBtn);
       readers.push(read);
       rows.append(box);
     };
@@ -407,17 +418,18 @@ export function alchemyPage(): HTMLElement {
     save.addEventListener("click", async () => {
       save.disabled = true;
       show("Đang lưu...", "muted");
-      const r = await api<{ error?: string; problems?: string[] }>("/api/admin/alchemy/save", { method: "POST", body: { alchemy: { maxJobs: Number(maxJobs.value), recipes: readers.map((f) => f()) }, updatedAt: view.updatedAt } });
+      const r = await api<{ error?: string; problems?: string[] }>("/api/admin/alchemy/save", { method: "POST", body: { craft, alchemy: { ...view.alchemy, maxJobs: Number(maxJobs.value), ...(forge ? { quality: { perLevel: Number(quality.value) }, levels: levels.value.split(",").map((x) => x.trim()).filter(Boolean).map(Number) } : {}), recipes: readers.map((f) => f()) }, updatedAt: view.updatedAt } });
       save.disabled = false;
-      if (r.status === 200) return navigate("/admin/npcs/alchemy");
+      if (r.status === 200) return navigate(path);
       const e = r.data.error ?? "";
       show(ERRORS[e] ?? (e === "invalid" ? "Công thức không hợp lệ (mã công thức a-z 0-9 _ không trùng, mã vật phẩm phải có thật, 1-6 nguyên liệu khác nhau):" : `Lỗi ${r.status}.`), "err", e === "invalid" ? r.data.problems ?? [] : []);
     });
     root.replaceChildren(
-      tabs("alchemy"),
+      tabs(forge ? "forge" : "alchemy"),
       list,
-      h("p", { class: "muted" }, "Mẻ đang luyện giữ kết quả đã định lúc bắt đầu; đổi hay xóa công thức không ảnh hưởng chúng. Máy chủ nhận công thức mới sau tối đa 30 giây; người chơi thấy khi mở lại Đan Sư."),
+      h("p", { class: "muted" }, forge ? "Luyện khí ở Thợ Rèn (tab Luyện khí): làm ra MỘT món trang bị cho mỗi lần luyện (số lượng 1, mã dạng eq.loại.u.cảnh giới.bậc.phẩm; chỉ loại không phân giới tính, người chơi nhận thì chỉ số được tung). Mẻ đang luyện giữ kết quả đã định lúc bắt đầu. Máy chủ nhận công thức mới sau tối đa 30 giây." : "Mẻ đang luyện giữ kết quả đã định lúc bắt đầu; đổi hay xóa công thức không ảnh hưởng chúng. Máy chủ nhận công thức mới sau tối đa 30 giây; người chơi thấy khi mở lại Đan Sư."),
       field("Số mẻ một nhân vật được luyện cùng lúc (kể cả mẻ xong chưa nhận)", maxJobs),
+      ...(forge ? [field("Chất lượng: mỗi cấp nghề cao hơn cấp công thức đẩy chỉ số tung về phía cao thêm bao nhiêu (0 = tắt; 0,5 là mặc định; 1 cấp cao hơn thì trung bình khoảng 0,6, 5 cấp khoảng 0,78 của khoảng min-max)", quality), field("Cấp nghề: tổng kinh nghiệm cần cho cấp 2, 3, 4... (số tăng dần, cách nhau dấu phẩy; để trống thì không có cấp)", levels)] : []),
       rows,
       add,
       h("div", { class: "toolbar" }, save),

@@ -18,6 +18,8 @@ export interface GiftAttachments {
   items: GiftItem[];
   /** The account id of the admin who sent it: the `actor` of the currency entries when it is claimed. */
   by?: string;
+  /** The reason the claimed currency is booked under (its kind picks the group in the totals); absent: `admin_gift`. Set only by the server (the market's proceeds and refunds), never by the admin form. */
+  reason?: string;
 }
 
 export const GIFT_CURRENCIES: readonly Currency[] = ["linh_thach", "cong_hien", "tien_ngoc"];
@@ -44,6 +46,7 @@ export function giftProblem(gift: GiftAttachments, claiming = false): "empty" | 
     const v = gift[c];
     if (v === undefined || v === 0) continue;
     if (!Number.isInteger(v) || v < 0 || v > MAX_LEDGER_AMOUNT) return "currency";
+    if (c === "cong_hien" && !claiming) return "currency"; // Cống Hiến is a sect member's contribution: it cannot be given (a gift sent before still claims)
     any = true;
   }
   if (!Array.isArray(gift.items)) return "item";

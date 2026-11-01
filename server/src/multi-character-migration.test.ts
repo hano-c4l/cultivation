@@ -7,7 +7,7 @@ function before(): DatabaseSync {
   const raw = new DatabaseSync(":memory:");
   raw.exec("PRAGMA foreign_keys = ON");
   const dir = new URL("../migrations/", import.meta.url);
-  for (const f of readdirSync(dir).filter((n) => n.endsWith(".sql") && !n.startsWith("0047")).sort()) raw.exec(readFileSync(new URL(f, dir), "utf8"));
+  for (const f of readdirSync(dir).filter((n) => n.endsWith(".sql") && !n.startsWith("0047") && n < "0048").sort()) raw.exec(readFileSync(new URL(f, dir), "utf8"));
   raw.exec("INSERT INTO accounts (id, email, pw_hash, pw_salt, pw_iterations, created_at) VALUES ('a1', 'a@x.test', 'h', 's', 1, 0), ('a2', 'b@x.test', 'h', 's', 1, 0)");
   raw.exec("INSERT INTO characters (id, account_id, name, spiritual_root, x, y, created_at, updated_at, realm, stage, exp, gender, hotbar, vitals, review_until, deleted_at, mounted) VALUES ('c1', 'a1', 'Một', 'kim', 3, 4, 1, 2, 1, 5, 99, 'female', '[\"s:x\"]', '{\"hp\":1}', 77, NULL, 1), ('c2', 'a2', 'Hai', 'moc', 0, 0, 0, 0, 0, 1, 0, 'male', '[]', NULL, NULL, 55, 0)");
   raw.exec("INSERT INTO item_instances (id, owner_character_id, item_type, created_at) VALUES ('i1', 'c1', 'linh_thao', 0), ('i2', 'c2', 'linh_thao', 0)");

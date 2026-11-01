@@ -32,6 +32,8 @@ export interface CharacterRow {
   gender: Gender;
   /** 1 while riding the flight pháp bảo (migration 0029). */
   mounted: number;
+  /** The beast mount being ridden (a `mounts` id), null on foot (migration 0072). */
+  riding_beast: string | null;
   hotbar: string;
   vitals: string | null;
   /** All the elements of the spiritual root, main one first, comma separated; empty: only `spiritual_root`. */
@@ -53,7 +55,7 @@ export interface CharacterRow {
 }
 
 const COLUMNS =
-  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, gender, mounted, hotbar, vitals, roots, bt_started_at, paths, sat_khi, sat_nhan, anh_hung, " +
+  "id, account_id, name, spiritual_root, map_id, x, y, realm, stage, exp, potential_points, root_grade, constitution, constitution_tier, riding_beast, gender, mounted, hotbar, vitals, roots, bt_started_at, paths, sat_khi, sat_nhan, anh_hung, " +
   STAT_DEFS.map((d) => d.column).join(", ");
 
 /** The characters of an account that have not been deleted, oldest first. */
@@ -290,4 +292,9 @@ export async function savePkScores(db: D1Database, id: string, scores: { satKhi:
 /** Records whether the character rides the flight pháp bảo (kept across maps and reconnects). */
 export async function saveMounted(db: D1Database, id: string, on: boolean): Promise<void> {
   await db.prepare("UPDATE characters SET mounted = ? WHERE id = ? AND mounted != ?").bind(on ? 1 : 0, id, on ? 1 : 0).run();
+}
+
+/** Records the beast mount the character rides (null: none), kept across maps and reconnects. */
+export async function saveBeast(db: D1Database, id: string, beast: string | null): Promise<void> {
+  await db.prepare("UPDATE characters SET riding_beast = ? WHERE id = ? AND riding_beast IS NOT ?").bind(beast, id, beast).run();
 }

@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { DEFAULT_MERCHANTS, merchantOffers, setMerchants } from "@game/shared";
+import { DEFAULT_MERCHANTS, merchantOffers, setMerchants, validStockRule } from "@game/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getMerchants, resetMerchantsCache } from "./merchants";
 import { makeDb } from "./test-db";
@@ -59,5 +60,36 @@ describe("the merchant tables", () => {
     raw.exec("UPDATE config_versions SET version = version + 1 WHERE name = 'shop'");
     const later = await getMerchants(db, Date.now() + 60_000);
     expect(later.merchant2).toEqual(DEFAULT_MERCHANTS.merchant2);
+  });
+});
+
+describe("the blacksmiths sell the bản mệnh and the flight pháp bảo", () => {
+  it("each smith carries its artifact rule and offers both kinds", async () => {
+    const got = await getMerchants(db);
+    setMerchants(got);
+    for (const [npc, rule, realm] of [["smith", "artifact_low", 0], ["smith2", "artifact_high", 2], ["smith3", "artifact_top", 4]] as const) {
+      expect(got[npc]!.stock.some((r) => r.id === rule), npc).toBe(true);
+      const ids = merchantOffers("male", npc).map((o) => o.id);
+      expect(ids, npc).toContain(`eq.bonded.u.${realm}.1.1.kim`);
+      expect(ids, npc).toContain(`eq.flight.u.${realm}.2.1.thuy`);
+      expect(ids.some((id) => id.startsWith("eq.charm.")), npc).toBe(true); // the ordinary charms stay where they were
+    }
+  });
+
+  it("a rule with a kind that is not a pháp bảo is refused", () => {
+    expect(validStockRule({ id: "x", kind: "gear", realms: [0], tiers: [1], grade: 1, kinds: ["bonded", "flight"] })).toBe(true);
+    expect(validStockRule({ id: "x", kind: "gear", realms: [0], tiers: [1], grade: 1, kinds: ["weapon"] })).toBe(false);
+    expect(validStockRule({ id: "x", kind: "gear", realms: [0], tiers: [1], grade: 1, kinds: [] })).toBe(false);
+  });
+
+  it("the rules the migration writes into stored shops are valid and are the code's own", () => {
+    const sql = readFileSync(new URL("../migrations/0061_tiennguc_market_trade.sql", import.meta.url), "utf8");
+    const written = [...sql.matchAll(/json\('(\{"id":"artifact_[a-z]+".*?\})'\)/g)].map((m) => JSON.parse(m[1]!));
+    expect(written).toHaveLength(3);
+    for (const rule of written) {
+      expect(validStockRule(rule)).toBe(true);
+      const owner = Object.values(DEFAULT_MERCHANTS).find((m) => m.stock.some((r) => r.id === rule.id));
+      expect(owner?.stock.find((r) => r.id === rule.id)).toEqual(rule);
+    }
   });
 });

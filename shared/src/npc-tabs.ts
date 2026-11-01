@@ -10,8 +10,10 @@ export function npcTabs(kind: NpcSpot["kind"], hasShop: boolean): NpcView[] {
       return ["shop", "brew"];
     case "master":
       return ["learn"];
+    case "market":
+      return ["market"];
     case "smith":
-      return hasShop ? ["smith", "shop"] : ["smith"];
+      return hasShop ? ["smith", "shop", "brew"] : ["smith", "brew"]; // the third is the forge (Luyện khí, 5e)
     default:
       return [];
   }
