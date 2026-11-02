@@ -198,9 +198,83 @@ def add_generated(rig, spec):
                 u = _clamp01((d - (elbow - 0.06)) / 0.12)
                 return {"upperarm_" + side: 1 - u, "lowerarm_" + side: u, "clavicle_" + side: 0.35 * _clamp01(1 - d / 0.2)}
 
-            tube("XianSleeve_" + side, robe, axis, ru, w_arm)
+            tube("XianSleeve_" + side, spec.get("sleeve") or robe, axis, ru, w_arm)
             cuff = [(sx * (end_x - 0.05 + 0.05 * i / 2), ua.y, ua.z) for i in range(3)]
             tube("XianCuff_" + side, trim, cuff, lambda t: (0.075 + 0.07) * k + 0.006, w_arm)
+    if "bun" in parts:
+        # a hair knot on top of the head with a gold pin through it, and two long ribbons falling down the back
+        hh, ht = head("Head"), B["Head"].tail_local
+        r = spec.get("bunRadius", 0.08)
+        bz, by = ht.z + 0.01, hh.y + 0.045
+        hair_mat, pin_mat = spec.get("hairpiece") or sash, sash
+        lathe("XianBun", hair_mat, [bz - r + 2 * r * i / 8 for i in range(9)], lambda t: r * math.sin(math.pi * t) + 0.002, lambda t: (r * math.sin(math.pi * t) + 0.002) * 0.9, 0.0, by, lambda x, z, t: {"Head": 1.0}, n_seg=14)
+        tube("XianPin", pin_mat, [(-0.14 + 0.28 * i / 4, by, bz + 0.005) for i in range(5)], lambda t: 0.011, lambda x, t: {"Head": 1.0}, n_seg=8)
+        for sx in (-1, 1):
+            n = 9
+            pts, ws = [], []
+            for i in range(n):
+                t = i / (n - 1)
+                z = bz - 0.03 - t * (bz - waist + 0.25)
+                for dx in (-0.025, 0.025):
+                    x = sx * (0.05 + 0.05 * t) + dx
+                    y = by + (0.17 * k - by) * min(1.0, t * 1.6)
+                    pts.append((x, y, z))
+                    ws.append({"Head": 1.0} if t < 0.12 else spine_w(z))
+            faces = [(2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2) for i in range(n - 1)]
+            build("XianHairRibbon", hair_mat, pts, faces, ws)
+    def sweep_y(name, mat, centers, rx_of, rz_of, weight_of, n_seg=12):
+        """A tube along the y axis (a foot: heel to toe) with an oval section in x/z, rounded at both ends."""
+        pts, ws = [], []
+        for ti, (px, py, pz) in enumerate(centers):
+            t = ti / (len(centers) - 1)
+            cap = max(0.18, math.sin(math.pi * t) ** 0.5)
+            for a in range(n_seg):
+                ang = a / n_seg * math.tau
+                pts.append((px + math.cos(ang) * rx_of(t) * cap, py, pz + math.sin(ang) * rz_of(t) * cap))
+                ws.append(weight_of(py, t))
+        return build(name, mat, pts, ring_faces(len(centers), n_seg), ws)
+
+    def ball(name, mat, c, r, weights, n=7):
+        lathe(name, mat, [c.z - r + 2 * r * i / (n - 1) for i in range(n)], lambda t: r * math.sin(math.pi * t) + 0.003, lambda t: r * math.sin(math.pi * t) + 0.003, c.x, c.y, lambda x, z, t: weights, n_seg=10)
+
+    if "hands" in parts:
+        for s in ("l", "r"):
+            c = (head("hand_" + s) + B["hand_" + s].tail_local) * 0.5
+            ball("GenHand_" + s, spec["skin"], c, 0.05 * k, {"hand_" + s: 1.0})
+    if "legs" in parts:
+        for s in ("l", "r"):
+            th, ca, fo = head("thigh_" + s), head("calf_" + s), head("foot_" + s)
+            zs = [th.z - 0.02 - (th.z - 0.02 - fo.z - 0.05) * i / 9 for i in range(10)]
+            radius = lambda t: (0.088 - 0.036 * t) * k
+
+            def w_leg(x, z, t, s=s, ca=ca):
+                u = _clamp01((ca.z + 0.06 - z) / 0.12)
+                return {"thigh_" + s: 1 - u, "calf_" + s: u}
+
+            lathe("GenLeg_" + s, spec["legwear"], zs, radius, radius, th.x, th.y, w_leg)
+    if "boots" in parts:
+        for s in ("l", "r"):
+            ca, fo, ba = head("calf_" + s), head("foot_" + s), B["ball_" + s]
+            top = fo.z + spec.get("bootHeight", 0.2)
+            zs = [top - (top - fo.z + 0.02) * i / 7 for i in range(8)]
+            radius = lambda t: (0.056 - 0.006 * t) * k
+
+            def w_shaft(x, z, t, s=s, fo=fo):
+                u = _clamp01((fo.z + 0.06 - z) / 0.08)
+                return {"calf_" + s: 1 - u, "foot_" + s: u}
+
+            lathe("GenBoot_" + s, spec["boot"], zs, radius, radius, fo.x, fo.y, w_shaft)
+            heel, toe = fo.y + 0.06, ba.tail_local.y - 0.025
+            sweep_y("GenBootFoot_" + s, spec["boot"], [(fo.x, heel + (toe - heel) * i / 6, fo.z - 0.02) for i in range(7)], lambda t: 0.052 * k, lambda t: 0.05 * k,
+                    lambda y, t, s=s: {"foot_" + s: 1 - 0.7 * t, "ball_" + s: 0.7 * t})
+    if "douli" in parts:
+        # a wide bamboo hat: a flat brim and a low cone, sitting on the top of the head
+        hh, ht = head("Head"), B["Head"].tail_local
+        bz = ht.z - 0.03
+        brim = spec.get("hatRadius", 0.25) * k
+        lathe("GenHatBrim", spec["hat"], [bz + 0.03, bz], lambda t: brim, lambda t: brim * 0.96, 0.0, hh.y, lambda x, z, t: {"Head": 1.0}, n_seg=26)
+        zs = [bz + 0.03 + 0.12 * i / 7 for i in range(8)]
+        lathe("GenHatCone", spec["hat"], zs, lambda t: brim * 0.62 * (1 - t) ** 0.9 + 0.004, lambda t: brim * 0.6 * (1 - t) ** 0.9 + 0.004, 0.0, hh.y, lambda x, z, t: {"Head": 1.0}, n_seg=26)
     log("generated clothing: %s" % ", ".join(parts))
 
 
@@ -288,8 +362,17 @@ def main():
         bpy.data.objects.remove(o, do_unlink=True)  # every pack ships a little reference sphere
     if cfg.get("generated"):
         g = cfg["generated"]
-        gm = {n: bpy.data.materials.new(n) for n in (g["robe"], g["trim"], g["sash"])}
-        add_generated(rig, {**g, "robe": gm[g["robe"]], "trim": gm[g["trim"]], "sash": gm[g["sash"]]})
+        roles = ("robe", "trim", "sash", "sleeve", "hairpiece", "skin", "legwear", "boot", "hat")
+        names = [g[k] for k in roles if g.get(k)]
+        gm = {n: bpy.data.materials.new(n) for n in dict.fromkeys(names)}
+        add_generated(rig, {**g, **{k: gm[g[k]] for k in roles if g.get(k)}})
+    if cfg.get("passes"):
+        # every mesh belongs to one slot of the paper doll (body, hair, bun, robe, belt, bracer, boots, hat): by name for what the script generated, the hair by its name, the rest is the body
+        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianSleeve", "robe"), ("GenLeg", "robe"), ("XianSash", "belt"), ("XianRibbon", "belt"),
+                    ("XianCuff", "bracer"), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "boots"), ("GenHat", "hat")]
+        for o in [o for o in bpy.data.objects if o.type == "MESH"]:
+            o["slot"] = next((s for p, s in prefixes if o.name.startswith(p)), "hair" if o.name.startswith("Hair") else "body")
+        log("slots: " + ", ".join("%s=%s" % (o.name, o["slot"]) for o in bpy.data.objects if o.type == "MESH"))
     scene = bpy.context.scene
     scene.render.resolution_x = scene.render.resolution_y = F  # before the camera maths: world_to_camera_view and the lens shift read the aspect
     scene.render.resolution_percentage = 100
@@ -299,6 +382,10 @@ def main():
     ad = rig.animation_data or rig.animation_data_create()
     for t in list(ad.nla_tracks):  # the importer stashes every action in an NLA track; they would fight the one assigned below
         ad.nla_tracks.remove(t)
+    if cfg.get("headScale"):
+        # a larger head (stylised proportions): the Head bone grows around its base; the hair and the generated hair pieces follow it
+        hb = rig.pose.bones["Head"]
+        hb.scale = (cfg["headScale"],) * 3
 
     # ---- the direction the model faces, from its own rest pose (heel -> toe) ----
     if cfg.get("forward"):
@@ -327,9 +414,11 @@ def main():
         # one stop per toon level; the stops are the shade multipliers
         while len(ramp.color_ramp.elements) < len(levels):
             ramp.color_ramp.elements.new(0.5)
+        shade_tints = cfg.get("shadeTints")  # per-level colour of the shade (cool ink-blue shadows instead of plain grey)
         for i, e in enumerate(ramp.color_ramp.elements):
             e.position = i / len(levels) if i else 0.0
-            e.color = (levels[i], levels[i], levels[i], 1)
+            t = shade_tints[i] if shade_tints else (1, 1, 1)
+            e.color = (levels[i] * t[0], levels[i] * t[1], levels[i] * t[2], 1)
         mix = nt.nodes.new("ShaderNodeMix")
         mix.data_type = "RGBA"
         mix.blend_type = "MULTIPLY"
@@ -362,7 +451,25 @@ def main():
         nt.links.new(diff.outputs["BSDF"], s2r.inputs["Shader"])
         nt.links.new(s2r.outputs["Color"], ramp.inputs["Fac"])
         nt.links.new(ramp.outputs["Color"], mix.inputs[6])
-        nt.links.new(mix.outputs[2], emit.inputs["Color"])
+        mist = cfg.get("groundInk")  # ink-wash: the colour fades toward ink near the ground, like mist soaking the hem
+        if mist:
+            geo = nt.nodes.new("ShaderNodeNewGeometry")
+            sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+            rng = nt.nodes.new("ShaderNodeMapRange")
+            rng.inputs["From Min"].default_value = 0.0
+            rng.inputs["From Max"].default_value = mist["height"]
+            rng.inputs["To Min"].default_value = mist["strength"]
+            rng.inputs["To Max"].default_value = 0.0
+            fade = nt.nodes.new("ShaderNodeMix")
+            fade.data_type = "RGBA"
+            fade.inputs[7].default_value = (*mist["color"], 1)
+            nt.links.new(geo.outputs["Position"], sep.inputs["Vector"])
+            nt.links.new(sep.outputs["Z"], rng.inputs["Value"])
+            nt.links.new(rng.outputs["Result"], fade.inputs[0])
+            nt.links.new(mix.outputs[2], fade.inputs[6])
+            nt.links.new(fade.outputs[2], emit.inputs["Color"])
+        else:
+            nt.links.new(mix.outputs[2], emit.inputs["Color"])
         nt.links.new(emit.outputs["Emission"], out.inputs["Surface"])
 
     mats = cfg.get("materials", {})
@@ -562,178 +669,206 @@ def main():
     clips = []       # frames with opaque pixels touching the edge of the box
     drift = {}
     t0 = time.time()
-    for anim, a in cfg["anims"].items():
-        act = bpy.data.actions[cfg.get("actionPrefix", "") + a["action"]]
-        ad.action = act
-        if hasattr(ad, "action_slot") and act.slots:
-            ad.action_slot = act.slots[0]
-        start, end = act.frame_range
-        if a.get("range"):  # only a part of the action (fractions of it): Sword_Attack is a wind-up swing, a reset and then the real forward slash
-            span0 = end - start
-            start, end = start + span0 * a["range"][0], start + span0 * a["range"][1]
-        n = a["frames"]
-        span = end - start
-        times = [start + i * span / n for i in range(n)] if a["loop"] else [start + i * span / (n - 1) for i in range(n)]
-        duration = span / cfg["sourceFps"]
-        fps = max(1, min(60, round((n if a["loop"] else n - 1) / duration))) if duration > 0 else 6
-        meta[anim] = {"frames": n, "fps": fps, "loop": a["loop"]}
-        # the pose must really change between frames, or the whole animation would be one T-pose
-        posed = []
-        for t in (times[0], times[n // 2]):
-            scene.frame_set(int(t), subframe=t - int(t))
-            bpy.context.view_layer.update()
-            posed.append([tuple(pb.matrix.translation) for pb in rig.pose.bones])
-        moved = max(sum(abs(u - v) for u, v in zip(p, q)) for p, q in zip(posed[0], posed[1]))
-        log("animation %s (%s) moves up to %.4f m between two samples" % (anim, a["action"], moved))
-        check(moved > 1e-4, "animation %s does not move (%s)" % (anim, a["action"]))  # identical poses would give exactly 0
-        # Root motion is cancelled: the hips stay over the same ground point for the whole animation (the game moves the actor, the sprite stays put).
-        scene.frame_set(int(times[0]), subframe=times[0] - int(times[0]))
-        bpy.context.view_layer.update()
-        hips = rig.pose.bones[cfg.get("hipsBone", "DEF-hips")]
-        h0 = hips.matrix.translation.copy()
-        worst_drift = 0.0
-        for d, vec in enumerate(cfg["directions"]):
-            g = (tile_x * vec[0] + tile_y * vec[1]).normalized()
-            rig.rotation_euler = (0, 0, math.atan2(g.y, g.x) - math.atan2(fwd.y, fwd.x))
-            bpy.context.view_layer.update()
-            # direction check: one metre ahead of the model must go the way the tile vector goes on screen
-            ahead = rig.matrix_world.to_3x3() @ fwd
-            sv = to_px(ahead) - o_px
-            want = Vector((vec[0] - vec[1], (vec[0] + vec[1]) / 2.0))
-            ang = math.degrees(math.acos(max(-1, min(1, sv.normalized().dot(want.normalized())))))
-            check(ang < 2.0, "direction %d: the model's front points %.1f degrees off the wanted screen heading" % (d, ang))
-            for i, t in enumerate(times):
+    passes = cfg.get("passes") or [{"name": None}]
+    slots_present = {o["slot"] for o in bpy.data.objects if o.type == "MESH" and "slot" in o}
+    all_frames = {}
+    for pdef in passes:
+        if pdef["name"] is not None:
+            draw = set(pdef["draw"])
+            skip = set(pdef.get("exclude", []))
+            for o in [o for o in bpy.data.objects if o.type == "MESH"]:
+                s = o["slot"]
+                o.hide_render = s in skip or (s == "hat" and "hat" not in draw) or (bool(pdef.get("noHoldout")) and s not in draw)
+                o.is_holdout = (s not in draw) and not o.hide_render and s != "hat" and not pdef.get("noHoldout")
+            log("pass %s: draw %s, exclude %s" % (pdef["name"], sorted(draw), sorted(skip)))
+        frames = {}
+        clips = []
+        for anim, a in cfg["anims"].items():
+            act = bpy.data.actions[cfg.get("actionPrefix", "") + a["action"]]
+            ad.action = act
+            if hasattr(ad, "action_slot") and act.slots:
+                ad.action_slot = act.slots[0]
+            start, end = act.frame_range
+            if a.get("range"):  # only a part of the action (fractions of it): Sword_Attack is a wind-up swing, a reset and then the real forward slash
+                span0 = end - start
+                start, end = start + span0 * a["range"][0], start + span0 * a["range"][1]
+            n = a["frames"]
+            span = end - start
+            times = [start + i * span / n for i in range(n)] if a["loop"] else [start + i * span / (n - 1) for i in range(n)]
+            duration = span / cfg["sourceFps"]
+            fps = max(1, min(60, round((n if a["loop"] else n - 1) / duration))) if duration > 0 else 6
+            meta[anim] = {"frames": n, "fps": fps, "loop": a["loop"]}
+            # the pose must really change between frames, or the whole animation would be one T-pose
+            posed = []
+            for t in (times[0], times[n // 2]):
                 scene.frame_set(int(t), subframe=t - int(t))
                 bpy.context.view_layer.update()
-                h = hips.matrix.translation
-                worst_drift = max(worst_drift, math.hypot(h.x - h0.x, h.y - h0.y))
-                rig.location = -(Matrix.Rotation(rig.rotation_euler.z, 3, "Z") @ Vector((h.x - h0.x, h.y - h0.y, 0)) * fs) + Vector((0, 0, lift))
-                if weapon_objs and d == 0:  # how far ahead of the hand the blade points, per frame (1 = straight out in front, -1 = straight back)
-                    w0 = weapon_objs[0]
-                    hand = (rig.matrix_world @ rig.pose.bones[wcfg["bone"]].head)
-                    tips = [w0.matrix_world @ Vector(c) for c in w0.bound_box]
-                    tip = max(tips, key=lambda v: (v - hand).length)
-                    bv = (tip - hand).normalized()
-                    log("blade %s %02d: forward %.2f up %.2f" % (anim, i, bv.dot(ahead), bv.z))
-                name = "%s_%d_%02d" % (anim, d, i)
-                path = os.path.join(OUT, "frames", name + ".png")
-                r.filepath = path
-                bpy.ops.render.render(write_still=True)
-                img = bpy.data.images.load(path)
-                img.colorspace_settings.name = "Non-Color"
-                img.alpha_mode = "STRAIGHT"
-                buf = np.empty(F * F * 4, dtype=np.float32)
-                img.pixels.foreach_get(buf)
-                bpy.data.images.remove(img)
-                arr = buf.reshape(F, F, 4)
-                frames[name] = arr
-                al = arr[:, :, 3] > 0.05
-                edges = [n_ for n_, hit in (("bottom", al[0, :].any()), ("top", al[-1, :].any()), ("left", al[:, 0].any()), ("right", al[:, -1].any())) if hit]
-                if edges:
-                    clips.append({"frame": name, "edges": edges})
-        rig.location = (0, 0, lift)
-        log("root motion removed for %s: up to %.2f m of drift" % (anim, worst_drift))
-        log("rendered %s: %d frames x %d directions, %.1f fps, %.0fs elapsed" % (anim, n, len(cfg["directions"]), fps, time.time() - t0))
+                posed.append([tuple(pb.matrix.translation) for pb in rig.pose.bones])
+            moved = max(sum(abs(u - v) for u, v in zip(p, q)) for p, q in zip(posed[0], posed[1]))
+            log("animation %s (%s) moves up to %.4f m between two samples" % (anim, a["action"], moved))
+            check(moved > 1e-4, "animation %s does not move (%s)" % (anim, a["action"]))  # identical poses would give exactly 0
+            # Root motion is cancelled: the hips stay over the same ground point for the whole animation (the game moves the actor, the sprite stays put).
+            scene.frame_set(int(times[0]), subframe=times[0] - int(times[0]))
+            bpy.context.view_layer.update()
+            hips = rig.pose.bones[cfg.get("hipsBone", "DEF-hips")]
+            h0 = hips.matrix.translation.copy()
+            worst_drift = 0.0
+            for d, vec in enumerate(cfg["directions"]):
+                g = (tile_x * vec[0] + tile_y * vec[1]).normalized()
+                rig.rotation_euler = (0, 0, math.atan2(g.y, g.x) - math.atan2(fwd.y, fwd.x))
+                bpy.context.view_layer.update()
+                # direction check: one metre ahead of the model must go the way the tile vector goes on screen
+                ahead = rig.matrix_world.to_3x3() @ fwd
+                sv = to_px(ahead) - o_px
+                want = Vector((vec[0] - vec[1], (vec[0] + vec[1]) / 2.0))
+                ang = math.degrees(math.acos(max(-1, min(1, sv.normalized().dot(want.normalized())))))
+                check(ang < 2.0, "direction %d: the model's front points %.1f degrees off the wanted screen heading" % (d, ang))
+                for i, t in enumerate(times):
+                    scene.frame_set(int(t), subframe=t - int(t))
+                    bpy.context.view_layer.update()
+                    h = hips.matrix.translation
+                    worst_drift = max(worst_drift, math.hypot(h.x - h0.x, h.y - h0.y))
+                    rig.location = -(Matrix.Rotation(rig.rotation_euler.z, 3, "Z") @ Vector((h.x - h0.x, h.y - h0.y, 0)) * fs) + Vector((0, 0, lift))
+                    if weapon_objs and d == 0:  # how far ahead of the hand the blade points, per frame (1 = straight out in front, -1 = straight back)
+                        w0 = weapon_objs[0]
+                        hand = (rig.matrix_world @ rig.pose.bones[wcfg["bone"]].head)
+                        tips = [w0.matrix_world @ Vector(c) for c in w0.bound_box]
+                        tip = max(tips, key=lambda v: (v - hand).length)
+                        bv = (tip - hand).normalized()
+                        log("blade %s %02d: forward %.2f up %.2f" % (anim, i, bv.dot(ahead), bv.z))
+                    name = "%s_%d_%02d" % (anim, d, i)
+                    path = os.path.join(OUT, "frames", name + ".png")
+                    r.filepath = path
+                    bpy.ops.render.render(write_still=True)
+                    img = bpy.data.images.load(path)
+                    img.colorspace_settings.name = "Non-Color"
+                    img.alpha_mode = "STRAIGHT"
+                    buf = np.empty(F * F * 4, dtype=np.float32)
+                    img.pixels.foreach_get(buf)
+                    bpy.data.images.remove(img)
+                    arr = buf.reshape(F, F, 4)
+                    frames[name] = arr
+                    al = arr[:, :, 3] > 0.05
+                    edges = [n_ for n_, hit in (("bottom", al[0, :].any()), ("top", al[-1, :].any()), ("left", al[:, 0].any()), ("right", al[:, -1].any())) if hit]
+                    if edges:
+                        clips.append({"frame": name, "edges": edges})
+            rig.location = (0, 0, lift)
+            log("root motion removed for %s: up to %.2f m of drift" % (anim, worst_drift))
+            log("rendered %s: %d frames x %d directions, %.1f fps, %.0fs elapsed" % (anim, n, len(cfg["directions"]), fps, time.time() - t0))
 
-    # ---- how tall the figure stands (idle frames): the game puts the name above this ----
-    head = 0
-    for name, arr in frames.items():
-        if not name.startswith("idle_"):
-            continue
-        ys = np.nonzero(arr[:, :, 3] > 0.05)[0]
-        if len(ys):
-            head = max(head, anchor[1] - (F - 1 - int(ys.max())))
-    check(head > 8 or wcfg, "could not measure the height of the figure")
-    log("head is %d px above the feet" % head)
+        all_frames[pdef["name"]] = (frames, clips)
+    for pdef in passes:
+        frames, clips = all_frames[pdef["name"]]
+        pname = cfg["name"] + ("_" + pdef["name"] if pdef["name"] else "")
+        pkey = cfg["spriteKey"] + (".layer." + pdef["name"] if pdef["name"] else "")
+        # ---- how tall the figure stands (idle frames): the game puts the name above this ----
+        head = 0
+        for name, arr in frames.items():
+            if not name.startswith("idle_"):
+                continue
+            ys = np.nonzero(arr[:, :, 3] > 0.05)[0]
+            if len(ys):
+                head = max(head, anchor[1] - (F - 1 - int(ys.max())))
+        check(head > 8 or wcfg or pdef["name"] not in (None, "body"), "could not measure the height of the figure")
+        log("head is %d px above the feet" % head)
 
-    # ---- the atlas: every frame cut to its opaque box, 1 px of clear border, packed in shelves on the narrowest page that is shortest ----
-    rects = []  # (name, x0, top, w, h) of the opaque box in the frame (top-down), or a 1 x 1 clear pixel when nothing is drawn
-    for name, arr in frames.items():
-        al = arr[:, :, 3] > 0.02
-        ys = np.nonzero(al.any(axis=1))[0]
-        xs = np.nonzero(al.any(axis=0))[0]
-        if len(ys) == 0:
-            rects.append((name, 0, 0, 1, 1, None))
-            continue
-        y_lo, y_hi, x_lo, x_hi = int(ys.min()), int(ys.max()), int(xs.min()), int(xs.max())
-        rects.append((name, x_lo, F - 1 - y_hi, x_hi - x_lo + 1, y_hi - y_lo + 1, (y_lo, y_hi)))
-    order = sorted(range(len(rects)), key=lambda i: (-rects[i][4], -rects[i][3]))
+        # ---- the atlas: every frame cut to its opaque box, 1 px of clear border, packed in shelves on the narrowest page that is shortest ----
+        rects = []  # (name, x0, top, w, h) of the opaque box in the frame (top-down), or a 1 x 1 clear pixel when nothing is drawn
+        for name, arr in frames.items():
+            al = arr[:, :, 3] > 0.02
+            ys = np.nonzero(al.any(axis=1))[0]
+            xs = np.nonzero(al.any(axis=0))[0]
+            if len(ys) == 0:
+                rects.append((name, 0, 0, 1, 1, None))
+                continue
+            y_lo, y_hi, x_lo, x_hi = int(ys.min()), int(ys.max()), int(xs.min()), int(xs.max())
+            rects.append((name, x_lo, F - 1 - y_hi, x_hi - x_lo + 1, y_hi - y_lo + 1, (y_lo, y_hi)))
+        order = sorted(range(len(rects)), key=lambda i: (-rects[i][4], -rects[i][3]))
 
-    def shelves(width):
-        x = y = row_h = 0
-        spots = {}
-        for i in order:
-            w, h = rects[i][3] + 2, rects[i][4] + 2
-            if x + w > width:
-                x, y, row_h = 0, y + row_h, 0
-            spots[i] = (x, y)
-            x += w
-            row_h = max(row_h, h)
-        return spots, y + row_h
+        def shelves(width):
+            x = y = row_h = 0
+            spots = {}
+            for i in order:
+                w, h = rects[i][3] + 2, rects[i][4] + 2
+                if x + w > width:
+                    x, y, row_h = 0, y + row_h, 0
+                spots[i] = (x, y)
+                x += w
+                row_h = max(row_h, h)
+            return spots, y + row_h
 
-    best = None
-    for width in range(128, cfg["atlasMaxPx"] + 1, 32):
-        if width < max(r[3] for r in rects) + 2:
-            continue
-        spots, height = shelves(width)
-        if height <= cfg["atlasMaxPx"] and (best is None or width * height < best[0] * best[1]):
-            best = (width, height, spots)
-    check(best is not None, "%d frames do not fit one %d px page" % (len(rects), cfg["atlasMaxPx"]))
-    W, H, spots = best
-    atlas = np.zeros((H, W, 4), dtype=np.float32)
-    jframes = {}
-    for i, (name, x_lo, top, w, h, ys) in enumerate(rects):
-        px, py = spots[i]
-        if ys is not None:
-            y_lo, y_hi = ys
-            crop = frames[name][y_lo:y_hi + 1, x_lo:x_lo + w, :]
-            y0 = H - (py + 1) - h  # the arrays are bottom-up
-            atlas[y0:y0 + h, px + 1:px + 1 + w, :] = crop
-        jframes[name] = {"frame": {"x": px + 1, "y": py + 1, "w": w, "h": h}, "rotated": False, "trimmed": True, "spriteSourceSize": {"x": x_lo, "y": top, "w": w, "h": h}, "sourceSize": {"w": F, "h": F}}
-    log("atlas %dx%d for %d frames (%.0f%% of the untrimmed %dx%d)" % (W, H, len(rects), 100.0 * W * H / (F * F * len(rects)), F, F))
-    img_name = cfg["name"] + ".png"
+        best = None
+        for width in range(128, cfg["atlasMaxPx"] + 1, 32):
+            if width < max(r[3] for r in rects) + 2:
+                continue
+            spots, height = shelves(width)
+            if height <= cfg["atlasMaxPx"] and (best is None or width * height < best[0] * best[1]):
+                best = (width, height, spots)
+        check(best is not None, "%d frames do not fit one %d px page" % (len(rects), cfg["atlasMaxPx"]))
+        W, H, spots = best
+        atlas = np.zeros((H, W, 4), dtype=np.float32)
+        jframes = {}
+        for i, (name, x_lo, top, w, h, ys) in enumerate(rects):
+            px, py = spots[i]
+            if ys is not None:
+                y_lo, y_hi = ys
+                crop = frames[name][y_lo:y_hi + 1, x_lo:x_lo + w, :]
+                y0 = H - (py + 1) - h  # the arrays are bottom-up
+                atlas[y0:y0 + h, px + 1:px + 1 + w, :] = crop
+            jframes[name] = {"frame": {"x": px + 1, "y": py + 1, "w": w, "h": h}, "rotated": False, "trimmed": True, "spriteSourceSize": {"x": x_lo, "y": top, "w": w, "h": h}, "sourceSize": {"w": F, "h": F}}
+        log("atlas %dx%d for %d frames (%.0f%% of the untrimmed %dx%d)" % (W, H, len(rects), 100.0 * W * H / (F * F * len(rects)), F, F))
+        img_name = pname + ".png"
 
-    def save_array(arr, path):
-        im = bpy.data.images.new("tmp", width=arr.shape[1], height=arr.shape[0], alpha=True)
-        im.colorspace_settings.name = "Non-Color"
-        im.alpha_mode = "STRAIGHT"
-        im.pixels.foreach_set(arr.ravel())
-        im.filepath_raw = path
-        im.file_format = "PNG"
-        im.save()
-        bpy.data.images.remove(im)
+        def save_array(arr, path):
+            im = bpy.data.images.new("tmp", width=arr.shape[1], height=arr.shape[0], alpha=True)
+            im.colorspace_settings.name = "Non-Color"
+            im.alpha_mode = "STRAIGHT"
+            im.pixels.foreach_set(arr.ravel())
+            im.filepath_raw = path
+            im.file_format = "PNG"
+            im.save()
+            bpy.data.images.remove(im)
 
-    save_array(atlas, os.path.join(OUT, img_name))
-    json.dump({"frames": jframes, "meta": {"image": img_name, "size": {"w": W, "h": H}, "scale": "1"}}, open(os.path.join(OUT, cfg["name"] + ".json"), "w"))
-    json.dump({"key": cfg["spriteKey"], "atlas": cfg["name"], "image": img_name, "data": cfg["name"] + ".json", "frame": {"w": F, "h": F}, "anchor": {"x": anchor[0], "y": anchor[1]}, "head": head, "anims": meta},
-              open(os.path.join(OUT, cfg["name"] + ".sprite.json"), "w"), indent=2)
+        save_array(atlas, os.path.join(OUT, img_name))
+        json.dump({"frames": jframes, "meta": {"image": img_name, "size": {"w": W, "h": H}, "scale": "1"}}, open(os.path.join(OUT, pname + ".json"), "w"))
+        json.dump({"key": pkey, "atlas": pname, "image": img_name, "data": pname + ".json", "frame": {"w": F, "h": F}, "anchor": {"x": anchor[0], "y": anchor[1]}, "head": head, "anims": meta},
+                  open(os.path.join(OUT, pname + ".sprite.json"), "w"), indent=2)
 
     # ---- a contact sheet to look at: the middle frame of each animation in the 8 directions, 2x, with the 64x32 tile under the feet ----
-    anim_names = list(cfg["anims"].keys())
-    sheet = np.full((len(anim_names) * F, len(cfg["directions"]) * F, 4), 1.0, dtype=np.float32)
-    sheet[:, :, :3] = 0.36
-    for ri, an in enumerate(anim_names):
-        for d in range(len(cfg["directions"])):
-            cell = np.zeros((F, F, 4), dtype=np.float32)
-            cell[:, :, :3] = 0.36
-            cell[:, :, 3] = 1.0
-            for (ax, ay), (bx, by) in (((0, -16), (32, 0)), ((32, 0), (0, 16)), ((0, 16), (-32, 0)), ((-32, 0), (0, -16))):  # the tile diamond, bottom-up rows
-                for s in range(33):
-                    px = int(round(anchor[0] + ax + (bx - ax) * s / 32))
-                    py = int(round((F - anchor[1]) + ay + (by - ay) * s / 32))
-                    if 0 <= px < F and 0 <= py < F:
-                        cell[py, px, :3] = 0.6
-            fr = frames["%s_%d_%02d" % (an, d, cfg["anims"][an]["frames"] // 2)]
-            a_ = fr[:, :, 3:4]
-            cell[:, :, :3] = fr[:, :, :3] * a_ + cell[:, :, :3] * (1 - a_)
-            y0 = (len(anim_names) - 1 - ri) * F
-            sheet[y0:y0 + F, d * F:(d + 1) * F, :] = cell
-    sheet = np.repeat(np.repeat(sheet, 2, axis=0), 2, axis=1)
-    save_array(sheet, os.path.join(OUT, "contact.png"))
+    sets = cfg.get("previewSets") or {"": [q["name"] for q in passes]}
+    for set_name, set_passes in sets.items():
+        anim_names = list(cfg["anims"].keys())
+        sheet = np.full((len(anim_names) * F, len(cfg["directions"]) * F, 4), 1.0, dtype=np.float32)
+        sheet[:, :, :3] = 0.36
+        for ri, an in enumerate(anim_names):
+            for d in range(len(cfg["directions"])):
+                cell = np.zeros((F, F, 4), dtype=np.float32)
+                cell[:, :, :3] = 0.36
+                cell[:, :, 3] = 1.0
+                for (ax, ay), (bx, by) in (((0, -16), (32, 0)), ((32, 0), (0, 16)), ((0, 16), (-32, 0)), ((-32, 0), (0, -16))):  # the tile diamond, bottom-up rows
+                    for s in range(33):
+                        px = int(round(anchor[0] + ax + (bx - ax) * s / 32))
+                        py = int(round((F - anchor[1]) + ay + (by - ay) * s / 32))
+                        if 0 <= px < F and 0 <= py < F:
+                            cell[py, px, :3] = 0.6
+                key = "%s_%d_%02d" % (an, d, cfg["anims"][an]["frames"] // 2)
+                fr = np.zeros((F, F, 4), dtype=np.float32)
+                for pd_ in [q for q in passes if q["name"] in set_passes]:  # the layers on top of each other (the paper doll), each multiplied by its preview colour as the game will tint it
+                    lf = all_frames[pd_["name"]][0][key]
+                    tint = np.array(cfg.get("previewTints", {}).get(pd_["name"], [1, 1, 1]), dtype=np.float32)
+                    la = lf[:, :, 3:4]
+                    fr[:, :, :3] = lf[:, :, :3] * tint * la + fr[:, :, :3] * (1 - la)
+                    fr[:, :, 3:4] = la + fr[:, :, 3:4] * (1 - la)
+                a_ = fr[:, :, 3:4]
+                cell[:, :, :3] = fr[:, :, :3] * a_ + cell[:, :, :3] * (1 - a_)
+                y0 = (len(anim_names) - 1 - ri) * F
+                sheet[y0:y0 + F, d * F:(d + 1) * F, :] = cell
+        sheet = np.repeat(np.repeat(sheet, 2, axis=0), 2, axis=1)
+        save_array(sheet, os.path.join(OUT, "contact.png" if not set_name else "contact_%s.png" % set_name))
 
-    json.dump({"atlas": {"w": W, "h": H, "frames": len(rects)}, "clips": clips, "anims": meta, "seconds": round(time.time() - t0, 1), "blender": bpy.app.version_string, "engine": engine},
+    json.dump({"atlas": {"w": W, "h": H, "frames": len(rects)}, "clips": {(k or "all"): v[1] for k, v in all_frames.items()}, "anims": meta, "seconds": round(time.time() - t0, 1), "blender": bpy.app.version_string, "engine": engine},
               open(os.path.join(OUT, "report.json"), "w"), indent=2)
-    log("atlas %dx%d, %d frames, %d frames touch the box edge" % (W, H, len(rects), len(clips)))
+    log("done: %d pass(es), %d frames touch the box edge" % (len(passes), sum(len(v[1]) for v in all_frames.values())))
 
 
 try:
