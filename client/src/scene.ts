@@ -157,7 +157,7 @@ const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
 const ELEMENT_DOT: Record<string, number> = { kim: 0xfbc02d, moc: 0x43a047, thuy: 0x1e88e5, hoa: 0xe53935, tho: 0x8d6e63, loi: 0x7e57c2, bang: 0x4dd0e1, phong: 0x80cbc4 };
 const ELEMENT_COLOR: Record<string, number> = { kim: 0xe0e0e0, moc: 0x4caf50, thuy: 0x2196f3, hoa: 0xff5722, tho: 0x9c7a5b, loi: 0x9575cd, bang: 0x80deea, phong: 0xa5d6a7 };
 /** A click within this many screen pixels of a monster (around its body) targets it instead of walking. */
-const MONSTER_PICK_PX = 34;
+const MONSTER_PICK_PX = Math.round(34 * FIGURE_SCALE);
 
 /** Converts continuous tile coordinates to isometric screen pixels. */
 function toScreen(x: number, y: number): { x: number; y: number } {
@@ -716,7 +716,7 @@ export class GameScene extends Phaser.Scene {
     for (const f of this.npcFigures) {
       const look = npcLookOf(f.npc);
       if (!look) continue;
-      const key = this.gfx.spriteKeyFor("player", undefined, `${look.body}.${look.outfit ?? DEFAULT_OUTFIT}`);
+      const key = this.readyBodyKey(`${look.body}.${look.outfit ?? DEFAULT_OUTFIT}`, (p) => npcDollLayers(p, look, (k) => this.gfx.knows(k)).map((l) => l.key));
       if (f.view && (!f.view.alive || (key && f.view.key !== key))) {
         f.wview?.destroy();
         f.view.destroy();
@@ -750,6 +750,17 @@ export class GameScene extends Phaser.Scene {
       if (doll) this.dropHat(f);
       else this.syncLookHat(f, look, f.view, f.x, f.y, f.depth);
     }
+  }
+
+  /**
+   * The body sprite for a variant (`female.robe`): a paper doll only once every layer it will wear is loaded (so a figure never shows as a bare body with its clothes still on
+   * the way), the single-sprite figure of before until then.
+   */
+  private readyBodyKey(variant: string, layersOf: (prefix: string) => string[]): string | undefined {
+    const key = this.gfx.spriteKeyFor("player", undefined, variant);
+    const prefix = key ? dollPrefixOf(key) : undefined;
+    if (!prefix || this.gfx.warm(layersOf(prefix))) return key;
+    return this.gfx.spriteKeyFor("player", undefined, variant, false);
   }
 
   /** Dresses the doll of an NPC or a guard from its look (asked again only when the look changes or a layer was still loading). */
@@ -2216,7 +2227,7 @@ export class GameScene extends Phaser.Scene {
       a.body.setVisible(true);
     }
     // The body sprite follows the outfit: an atlas that is not here yet is fetched, and the plain clothes show until it is.
-    const bodyKey = this.gfx.spriteKeyFor("player", undefined, `${a.female ? "female" : "male"}.${a.outfit ?? DEFAULT_OUTFIT}`);
+    const bodyKey = this.readyBodyKey(`${a.female ? "female" : "male"}.${a.outfit ?? DEFAULT_OUTFIT}`, (p) => dollLayers(p, a.lk, (k) => this.gfx.knows(k)).map((l) => l.key));
     if (a.view && bodyKey && a.view.key !== bodyKey) {
       a.wview?.destroy();
       a.wview = undefined;
@@ -2491,7 +2502,7 @@ export class GameScene extends Phaser.Scene {
       this.dropHat(m);
       m.body.setVisible(true);
     }
-    const key = look ? this.gfx.spriteKeyFor("player", undefined, `${look.body}.${look.outfit ?? DEFAULT_OUTFIT}`) : this.gfx.spriteKeyFor("monster", m.kind);
+    const key = look ? this.readyBodyKey(`${look.body}.${look.outfit ?? DEFAULT_OUTFIT}`, (p) => npcDollLayers(p, look, (k) => this.gfx.knows(k)).map((l) => l.key)) : this.gfx.spriteKeyFor("monster", m.kind);
     // The outfit atlas of a guard loads on demand: the plain body shows until it is here, then the view is swapped (as for players and NPCs).
     if (look && m.view && key && m.view.key !== key) {
       m.wview?.destroy();

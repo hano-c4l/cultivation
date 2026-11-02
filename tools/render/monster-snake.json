@@ -2,22 +2,72 @@
   "extends": "sprite-config.json",
   "name": "m_snake",
   "spriteKey": "monster.snake",
-  "source": { "model": "downloads/easy-enemies/x/Easy Animated Enemy Pack - Jan 2019/FBX/Snake_angry.fbx" },
+  "source": {
+    "model": "downloads/easy-enemies/x/Easy Animated Enemy Pack - Jan 2019/FBX/Snake_angry.fbx"
+  },
   "rigName": "SnakeArmature",
   "stripObjectCurves": true,
   "bodyMesh": "Snake",
   "hipsBone": "Root",
-  "forwardBones": ["Head", "Head_end"],
-  "autoColors": [1.5, 1.5, 1.5],
+  "forwardBones": [
+    "Head",
+    "Head_end"
+  ],
+  "autoColors": [
+    1.5,
+    1.5,
+    1.5
+  ],
   "figureScale": 0.32,
   "sourceFps": 30,
   "actionPrefix": "SnakeArmature|SnakeArmature|",
-  "onlyAnims": ["idle", "run", "attack", "die"],
+  "onlyAnims": [
+    "idle",
+    "run",
+    "attack",
+    "hit",
+    "die"
+  ],
   "anims": {
-    "idle": { "action": "Snake_Idle", "frames": 4, "loop": true },
-    "run": { "action": "Snake_Walk", "frames": 8, "loop": true },
-    "attack": { "action": "Snake_Attack", "frames": 6, "loop": false },
-    "die": { "action": "Snake_Idle", "frames": 3, "loop": false }
+    "idle": {
+      "action": "Snake_Idle",
+      "frames": 4,
+      "loop": true
+    },
+    "run": {
+      "action": "Snake_Walk",
+      "frames": 8,
+      "loop": true
+    },
+    "attack": {
+      "action": "Snake_Walk",
+      "frames": 6,
+      "loop": false,
+      "proc": {
+        "type": "lunge",
+        "dist": 0.4,
+        "pitch": 16
+      }
+    },
+    "die": {
+      "action": "Snake_Idle",
+      "frames": 4,
+      "loop": false,
+      "proc": {
+        "type": "fall",
+        "roll": 88
+      }
+    },
+    "hit": {
+      "action": "Snake_Idle",
+      "frames": 3,
+      "loop": false,
+      "proc": {
+        "type": "recoil",
+        "dist": 0.28,
+        "pitch": 14
+      }
+    }
   },
   "animsNote": "the pack has Idle, Walk, Attack and Jump: die holds the idle pose (no hit animation either)"
 }

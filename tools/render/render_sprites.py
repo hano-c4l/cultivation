@@ -835,7 +835,8 @@ def main():
             worst_drift = 0.0
             for d, vec in enumerate(cfg["directions"]):
                 g = (tile_x * vec[0] + tile_y * vec[1]).normalized()
-                rig.rotation_euler = (0, 0, math.atan2(g.y, g.x) - math.atan2(fwd.y, fwd.x))
+                yaw = math.atan2(g.y, g.x) - math.atan2(fwd.y, fwd.x)
+                rig.rotation_euler = (0, 0, yaw)
                 bpy.context.view_layer.update()
                 # direction check: one metre ahead of the model must go the way the tile vector goes on screen
                 ahead = rig.matrix_world.to_3x3() @ fwd
@@ -848,7 +849,28 @@ def main():
                     bpy.context.view_layer.update()
                     h = hips.matrix.translation
                     worst_drift = max(worst_drift, math.hypot(h.x - h0.x, h.y - h0.y))
-                    rig.location = -(Matrix.Rotation(rig.rotation_euler.z, 3, "Z") @ Vector((h.x - h0.x, h.y - h0.y, 0)) * fs) + Vector((0, 0, lift))
+                    rig.location = -(Matrix.Rotation(yaw, 3, "Z") @ Vector((h.x - h0.x, h.y - h0.y, 0)) * fs) + Vector((0, 0, lift))
+                    proc = a.get("proc")
+                    if proc:
+                        # a procedural move for a model with no such animation: the whole figure lunges (attack), is pushed back (hit) or falls on its side (die) as the sprite plays
+                        q = i / max(1, n - 1)
+                        ease = q * q * (3 - 2 * q)
+                        ahead_w = (Matrix.Rotation(yaw, 3, "Z") @ fwd).normalized()
+                        side_w = ahead_w.cross(Vector((0, 0, 1))).normalized()
+                        kind = proc["type"]
+                        rot = Matrix.Rotation(yaw, 3, "Z")
+                        if kind == "fall":
+                            rot = Matrix.Rotation(math.radians(proc.get("roll", 88)) * ease, 3, ahead_w) @ rot
+                            rig.location += Vector((0, 0, proc.get("drop", 0.0) * ease * fs))
+                        elif kind == "lunge":
+                            bump = math.sin(math.pi * q)
+                            rot = Matrix.Rotation(math.radians(-proc.get("pitch", 14)) * bump, 3, side_w) @ rot
+                            rig.location += ahead_w * (proc.get("dist", 0.45) * bump * fs)
+                        elif kind == "recoil":
+                            back = (1 - q) ** 2
+                            rot = Matrix.Rotation(math.radians(proc.get("pitch", 12)) * back, 3, side_w) @ rot
+                            rig.location -= ahead_w * (proc.get("dist", 0.25) * back * fs)
+                        rig.rotation_euler = rot.to_euler("XYZ")
                     if weapon_objs and d == 0:  # how far ahead of the hand the blade points, per frame (1 = straight out in front, -1 = straight back)
                         w0 = weapon_objs[0]
                         hand = (rig.matrix_world @ rig.pose.bones[wcfg["bone"]].head)

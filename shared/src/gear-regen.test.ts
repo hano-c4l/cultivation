@@ -4,6 +4,7 @@ import { defaultMasterEntry, rollForType } from "./gear-master";
 import { gearRegenFrom, regenPerSecond, NO_GEAR_REGEN } from "./gear-regen";
 import { beltTintOf, bootsTintOf, bracerTintOf, gearLookOf, hatShapeOf, HAT_SHAPES, robeTintOf, weaponLookParts, weaponTintOf } from "./gear-look";
 import { startingStats } from "./progression";
+import { DEFAULT_TUNING } from "./tuning";
 import { basicSkillAt, getSkill, setBasicSkillRealm, BASIC_SKILL_ID } from "./skills";
 
 const w = { gender: "male" as const, realm: 5, stage: 9, base: { ...startingStats("kim", 0).base, canCot: 999, thanThuc: 999, thanPhap: 999, nguTinh: 999, linhLuc: 999, phucDuyen: 999 } as never };
@@ -74,6 +75,11 @@ describe("the look of the worn gear", () => {
     expect(weaponTintOf(other.w!)).not.toBe(weaponTintOf(look.w!));
     const higher = gearLookOf([{ slot: "weapon", type: makeEquipmentId("weapon", "u", 5, 2, 1, "hoa", "kiem") }])!;
     expect(weaponTintOf(higher.w!)).not.toBe(weaponTintOf(look.w!));
+    // the palette has one colour for each realm; the bậc of the set deepens it
+    const bright = (c: string): number => parseInt(c.slice(1), 16);
+    expect(robeTintOf(1)).toBe(DEFAULT_TUNING.gearLooks.robe[0]);
+    expect(robeTintOf(1 + 9)).toBe(DEFAULT_TUNING.gearLooks.robe[1]);
+    expect(bright(robeTintOf(9)!)).toBeLessThan(bright(robeTintOf(1)!));
     expect(gearLookOf([])).toBeUndefined();
     // the belt and the bracers show too (paper doll layers, 4j): their set numbers colour them
     const dressed = gearLookOf([{ slot: "belt", type: makeEquipmentId("belt", "u", 1, 3, 1) }, { slot: "bracer", type: makeEquipmentId("bracer", "f", 2, 5, 1) }])!;

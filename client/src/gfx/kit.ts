@@ -398,11 +398,11 @@ export class GfxKit {
    * for now it follows the naming convention below; the D1 mapping (admin-editable) will wrap it in 4c/4e.
    *   player -> `doll.<variant>.body` (a paper doll: the layers come with it), `player.<variant>`, then `player`; monster -> `monster.<kind>`; guard -> the player body of `npcLooks.byKind.guard` (the scene asks for `player.*` and `weapon.*` itself).
    */
-  spriteKeyFor(kind: "player" | "monster" | "guard" | "weapon", id?: string, variant?: string): string | undefined {
+  spriteKeyFor(kind: "player" | "monster" | "guard" | "weapon", id?: string, variant?: string, allowDoll = true): string | undefined {
     if (!this.active) return undefined;
     // A player variant is `<body>` or `<body>.<outfit>`: the outfit sprite, then the plain body, then any player sprite.
     const candidates =
-      kind === "player" ? [...((variant ?? "").includes(".") ? [`doll.${variant}.body`] : []), ...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`, ...(id && monsterModelOf(id) ? [`monster.${monsterModelOf(id)}`] : [])] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
+      kind === "player" ? [...(allowDoll && (variant ?? "").includes(".") ? [`doll.${variant}.body`] : []), ...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`, ...(id && monsterModelOf(id) ? [`monster.${monsterModelOf(id)}`] : [])] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
     for (const k of candidates) {
       if (k === "") continue;
       if (this.usable(k)) return k;
@@ -445,6 +445,19 @@ export class GfxKit {
     if (!set) this.views.set(def.atlas, (set = new Set()));
     set.add(view);
     return view;
+  }
+
+  /** Asks for the atlases of these sprites (the layers of a doll) and says whether every one is loaded: a doll is shown only when it can be shown whole. */
+  warm(keys: readonly string[]): boolean {
+    let all = true;
+    for (const k of keys) {
+      const def = this.manifest.sprites[k];
+      if (!def) continue; // a sprite the manifest lacks is simply not drawn
+      if (this.usable(k)) continue;
+      this.demand(def.atlas);
+      all = false;
+    }
+    return all;
   }
 
   /** The Phaser texture key of a loaded sprite's atlas (for drawing a frame outside the game scene), or undefined when it is not loaded. */

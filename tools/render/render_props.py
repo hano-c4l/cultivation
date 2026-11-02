@@ -231,7 +231,7 @@ def rocky(v, rnd, scale, n=1, flat_col="#9a9a9a", detail=2):
     mat = m("rock" + flat_col, flat_col)
     for i in range(n):
         r = scale * (1.0 if i == 0 else 0.45 + rnd.random() * 0.25)
-        x, y = (0, 0) if i == 0 else ((rnd.random() - 0.5) * scale * 2.2, (rnd.random() - 0.5) * scale * 2.0)
+        x, y = (0, 0) if i == 0 else ((rnd.random() - 0.5) * min(scale * 2.2, 2.4), (rnd.random() - 0.5) * min(scale * 2.0, 1.4))  # the companions stay near, so the frame has room below the foot
         blob((x, y, r * 0.5), r, (1.1 + rnd.random() * 0.2, 0.95 + rnd.random() * 0.2, 0.7 + rnd.random() * 0.15), mat, seed=i * 7 + v * 13, rough=0.3, detail=detail, flat=True, rot=rnd.random() * 3)
 
 
