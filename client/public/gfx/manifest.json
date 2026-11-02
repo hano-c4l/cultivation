@@ -1,5 +1,5 @@
 {
-  "version": 128,
+  "version": 134,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -205,21 +205,9 @@
       "image": "m_zebra.webp",
       "data": "m_zebra.json"
     },
-    "dl_f_robe_belt": {
-      "image": "dl_f_robe_belt.webp",
-      "data": "dl_f_robe_belt.json"
-    },
     "dl_f_robe_body": {
       "image": "dl_f_robe_body.webp",
       "data": "dl_f_robe_body.json"
-    },
-    "dl_f_robe_boots": {
-      "image": "dl_f_robe_boots.webp",
-      "data": "dl_f_robe_boots.json"
-    },
-    "dl_f_robe_bracer": {
-      "image": "dl_f_robe_bracer.webp",
-      "data": "dl_f_robe_bracer.json"
     },
     "dl_f_robe_h0": {
       "image": "dl_f_robe_h0.webp",
@@ -297,21 +285,9 @@
       "image": "props.webp",
       "data": "props.json"
     },
-    "dl_m_robe_belt": {
-      "image": "dl_m_robe_belt.webp",
-      "data": "dl_m_robe_belt.json"
-    },
     "dl_m_robe_body": {
       "image": "dl_m_robe_body.webp",
       "data": "dl_m_robe_body.json"
-    },
-    "dl_m_robe_boots": {
-      "image": "dl_m_robe_boots.webp",
-      "data": "dl_m_robe_boots.json"
-    },
-    "dl_m_robe_bracer": {
-      "image": "dl_m_robe_bracer.webp",
-      "data": "dl_m_robe_bracer.json"
     },
     "dl_m_robe_h0": {
       "image": "dl_m_robe_h0.webp",
@@ -385,21 +361,9 @@
       "image": "dl_m_robe_w_thuong.webp",
       "data": "dl_m_robe_w_thuong.json"
     },
-    "dl_f_tunic_belt": {
-      "image": "dl_f_tunic_belt.webp",
-      "data": "dl_f_tunic_belt.json"
-    },
     "dl_f_tunic_body": {
       "image": "dl_f_tunic_body.webp",
       "data": "dl_f_tunic_body.json"
-    },
-    "dl_f_tunic_boots": {
-      "image": "dl_f_tunic_boots.webp",
-      "data": "dl_f_tunic_boots.json"
-    },
-    "dl_f_tunic_bracer": {
-      "image": "dl_f_tunic_bracer.webp",
-      "data": "dl_f_tunic_bracer.json"
     },
     "dl_f_tunic_h0": {
       "image": "dl_f_tunic_h0.webp",
@@ -473,21 +437,9 @@
       "image": "dl_f_tunic_w_thuong.webp",
       "data": "dl_f_tunic_w_thuong.json"
     },
-    "dl_f_grand_belt": {
-      "image": "dl_f_grand_belt.webp",
-      "data": "dl_f_grand_belt.json"
-    },
     "dl_f_grand_body": {
       "image": "dl_f_grand_body.webp",
       "data": "dl_f_grand_body.json"
-    },
-    "dl_f_grand_boots": {
-      "image": "dl_f_grand_boots.webp",
-      "data": "dl_f_grand_boots.json"
-    },
-    "dl_f_grand_bracer": {
-      "image": "dl_f_grand_bracer.webp",
-      "data": "dl_f_grand_bracer.json"
     },
     "dl_f_grand_h0": {
       "image": "dl_f_grand_h0.webp",
@@ -561,21 +513,9 @@
       "image": "dl_f_grand_w_thuong.webp",
       "data": "dl_f_grand_w_thuong.json"
     },
-    "dl_m_tunic_belt": {
-      "image": "dl_m_tunic_belt.webp",
-      "data": "dl_m_tunic_belt.json"
-    },
     "dl_m_tunic_body": {
       "image": "dl_m_tunic_body.webp",
       "data": "dl_m_tunic_body.json"
-    },
-    "dl_m_tunic_boots": {
-      "image": "dl_m_tunic_boots.webp",
-      "data": "dl_m_tunic_boots.json"
-    },
-    "dl_m_tunic_bracer": {
-      "image": "dl_m_tunic_bracer.webp",
-      "data": "dl_m_tunic_bracer.json"
     },
     "dl_m_tunic_h0": {
       "image": "dl_m_tunic_h0.webp",
@@ -649,21 +589,9 @@
       "image": "dl_m_tunic_w_thuong.webp",
       "data": "dl_m_tunic_w_thuong.json"
     },
-    "dl_m_grand_belt": {
-      "image": "dl_m_grand_belt.webp",
-      "data": "dl_m_grand_belt.json"
-    },
     "dl_m_grand_body": {
       "image": "dl_m_grand_body.webp",
       "data": "dl_m_grand_body.json"
-    },
-    "dl_m_grand_boots": {
-      "image": "dl_m_grand_boots.webp",
-      "data": "dl_m_grand_boots.json"
-    },
-    "dl_m_grand_bracer": {
-      "image": "dl_m_grand_bracer.webp",
-      "data": "dl_m_grand_bracer.json"
     },
     "dl_m_grand_h0": {
       "image": "dl_m_grand_h0.webp",
@@ -2953,179 +2881,19 @@
         }
       }
     },
-    "doll.female.robe.belt": {
-      "atlas": "dl_f_robe_belt",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 55,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
     "doll.female.robe.body": {
       "atlas": "dl_f_robe_body",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 88,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.female.robe.boots": {
-      "atlas": "dl_f_robe_boots",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 11,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.female.robe.bracer": {
-      "atlas": "dl_f_robe_bracer",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 65,
+      "head": 172,
+      "headSit": 137,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3172,14 +2940,16 @@
     "doll.female.robe.h0": {
       "atlas": "dl_f_robe_h0",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
+      "head": 175,
+      "headSit": 139,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3226,14 +2996,16 @@
     "doll.female.robe.h1": {
       "atlas": "dl_f_robe_h1",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
+      "head": 175,
+      "headSit": 139,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3280,14 +3052,16 @@
     "doll.female.robe.h2": {
       "atlas": "dl_f_robe_h2",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
+      "head": 175,
+      "headSit": 139,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3334,14 +3108,16 @@
     "doll.female.robe.h3": {
       "atlas": "dl_f_robe_h3",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
+      "head": 174,
+      "headSit": 138,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3388,14 +3164,16 @@
     "doll.female.robe.h4": {
       "atlas": "dl_f_robe_h4",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 91,
+      "head": 179,
+      "headSit": 143,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3442,14 +3220,16 @@
     "doll.female.robe.h5": {
       "atlas": "dl_f_robe_h5",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 79,
+      "head": 155,
+      "headSit": 119,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3496,14 +3276,16 @@
     "doll.female.robe.h6": {
       "atlas": "dl_f_robe_h6",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 88,
+      "head": 169,
+      "headSit": 134,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3550,14 +3332,16 @@
     "doll.female.robe.h7": {
       "atlas": "dl_f_robe_h7",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 88,
+      "head": 172,
+      "headSit": 137,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3604,14 +3388,16 @@
     "doll.female.robe.h8": {
       "atlas": "dl_f_robe_h8",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
+      "head": 177,
+      "headSit": 141,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3658,14 +3444,16 @@
     "doll.female.robe.h9": {
       "atlas": "dl_f_robe_h9",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
+      "head": 180,
+      "headSit": 144,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3712,14 +3500,16 @@
     "doll.female.robe.hair": {
       "atlas": "dl_f_robe_hair",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
+      "head": 173,
+      "headSit": 138,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3766,14 +3556,16 @@
     "doll.female.robe.hairhat": {
       "atlas": "dl_f_robe_hairhat",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
+      "head": 173,
+      "headSit": 138,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3820,14 +3612,16 @@
     "doll.female.robe.robe": {
       "atlas": "dl_f_robe_robe",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 78,
+      "head": 153,
+      "headSit": 117,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3874,14 +3668,16 @@
     "doll.female.robe.w_cung": {
       "atlas": "dl_f_robe_w_cung",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 69,
+      "head": 134,
+      "headSit": 91,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3928,14 +3724,16 @@
     "doll.female.robe.w_dao": {
       "atlas": "dl_f_robe_w_dao",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 63,
+      "head": 132,
+      "headSit": 130,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -3982,14 +3780,16 @@
     "doll.female.robe.w_kiem": {
       "atlas": "dl_f_robe_w_kiem",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
+      "head": 129,
+      "headSit": 127,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4036,14 +3836,16 @@
     "doll.female.robe.w_riu": {
       "atlas": "dl_f_robe_w_riu",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 58,
+      "head": 114,
+      "headSit": 114,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4090,69 +3892,16 @@
     "doll.female.robe.w_thuong": {
       "atlas": "dl_f_robe_w_thuong",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 59,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.male.robe.belt": {
-      "atlas": "dl_m_robe_belt",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 55,
-      "headSit": 43,
+      "head": 128,
+      "headSit": 85,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4199,125 +3948,16 @@
     "doll.male.robe.body": {
       "atlas": "dl_m_robe_body",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 78,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.male.robe.boots": {
-      "atlas": "dl_m_robe_boots",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 6,
-      "headSit": 18,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.male.robe.bracer": {
-      "atlas": "dl_m_robe_bracer",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 69,
-      "headSit": 54,
+      "head": 176,
+      "headSit": 140,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4364,15 +4004,16 @@
     "doll.male.robe.h0": {
       "atlas": "dl_m_robe_h0",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 93,
-      "headSit": 82,
+      "head": 182,
+      "headSit": 146,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4419,15 +4060,16 @@
     "doll.male.robe.h1": {
       "atlas": "dl_m_robe_h1",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 91,
-      "headSit": 80,
+      "head": 180,
+      "headSit": 144,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4474,15 +4116,16 @@
     "doll.male.robe.h2": {
       "atlas": "dl_m_robe_h2",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 81,
+      "head": 179,
+      "headSit": 144,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4529,15 +4172,16 @@
     "doll.male.robe.h3": {
       "atlas": "dl_m_robe_h3",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 79,
+      "head": 179,
+      "headSit": 143,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4584,15 +4228,16 @@
     "doll.male.robe.h4": {
       "atlas": "dl_m_robe_h4",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 94,
-      "headSit": 81,
+      "head": 184,
+      "headSit": 148,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4639,15 +4284,16 @@
     "doll.male.robe.h5": {
       "atlas": "dl_m_robe_h5",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 84,
-      "headSit": 71,
+      "head": 163,
+      "headSit": 127,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4694,15 +4340,16 @@
     "doll.male.robe.h6": {
       "atlas": "dl_m_robe_h6",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 79,
+      "head": 175,
+      "headSit": 140,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4749,15 +4396,16 @@
     "doll.male.robe.h7": {
       "atlas": "dl_m_robe_h7",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 91,
-      "headSit": 80,
+      "head": 177,
+      "headSit": 141,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4804,15 +4452,16 @@
     "doll.male.robe.h8": {
       "atlas": "dl_m_robe_h8",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 80,
+      "head": 181,
+      "headSit": 146,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4859,15 +4508,16 @@
     "doll.male.robe.h9": {
       "atlas": "dl_m_robe_h9",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 94,
-      "headSit": 80,
+      "head": 185,
+      "headSit": 149,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4914,15 +4564,16 @@
     "doll.male.robe.hair": {
       "atlas": "dl_m_robe_hair",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 80,
+      "head": 179,
+      "headSit": 144,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -4969,15 +4620,16 @@
     "doll.male.robe.hairhat": {
       "atlas": "dl_m_robe_hairhat",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 80,
+      "head": 179,
+      "headSit": 144,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5024,15 +4676,16 @@
     "doll.male.robe.robe": {
       "atlas": "dl_m_robe_robe",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 83,
-      "headSit": 72,
+      "head": 163,
+      "headSit": 127,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5079,15 +4732,16 @@
     "doll.male.robe.w_cung": {
       "atlas": "dl_m_robe_w_cung",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 69,
-      "headSit": 51,
+      "head": 134,
+      "headSit": 92,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5134,15 +4788,16 @@
     "doll.male.robe.w_dao": {
       "atlas": "dl_m_robe_w_dao",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 63,
-      "headSit": 62,
+      "head": 134,
+      "headSit": 132,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5189,15 +4844,16 @@
     "doll.male.robe.w_kiem": {
       "atlas": "dl_m_robe_w_kiem",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
-      "headSit": 58,
+      "head": 131,
+      "headSit": 128,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5244,15 +4900,16 @@
     "doll.male.robe.w_riu": {
       "atlas": "dl_m_robe_w_riu",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
-      "headSit": 55,
+      "head": 118,
+      "headSit": 117,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5299,70 +4956,16 @@
     "doll.male.robe.w_thuong": {
       "atlas": "dl_m_robe_w_thuong",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 54,
-      "headSit": 57,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.female.tunic.belt": {
-      "atlas": "dl_f_tunic_belt",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 55,
-      "headSit": 40,
+      "head": 129,
+      "headSit": 85,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5409,125 +5012,16 @@
     "doll.female.tunic.body": {
       "atlas": "dl_f_tunic_body",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 88,
-      "headSit": 76,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.female.tunic.boots": {
-      "atlas": "dl_f_tunic_boots",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 28,
-      "headSit": 28,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.female.tunic.bracer": {
-      "atlas": "dl_f_tunic_bracer",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 60,
-      "headSit": 48,
+      "head": 172,
+      "headSit": 121,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5574,15 +5068,16 @@
     "doll.female.tunic.h0": {
       "atlas": "dl_f_tunic_h0",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 78,
+      "head": 175,
+      "headSit": 123,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5629,15 +5124,16 @@
     "doll.female.tunic.h1": {
       "atlas": "dl_f_tunic_h1",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
-      "headSit": 77,
+      "head": 175,
+      "headSit": 123,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5684,15 +5180,16 @@
     "doll.female.tunic.h2": {
       "atlas": "dl_f_tunic_h2",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 78,
+      "head": 175,
+      "headSit": 123,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5739,15 +5236,16 @@
     "doll.female.tunic.h3": {
       "atlas": "dl_f_tunic_h3",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
-      "headSit": 76,
+      "head": 174,
+      "headSit": 122,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5794,15 +5292,16 @@
     "doll.female.tunic.h4": {
       "atlas": "dl_f_tunic_h4",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 91,
-      "headSit": 77,
+      "head": 179,
+      "headSit": 127,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5849,15 +5348,16 @@
     "doll.female.tunic.h5": {
       "atlas": "dl_f_tunic_h5",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 79,
-      "headSit": 68,
+      "head": 155,
+      "headSit": 103,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5904,15 +5404,16 @@
     "doll.female.tunic.h6": {
       "atlas": "dl_f_tunic_h6",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 88,
-      "headSit": 76,
+      "head": 169,
+      "headSit": 117,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -5959,15 +5460,16 @@
     "doll.female.tunic.h7": {
       "atlas": "dl_f_tunic_h7",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 88,
-      "headSit": 77,
+      "head": 172,
+      "headSit": 120,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6014,15 +5516,16 @@
     "doll.female.tunic.h8": {
       "atlas": "dl_f_tunic_h8",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 77,
+      "head": 177,
+      "headSit": 125,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6069,15 +5572,16 @@
     "doll.female.tunic.h9": {
       "atlas": "dl_f_tunic_h9",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 77,
+      "head": 180,
+      "headSit": 128,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6124,15 +5628,16 @@
     "doll.female.tunic.hair": {
       "atlas": "dl_f_tunic_hair",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
-      "headSit": 77,
+      "head": 173,
+      "headSit": 122,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6179,15 +5684,16 @@
     "doll.female.tunic.hairhat": {
       "atlas": "dl_f_tunic_hairhat",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
-      "headSit": 77,
+      "head": 173,
+      "headSit": 122,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6234,15 +5740,16 @@
     "doll.female.tunic.robe": {
       "atlas": "dl_f_tunic_robe",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 78,
-      "headSit": 67,
+      "head": 153,
+      "headSit": 101,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6289,15 +5796,16 @@
     "doll.female.tunic.w_cung": {
       "atlas": "dl_f_tunic_w_cung",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 69,
-      "headSit": 51,
+      "head": 134,
+      "headSit": 75,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6344,15 +5852,16 @@
     "doll.female.tunic.w_dao": {
       "atlas": "dl_f_tunic_w_dao",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 63,
-      "headSit": 61,
+      "head": 132,
+      "headSit": 114,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6399,15 +5908,16 @@
     "doll.female.tunic.w_kiem": {
       "atlas": "dl_f_tunic_w_kiem",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
-      "headSit": 57,
+      "head": 129,
+      "headSit": 111,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6454,15 +5964,16 @@
     "doll.female.tunic.w_riu": {
       "atlas": "dl_f_tunic_w_riu",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 58,
-      "headSit": 55,
+      "head": 114,
+      "headSit": 98,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6509,70 +6020,16 @@
     "doll.female.tunic.w_thuong": {
       "atlas": "dl_f_tunic_w_thuong",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
-      "headSit": 56,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.female.grand.belt": {
-      "atlas": "dl_f_grand_belt",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 55,
-      "headSit": 40,
+      "head": 128,
+      "headSit": 69,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6619,124 +6076,16 @@
     "doll.female.grand.body": {
       "atlas": "dl_f_grand_body",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 88,
-      "headSit": 76,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.female.grand.boots": {
-      "atlas": "dl_f_grand_boots",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "headSit": 18,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.female.grand.bracer": {
-      "atlas": "dl_f_grand_bracer",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 67,
-      "headSit": 54,
+      "head": 172,
+      "headSit": 144,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6783,15 +6132,16 @@
     "doll.female.grand.h0": {
       "atlas": "dl_f_grand_h0",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 78,
+      "head": 175,
+      "headSit": 146,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6838,15 +6188,16 @@
     "doll.female.grand.h1": {
       "atlas": "dl_f_grand_h1",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
-      "headSit": 77,
+      "head": 175,
+      "headSit": 146,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6893,15 +6244,16 @@
     "doll.female.grand.h2": {
       "atlas": "dl_f_grand_h2",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 78,
+      "head": 175,
+      "headSit": 146,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -6948,15 +6300,16 @@
     "doll.female.grand.h3": {
       "atlas": "dl_f_grand_h3",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
-      "headSit": 76,
+      "head": 174,
+      "headSit": 145,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7003,15 +6356,16 @@
     "doll.female.grand.h4": {
       "atlas": "dl_f_grand_h4",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 91,
-      "headSit": 77,
+      "head": 179,
+      "headSit": 150,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7058,15 +6412,16 @@
     "doll.female.grand.h5": {
       "atlas": "dl_f_grand_h5",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 79,
-      "headSit": 68,
+      "head": 155,
+      "headSit": 126,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7113,15 +6468,16 @@
     "doll.female.grand.h6": {
       "atlas": "dl_f_grand_h6",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 88,
-      "headSit": 76,
+      "head": 169,
+      "headSit": 141,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7168,15 +6524,16 @@
     "doll.female.grand.h7": {
       "atlas": "dl_f_grand_h7",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 88,
-      "headSit": 77,
+      "head": 172,
+      "headSit": 143,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7223,15 +6580,16 @@
     "doll.female.grand.h8": {
       "atlas": "dl_f_grand_h8",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 77,
+      "head": 177,
+      "headSit": 148,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7278,15 +6636,16 @@
     "doll.female.grand.h9": {
       "atlas": "dl_f_grand_h9",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 77,
+      "head": 180,
+      "headSit": 151,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7333,15 +6692,16 @@
     "doll.female.grand.hair": {
       "atlas": "dl_f_grand_hair",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
-      "headSit": 77,
+      "head": 173,
+      "headSit": 145,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7388,15 +6748,16 @@
     "doll.female.grand.hairhat": {
       "atlas": "dl_f_grand_hairhat",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 89,
-      "headSit": 77,
+      "head": 173,
+      "headSit": 145,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7443,15 +6804,16 @@
     "doll.female.grand.robe": {
       "atlas": "dl_f_grand_robe",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 78,
-      "headSit": 67,
+      "head": 153,
+      "headSit": 124,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7498,15 +6860,16 @@
     "doll.female.grand.w_cung": {
       "atlas": "dl_f_grand_w_cung",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 69,
-      "headSit": 48,
+      "head": 134,
+      "headSit": 98,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7553,15 +6916,16 @@
     "doll.female.grand.w_dao": {
       "atlas": "dl_f_grand_w_dao",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 63,
-      "headSit": 61,
+      "head": 132,
+      "headSit": 137,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7608,15 +6972,16 @@
     "doll.female.grand.w_kiem": {
       "atlas": "dl_f_grand_w_kiem",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 59,
-      "headSit": 57,
+      "head": 129,
+      "headSit": 134,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7663,15 +7028,16 @@
     "doll.female.grand.w_riu": {
       "atlas": "dl_f_grand_w_riu",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 58,
-      "headSit": 55,
+      "head": 114,
+      "headSit": 121,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7718,70 +7084,16 @@
     "doll.female.grand.w_thuong": {
       "atlas": "dl_f_grand_w_thuong",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 52,
-      "headSit": 56,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.male.tunic.belt": {
-      "atlas": "dl_m_tunic_belt",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 55,
-      "headSit": 43,
+      "head": 128,
+      "headSit": 92,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7828,125 +7140,16 @@
     "doll.male.tunic.body": {
       "atlas": "dl_m_tunic_body",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 78,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.male.tunic.boots": {
-      "atlas": "dl_m_tunic_boots",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 27,
-      "headSit": 29,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.male.tunic.bracer": {
-      "atlas": "dl_m_tunic_bracer",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 63,
-      "headSit": 52,
+      "head": 176,
+      "headSit": 123,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -7993,15 +7196,16 @@
     "doll.male.tunic.h0": {
       "atlas": "dl_m_tunic_h0",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 93,
-      "headSit": 82,
+      "head": 182,
+      "headSit": 129,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8048,15 +7252,16 @@
     "doll.male.tunic.h1": {
       "atlas": "dl_m_tunic_h1",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 91,
-      "headSit": 80,
+      "head": 180,
+      "headSit": 127,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8103,15 +7308,16 @@
     "doll.male.tunic.h2": {
       "atlas": "dl_m_tunic_h2",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 81,
+      "head": 179,
+      "headSit": 127,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8158,15 +7364,16 @@
     "doll.male.tunic.h3": {
       "atlas": "dl_m_tunic_h3",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 79,
+      "head": 179,
+      "headSit": 126,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8213,15 +7420,16 @@
     "doll.male.tunic.h4": {
       "atlas": "dl_m_tunic_h4",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 94,
-      "headSit": 81,
+      "head": 184,
+      "headSit": 131,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8268,15 +7476,16 @@
     "doll.male.tunic.h5": {
       "atlas": "dl_m_tunic_h5",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 84,
-      "headSit": 71,
+      "head": 163,
+      "headSit": 111,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8323,15 +7532,16 @@
     "doll.male.tunic.h6": {
       "atlas": "dl_m_tunic_h6",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 79,
+      "head": 175,
+      "headSit": 123,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8378,15 +7588,16 @@
     "doll.male.tunic.h7": {
       "atlas": "dl_m_tunic_h7",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 91,
-      "headSit": 80,
+      "head": 177,
+      "headSit": 125,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8433,15 +7644,16 @@
     "doll.male.tunic.h8": {
       "atlas": "dl_m_tunic_h8",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 80,
+      "head": 181,
+      "headSit": 129,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8488,15 +7700,16 @@
     "doll.male.tunic.h9": {
       "atlas": "dl_m_tunic_h9",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 94,
-      "headSit": 80,
+      "head": 185,
+      "headSit": 132,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8543,15 +7756,16 @@
     "doll.male.tunic.hair": {
       "atlas": "dl_m_tunic_hair",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 80,
+      "head": 179,
+      "headSit": 127,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8598,15 +7812,16 @@
     "doll.male.tunic.hairhat": {
       "atlas": "dl_m_tunic_hairhat",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 80,
+      "head": 179,
+      "headSit": 127,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8653,15 +7868,16 @@
     "doll.male.tunic.robe": {
       "atlas": "dl_m_tunic_robe",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 83,
-      "headSit": 72,
+      "head": 163,
+      "headSit": 110,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8708,15 +7924,16 @@
     "doll.male.tunic.w_cung": {
       "atlas": "dl_m_tunic_w_cung",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 69,
-      "headSit": 53,
+      "head": 134,
+      "headSit": 76,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8763,15 +7980,16 @@
     "doll.male.tunic.w_dao": {
       "atlas": "dl_m_tunic_w_dao",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 63,
-      "headSit": 62,
+      "head": 134,
+      "headSit": 115,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8818,15 +8036,16 @@
     "doll.male.tunic.w_kiem": {
       "atlas": "dl_m_tunic_w_kiem",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
-      "headSit": 58,
+      "head": 131,
+      "headSit": 111,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8873,15 +8092,16 @@
     "doll.male.tunic.w_riu": {
       "atlas": "dl_m_tunic_w_riu",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
-      "headSit": 55,
+      "head": 118,
+      "headSit": 100,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -8928,70 +8148,16 @@
     "doll.male.tunic.w_thuong": {
       "atlas": "dl_m_tunic_w_thuong",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
-      "headSit": 57,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.male.grand.belt": {
-      "atlas": "dl_m_grand_belt",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 56,
-      "headSit": 44,
+      "head": 128,
+      "headSit": 68,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9038,124 +8204,16 @@
     "doll.male.grand.body": {
       "atlas": "dl_m_grand_body",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 79,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.male.grand.boots": {
-      "atlas": "dl_m_grand_boots",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "headSit": 17,
-      "anims": {
-        "idle": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        },
-        "run": {
-          "frames": 8,
-          "fps": 9,
-          "loop": true
-        },
-        "attack": {
-          "frames": 8,
-          "fps": 14,
-          "loop": false
-        },
-        "thrust": {
-          "frames": 6,
-          "fps": 5,
-          "loop": false
-        },
-        "cast": {
-          "frames": 6,
-          "fps": 10,
-          "loop": false
-        },
-        "hit": {
-          "frames": 3,
-          "fps": 6,
-          "loop": false
-        },
-        "die": {
-          "frames": 6,
-          "fps": 2,
-          "loop": false
-        },
-        "sit": {
-          "frames": 4,
-          "fps": 2,
-          "loop": true
-        }
-      }
-    },
-    "doll.male.grand.bracer": {
-      "atlas": "dl_m_grand_bracer",
-      "frame": {
-        "w": 128,
-        "h": 128
-      },
-      "anchor": {
-        "x": 64,
-        "y": 112
-      },
-      "head": 72,
-      "headSit": 59,
+      "head": 177,
+      "headSit": 147,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9202,15 +8260,16 @@
     "doll.male.grand.h0": {
       "atlas": "dl_m_grand_h0",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 93,
-      "headSit": 82,
+      "head": 184,
+      "headSit": 153,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9257,15 +8316,16 @@
     "doll.male.grand.h1": {
       "atlas": "dl_m_grand_h1",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 81,
+      "head": 182,
+      "headSit": 151,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9312,15 +8372,16 @@
     "doll.male.grand.h2": {
       "atlas": "dl_m_grand_h2",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 81,
+      "head": 181,
+      "headSit": 151,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9367,15 +8428,16 @@
     "doll.male.grand.h3": {
       "atlas": "dl_m_grand_h3",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 79,
+      "head": 181,
+      "headSit": 150,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9422,15 +8484,16 @@
     "doll.male.grand.h4": {
       "atlas": "dl_m_grand_h4",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 94,
-      "headSit": 81,
+      "head": 185,
+      "headSit": 155,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9477,15 +8540,16 @@
     "doll.male.grand.h5": {
       "atlas": "dl_m_grand_h5",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 84,
-      "headSit": 72,
+      "head": 165,
+      "headSit": 135,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9532,15 +8596,16 @@
     "doll.male.grand.h6": {
       "atlas": "dl_m_grand_h6",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 90,
-      "headSit": 79,
+      "head": 177,
+      "headSit": 147,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9587,15 +8652,16 @@
     "doll.male.grand.h7": {
       "atlas": "dl_m_grand_h7",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 91,
-      "headSit": 80,
+      "head": 179,
+      "headSit": 148,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9642,15 +8708,16 @@
     "doll.male.grand.h8": {
       "atlas": "dl_m_grand_h8",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 93,
-      "headSit": 80,
+      "head": 183,
+      "headSit": 153,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9697,15 +8764,16 @@
     "doll.male.grand.h9": {
       "atlas": "dl_m_grand_h9",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 95,
-      "headSit": 80,
+      "head": 186,
+      "headSit": 156,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9752,15 +8820,16 @@
     "doll.male.grand.hair": {
       "atlas": "dl_m_grand_hair",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 80,
+      "head": 181,
+      "headSit": 151,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9807,15 +8876,16 @@
     "doll.male.grand.hairhat": {
       "atlas": "dl_m_grand_hairhat",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 92,
-      "headSit": 80,
+      "head": 181,
+      "headSit": 151,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9862,15 +8932,16 @@
     "doll.male.grand.robe": {
       "atlas": "dl_m_grand_robe",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 84,
-      "headSit": 72,
+      "head": 165,
+      "headSit": 134,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9917,15 +8988,16 @@
     "doll.male.grand.w_cung": {
       "atlas": "dl_m_grand_w_cung",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 67,
-      "headSit": 53,
+      "head": 130,
+      "headSit": 91,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -9972,15 +9044,16 @@
     "doll.male.grand.w_dao": {
       "atlas": "dl_m_grand_w_dao",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 64,
-      "headSit": 62,
+      "head": 136,
+      "headSit": 139,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -10027,15 +9100,16 @@
     "doll.male.grand.w_kiem": {
       "atlas": "dl_m_grand_w_kiem",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
-      "headSit": 58,
+      "head": 133,
+      "headSit": 135,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -10082,15 +9156,16 @@
     "doll.male.grand.w_riu": {
       "atlas": "dl_m_grand_w_riu",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 60,
-      "headSit": 56,
+      "head": 120,
+      "headSit": 124,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,
@@ -10137,15 +9212,16 @@
     "doll.male.grand.w_thuong": {
       "atlas": "dl_m_grand_w_thuong",
       "frame": {
-        "w": 128,
-        "h": 128
+        "w": 256,
+        "h": 256
       },
       "anchor": {
-        "x": 64,
-        "y": 112
+        "x": 128,
+        "y": 224
       },
-      "head": 55,
-      "headSit": 58,
+      "head": 131,
+      "headSit": 92,
+      "scale": 0.5,
       "anims": {
         "idle": {
           "frames": 4,

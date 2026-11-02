@@ -116,7 +116,8 @@ describe("the render config", () => {
   it("agrees with the shipped manifest about the frame box and the feet anchor, for every sprite", () => {
     const sprites = (shipped as { sprites: Record<string, { frame: { w: number; h: number }; anchor: { x: number; y: number } }> }).sprites;
     // Two frame boxes exist: the original 96 px one and, since 4j (the bigger figure), a 128 px one with the same rule (the feet 16 px above the bottom, in the middle).
-    const boxes = [{ frame: renderConfig.frame, anchor: { x: renderConfig.anchor[0], y: renderConfig.anchor[1] } }, { frame: 128, anchor: { x: 64, y: 112 } }];
+    // The paper dolls are rendered at twice the pixel density (a 256 px box, the feet 32 px above the bottom, drawn at scale 0.5).
+    const boxes = [{ frame: renderConfig.frame, anchor: { x: renderConfig.anchor[0], y: renderConfig.anchor[1] } }, { frame: 128, anchor: { x: 64, y: 112 } }, { frame: 256, anchor: { x: 128, y: 224 } }];
     for (const [key, sprite] of Object.entries(sprites)) {
       const box = boxes.find((b) => b.frame === sprite.frame.w);
       expect(box, key).toBeDefined();
