@@ -518,7 +518,7 @@ def main():
     pal = cfg["palette"]
     levels = cfg["toonLevels"]
 
-    def toon(mat, rgb, vertex=False, image=None):
+    def toon(mat, rgb, vertex=False, image=None, pattern=None):
         mat.use_nodes = True
         nt = mat.node_tree
         nt.nodes.clear()
@@ -567,6 +567,33 @@ def main():
         nt.links.new(diff.outputs["BSDF"], s2r.inputs["Shader"])
         nt.links.new(s2r.outputs["Color"], ramp.inputs["Fac"])
         nt.links.new(ramp.outputs["Color"], mix.inputs[6])
+        shaded = mix.outputs[2]
+        if pattern:
+            # woven cloth: soft bands (folds, a brocade) multiply the colour; `scale` bands per metre along x, `strength` how dark the dark bands get, `angle` turns them (degrees, about the vertical)
+            tc = nt.nodes.new("ShaderNodeTexCoord")
+            mp = nt.nodes.new("ShaderNodeMapping")
+            mp.inputs["Scale"].default_value = (pattern.get("scale", 24.0), pattern.get("scaleY", pattern.get("scale", 24.0)), pattern.get("scaleZ", 1.0))
+            mp.inputs["Rotation"].default_value = (0.0, 0.0, math.radians(pattern.get("angle", 0.0)))
+            wave = nt.nodes.new("ShaderNodeTexWave")
+            wave.wave_type = pattern.get("type", "BANDS")
+            wave.bands_direction = "X"
+            wave.wave_profile = pattern.get("profile", "SIN")
+            wave.inputs["Scale"].default_value = 1.0
+            wave.inputs["Distortion"].default_value = pattern.get("distortion", 2.0)
+            wave.inputs["Detail"].default_value = 1.0
+            pr = nt.nodes.new("ShaderNodeValToRGB")
+            pr.color_ramp.elements[0].color = (1 - pattern.get("strength", 0.12),) * 3 + (1,)
+            pr.color_ramp.elements[1].color = (1, 1, 1, 1)
+            pat = nt.nodes.new("ShaderNodeMix")
+            pat.data_type = "RGBA"
+            pat.blend_type = "MULTIPLY"
+            pat.inputs[0].default_value = 1.0
+            nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+            nt.links.new(mp.outputs["Vector"], wave.inputs["Vector"])
+            nt.links.new(wave.outputs["Fac"], pr.inputs["Fac"])
+            nt.links.new(mix.outputs[2], pat.inputs[6])
+            nt.links.new(pr.outputs["Color"], pat.inputs[7])
+            shaded = pat.outputs[2]
         mist = cfg.get("groundInk")  # ink-wash: the colour fades toward ink near the ground, like mist soaking the hem
         if mist:
             geo = nt.nodes.new("ShaderNodeNewGeometry")
@@ -582,10 +609,10 @@ def main():
             nt.links.new(geo.outputs["Position"], sep.inputs["Vector"])
             nt.links.new(sep.outputs["Z"], rng.inputs["Value"])
             nt.links.new(rng.outputs["Result"], fade.inputs[0])
-            nt.links.new(mix.outputs[2], fade.inputs[6])
+            nt.links.new(shaded, fade.inputs[6])
             nt.links.new(fade.outputs[2], emit.inputs["Color"])
         else:
-            nt.links.new(mix.outputs[2], emit.inputs["Color"])
+            nt.links.new(shaded, emit.inputs["Color"])
         nt.links.new(emit.outputs["Emission"], out.inputs["Surface"])
 
     mats = cfg.get("materials", {})
@@ -615,7 +642,7 @@ def main():
                         image = nd.image
                         break
                 check(image is not None, "material %s has no BaseColor texture" % m.name)
-            toon(m, rgb, bool(isinstance(spec, dict) and spec.get("vertexColor")), image)
+            toon(m, rgb, bool(isinstance(spec, dict) and spec.get("vertexColor")), image, spec.get("pattern") if isinstance(spec, dict) else None)
     outline = bpy.data.materials.new("outline")
     outline.use_nodes = True
     nt = outline.node_tree

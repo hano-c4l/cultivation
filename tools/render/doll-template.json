@@ -1,14 +1,14 @@
 {
   "note": "The paper doll render (4j): every layer of one figure in one Blender run. tools/render/render-dolls.mjs adds the gender (body, hair, skin colours) and the style (the silhouette of the robe: doll-styles.json) to this template.",
-  "frame": 128,
+  "frame": 256,
   "anchor": [
-    64,
-    112
+    128,
+    224
   ],
   "figureScale": 1.2,
-  "headScale": 1.25,
-  "outlinePx": 1.8,
-  "atlasMaxPx": 2048,
+  "headScale": 1.0,
+  "outlinePx": 2.2,
+  "atlasMaxPx": 4096,
   "toonLevels": [
     0.7,
     0.9,
@@ -67,27 +67,41 @@
         1.0,
         1.0,
         1.0
-      ]
+      ],
+      "pattern": {
+        "scale": 11,
+        "scaleY": 3,
+        "angle": 0,
+        "strength": 0.15,
+        "distortion": 3.5
+      }
     },
     "XianSleeve": {
       "color": [
         0.92,
         0.92,
         0.92
-      ]
+      ],
+      "pattern": {
+        "scale": 9,
+        "scaleY": 3,
+        "angle": 20,
+        "strength": 0.14,
+        "distortion": 3.0
+      }
     },
     "XianTrim": {
       "color": [
-        0.5,
-        0.5,
-        0.5
+        0.3,
+        0.3,
+        0.3
       ]
     },
     "XianSash": {
       "color": [
-        1.0,
-        1.0,
-        1.0
+        0.42,
+        0.42,
+        0.42
       ]
     },
     "GenLegwear": {
@@ -379,38 +393,39 @@
       "frames": 4,
       "loop": true,
       "pose": {
-        "hipsDrop": 0.62,
+        "hipsDrop": 0.6,
         "sideBone": "thigh_{s}",
         "bones": {
           "thigh_{s}": [
-            0.62,
-            0.78,
-            -0.05
+            0.5,
+            0.85,
+            -0.1
           ],
           "calf_{s}": [
-            -0.35,
-            -0.93,
-            -0.05
+            -0.5,
+            -0.85,
+            -0.1
           ],
           "foot_{s}": [
-            0.25,
-            -0.9,
+            0.0,
+            -0.95,
             0.0
           ],
           "upperarm_{s}": [
-            0.1,
-            0.35,
-            -0.93
+            0.0,
+            0.4,
+            -0.92
           ],
           "lowerarm_{s}": [
-            0.75,
-            0.2,
-            -0.6
+            0.55,
+            0.45,
+            -0.7
           ]
         }
       }
     }
   },
   "weaponSet": "weapons.json",
-  "weaponLengthScale": 1.41
+  "weaponLengthScale": 1.41,
+  "pixelScale": 2
 }
