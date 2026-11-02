@@ -69,11 +69,13 @@
         1.0
       ],
       "pattern": {
-        "scale": 11,
-        "scaleY": 3,
+        "type": "RINGS",
+        "scale": 6,
+        "scaleY": 6,
+        "scaleZ": 6,
         "angle": 0,
-        "strength": 0.15,
-        "distortion": 3.5
+        "strength": 0.16,
+        "distortion": 8
       }
     },
     "XianSleeve": {
@@ -165,7 +167,9 @@
     "hat": "GenHat",
     "scale": 1.0,
     "hemZ": 0.16,
-    "hatTrim": "GenHatTrim"
+    "hatTrim": "GenHatTrim",
+    "skirtLeg": 0.35,
+    "hemBand": 0.08
   },
   "passes": [
     {
@@ -397,17 +401,17 @@
         "sideBone": "thigh_{s}",
         "bones": {
           "thigh_{s}": [
-            0.5,
-            0.85,
-            -0.1
+            0.8,
+            0.55,
+            -0.05
           ],
           "calf_{s}": [
-            -0.5,
-            -0.85,
-            -0.1
+            -0.35,
+            -0.93,
+            0.0
           ],
           "foot_{s}": [
-            0.0,
+            -0.2,
             -0.95,
             0.0
           ],

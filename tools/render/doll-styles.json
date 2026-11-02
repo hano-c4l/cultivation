@@ -37,7 +37,7 @@
       "hemZ": 0.16,
       "flare0": 0.15,
       "flare1": 0.4,
-      "cuff": 0.12,
+      "cuff": 0.05,
       "bootHeight": 0.2
     },
     "tunic": {
@@ -72,7 +72,7 @@
       "hemZ": 0.08,
       "flare0": 0.17,
       "flare1": 0.52,
-      "cuff": 0.13,
+      "cuff": 0.06,
       "bootHeight": 0.18
     }
   }

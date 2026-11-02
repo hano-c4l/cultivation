@@ -7,6 +7,9 @@ Consult the advisor at these three points:
 ## Subagents
 - Use `search` for repo maps, `grep` for call sites, and `docs` for API documentation. All three are read-only Haiku agents.
 
+## Background tasks
+- Before reporting work as done, check for background tasks you started (dev servers, `wrangler dev`, render chains, watchers). If one is not needed for what comes next, stop it, and say in the report which ones you stopped and which you kept (with the reason).
+
 ## Git, branch and deploy workflow
 - Repo: https://github.com/hano-c4l/cultivation.git (remote `origin`).
 - `main`: production. Deploying the production worker (`cultivation`, D1 `cultivation-db`) happens only from `main`.

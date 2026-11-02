@@ -162,8 +162,8 @@ def add_generated(rig, spec):
         zs = [waist - (waist - hem) * i / 9 for i in range(10)]
         f0, f1 = spec.get("flare0", 0.19), spec.get("flare1", 0.40)
         flare = lambda t: f0 * k + (f1 * k - f0 * k) * (t ** spec.get("flareCurve", 1.0))
-        lathe("XianSkirt", robe, zs, flare, lambda t: flare(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, 0.62))
-        lathe("XianHem", trim, [hem + 0.04, hem - 0.005], lambda t: f1 * k + 0.012, lambda t: (f1 * k + 0.012) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, 1.0, 0.62))
+        lathe("XianSkirt", robe, zs, flare, lambda t: flare(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, spec.get("skirtLeg", 0.62)))
+        lathe("XianHem", trim, [hem + spec.get("hemBand", 0.04), hem - 0.005], lambda t: f1 * k + 0.012, lambda t: (f1 * k + 0.012) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, 1.0, spec.get("skirtLeg", 0.62)))
     if "top" in parts:
         top_z = head("neck_01").z - 0.02
         zs = [waist - 0.02 + (top_z - waist + 0.02) * i / 7 for i in range(8)]
@@ -198,7 +198,7 @@ def add_generated(rig, spec):
             xs = [sx * (0.10 + (end_x - 0.10) * i / 8) for i in range(9)]
             axis = [(x, ua.y, ua.z) for x in xs]
             cuff_w = spec.get("cuff", 0.07)
-            ru = lambda t: (0.075 - 0.012 * t + cuff_w * max(0.0, (t - 0.7) / 0.3) ** 1.6) * k
+            ru = lambda t: (0.05 + 0.024 * min(1.0, t * 2.0) - 0.008 * t + cuff_w * max(0.0, (t - 0.7) / 0.3) ** 1.6) * k  # thin at the shoulder (no ridge on the top), wide only toward the cuff
             elbow = abs(la.x)
 
             def w_arm(x, t, side=side, elbow=elbow):
