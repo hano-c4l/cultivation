@@ -152,6 +152,8 @@ import { initPerf } from "./perf-ui";
 import { MapLayer } from "./map-layer";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
+/** The default camera zoom: below 1 the window shows more of the world (the figures are drawn at a higher resolution than they show, so they stay sharp). */
+const VIEW_ZOOM = 0.75;
 
 /** The element icon in front of a monster's name: the same colours as the element dots on gear and skills (index.html .elem-*). */
 const ELEMENT_DOT: Record<string, number> = { kim: 0xfbc02d, moc: 0x43a047, thuy: 0x1e88e5, hoa: 0xe53935, tho: 0x8d6e63, loi: 0x7e57c2, bang: 0x4dd0e1, phong: 0x80cbc4 };
@@ -550,6 +552,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     const camera = this.cameras.main;
+    camera.setZoom(this.viewZoom());
     const center = toScreen(this.map.spawn[0] + 0.5, this.map.spawn[1] + 0.5);
     this.applyCameraBounds();
     camera.centerOn(center.x, center.y);
@@ -812,6 +815,12 @@ export class GameScene extends Phaser.Scene {
    * Keeps the view inside the map's rectangle so the black beyond it is never shown. A map smaller than the window (in either direction) can
    * not fill it, so the bounds grow to the window around the map's centre and the map sits in the middle.
    */
+  /** How much of the world the window shows: the backing pixels per CSS pixel (main.ts) times `?zoom=` (below 1 shows more; default VIEW_ZOOM). */
+  private viewZoom(): number {
+    const z = Number(new URLSearchParams(location.search).get("zoom"));
+    return (Number(this.registry.get("dpr")) || 1) * (z > 0.2 && z < 3 ? z : VIEW_ZOOM);
+  }
+
   private applyCameraBounds(): void {
     const cam = this.cameras.main;
     const r = playRectPixels(this.map);
