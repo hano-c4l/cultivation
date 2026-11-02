@@ -61,9 +61,6 @@ class Lab extends Phaser.Scene {
     sel("dir", "dir", [0, 1, 2, 3, 4, 5, 6, 7]);
     sel("anim", "anim", ["idle", "run", "attack", "thrust", "cast", "hit", "die", "sit"]);
     sel("robe", "r", [0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    sel("belt", "t", [0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    sel("bracer", "g", [0, 1, 2, 3, 4, 5, 6, 7, 8]);
-    sel("boots", "b", [0, 1, 2, 3, 4, 5, 6, 7, 8]);
     sel("hat", "hat", [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     sel("weapon", "weapon", ["", "kiem", "dao", "thuong", "riu", "cung"]);
   }

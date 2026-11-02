@@ -2209,7 +2209,7 @@ export class GameScene extends Phaser.Scene {
     this.fx.puff("qi", at.x, at.y, st.burst, st.color);
   }
 
-  /** Keeps the layers of a paper doll (hair, robe, belt, bracers, boots, hat) on the body: asked again only when what is worn changes or a layer's atlas was still loading. */
+  /** Keeps the layers of a paper doll (hair, robe, hat) on the body: asked again only when what is worn changes or a layer's atlas was still loading. */
   private syncDoll(a: Actor, prefix: string, now: number): void {
     if (!a.view?.alive) return;
     const sig = `${prefix}|${JSON.stringify(a.lk ?? null)}`;

@@ -1,5 +1,5 @@
 {
-  "note": "Silhouettes of the robe. Every layer of a doll is rendered with the others as holdout, so a silhouette is a complete set (body, hair, robe, belt, bracer, boots, hats, weapons). Which realm wears which: the `outfits` tuning rules.",
+  "note": "Silhouettes of the robe. Every layer of a doll is rendered with the others as holdout, so a silhouette is a complete set (body, hair, robe with belt, cuffs and boots in it, hats, weapons). Which realm wears which: the `outfits` tuning rules.",
   "genders": {
     "female": {
       "extends": "sprite-config-female.json",

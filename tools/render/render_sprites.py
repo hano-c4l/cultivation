@@ -470,9 +470,9 @@ def main():
         gm = {n: bpy.data.materials.new(n) for n in dict.fromkeys(names)}
         add_generated(rig, {**g, **{k: gm[g[k]] for k in roles if g.get(k)}})
     if cfg.get("passes"):
-        # every mesh belongs to one slot of the paper doll (body, hair, bun, robe, belt, bracer, boots, hat): by name for what the script generated, the hair by its name, the rest is the body
-        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianSleeve", "robe"), ("XianMantle", "robe"), ("GenLeg", "robe"), ("XianSash", "belt"), ("XianRibbon", "belt"),
-                    ("XianCuff", "bracer"), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "boots")]
+        # every mesh belongs to one slot of the paper doll (body, hair, bun, robe, hat; the belt, the cuffs and the boots are part of the robe layer): by name for what the script generated, the hair by its name, the rest is the body
+        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianSleeve", "robe"), ("XianMantle", "robe"), ("GenLeg", "robe"), ("XianSash", "robe"), ("XianRibbon", "robe"),
+                    ("XianCuff", "robe"), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "robe")]
         for o in [o for o in bpy.data.objects if o.type == "MESH"]:
             hat = re.match(r"GenHat(\d+)_", o.name)
             o["slot"] = ("h_" + hat.group(1)) if hat else next((s for p, s in prefixes if o.name.startswith(p)), "hair" if o.name.startswith("Hair") else "body")
@@ -661,7 +661,14 @@ def main():
             w.location = wcfg.get("location", [0, 0, 0])
             w.rotation_euler = [math.radians(a) for a in wcfg.get("rotationDeg", [0, 0, 0])]
             k = wcfg.get("scale", 1.0)
-            w.scale = (k, k, k)
+            # `width` widens the blade (a saber is broader than a sword) and `thickness` deepens it: the multiples apply to the two shorter sides of the mesh
+            long_axis = max(range(3), key=lambda i: dims[i])
+            mult = [1.0, 1.0, 1.0]
+            short_axes = [i for i in range(3) if i != long_axis]
+            short_axes.sort(key=lambda i: -dims[i])
+            mult[short_axes[0]] = wcfg.get("width", 1.0)
+            mult[short_axes[1]] = wcfg.get("thickness", 1.0)
+            w.scale = (k * mult[0], k * mult[1], k * mult[2])
             for slot in w.material_slots:
                 m = slot.material
                 col = list(m.diffuse_color)[:3]
@@ -695,7 +702,7 @@ def main():
         # every weapon family of the game in the one scene, each its own slot (`w_<family>`), for layers drawn over the body (the length is in world metres: a bigger figure needs longer weapons)
         table = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), cfg["weaponSet"]), encoding="utf-8"))
         for family, w in table["weapons"].items():
-            attach_weapon({"model": table["pack"] + "/" + w["file"], "bone": w["bone"], "length": w["length"], "location": w["location"], "rotationDeg": w["rotationDeg"]}, "w_" + family, cfg.get("weaponLengthScale", 1.0))
+            attach_weapon({"model": table["pack"] + "/" + w["file"], "bone": w["bone"], "length": w["length"], "width": w.get("width", 1.0), "thickness": w.get("thickness", 1.0), "location": w["location"], "rotationDeg": w["rotationDeg"]}, "w_" + family, cfg.get("weaponLengthScale", 1.0))
         log("weapons: " + ", ".join(table["weapons"]))
 
     # ---- camera ----
@@ -767,18 +774,46 @@ def main():
         ad.action_slot = first.slots[0]
     scene.frame_set(int(first.frame_range[0]))
     bpy.context.view_layer.update()
-    lowest = 1e9
-    for mesh in meshes:
-        ev = mesh.evaluated_get(bpy.context.evaluated_depsgraph_get())
-        me = ev.to_mesh()
-        co = np.empty(len(me.vertices) * 3, dtype=np.float32)
-        me.vertices.foreach_get("co", co)
-        ev.to_mesh_clear()
-        mw = np.array(ev.matrix_world)
-        if len(co):
-            lowest = min(lowest, float((co.reshape(-1, 3) @ mw[2, :3] + mw[2, 3]).min()))
-    lift = -(lowest - body_sol.thickness * fs)  # the outline shell is not a part of the foot
+    def lowest_point():
+        low = 1e9
+        for mesh in meshes:
+            ev = mesh.evaluated_get(bpy.context.evaluated_depsgraph_get())
+            me = ev.to_mesh()
+            co = np.empty(len(me.vertices) * 3, dtype=np.float32)
+            me.vertices.foreach_get("co", co)
+            ev.to_mesh_clear()
+            mw = np.array(ev.matrix_world)
+            if len(co):
+                low = min(low, float((co.reshape(-1, 3) @ mw[2, :3] + mw[2, 3]).min()))
+        return low
+
+    lift = -(lowest_point() - body_sol.thickness * fs)  # the outline shell is not a part of the foot
     log("lifting the figure by %.3f m so its feet stand on the ground" % lift)
+
+    # ---- a hand-made pose over an action (meditation: no clip of the library sits cross-legged) ----
+    pose_m_inv = rig.matrix_world.to_3x3().inverted()  # taken now, before any direction turns the object
+    pose_fwd = fwd.copy()
+
+    def apply_pose(spec):
+        """Aims bones in the model's own frame, from the hips out. spec: {"hipsDrop": metres, "sideBone": "thigh_{s}", "bones": {"thigh_{s}": [forward, side, up], ...}}; {s} is l or r
+        and the side component is mirrored for the right side. Each bone turns about its head to point along the vector; the bones below it follow."""
+        f_arm = (pose_m_inv @ pose_fwd).normalized()
+        up_arm = (pose_m_inv @ Vector((0, 0, 1))).normalized()
+        pb = rig.pose.bones
+        side_l = (pb[spec["sideBone"].format(s="l")].head - pb[spec["sideBone"].format(s="r")].head)
+        side_l = (side_l - f_arm * side_l.dot(f_arm) - up_arm * side_l.dot(up_arm)).normalized()
+        hips_pb = pb[cfg.get("hipsBone", "DEF-hips")]
+        hips_pb.matrix = Matrix.Translation(-up_arm * spec.get("hipsDrop", 0.0)) @ hips_pb.matrix
+        bpy.context.view_layer.update()
+        for base, vec in spec["bones"].items():
+            for sign, suffix in ((1, "l"), (-1, "r")):
+                b = pb[base.format(s=suffix)]
+                target = (f_arm * vec[0] + side_l * (sign * vec[1]) + up_arm * vec[2]).normalized()
+                cur = (b.matrix.to_3x3() @ Vector((0, 1, 0))).normalized()
+                rot = cur.rotation_difference(target).to_matrix().to_4x4()
+                head = b.head.copy()
+                b.matrix = Matrix.Translation(head) @ rot @ Matrix.Translation(-head) @ b.matrix
+                bpy.context.view_layer.update()
 
     # ---- render every animation, direction and frame ----
     frames = {}      # name -> raw frame array (bottom-up RGBA floats)
@@ -808,6 +843,30 @@ def main():
             ad.action = act
             if hasattr(ad, "action_slot") and act.slots:
                 ad.action_slot = act.slots[0]
+            snap = None
+            if a.get("pose"):
+                # the animation would put the bones back on every update: pose the first frame, keep the values and drop the action
+                scene.frame_set(int(act.frame_range[0]))
+                bpy.context.view_layer.update()
+                apply_pose(a["pose"])
+                snap = {pb_.name: (pb_.location.copy(), pb_.rotation_quaternion.copy(), pb_.scale.copy()) for pb_ in rig.pose.bones}
+                ad.action = None
+                rig.location = (0, 0, 0)
+                rig.rotation_euler = (0, 0, 0)
+                bpy.context.view_layer.update()
+                lift_a = -(lowest_point() - body_sol.thickness * fs)  # a seated figure sits on the ground: its own lowest point, not the standing feet's
+                log("pose %s: lifting by %.3f m instead of %.3f" % (anim, lift_a, lift))
+            else:
+                lift_a = lift
+
+            def set_frame(t):
+                if snap is None:
+                    scene.frame_set(int(t), subframe=t - int(t))
+                else:
+                    for pb_ in rig.pose.bones:
+                        pb_.location, pb_.rotation_quaternion, pb_.scale = (v.copy() for v in snap[pb_.name])
+                bpy.context.view_layer.update()
+
             start, end = act.frame_range
             if a.get("range"):  # only a part of the action (fractions of it): Sword_Attack is a wind-up swing, a reset and then the real forward slash
                 span0 = end - start
@@ -821,19 +880,19 @@ def main():
             # the pose must really change between frames, or the whole animation would be one T-pose
             posed = []
             for t in (times[0], times[n // 2]):
-                scene.frame_set(int(t), subframe=t - int(t))
-                bpy.context.view_layer.update()
+                set_frame(t)
                 posed.append([tuple(pb.matrix.translation) for pb in rig.pose.bones])
             moved = max(sum(abs(u - v) for u, v in zip(p, q)) for p, q in zip(posed[0], posed[1]))
             log("animation %s (%s) moves up to %.4f m between two samples" % (anim, a["action"], moved))
-            check(moved > 1e-4, "animation %s does not move (%s)" % (anim, a["action"]))  # identical poses would give exactly 0
+            check(moved > 1e-4 or a.get("pose"), "animation %s does not move (%s)" % (anim, a["action"]))  # identical poses would give exactly 0
             # Root motion is cancelled: the hips stay over the same ground point for the whole animation (the game moves the actor, the sprite stays put).
-            scene.frame_set(int(times[0]), subframe=times[0] - int(times[0]))
-            bpy.context.view_layer.update()
+            set_frame(times[0])
             hips = rig.pose.bones[cfg.get("hipsBone", "DEF-hips")]
             h0 = hips.matrix.translation.copy()
             worst_drift = 0.0
             for d, vec in enumerate(cfg["directions"]):
+                if cfg.get("onlyDirs") is not None and d not in cfg["onlyDirs"]:
+                    continue  # a test render of a few directions
                 g = (tile_x * vec[0] + tile_y * vec[1]).normalized()
                 yaw = math.atan2(g.y, g.x) - math.atan2(fwd.y, fwd.x)
                 rig.rotation_euler = (0, 0, yaw)
@@ -845,11 +904,10 @@ def main():
                 ang = math.degrees(math.acos(max(-1, min(1, sv.normalized().dot(want.normalized())))))
                 check(ang < 2.0, "direction %d: the model's front points %.1f degrees off the wanted screen heading" % (d, ang))
                 for i, t in enumerate(times):
-                    scene.frame_set(int(t), subframe=t - int(t))
-                    bpy.context.view_layer.update()
+                    set_frame(t)
                     h = hips.matrix.translation
                     worst_drift = max(worst_drift, math.hypot(h.x - h0.x, h.y - h0.y))
-                    rig.location = -(Matrix.Rotation(yaw, 3, "Z") @ Vector((h.x - h0.x, h.y - h0.y, 0)) * fs) + Vector((0, 0, lift))
+                    rig.location = -(Matrix.Rotation(yaw, 3, "Z") @ Vector((h.x - h0.x, h.y - h0.y, 0)) * fs) + Vector((0, 0, lift_a))
                     proc = a.get("proc")
                     if proc:
                         # a procedural move for a model with no such animation: the whole figure lunges (attack), is pushed back (hit) or falls on its side (die) as the sprite plays
@@ -894,7 +952,7 @@ def main():
                     edges = [n_ for n_, hit in (("bottom", al[0, :].any()), ("top", al[-1, :].any()), ("left", al[:, 0].any()), ("right", al[:, -1].any())) if hit]
                     if edges:
                         clips.append({"frame": name, "edges": edges})
-            rig.location = (0, 0, lift)
+            rig.location = (0, 0, lift_a)
             log("root motion removed for %s: up to %.2f m of drift" % (anim, worst_drift))
             log("rendered %s: %d frames x %d directions, %.1f fps, %.0fs elapsed" % (anim, n, len(cfg["directions"]), fps, time.time() - t0))
 
@@ -1001,7 +1059,9 @@ def main():
                 key = "%s_%d_%02d" % (an, d, cfg["anims"][an]["frames"] // 2)
                 fr = np.zeros((F, F, 4), dtype=np.float32)
                 for pd_ in [q for q in passes if q["name"] in set_passes and q["name"] in all_frames]:  # the layers on top of each other (the paper doll), each multiplied by its preview colour as the game will tint it
-                    lf = all_frames[pd_["name"]][0][key]
+                    lf = all_frames[pd_["name"]][0].get(key)
+                    if lf is None:
+                        continue  # a test render of a few directions
                     tint = np.array(cfg.get("previewTints", {}).get(pd_["name"], [1, 1, 1]), dtype=np.float32)
                     la = lf[:, :, 3:4]
                     fr[:, :, :3] = lf[:, :, :3] * tint * la + fr[:, :, :3] * (1 - la)

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { hatShapeOf } from "@game/shared";
-import { BARE_BOOTS, BARE_ROBE, dollLayers, dollPrefixOf, dollWeaponKey } from "./doll";
+import { BARE_ROBE, dollLayers, dollPrefixOf, dollWeaponKey } from "./doll";
 
 const P = "doll.female.robe";
-const all = new Set([`${P}.hair`, `${P}.hairhat`, `${P}.robe`, `${P}.belt`, `${P}.bracer`, `${P}.boots`, ...Array.from({ length: 10 }, (_, i) => `${P}.h${i}`), `${P}.w_kiem`]);
+const all = new Set([`${P}.hair`, `${P}.hairhat`, `${P}.robe`, ...Array.from({ length: 10 }, (_, i) => `${P}.h${i}`), `${P}.w_kiem`]);
 const has = (k: string): boolean => all.has(k);
 
 describe("dollPrefixOf", () => {
@@ -15,18 +15,17 @@ describe("dollPrefixOf", () => {
 });
 
 describe("dollLayers", () => {
-  it("shows bare cloth and shoes when nothing is worn, and neither belt, bracers nor hat", () => {
+  it("shows bare cloth when nothing is worn, and no hat", () => {
     const l = dollLayers(P, undefined, has);
-    expect(l.map((x) => x.slot)).toEqual(["hair", "robe", "boots"]);
+    expect(l.map((x) => x.slot)).toEqual(["hair", "robe"]);
     expect(l[0]!.key).toBe(`${P}.hair`);
     expect(l[1]!.tint).toBe(BARE_ROBE);
-    expect(l[2]!.tint).toBe(BARE_BOOTS);
   });
 
-  it("adds a layer for each worn piece, tinted by its set", () => {
+  it("tints the robe by its set and draws no layer for belt, bracers or boots (they are part of the robe)", () => {
     const l = dollLayers(P, { r: 3, t: 2, g: 1, b: 4 }, has);
-    expect(l.map((x) => x.slot)).toEqual(["hair", "robe", "belt", "bracer", "boots"]);
-    for (const x of l.slice(1)) expect(x.tint).toBeTypeOf("number");
+    expect(l.map((x) => x.slot)).toEqual(["hair", "robe"]);
+    expect(l[1]!.tint).toBeTypeOf("number");
   });
 
   it("swaps the hair for the one without the knot under a hat, and picks the hat's shape", () => {

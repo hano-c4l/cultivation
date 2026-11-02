@@ -1,4 +1,4 @@
-// Renders the paper dolls (phase 4j): one Blender run for each gender and robe silhouette, every layer in it (body, hair, robe, belt, bracer, boots, ten hats, five weapons).
+// Renders the paper dolls (phase 4j): one Blender run for each gender and robe silhouette, every layer in it (body, hair, robe with belt, cuffs and boots in it, ten hats, five weapons).
 //   node tools/render/render-dolls.mjs <out dir outside the repo> [--only female.robe,male.tunic] [--quick]
 // --quick renders idle, attack and die only (a look at the shapes). Publish a finished run with `node tools/gfx-publish.mjs <out dir>/<name> --demand`.
 import { spawnSync } from "node:child_process";
@@ -10,11 +10,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const outRoot = resolve(args[0] ?? "");
 if (!args[0]) {
-  console.error("usage: node tools/render/render-dolls.mjs <out dir> [--only female.robe] [--quick]");
+  console.error("usage: node tools/render/render-dolls.mjs <out dir> [--only female.robe] [--quick] [--test]");
   process.exit(2);
 }
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1].split(",") : null;
 const quick = args.includes("--quick");
+const test = args.includes("--test"); // the sit pose, the weapons and a hat, facing the viewer and a side: a look before a full render
 const template = JSON.parse(readFileSync(join(here, "doll-template.json"), "utf8"));
 const table = JSON.parse(readFileSync(join(here, "doll-styles.json"), "utf8"));
 delete template.note;
@@ -39,6 +40,7 @@ for (const [gender, g] of Object.entries(table.genders)) {
       },
       generated: { ...template.generated, parts: [...st.parts, ...Array.from({ length: 10 }, (_, i) => `hat${i}`)], scale: g.k, hemZ: st.hemZ, flare0: st.flare0, flare1: st.flare1, cuff: st.cuff, bootHeight: st.bootHeight },
       ...(quick ? { onlyAnims: ["idle", "attack", "die"] } : {}),
+      ...(test ? { onlyAnims: ["idle", "sit"], onlyPasses: ["body", "hair", "robe", "h0", "w_kiem", "w_dao", "w_thuong", "w_riu", "w_cung"], onlyDirs: [0, 2] } : {}),
     };
     const cfgPath = join(outRoot, "configs", `${name}.json`);
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));

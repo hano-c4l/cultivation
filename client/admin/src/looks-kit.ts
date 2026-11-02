@@ -197,14 +197,14 @@ async function loadAtlas(atlas: { image: string; data: string }): Promise<Loaded
 /** A small canvas with the standing frame of a sprite (`monster.wolf`, `player.male.tien`), facing the viewer; empty when the atlas cannot be read. */
 export function spritePreview(spriteKey: string, size = 64): HTMLElement {
   const canvas = h("canvas", { class: "sprite-prev", width: String(size), height: String(size) });
-  // A paper doll (`doll.male.robe`) is shown dressed: the body, hair, robe and boots one over the other, the cloth and shoes in plain colours.
+  // A paper doll (`doll.male.robe`) is shown dressed: the body, hair and robe one over the other, the cloth in a plain colour.
   const dollPrefix = /^doll\.[a-z]+\.[a-z]+$/.exec(spriteKey)?.[0];
   if (dollPrefix) {
     void (async () => {
       const ctx = canvas.getContext("2d");
       const m = await manifest();
       if (!ctx || !m) return;
-      for (const [slot, tint] of [["body", null], ["hair", null], ["robe", [233, 227, 216]], ["boots", [74, 64, 56]]] as const) {
+      for (const [slot, tint] of [["body", null], ["hair", null], ["robe", [233, 227, 216]]] as const) {
         const sprite = m.sprites[`${dollPrefix}.${slot}`];
         const atlas = sprite ? m.atlases[sprite.atlas] : undefined;
         if (!sprite || !atlas) continue;
