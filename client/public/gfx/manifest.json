@@ -1,5 +1,5 @@
 {
-  "version": 99,
+  "version": 101,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -204,6 +204,98 @@
     "m_zebra": {
       "image": "m_zebra.webp",
       "data": "m_zebra.json"
+    },
+    "dl_f_robe_belt": {
+      "image": "dl_f_robe_belt.webp",
+      "data": "dl_f_robe_belt.json"
+    },
+    "dl_f_robe_body": {
+      "image": "dl_f_robe_body.webp",
+      "data": "dl_f_robe_body.json"
+    },
+    "dl_f_robe_boots": {
+      "image": "dl_f_robe_boots.webp",
+      "data": "dl_f_robe_boots.json"
+    },
+    "dl_f_robe_bracer": {
+      "image": "dl_f_robe_bracer.webp",
+      "data": "dl_f_robe_bracer.json"
+    },
+    "dl_f_robe_h0": {
+      "image": "dl_f_robe_h0.webp",
+      "data": "dl_f_robe_h0.json"
+    },
+    "dl_f_robe_h1": {
+      "image": "dl_f_robe_h1.webp",
+      "data": "dl_f_robe_h1.json"
+    },
+    "dl_f_robe_h2": {
+      "image": "dl_f_robe_h2.webp",
+      "data": "dl_f_robe_h2.json"
+    },
+    "dl_f_robe_h3": {
+      "image": "dl_f_robe_h3.webp",
+      "data": "dl_f_robe_h3.json"
+    },
+    "dl_f_robe_h4": {
+      "image": "dl_f_robe_h4.webp",
+      "data": "dl_f_robe_h4.json"
+    },
+    "dl_f_robe_h5": {
+      "image": "dl_f_robe_h5.webp",
+      "data": "dl_f_robe_h5.json"
+    },
+    "dl_f_robe_h6": {
+      "image": "dl_f_robe_h6.webp",
+      "data": "dl_f_robe_h6.json"
+    },
+    "dl_f_robe_h7": {
+      "image": "dl_f_robe_h7.webp",
+      "data": "dl_f_robe_h7.json"
+    },
+    "dl_f_robe_h8": {
+      "image": "dl_f_robe_h8.webp",
+      "data": "dl_f_robe_h8.json"
+    },
+    "dl_f_robe_h9": {
+      "image": "dl_f_robe_h9.webp",
+      "data": "dl_f_robe_h9.json"
+    },
+    "dl_f_robe_hair": {
+      "image": "dl_f_robe_hair.webp",
+      "data": "dl_f_robe_hair.json"
+    },
+    "dl_f_robe_hairhat": {
+      "image": "dl_f_robe_hairhat.webp",
+      "data": "dl_f_robe_hairhat.json"
+    },
+    "dl_f_robe_robe": {
+      "image": "dl_f_robe_robe.webp",
+      "data": "dl_f_robe_robe.json"
+    },
+    "dl_f_robe_w_cung": {
+      "image": "dl_f_robe_w_cung.webp",
+      "data": "dl_f_robe_w_cung.json"
+    },
+    "dl_f_robe_w_dao": {
+      "image": "dl_f_robe_w_dao.webp",
+      "data": "dl_f_robe_w_dao.json"
+    },
+    "dl_f_robe_w_kiem": {
+      "image": "dl_f_robe_w_kiem.webp",
+      "data": "dl_f_robe_w_kiem.json"
+    },
+    "dl_f_robe_w_riu": {
+      "image": "dl_f_robe_w_riu.webp",
+      "data": "dl_f_robe_w_riu.json"
+    },
+    "dl_f_robe_w_thuong": {
+      "image": "dl_f_robe_w_thuong.webp",
+      "data": "dl_f_robe_w_thuong.json"
+    },
+    "props": {
+      "image": "props.webp",
+      "data": "props.json"
     }
   },
   "sprites": {
@@ -2395,12 +2487,1201 @@
           "loop": false
         }
       }
+    },
+    "doll.female.robe.belt": {
+      "atlas": "dl_f_robe_belt",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 55,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.body": {
+      "atlas": "dl_f_robe_body",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 88,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.boots": {
+      "atlas": "dl_f_robe_boots",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 11,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.bracer": {
+      "atlas": "dl_f_robe_bracer",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 65,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h0": {
+      "atlas": "dl_f_robe_h0",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 90,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h1": {
+      "atlas": "dl_f_robe_h1",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 89,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h2": {
+      "atlas": "dl_f_robe_h2",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 90,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h3": {
+      "atlas": "dl_f_robe_h3",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 89,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h4": {
+      "atlas": "dl_f_robe_h4",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 91,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h5": {
+      "atlas": "dl_f_robe_h5",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 79,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h6": {
+      "atlas": "dl_f_robe_h6",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 88,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h7": {
+      "atlas": "dl_f_robe_h7",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 88,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h8": {
+      "atlas": "dl_f_robe_h8",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 90,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.h9": {
+      "atlas": "dl_f_robe_h9",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 92,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.hair": {
+      "atlas": "dl_f_robe_hair",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 89,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.hairhat": {
+      "atlas": "dl_f_robe_hairhat",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 89,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.robe": {
+      "atlas": "dl_f_robe_robe",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 78,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.w_cung": {
+      "atlas": "dl_f_robe_w_cung",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 69,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.w_dao": {
+      "atlas": "dl_f_robe_w_dao",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 63,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.w_kiem": {
+      "atlas": "dl_f_robe_w_kiem",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 60,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.w_riu": {
+      "atlas": "dl_f_robe_w_riu",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 58,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.w_thuong": {
+      "atlas": "dl_f_robe_w_thuong",
+      "frame": {
+        "w": 128,
+        "h": 128
+      },
+      "anchor": {
+        "x": 64,
+        "y": 112
+      },
+      "head": 59,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
     }
   },
   "maps": {
     "*": [
       "char_female",
-      "char_male"
+      "char_male",
+      "props"
     ]
   }
 }

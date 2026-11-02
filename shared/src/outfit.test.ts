@@ -13,7 +13,7 @@ describe("outfitOf", () => {
   });
 
   it("follows the rules in the tuning: the highest minRealm reached wins", () => {
-    expect(outfitOf([robe(0)])).toBe("ranger");
+    expect(outfitOf([robe(0)])).toBe("tunic");
     setTuning({ outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 2, outfit: "mage" }] } });
     expect(outfitOf([robe(1)])).toBe("ranger");
     expect(outfitOf([robe(2)])).toBe("mage");

@@ -5,6 +5,8 @@ import {
   BASIC_SKILL_ID,
   parseSkillSlot,
   directionOf,
+  bodyOf,
+  DEFAULT_OUTFIT,
   type GfxAnimName,
   bossKinds,
   bossRealmBonus,
@@ -96,7 +98,8 @@ import { initTrade, type TradeUi } from "./trade-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
 import { HAT_ORN_TEX, HAT_TEX, ensureHatTextures } from "./hat-art";
-import { dollLayers, dollPrefixOf, dollWeaponKey } from "./gfx/doll";
+import { dollLayers, dollOfWorn, dollPrefixOf, dollWeaponKey, npcDollLayers } from "./gfx/doll";
+import { paintDoll } from "./gfx/doll-preview";
 import { DRAGON_HEAD, DRAGON_MIST, DRAGON_SEG, DRAGON_TAIL, FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
@@ -249,6 +252,9 @@ interface MonsterActor {
   view?: GfxView;
   /** The weapon sprite of a guard (a guard is drawn as a player body holding a weapon, from the tuning `npcLooks`). */
   wview?: GfxView;
+  dollSig?: string;
+  dollMissing?: number;
+  dollRetry?: number;
   /** The formation circle under a guard (from the tuning `npcLooks`): lit only for a moment when it uses a skill. */
   aura?: Phaser.GameObjects.Container;
   /** When (performance.now) the aura goes out again. */
@@ -336,7 +342,7 @@ export class GameScene extends Phaser.Scene {
   /** Timed buffs still running on each actor (skill id -> when it ends, performance.now): they keep a light round the figure. */
   private buffGlows = new Map<string, Map<string, number>>();
   private nextGlowAt = 0;
-  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView; aura?: Phaser.GameObjects.Container } & HatHolder> = [];
+  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView; aura?: Phaser.GameObjects.Container; dollSig?: string; dollMissing?: number; dollRetry?: number } & HatHolder> = [];
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
   private targetId: string | null = null;
@@ -488,7 +494,11 @@ export class GameScene extends Phaser.Scene {
       pillCount: () => this.inventory.list().filter((i) => getItemDef(i.type)?.masteryPills !== undefined).reduce((n, i) => n + i.qty, 0),
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
-    this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list(), this.registry.get("isAdmin") === true);
+    this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list(), this.registry.get("isAdmin") === true, (canvas, worn) => {
+      const doll = dollOfWorn(this.selfSheet ? bodyOf(this.selfSheet.gender) === "female" : false, worn, (k) => this.gfx.knows(k));
+      if (!doll) return 0;
+      return paintDoll(this.textures, this.gfx, canvas, doll.body, [...doll.layers, ...(doll.weapon ? [doll.weapon] : [])]);
+    });
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list(), (npc, view) => this.switchNpcView(npc, view));
     this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }), (npc, view) => this.switchNpcView(npc, view));
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
@@ -705,7 +715,7 @@ export class GameScene extends Phaser.Scene {
     for (const f of this.npcFigures) {
       const look = npcLookOf(f.npc);
       if (!look) continue;
-      const key = this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`);
+      const key = this.gfx.spriteKeyFor("player", undefined, `${look.body}.${look.outfit ?? DEFAULT_OUTFIT}`);
       if (f.view && (!f.view.alive || (key && f.view.key !== key))) {
         f.wview?.destroy();
         f.view.destroy();
@@ -722,20 +732,33 @@ export class GameScene extends Phaser.Scene {
         }
       }
       if (!f.view?.alive) continue;
-      const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
+      const doll = dollPrefixOf(f.view.key);
+      if (doll) this.syncLookDoll(f, doll, look, performance.now());
+      const wkey = (doll ? dollWeaponKey(doll, look.weapon, (k) => this.gfx.knows(k)) : undefined) ?? (look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined);
       if (f.wview && (!f.wview.alive || f.wview.key !== wkey)) {
         f.wview.destroy();
         f.wview = undefined;
       }
       if (!f.wview && wkey) f.wview = this.gfx.createView(wkey);
       f.view.play("idle", 0);
-      f.view.setTint(hexOf(look.tint));
+      if (!doll) f.view.setTint(hexOf(look.tint));
       f.view.place(f.x, f.y, f.depth);
       f.wview?.followFrame(f.view);
       f.wview?.place(f.x, f.y, f.depth + 0.02);
       f.label.setY(f.y - f.view.rise() - 6);
-      this.syncLookHat(f, look, f.view, f.x, f.y, f.depth);
+      if (doll) this.dropHat(f);
+      else this.syncLookHat(f, look, f.view, f.x, f.y, f.depth);
     }
+  }
+
+  /** Dresses the doll of an NPC or a guard from its look (asked again only when the look changes or a layer was still loading). */
+  private syncLookDoll(h: { view?: GfxView; dollSig?: string; dollMissing?: number; dollRetry?: number }, prefix: string, look: NpcLook, now: number): void {
+    if (!h.view?.alive) return;
+    const sig = `${prefix}|${JSON.stringify(look)}`;
+    if (sig === h.dollSig && !((h.dollMissing ?? 0) > 0 && now >= (h.dollRetry ?? 0))) return;
+    h.dollSig = sig;
+    h.dollRetry = now + 400;
+    h.dollMissing = h.view.setLayers(npcDollLayers(prefix, look, (k) => this.gfx.knows(k)));
   }
 
   /** The hat of an NPC or a guard from its look (`hat`, `hatTint`, else the colour of its aura); none in the look: the head is bare. */
@@ -2192,7 +2215,7 @@ export class GameScene extends Phaser.Scene {
       a.body.setVisible(true);
     }
     // The body sprite follows the outfit: an atlas that is not here yet is fetched, and the plain clothes show until it is.
-    const bodyKey = this.gfx.spriteKeyFor("player", undefined, `${a.female ? "female" : "male"}${a.outfit ? `.${a.outfit}` : ""}`);
+    const bodyKey = this.gfx.spriteKeyFor("player", undefined, `${a.female ? "female" : "male"}.${a.outfit ?? DEFAULT_OUTFIT}`);
     if (a.view && bodyKey && a.view.key !== bodyKey) {
       a.wview?.destroy();
       a.wview = undefined;
@@ -2465,7 +2488,7 @@ export class GameScene extends Phaser.Scene {
       this.dropHat(m);
       m.body.setVisible(true);
     }
-    const key = look ? this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`) : this.gfx.spriteKeyFor("monster", m.kind);
+    const key = look ? this.gfx.spriteKeyFor("player", undefined, `${look.body}.${look.outfit ?? DEFAULT_OUTFIT}`) : this.gfx.spriteKeyFor("monster", m.kind);
     // The outfit atlas of a guard loads on demand: the plain body shows until it is here, then the view is swapped (as for players and NPCs).
     if (look && m.view && key && m.view.key !== key) {
       m.wview?.destroy();
@@ -2483,7 +2506,9 @@ export class GameScene extends Phaser.Scene {
     }
     const scale = (look?.scale ?? 1) * (m.boss ? 2 : m.rank === "rare2" ? 1.4 : m.rank === "rare1" ? 1.2 : 1);
     m.view.setScale(scale);
-    m.view.setTint(look ? hexOf(look.tint) : monsterTintOf(m.element)); // one model, a colour for each element; a guard wears its own robe colour
+    const guardDoll = look && dollPrefixOf(m.view.key);
+    if (!guardDoll) m.view.setTint(look ? hexOf(look.tint) : monsterTintOf(m.element)); // one model, a colour for each element; a guard wears its own robe colour (a doll: its robe layer)
+    else this.syncLookDoll(m, guardDoll, look, now);
     m.view.play(positionAlongPath(m.path, now - m.startedAt, m.speed).moving ? "run" : "idle", headingAlongPath(m.path, now - m.startedAt, m.speed) ?? m.view.dir);
     if (!m.view.alive) return;
     this.applyReact(m.id, m.view, m.wview, now);
@@ -2496,7 +2521,7 @@ export class GameScene extends Phaser.Scene {
       m.aura = undefined;
     }
     if (look) {
-      const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
+      const wkey = (guardDoll ? dollWeaponKey(guardDoll, look.weapon, (k) => this.gfx.knows(k)) : undefined) ?? (look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined);
       if (m.wview && (!m.wview.alive || m.wview.key !== wkey)) {
         m.wview.destroy();
         m.wview = undefined;
@@ -2505,7 +2530,8 @@ export class GameScene extends Phaser.Scene {
       m.wview?.setScale(scale);
       m.wview?.followFrame(m.view);
       m.wview?.place(x, y, depth + 0.02);
-      this.syncLookHat(m, look, m.view, x, y, depth);
+      if (guardDoll) this.dropHat(m);
+      else this.syncLookHat(m, look, m.view, x, y, depth);
     }
   }
 

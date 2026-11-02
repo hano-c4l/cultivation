@@ -1,4 +1,4 @@
-import { beltTintOf, bootsTintOf, bracerTintOf, hatShapeOf, hatTintOf, robeTintOf, type GearLook } from "@game/shared";
+import { DEFAULT_OUTFIT, beltTintOf, bootsTintOf, bracerTintOf, equipmentInfo, gearLookOf, HAT_SHAPES, hatShapeOf, hatTintOf, outfitOf, robeTintOf, weaponTintOf, type GearLook } from "@game/shared";
 
 /**
  * The paper doll (docs/PHASE4.md 4j): a figure is a body sprite plus one sprite for each slot of gear that shows (hair, robe, belt, bracers, boots, hat),
@@ -48,4 +48,41 @@ export function dollWeaponKey(prefix: string, family: string | undefined, has: (
   if (!family) return undefined;
   const key = `${prefix}.w_${family}`;
   return has(key) ? key : undefined;
+}
+
+/** The weapon family (`kiem`, `cung`...) of the worn weapon, or undefined when none is worn or it is broken. */
+export function weaponFamilyOf(equipped: readonly { slot: string; type: string; dur?: number }[]): string | undefined {
+  const w = equipped.find((e) => e.slot === "weapon" && !(e.dur !== undefined && e.dur <= 0));
+  return w ? (equipmentInfo(w.type)?.weaponType ?? undefined) : undefined;
+}
+
+/** Everything a doll needs for what is worn: the body sprite key, its layers and the weapon layer (each undefined when the manifest lacks the doll). */
+export function dollOfWorn(female: boolean, equipped: readonly { slot: string; type: string; dur?: number; en?: number }[], has: (key: string) => boolean): { body: string; layers: DollLayerSpec[]; weapon?: DollLayerSpec } | undefined {
+  const prefix = `doll.${female ? "female" : "male"}.${outfitOf(equipped) ?? DEFAULT_OUTFIT}`;
+  const body = `${prefix}.body`;
+  if (!has(body)) return undefined;
+  const weapon = dollWeaponKey(prefix, weaponFamilyOf(equipped), has);
+  const lk = gearLookOf(equipped);
+  const tint = lk?.w !== undefined ? hex(weaponTintOf(lk.w)) : undefined;
+  return { body, layers: dollLayers(prefix, lk, has), ...(weapon ? { weapon: { slot: "weapon", key: weapon, ...(tint !== undefined ? { tint } : {}) } } : {}) };
+}
+
+/**
+ * The layers of an NPC or a guard (their look is data: `npcLooks`): a robe of the look's tint, a belt and a hat in the colour of its aura, bare dark boots. Because only the robe
+ * is tinted, a villager's face and hands keep their own colour.
+ */
+export function npcDollLayers(prefix: string, look: { tint?: string; hat?: number; hatTint?: string; aura?: string }, has: (key: string) => boolean): DollLayerSpec[] {
+  const out: DollLayerSpec[] = [];
+  const add = (slot: string, name: string, tint?: number): void => {
+    const key = `${prefix}.${name}`;
+    if (has(key)) out.push({ slot, key, ...(tint !== undefined ? { tint } : {}) });
+  };
+  const shape = look.hat !== undefined ? look.hat % HAT_SHAPES : undefined;
+  const hatted = shape !== undefined && has(`${prefix}.h${shape}`);
+  add("hair", hatted ? "hairhat" : "hair");
+  add("robe", "robe", hex(look.tint) ?? BARE_ROBE);
+  add("belt", "belt", hex(look.aura));
+  add("boots", "boots", BARE_BOOTS);
+  if (hatted) add("hat", `h${shape}`, hex(look.hatTint ?? look.aura));
+  return out;
 }

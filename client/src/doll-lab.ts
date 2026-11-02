@@ -34,7 +34,7 @@ class Lab extends Phaser.Scene {
   ready = false;
 
   create(): void {
-    this.cameras.main.setBackgroundColor("#bfc9b5").setZoom(state.zoom);
+    this.cameras.main.setBackgroundColor("#bfc9b5").setZoom(state.zoom).centerOn(Number(q.get("cx") ?? 300), Number(q.get("cy") ?? 300));
     this.kit = new GfxKit(this);
     void this.kit.init().then(() => {
       this.kit.useMap("lab");

@@ -44,7 +44,7 @@ const script = join(root, "tools/render", JSON.parse(readFileSync(cfg, "utf8")).
 const child = spawn(findBlender(), ["--background", "--factory-startup", "--python", script, "--", cfg, out, artRoot], { stdio: "ignore", detached: true });
 child.unref();
 
-const deadline = Date.now() + 15 * 60_000;
+const deadline = Date.now() + 90 * 60_000; // a full paper doll (every layer, hat and weapon) takes about 20 minutes
 let shown = 0;
 while (!existsSync(marker)) {
   if (Date.now() > deadline) {

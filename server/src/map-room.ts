@@ -240,7 +240,7 @@ interface PlayerState {
   female?: boolean;
   /** The weapon family in the hand, as the others see it (a broken weapon counts as none); `applyGear` keeps it current. */
   w?: string;
-  /** What the worn weapon, robe, hat and boots add to the look (see `gearLookOf`); `applyGear` keeps it current. */
+  /** What the worn weapon, robe, hat, boots, belt and bracers add to the look (see `gearLookOf`); `applyGear` keeps it current. */
   lk?: GearLook;
   /** The outfit shown (see `outfitOf`); `applyGear` keeps it current. */
   o?: string;

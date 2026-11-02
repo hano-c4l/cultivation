@@ -447,6 +447,12 @@ export class GfxKit {
     return view;
   }
 
+  /** The Phaser texture key of a loaded sprite's atlas (for drawing a frame outside the game scene), or undefined when it is not loaded. */
+  textureKeyOf(key: string): string | undefined {
+    const s = this.manifest.sprites[key];
+    return s && this.loaded.has(s.atlas) ? `${TEX}${s.atlas}` : undefined;
+  }
+
   /** True when the manifest has a sprite of this key (loaded or not). */
   knows(key: string): boolean {
     return this.manifest.sprites[key] !== undefined;

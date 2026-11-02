@@ -7,7 +7,7 @@ import { DEFAULT_TUNING, tuning } from "./tuning";
  * and adds its own touch, so a sword is not every sword and two robes of different sets are not alike. The server only sends small numbers (what the piece is);
  * the colours and the shapes are the client's, from the tuning `gearLooks` (an admin can repaint them).
  *   w   the weapon: `1 + realm * 10 + element` (element 0 none, 1.. in the order of ALL_ROOTS): tints the weapon sprite
- *   r   the robe: `1 + realm * 9 + (bậc - 1)`: tints the body sprite, one colour for each set
+ *   r   the robe: `1 + realm * 9 + (bậc - 1)`: tints the robe layer, a colour for each realm shaded by the bậc
  *   h   the hat: the same number: its colour, and (modulo the number of shapes) the shape drawn on the head
  *   b   the boots: the same number: their colour (and the colour of the dust they raise)
  *   t   the belt, g the bracers: the same number: their colour
@@ -62,7 +62,19 @@ export function weaponLookParts(w: number): { realm: number; element: string | n
   return { realm: Math.floor(n / 10), element: e > 0 ? (ALL_ROOTS[e - 1] ?? null) : null };
 }
 
-const pick = (list: readonly string[], n: number): string | undefined => (list.length > 0 ? list[(Math.max(1, Math.trunc(n)) - 1) % list.length] : undefined);
+/**
+ * The colour a set number gives from a palette that has one colour for each realm: the realm picks the colour (past the last it wraps), the bậc deepens it a little
+ * (bậc 9 is about a fifth darker than bậc 1), so the nine sets of a realm are shades of one colour and a higher realm is told apart by hue.
+ */
+const pick = (list: readonly string[], n: number): string | undefined => {
+  if (list.length === 0) return undefined;
+  const set = Math.max(1, Math.trunc(n)) - 1;
+  const base = list[Math.floor(set / STAGES_PER_REALM_FOR_LOOK) % list.length] as string;
+  const k = 1 - 0.025 * (set % STAGES_PER_REALM_FOR_LOOK);
+  const v = parseInt(base.slice(1), 16);
+  const c = (shift: number): string => Math.round(((v >> shift) & 255) * k).toString(16).padStart(2, "0");
+  return `#${c(16)}${c(8)}${c(0)}`;
+};
 
 /** The colours (`#rrggbb`) a look number gives, from the tuning; undefined where the tuning names none. */
 export function weaponTintOf(w: number): string | undefined {
