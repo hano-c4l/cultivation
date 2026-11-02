@@ -693,7 +693,7 @@ def main():
 
     if cfg.get("weaponSet"):
         # every weapon family of the game in the one scene, each its own slot (`w_<family>`), for layers drawn over the body (the length is in world metres: a bigger figure needs longer weapons)
-        table = json.load(open(os.path.join(os.path.dirname(CFG_PATH), cfg["weaponSet"]), encoding="utf-8"))
+        table = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), cfg["weaponSet"]), encoding="utf-8"))
         for family, w in table["weapons"].items():
             attach_weapon({"model": table["pack"] + "/" + w["file"], "bone": w["bone"], "length": w["length"], "location": w["location"], "rotationDeg": w["rotationDeg"]}, "w_" + family, cfg.get("weaponLengthScale", 1.0))
         log("weapons: " + ", ".join(table["weapons"]))

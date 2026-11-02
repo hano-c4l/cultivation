@@ -168,15 +168,70 @@ export async function spriteChoices(): Promise<{ models: string[]; outfits: stri
   if (!m) return { models: [], outfits: [], ok: false };
   const keys = Object.keys(m.sprites);
   const models = keys.filter((k) => k.startsWith("monster.")).map((k) => k.slice("monster.".length)).sort();
-  const outfits = keys.filter((k) => /^player\.male\.[a-z]+$/.test(k)).map((k) => k.slice("player.male.".length)).sort();
+  // The silhouettes of the paper dolls (`doll.male.<style>.body`) and the single-sprite outfits that came before them (`player.male.<outfit>`).
+  const outfits = [...new Set([...keys.filter((k) => /^doll\.male\.[a-z]+\.body$/.test(k)).map((k) => k.split(".")[2] as string), ...keys.filter((k) => /^player\.male\.[a-z]+$/.test(k)).map((k) => k.slice("player.male.".length))])].sort();
   return { models, outfits, ok: true };
 }
 
 const frames = new Map<string, Promise<{ img: HTMLImageElement; json: Record<string, { frame: { x: number; y: number; w: number; h: number }; spriteSourceSize: { x: number; y: number }; sourceSize: { w: number; h: number } }> } | null>>();
 
+type Loaded = { img: HTMLImageElement; json: Record<string, { frame: { x: number; y: number; w: number; h: number }; spriteSourceSize: { x: number; y: number }; sourceSize: { w: number; h: number } }> } | null;
+
+async function loadAtlas(atlas: { image: string; data: string }): Promise<Loaded> {
+  try {
+    const [json, img] = await Promise.all([
+      fetch(`/gfx/${atlas.data}`).then((r) => r.json()),
+      new Promise<HTMLImageElement>((ok, bad) => {
+        const i = new Image();
+        i.onload = () => ok(i);
+        i.onerror = () => bad(new Error("image"));
+        i.src = `/gfx/${atlas.image}`;
+      }),
+    ]);
+    return { img, json: json.frames };
+  } catch {
+    return null;
+  }
+}
+
 /** A small canvas with the standing frame of a sprite (`monster.wolf`, `player.male.tien`), facing the viewer; empty when the atlas cannot be read. */
 export function spritePreview(spriteKey: string, size = 64): HTMLElement {
   const canvas = h("canvas", { class: "sprite-prev", width: String(size), height: String(size) });
+  // A paper doll (`doll.male.robe`) is shown dressed: the body, hair, robe and boots one over the other, the cloth and shoes in plain colours.
+  const dollPrefix = /^doll\.[a-z]+\.[a-z]+$/.exec(spriteKey)?.[0];
+  if (dollPrefix) {
+    void (async () => {
+      const ctx = canvas.getContext("2d");
+      const m = await manifest();
+      if (!ctx || !m) return;
+      for (const [slot, tint] of [["body", null], ["hair", null], ["robe", [233, 227, 216]], ["boots", [74, 64, 56]]] as const) {
+        const sprite = m.sprites[`${dollPrefix}.${slot}`];
+        const atlas = sprite ? m.atlases[sprite.atlas] : undefined;
+        if (!sprite || !atlas) continue;
+        let pending = frames.get(sprite.atlas);
+        if (!pending) frames.set(sprite.atlas, (pending = loadAtlas(atlas)));
+        const loaded = await pending;
+        const fr = loaded?.json[frameName("idle", 0, 0)];
+        if (!loaded || !fr) continue;
+        const k = Math.min(size / fr.sourceSize.w, size / fr.sourceSize.h);
+        const layer = document.createElement("canvas");
+        layer.width = size;
+        layer.height = size;
+        const lctx = layer.getContext("2d");
+        if (!lctx) continue;
+        lctx.drawImage(loaded.img, fr.frame.x, fr.frame.y, fr.frame.w, fr.frame.h, fr.spriteSourceSize.x * k, fr.spriteSourceSize.y * k, fr.frame.w * k, fr.frame.h * k);
+        if (tint) {
+          lctx.globalCompositeOperation = "multiply";
+          lctx.fillStyle = `rgb(${tint[0]},${tint[1]},${tint[2]})`;
+          lctx.fillRect(0, 0, size, size);
+          lctx.globalCompositeOperation = "destination-in";
+          lctx.drawImage(loaded.img, fr.frame.x, fr.frame.y, fr.frame.w, fr.frame.h, fr.spriteSourceSize.x * k, fr.spriteSourceSize.y * k, fr.frame.w * k, fr.frame.h * k);
+        }
+        ctx.drawImage(layer, 0, 0);
+      }
+    })();
+    return canvas;
+  }
   void (async () => {
     const m = await manifest();
     const sprite = m?.sprites[spriteKey];
@@ -184,22 +239,7 @@ export function spritePreview(spriteKey: string, size = 64): HTMLElement {
     if (!m || !sprite || !atlas) return;
     let pending = frames.get(sprite.atlas);
     if (!pending) {
-      pending = (async () => {
-        try {
-          const [json, img] = await Promise.all([
-            fetch(`/gfx/${atlas.data}`).then((r) => r.json()),
-            new Promise<HTMLImageElement>((ok, bad) => {
-              const i = new Image();
-              i.onload = () => ok(i);
-              i.onerror = () => bad(new Error("image"));
-              i.src = `/gfx/${atlas.image}`;
-            }),
-          ]);
-          return { img, json: json.frames };
-        } catch {
-          return null;
-        }
-      })();
+      pending = loadAtlas(atlas);
       frames.set(sprite.atlas, pending);
     }
     const loaded = await pending;

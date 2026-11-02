@@ -65,7 +65,7 @@ const options = (values: readonly string[], names: Record<string, string>, previ
 
 /** The outfit options: the plain clothes and every outfit the manifest has, each with a preview of the figure wearing it. */
 function outfitOptions(outfits: readonly string[]): Opt[] {
-  return outfits.map((o) => ({ value: o, label: o, preview: () => spritePreview(`player.male.${o}`, 56) }));
+  return outfits.map((o) => ({ value: o, label: o, preview: () => spritePreview(/^(tunic|robe|grand)$/.test(o) ? `doll.male.${o}` : `player.male.${o}`, 56) }));
 }
 
 // ---- the "Hình ảnh" page ----
@@ -98,7 +98,7 @@ export async function looksPage(): Promise<HTMLElement> {
     draw();
     const add = h("button", { type: "button" }, "+ Thêm luật");
     add.addEventListener("click", () => {
-      value.rules.push({ minRealm: 0, outfit: choices.outfits[0] ?? "ranger" });
+      value.rules.push({ minRealm: 0, outfit: choices.outfits[0] ?? "robe" });
       draw();
     });
     root.append(

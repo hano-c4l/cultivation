@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import type { FlightStyle } from "@game/shared";
+import { FIGURE_SCALE, type FlightStyle } from "@game/shared";
 
 /**
  * What a rider of the flight pháp bảo stands on, drawn once on canvas (no art files, in the style of the xianxia cultivators: a flying sword, a cloud,
@@ -24,7 +24,7 @@ export const FLIGHT_TURNS: Readonly<Partial<Record<FlightStyle, { points: number
   phoenix: { points: -Math.PI / 2, flip: false, tail: 34 },
 };
 /** How much bigger than the others each is drawn: the two highest realms ride something grand. */
-export const FLIGHT_SCALE: Readonly<Record<FlightStyle, number>> = { plain: 1, sword: 1, cloud: 1, lotus: 1, phoenix: 1.3, dragon: 1.55 };
+export const FLIGHT_SCALE: Readonly<Record<FlightStyle, number>> = { plain: FIGURE_SCALE, sword: FIGURE_SCALE, cloud: FIGURE_SCALE, lotus: FIGURE_SCALE, phoenix: 1.3 * FIGURE_SCALE, dragon: 1.55 * FIGURE_SCALE };
 
 type Paint = (c: CanvasRenderingContext2D, w: number, h: number) => void;
 

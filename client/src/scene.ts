@@ -7,6 +7,7 @@ import {
   directionOf,
   bodyOf,
   DEFAULT_OUTFIT,
+  FIGURE_SCALE,
   type GfxAnimName,
   bossKinds,
   bossRealmBonus,
@@ -869,7 +870,7 @@ export class GameScene extends Phaser.Scene {
     const npc = npcsOf(this.map).find((n) => {
       const p = toScreen(n.x, n.y);
       if (n.kind === "waygate") return Math.hypot(tx - n.x, ty - n.y) <= WAYGATE_RADIUS; // a circle on the ground, nothing stands up from it
-      return Math.hypot(tx - n.x, ty - n.y) <= 1 || (Math.abs(world.x - p.x) <= 18 && world.y >= p.y - 52 && world.y <= p.y + 10);
+      return Math.hypot(tx - n.x, ty - n.y) <= 1 || (Math.abs(world.x - p.x) <= Math.round(18 * FIGURE_SCALE) && world.y >= p.y - Math.round(52 * FIGURE_SCALE) && world.y <= p.y + 10);
     });
     if (npc) {
       this.stopAuto("manual"); // opening an NPC window is the player taking over
@@ -1825,7 +1826,7 @@ export class GameScene extends Phaser.Scene {
       if (m.guard && this.pk.mode() === 0) continue; // a guard is only attacked on purpose: with the PK state off a click walks past it
       const pos = positionAlongPath(m.path, now - m.startedAt, m.speed);
       const s = toScreen(pos.x, pos.y);
-      const d = Math.hypot(s.x - wx, s.y - 20 - wy);
+      const d = Math.hypot(s.x - wx, s.y - Math.round(20 * FIGURE_SCALE) - wy);
       if (d <= bestD) {
         bestD = d;
         best = m.id;
@@ -2105,7 +2106,7 @@ export class GameScene extends Phaser.Scene {
       if (!anyone && this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < grayWindowMs())) continue;
       const pos = currentPos(a, now);
       const s = toScreen(pos.x, pos.y);
-      const d = Math.hypot(s.x - wx, s.y - 20 - wy);
+      const d = Math.hypot(s.x - wx, s.y - Math.round(20 * FIGURE_SCALE) - wy);
       if (d <= bestD) {
         bestD = d;
         best = a.id;
@@ -2253,7 +2254,8 @@ export class GameScene extends Phaser.Scene {
       a.wview?.followFrame(a.view);
       this.applyReact(a.id, a.view, a.wview, now);
       // A rider stands 8 px above the ground on the pháp bảo; seated, the rider sits a little higher (on the pháp bảo itself, not in it).
-      const ride = rides(a) ? (sit ? 16 : 8) : 0;
+      // On a beast the rider sits on its back (about 60% of its height); on the flight pháp bảo a little above the ground.
+      const ride = a.beastView?.alive ? Math.round(a.beastView.rise() * 0.6) : rides(a) ? Math.round((sit ? 16 : 8) * FIGURE_SCALE) : 0;
       const lift = -ride;
       a.view.place(x, y - ride, depth);
       a.wview?.place(x, y - ride, depth + 0.02);
@@ -2309,38 +2311,39 @@ export class GameScene extends Phaser.Scene {
     // On screen a ground vector is squashed 2:1 vertically; `fwd` runs head-ward, `side` is to the left of it.
     const fwd = { x: Math.cos(ga), y: 0.5 * Math.sin(ga) };
     const side = { x: -Math.sin(ga), y: 0.5 * Math.cos(ga) };
-    const length = 150;
+    const K = FIGURE_SCALE; // the dragon is drawn for the bigger figure of 4j
+    const length = 150 * K;
     const phase = now / (moving ? 170 : 300) + a.id.length;
     const at = (t: number): { x: number; y: number; z: number } => {
       const calm = 0.35 + 0.65 * (1 - t); // the head holds steady, the tail swings widest
-      const sway = Math.sin(phase - t * 5.2) * 16 * calm;
-      return { x: cx + fwd.x * length * (t - 0.5) + side.x * sway, y: cy + fwd.y * length * (t - 0.5) + side.y * sway, z: Math.sin(phase * 0.9 - t * 4.1 + 1.2) * 7 * calm + t * 9 };
+      const sway = Math.sin(phase - t * 5.2) * 16 * K * calm;
+      return { x: cx + fwd.x * length * (t - 0.5) + side.x * sway, y: cy + fwd.y * length * (t - 0.5) + side.y * sway, z: Math.sin(phase * 0.9 - t * 4.1 + 1.2) * 7 * K * calm + t * 9 * K };
     };
     const parts = a.dragon;
     // The cloud bank follows the body: a puff under four places along it, so it turns with the dragon.
     a.mist?.forEach((puff, k) => {
       const m = at(0.12 + k * 0.25);
-      puff.setPosition(m.x, m.y + 8).setScale(1.25 + 0.1 * Math.sin(now / 500 + k)).setDepth(depth - 0.002);
+      puff.setPosition(m.x, m.y + 8 * K).setScale((1.25 + 0.1 * Math.sin(now / 500 + k)) * K).setDepth(depth - 0.002);
     });
     for (let i = 0; i < JOINTS; i++) {
       const t = i / (JOINTS - 1);
       const p = at(t * 0.92);
       const img = parts[1 + i]!;
-      img.setPosition(p.x, p.y - p.z - 6).setScale(0.55 + 0.5 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.5)).setDepth(depth + t * 0.004);
+      img.setPosition(p.x, p.y - p.z - 6 * K).setScale((0.55 + 0.5 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.5)) * K).setDepth(depth + t * 0.004);
     }
     const tail = at(-0.02);
     const tailDir = Math.atan2(tail.y - at(0.1).y, tail.x - at(0.1).x);
-    parts[0]!.setPosition(tail.x, tail.y - tail.z - 6).setRotation(tailDir).setFlipY(Math.cos(tailDir) < 0).setDepth(depth - 0.001).setScale(0.8).setOrigin(1, 0.5);
+    parts[0]!.setPosition(tail.x, tail.y - tail.z - 6 * K).setRotation(tailDir).setFlipY(Math.cos(tailDir) < 0).setDepth(depth - 0.001).setScale(0.8 * K).setOrigin(1, 0.5);
     const h = at(1);
     const neck = at(0.9);
     const headAng = Math.atan2(h.y - neck.y, h.x - neck.x);
     const left = Math.cos(headAng) < 0;
     parts[parts.length - 1]!
-      .setPosition(h.x, h.y - h.z - 10)
+      .setPosition(h.x, h.y - h.z - 10 * K)
       .setRotation(left ? headAng - Math.PI : headAng)
       .setFlipX(left)
       .setFlipY(false)
-      .setScale(0.95)
+      .setScale(0.95 * K)
       .setDepth(depth + 0.006);
   }
 
@@ -2738,9 +2741,9 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);
-      this.syncQi(actor, now, s.x, s.y - (rides(actor) ? 8 : 0));
+      this.syncQi(actor, now, s.x, s.y - (rides(actor) ? Math.round(8 * FIGURE_SCALE) : 0));
       // The name stands just above the head: a sprite says how tall it is, the oval has a fixed height (a rider is lifted a little).
-      const rise = actor.view?.alive ? actor.view.rise() + 6 + (rides(actor) ? 8 : 0) : rides(actor) ? 46 : 38;
+      const rise = actor.view?.alive ? actor.view.rise() + 6 + (rides(actor) ? Math.round(8 * FIGURE_SCALE) : 0) : rides(actor) ? 46 : 38;
       actor.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);
       if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - rise - 1).setDepth(depth + 0.1);
       actor.sectTag?.setPosition(s.x, s.y - rise - actor.label.height + 1).setDepth(depth + 0.1);

@@ -32,7 +32,7 @@ export function propFrame(scene: Phaser.Scene, style: ObstacleStyle, variant: nu
 /** Chunks built in one frame (a fresh map needs several; building them all at once would stall the first frame). */
 const BUILDS_PER_FRAME = 4;
 /** Height (px) of the side faces of walls. */
-const FACE = 6;
+const FACE = 12;
 /** The walls of a house stand taller than the plain block of old. */
 const FACE_HOUSE = 14;
 /** The ground pattern of a styled map: 8 x 8 tiles of the 64 x 32 unit, so the patches and details repeat every eight tiles. */
@@ -572,6 +572,14 @@ export class MapLayer {
           if (!this.blocked(cx, cy + 1)) g.fillStyle(shade(col, 0.4), 1).fillPoints([new Phaser.Math.Vector2(x - half, y + cellH / 2), new Phaser.Math.Vector2(x, y + cellH), new Phaser.Math.Vector2(x, y + cellH + FACE), new Phaser.Math.Vector2(x - half, y + cellH / 2 + FACE)], true);
         }
         g.fillStyle(flat ? col : shade(col, 1.35), 1).fillPoints(diamond(x, y, 1 / CELLS_PER_TILE), true);
+        if (!flat) {
+          // the ink line of a stone wall: along the foot of each face that looks down onto walkable ground, and on the rim of the top where nothing blocks beyond it
+          g.lineStyle(1.5, 0x14181c, 0.75);
+          if (!this.blocked(cx + 1, cy)) g.lineBetween(x + half, y + cellH / 2 + FACE, x, y + cellH + FACE);
+          if (!this.blocked(cx, cy + 1)) g.lineBetween(x - half, y + cellH / 2 + FACE, x, y + cellH + FACE);
+          if (!this.blocked(cx, cy - 1)) g.lineBetween(x, y, x + half, y + cellH / 2);
+          if (!this.blocked(cx - 1, cy)) g.lineBetween(x, y, x - half, y + cellH / 2);
+        }
       }
       const tex = this.scene.add.renderTexture(ox, oy, CHUNK + 2 * half, CHUNK + cellH + FACE_HOUSE).setOrigin(0, 0).setDepth(0.1);
       tex.draw(g, 0, 0);

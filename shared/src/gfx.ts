@@ -13,6 +13,8 @@ import type { Vec2 } from "./map";
  */
 export const GFX_FRAME_SIZE = 96;
 export const GFX_ATLAS_MAX_PX = 2048;
+/** How much bigger the figure of 4j is than the one before it (about 89 px against 64): a height or a size written for the old figure is multiplied by it. */
+export const FIGURE_SCALE = 1.39;
 /** The props atlas (trees, rocks, pillars... `tools/render/props-config.json`): every frame is named `<style>_<variant>` and sits in a box of this size anchored at the foot. */
 export const GFX_PROP_FRAME = 320;
 export const GFX_PROP_ANCHOR = { x: 160, y: 280 } as const;
