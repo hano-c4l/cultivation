@@ -1,5 +1,5 @@
 {
-  "version": 134,
+  "version": 140,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -2892,7 +2892,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 137,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -2948,7 +2948,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 139,
+      "headSit": 152,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3004,7 +3004,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 139,
+      "headSit": 151,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3060,7 +3060,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 139,
+      "headSit": 151,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3116,7 +3116,7 @@
         "y": 224
       },
       "head": 174,
-      "headSit": 138,
+      "headSit": 150,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3172,7 +3172,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 143,
+      "headSit": 155,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3228,7 +3228,7 @@
         "y": 224
       },
       "head": 155,
-      "headSit": 119,
+      "headSit": 131,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3284,7 +3284,7 @@
         "y": 224
       },
       "head": 169,
-      "headSit": 134,
+      "headSit": 146,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3340,7 +3340,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 137,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3396,7 +3396,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 141,
+      "headSit": 153,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3452,7 +3452,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 144,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3508,7 +3508,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 138,
+      "headSit": 150,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3564,7 +3564,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 138,
+      "headSit": 150,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3619,8 +3619,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 153,
-      "headSit": 117,
+      "head": 151,
+      "headSit": 127,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3676,7 +3676,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 91,
+      "headSit": 104,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3731,8 +3731,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 132,
-      "headSit": 130,
+      "head": 145,
+      "headSit": 160,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3787,8 +3787,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 129,
-      "headSit": 127,
+      "head": 143,
+      "headSit": 158,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3844,7 +3844,7 @@
         "y": 224
       },
       "head": 114,
-      "headSit": 114,
+      "headSit": 126,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3899,8 +3899,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 128,
-      "headSit": 85,
+      "head": 123,
+      "headSit": 94,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3956,7 +3956,7 @@
         "y": 224
       },
       "head": 176,
-      "headSit": 140,
+      "headSit": 153,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4012,7 +4012,7 @@
         "y": 224
       },
       "head": 182,
-      "headSit": 146,
+      "headSit": 159,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4068,7 +4068,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 144,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4124,7 +4124,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 144,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4180,7 +4180,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 143,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4236,7 +4236,7 @@
         "y": 224
       },
       "head": 184,
-      "headSit": 148,
+      "headSit": 161,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4292,7 +4292,7 @@
         "y": 224
       },
       "head": 163,
-      "headSit": 127,
+      "headSit": 140,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4348,7 +4348,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 140,
+      "headSit": 153,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4404,7 +4404,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 141,
+      "headSit": 154,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4460,7 +4460,7 @@
         "y": 224
       },
       "head": 181,
-      "headSit": 146,
+      "headSit": 159,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4516,7 +4516,7 @@
         "y": 224
       },
       "head": 185,
-      "headSit": 149,
+      "headSit": 162,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4572,7 +4572,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 144,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4628,7 +4628,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 144,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4683,8 +4683,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 163,
-      "headSit": 127,
+      "head": 161,
+      "headSit": 138,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4740,7 +4740,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 92,
+      "headSit": 105,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4795,8 +4795,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 134,
-      "headSit": 132,
+      "head": 147,
+      "headSit": 163,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4851,8 +4851,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 131,
-      "headSit": 128,
+      "head": 145,
+      "headSit": 160,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4908,7 +4908,7 @@
         "y": 224
       },
       "head": 118,
-      "headSit": 117,
+      "headSit": 130,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4963,8 +4963,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 129,
-      "headSit": 85,
+      "head": 126,
+      "headSit": 97,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5076,7 +5076,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 123,
+      "headSit": 124,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5132,7 +5132,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 123,
+      "headSit": 124,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5188,7 +5188,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 123,
+      "headSit": 124,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5244,7 +5244,7 @@
         "y": 224
       },
       "head": 174,
-      "headSit": 122,
+      "headSit": 123,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5300,7 +5300,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 127,
+      "headSit": 128,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5356,7 +5356,7 @@
         "y": 224
       },
       "head": 155,
-      "headSit": 103,
+      "headSit": 104,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5412,7 +5412,7 @@
         "y": 224
       },
       "head": 169,
-      "headSit": 117,
+      "headSit": 118,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5468,7 +5468,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 120,
+      "headSit": 121,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5524,7 +5524,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 125,
+      "headSit": 126,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5580,7 +5580,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 128,
+      "headSit": 129,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5747,8 +5747,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 153,
-      "headSit": 101,
+      "head": 151,
+      "headSit": 100,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5804,7 +5804,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 75,
+      "headSit": 76,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5859,8 +5859,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 132,
-      "headSit": 114,
+      "head": 145,
+      "headSit": 133,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5915,8 +5915,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 129,
-      "headSit": 111,
+      "head": 143,
+      "headSit": 130,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5972,7 +5972,7 @@
         "y": 224
       },
       "head": 114,
-      "headSit": 98,
+      "headSit": 99,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6027,8 +6027,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 128,
-      "headSit": 69,
+      "head": 123,
+      "headSit": 66,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6084,7 +6084,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 144,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6140,7 +6140,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 146,
+      "headSit": 160,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6196,7 +6196,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 146,
+      "headSit": 160,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6252,7 +6252,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 146,
+      "headSit": 160,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6308,7 +6308,7 @@
         "y": 224
       },
       "head": 174,
-      "headSit": 145,
+      "headSit": 158,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6364,7 +6364,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 150,
+      "headSit": 163,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6420,7 +6420,7 @@
         "y": 224
       },
       "head": 155,
-      "headSit": 126,
+      "headSit": 140,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6476,7 +6476,7 @@
         "y": 224
       },
       "head": 169,
-      "headSit": 141,
+      "headSit": 154,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6532,7 +6532,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 143,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6588,7 +6588,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 148,
+      "headSit": 162,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6644,7 +6644,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 151,
+      "headSit": 164,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6700,7 +6700,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 145,
+      "headSit": 158,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6756,7 +6756,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 145,
+      "headSit": 158,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6811,8 +6811,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 153,
-      "headSit": 124,
+      "head": 151,
+      "headSit": 136,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6868,7 +6868,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 98,
+      "headSit": 112,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6923,8 +6923,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 132,
-      "headSit": 137,
+      "head": 145,
+      "headSit": 168,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6979,8 +6979,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 129,
-      "headSit": 134,
+      "head": 143,
+      "headSit": 166,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7036,7 +7036,7 @@
         "y": 224
       },
       "head": 114,
-      "headSit": 121,
+      "headSit": 134,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7091,8 +7091,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 128,
-      "headSit": 92,
+      "head": 122,
+      "headSit": 102,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7148,7 +7148,7 @@
         "y": 224
       },
       "head": 176,
-      "headSit": 123,
+      "headSit": 125,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7204,7 +7204,7 @@
         "y": 224
       },
       "head": 182,
-      "headSit": 129,
+      "headSit": 131,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7260,7 +7260,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 127,
+      "headSit": 129,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7316,7 +7316,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 127,
+      "headSit": 128,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7372,7 +7372,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 126,
+      "headSit": 128,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7428,7 +7428,7 @@
         "y": 224
       },
       "head": 184,
-      "headSit": 131,
+      "headSit": 133,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7484,7 +7484,7 @@
         "y": 224
       },
       "head": 163,
-      "headSit": 111,
+      "headSit": 112,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7540,7 +7540,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 123,
+      "headSit": 124,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7596,7 +7596,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 125,
+      "headSit": 126,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7652,7 +7652,7 @@
         "y": 224
       },
       "head": 181,
-      "headSit": 129,
+      "headSit": 131,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7708,7 +7708,7 @@
         "y": 224
       },
       "head": 185,
-      "headSit": 132,
+      "headSit": 134,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7764,7 +7764,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 127,
+      "headSit": 128,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7820,7 +7820,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 127,
+      "headSit": 128,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7875,8 +7875,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 163,
-      "headSit": 110,
+      "head": 161,
+      "headSit": 109,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7932,7 +7932,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 76,
+      "headSit": 77,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7987,8 +7987,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 134,
-      "headSit": 115,
+      "head": 147,
+      "headSit": 134,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8043,8 +8043,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 131,
-      "headSit": 111,
+      "head": 145,
+      "headSit": 132,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8100,7 +8100,7 @@
         "y": 224
       },
       "head": 118,
-      "headSit": 100,
+      "headSit": 101,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8155,8 +8155,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 128,
-      "headSit": 68,
+      "head": 126,
+      "headSit": 69,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8211,8 +8211,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 177,
-      "headSit": 147,
+      "head": 176,
+      "headSit": 161,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8267,8 +8267,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 184,
-      "headSit": 153,
+      "head": 183,
+      "headSit": 168,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8323,8 +8323,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 182,
-      "headSit": 151,
+      "head": 181,
+      "headSit": 166,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8379,8 +8379,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 181,
-      "headSit": 151,
+      "head": 180,
+      "headSit": 165,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8435,8 +8435,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 181,
-      "headSit": 150,
+      "head": 180,
+      "headSit": 165,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8491,8 +8491,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 185,
-      "headSit": 155,
+      "head": 184,
+      "headSit": 169,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8547,8 +8547,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 165,
-      "headSit": 135,
+      "head": 164,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8603,8 +8603,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 177,
-      "headSit": 147,
+      "head": 176,
+      "headSit": 161,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8659,8 +8659,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 179,
-      "headSit": 148,
+      "head": 178,
+      "headSit": 163,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8715,8 +8715,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 183,
-      "headSit": 153,
+      "head": 182,
+      "headSit": 167,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8771,8 +8771,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 186,
-      "headSit": 156,
+      "head": 185,
+      "headSit": 170,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8827,8 +8827,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 181,
-      "headSit": 151,
+      "head": 180,
+      "headSit": 165,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8883,8 +8883,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 181,
-      "headSit": 151,
+      "head": 180,
+      "headSit": 165,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8939,8 +8939,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 165,
-      "headSit": 134,
+      "head": 161,
+      "headSit": 146,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8995,8 +8995,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 130,
-      "headSit": 91,
+      "head": 129,
+      "headSit": 106,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9051,8 +9051,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 136,
-      "headSit": 139,
+      "head": 148,
+      "headSit": 171,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9107,8 +9107,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 133,
-      "headSit": 135,
+      "head": 146,
+      "headSit": 169,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9163,8 +9163,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 120,
-      "headSit": 124,
+      "head": 119,
+      "headSit": 138,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9219,8 +9219,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 131,
-      "headSit": 92,
+      "head": 126,
+      "headSit": 106,
       "scale": 0.5,
       "anims": {
         "idle": {
