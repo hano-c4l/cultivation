@@ -1,0 +1,439 @@
+{
+  "note": "The paper doll render (4j): every layer of one figure in one Blender run. tools/render/render-dolls.mjs adds the gender (body, hair, skin colours) and the style (the silhouette of the robe: doll-styles.json) to this template.",
+  "frame": 128,
+  "anchor": [
+    64,
+    112
+  ],
+  "figureScale": 1.2,
+  "headScale": 1.25,
+  "outlinePx": 1.8,
+  "atlasMaxPx": 2048,
+  "toonLevels": [
+    0.7,
+    0.9,
+    1.0
+  ],
+  "shadeTints": [
+    [
+      0.8,
+      0.86,
+      1.0
+    ],
+    [
+      0.95,
+      0.97,
+      1.0
+    ],
+    [
+      1.0,
+      1.0,
+      1.0
+    ]
+  ],
+  "groundInk": {
+    "height": 0.3,
+    "strength": 0.28,
+    "color": [
+      0.55,
+      0.62,
+      0.7
+    ]
+  },
+  "palette": {
+    "outline": [
+      0.04,
+      0.05,
+      0.1
+    ]
+  },
+  "materials": {
+    "GenSkin": {
+      "color": [
+        1.25,
+        1.02,
+        0.88
+      ]
+    },
+    "XianHair": {
+      "color": [
+        0.09,
+        0.1,
+        0.17
+      ]
+    },
+    "XianRobe": {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "XianSleeve": {
+      "color": [
+        0.92,
+        0.92,
+        0.92
+      ]
+    },
+    "XianTrim": {
+      "color": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    "XianSash": {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "GenLegwear": {
+      "color": [
+        0.8,
+        0.8,
+        0.8
+      ]
+    },
+    "GenBoot": {
+      "color": [
+        0.85,
+        0.85,
+        0.85
+      ]
+    },
+    "GenHat": {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "GenHatTrim": {
+      "color": [
+        0.55,
+        0.55,
+        0.55
+      ]
+    }
+  },
+  "generated": {
+    "parts": [
+      "skirt",
+      "top",
+      "sash",
+      "sleeves",
+      "legs",
+      "hands",
+      "boots",
+      "bun",
+      "hat0",
+      "hat1",
+      "hat2",
+      "hat3",
+      "hat4",
+      "hat5",
+      "hat6",
+      "hat7",
+      "hat8",
+      "hat9"
+    ],
+    "robe": "XianRobe",
+    "sleeve": "XianSleeve",
+    "trim": "XianTrim",
+    "sash": "XianSash",
+    "hairpiece": "XianHair",
+    "skin": "GenSkin",
+    "legwear": "GenLegwear",
+    "boot": "GenBoot",
+    "hat": "GenHat",
+    "scale": 1.0,
+    "hemZ": 0.16,
+    "hatTrim": "GenHatTrim"
+  },
+  "passes": [
+    {
+      "name": "body",
+      "draw": [
+        "body"
+      ]
+    },
+    {
+      "name": "hair",
+      "draw": [
+        "hair",
+        "bun"
+      ]
+    },
+    {
+      "name": "hairhat",
+      "draw": [
+        "hair"
+      ],
+      "exclude": [
+        "bun"
+      ]
+    },
+    {
+      "name": "robe",
+      "draw": [
+        "robe"
+      ]
+    },
+    {
+      "name": "belt",
+      "draw": [
+        "belt"
+      ]
+    },
+    {
+      "name": "bracer",
+      "draw": [
+        "bracer"
+      ]
+    },
+    {
+      "name": "boots",
+      "draw": [
+        "boots"
+      ]
+    },
+    {
+      "name": "h0",
+      "draw": [
+        "h_0"
+      ]
+    },
+    {
+      "name": "h1",
+      "draw": [
+        "h_1"
+      ]
+    },
+    {
+      "name": "h2",
+      "draw": [
+        "h_2"
+      ]
+    },
+    {
+      "name": "h3",
+      "draw": [
+        "h_3"
+      ]
+    },
+    {
+      "name": "h4",
+      "draw": [
+        "h_4"
+      ]
+    },
+    {
+      "name": "h5",
+      "draw": [
+        "h_5"
+      ]
+    },
+    {
+      "name": "h6",
+      "draw": [
+        "h_6"
+      ]
+    },
+    {
+      "name": "h7",
+      "draw": [
+        "h_7"
+      ]
+    },
+    {
+      "name": "h8",
+      "draw": [
+        "h_8"
+      ]
+    },
+    {
+      "name": "h9",
+      "draw": [
+        "h_9"
+      ]
+    },
+    {
+      "name": "w_kiem",
+      "draw": [
+        "w_kiem"
+      ]
+    },
+    {
+      "name": "w_dao",
+      "draw": [
+        "w_dao"
+      ]
+    },
+    {
+      "name": "w_thuong",
+      "draw": [
+        "w_thuong"
+      ]
+    },
+    {
+      "name": "w_riu",
+      "draw": [
+        "w_riu"
+      ]
+    },
+    {
+      "name": "w_cung",
+      "draw": [
+        "w_cung"
+      ]
+    }
+  ],
+  "previewTints": {
+    "robe": [
+      0.55,
+      0.85,
+      0.8
+    ],
+    "belt": [
+      0.95,
+      0.3,
+      0.2
+    ],
+    "bracer": [
+      0.95,
+      0.78,
+      0.3
+    ],
+    "boots": [
+      0.25,
+      0.28,
+      0.4
+    ],
+    "h0": [
+      0.95,
+      0.8,
+      0.45
+    ],
+    "h1": [
+      0.95,
+      0.8,
+      0.45
+    ],
+    "h2": [
+      0.95,
+      0.8,
+      0.45
+    ],
+    "h3": [
+      0.95,
+      0.8,
+      0.45
+    ],
+    "h4": [
+      0.95,
+      0.8,
+      0.45
+    ],
+    "h5": [
+      0.95,
+      0.8,
+      0.45
+    ],
+    "h6": [
+      0.95,
+      0.8,
+      0.45
+    ],
+    "h7": [
+      0.95,
+      0.8,
+      0.45
+    ],
+    "h8": [
+      0.95,
+      0.8,
+      0.45
+    ],
+    "h9": [
+      0.95,
+      0.8,
+      0.45
+    ]
+  },
+  "previewSets": {
+    "": [
+      "body",
+      "hair",
+      "robe",
+      "belt",
+      "bracer",
+      "boots"
+    ],
+    "hat0": [
+      "body",
+      "hairhat",
+      "robe",
+      "belt",
+      "bracer",
+      "boots",
+      "h0"
+    ],
+    "hat3": [
+      "body",
+      "hairhat",
+      "robe",
+      "belt",
+      "bracer",
+      "boots",
+      "h3"
+    ],
+    "hat6": [
+      "body",
+      "hairhat",
+      "robe",
+      "belt",
+      "bracer",
+      "boots",
+      "h6"
+    ],
+    "hat9": [
+      "body",
+      "hairhat",
+      "robe",
+      "belt",
+      "bracer",
+      "boots",
+      "h9"
+    ],
+    "kiem": [
+      "body",
+      "hair",
+      "robe",
+      "belt",
+      "bracer",
+      "boots",
+      "w_kiem"
+    ],
+    "cung": [
+      "body",
+      "hair",
+      "robe",
+      "belt",
+      "bracer",
+      "boots",
+      "w_cung"
+    ]
+  },
+  "anims": {
+    "sit": {
+      "action": "Sitting_Idle_Loop",
+      "frames": 4,
+      "loop": true
+    }
+  },
+  "weaponSet": "weapons.json",
+  "weaponLengthScale": 1.41
+}

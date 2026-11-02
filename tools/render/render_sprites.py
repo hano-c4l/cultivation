@@ -160,15 +160,22 @@ def add_generated(rig, spec):
     cy = 0.03
     if "skirt" in parts:
         zs = [waist - (waist - hem) * i / 9 for i in range(10)]
-        flare = lambda t: 0.19 * k + (0.40 * k - 0.19 * k) * (t ** 0.75)
+        f0, f1 = spec.get("flare0", 0.19), spec.get("flare1", 0.40)
+        flare = lambda t: f0 * k + (f1 * k - f0 * k) * (t ** 0.75)
         lathe("XianSkirt", robe, zs, flare, lambda t: flare(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, 0.62))
-        lathe("XianHem", trim, [hem + 0.04, hem - 0.005], lambda t: 0.40 * k + 0.012, lambda t: (0.40 * k + 0.012) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, 1.0, 0.62))
+        lathe("XianHem", trim, [hem + 0.04, hem - 0.005], lambda t: f1 * k + 0.012, lambda t: (f1 * k + 0.012) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, 1.0, 0.62))
     if "top" in parts:
         top_z = head("neck_01").z - 0.02
         zs = [waist - 0.02 + (top_z - waist + 0.02) * i / 7 for i in range(8)]
         prof = lambda t: (0.185 + 0.03 * math.sin(t * math.pi * 0.9)) * k * (1.0 - 0.45 * max(0.0, t - 0.82) / 0.18)
         lathe("XianTop", robe, zs, prof, lambda t: prof(t) * 0.78, 0.0, 0.02, lambda x, z, t: spine_w(z))
         lathe("XianCollar", trim, [top_z + 0.02, top_z - 0.06], lambda t: 0.095 * k, lambda t: 0.085 * k, 0.0, 0.035, lambda x, z, t: {"neck_01": 0.7, "spine_03": 0.3})
+    if "mantle" in parts:
+        # a shoulder mantle over the top: a short wide cape on the shoulders (grand robes)
+        top_z = head("neck_01").z - 0.02
+        zs = [top_z - 0.02 - 0.2 * i / 6 for i in range(7)]
+        prof = lambda t: (0.13 + 0.14 * math.sin(t * math.pi * 0.5)) * k
+        lathe("XianMantle", trim, zs, prof, lambda t: prof(t) * 0.8, 0.0, 0.03, lambda x, z, t: spine_w(z))
     if "sash" in parts:
         lathe("XianSash", sash, [waist + 0.07, waist - 0.02], lambda t: 0.205 * k, lambda t: 0.205 * k * 0.8, 0.0, 0.02, lambda x, z, t: {"pelvis": 0.6, "spine_01": 0.4})
         for sx in (-1, 1):
@@ -190,7 +197,8 @@ def add_generated(rig, spec):
             end_x = abs(head("hand_" + side).x) - 0.025
             xs = [sx * (0.10 + (end_x - 0.10) * i / 8) for i in range(9)]
             axis = [(x, ua.y, ua.z) for x in xs]
-            ru = lambda t: (0.075 - 0.012 * t + 0.07 * max(0.0, (t - 0.7) / 0.3) ** 1.6) * k
+            cuff_w = spec.get("cuff", 0.07)
+            ru = lambda t: (0.075 - 0.012 * t + cuff_w * max(0.0, (t - 0.7) / 0.3) ** 1.6) * k
             elbow = abs(la.x)
 
             def w_arm(x, t, side=side, elbow=elbow):
@@ -200,7 +208,7 @@ def add_generated(rig, spec):
 
             tube("XianSleeve_" + side, spec.get("sleeve") or robe, axis, ru, w_arm)
             cuff = [(sx * (end_x - 0.05 + 0.05 * i / 2), ua.y, ua.z) for i in range(3)]
-            tube("XianCuff_" + side, trim, cuff, lambda t: (0.075 + 0.07) * k + 0.006, w_arm)
+            tube("XianCuff_" + side, trim, cuff, lambda t: (0.075 + cuff_w) * k + 0.006, w_arm)
     if "bun" in parts:
         # a hair knot on top of the head with a gold pin through it, and two long ribbons falling down the back
         hh, ht = head("Head"), B["Head"].tail_local
@@ -267,14 +275,109 @@ def add_generated(rig, spec):
             heel, toe = fo.y + 0.06, ba.tail_local.y - 0.025
             sweep_y("GenBootFoot_" + s, spec["boot"], [(fo.x, heel + (toe - heel) * i / 6, fo.z - 0.02) for i in range(7)], lambda t: 0.052 * k, lambda t: 0.05 * k,
                     lambda y, t, s=s: {"foot_" + s: 1 - 0.7 * t, "ball_" + s: 0.7 * t})
-    if "douli" in parts:
-        # a wide bamboo hat: a flat brim and a low cone, sitting on the top of the head
+    def tube3(name, mat, centers, radius_of, weights, n_seg=8):
+        """A tube along any polyline (a horn, a feather, a spike): rings perpendicular to the path, closed at the tip by a radius that shrinks to nothing."""
+        pts, ws = [], []
+        n = len(centers)
+        for i, c in enumerate(centers):
+            t = (centers[min(i + 1, n - 1)] - centers[max(i - 1, 0)]).normalized()
+            u = t.cross(Vector((0, 1, 0)))
+            if u.length < 1e-3:
+                u = t.cross(Vector((1, 0, 0)))
+            u.normalize()
+            v = t.cross(u).normalized()
+            r = radius_of(i / (n - 1))
+            for a in range(n_seg):
+                ang = a / n_seg * math.tau
+                pts.append(tuple(c + u * math.cos(ang) * r + v * math.sin(ang) * r))
+                ws.append(weights)
+        return build(name, mat, pts, ring_faces(n, n_seg), ws)
+
+    hat_ids = [i for i in range(10) if "hat%d" % i in parts]
+    if hat_ids:
+        # the ten hats of the game, in 3D, each one on the top of the head; one tonal material (the game tints the whole hat by its set) and a second, darker one for bands and gems
         hh, ht = head("Head"), B["Head"].tail_local
-        bz = ht.z - 0.03
-        brim = spec.get("hatRadius", 0.25) * k
-        lathe("GenHatBrim", spec["hat"], [bz + 0.03, bz], lambda t: brim, lambda t: brim * 0.96, 0.0, hh.y, lambda x, z, t: {"Head": 1.0}, n_seg=26)
-        zs = [bz + 0.03 + 0.12 * i / 7 for i in range(8)]
-        lathe("GenHatCone", spec["hat"], zs, lambda t: brim * 0.62 * (1 - t) ** 0.9 + 0.004, lambda t: brim * 0.6 * (1 - t) ** 0.9 + 0.004, 0.0, hh.y, lambda x, z, t: {"Head": 1.0}, n_seg=26)
+        top = ht.z - 0.015
+        cy = hh.y + 0.005
+        hm, hd = spec["hat"], spec.get("hatTrim") or spec["hat"]
+        W = {"Head": 1.0}
+        V = lambda x, y, z: Vector((x, y, z))
+
+        def band(nm, mat, z0, z1, rx, ry=None, y0=0.0):
+            lathe(nm, mat, [z1, z0], lambda t: rx, lambda t: (ry or rx * 0.94), 0.0, cy + y0, lambda x, z, t: W, n_seg=24)
+
+        def gem(nm, mat, x, y, z, r):
+            ball(nm, mat, V(x, y, z), r, W)
+
+        for hid in hat_ids:
+            P = "GenHat%d_" % hid
+            if hid == 0:  # a wide bamboo hat
+                brim = spec.get("hatRadius", 0.25) * k
+                lathe(P + "brim", hm, [top + 0.035, top - 0.005], lambda t: brim, lambda t: brim * 0.96, 0.0, cy, lambda x, z, t: W, n_seg=28)
+                lathe(P + "cone", hm, [top + 0.03 + 0.14 * i / 9 for i in range(10)], lambda t: brim * 0.58 * (1 - t) ** 0.8 + 0.004, lambda t: brim * 0.56 * (1 - t) ** 0.8 + 0.004, 0.0, cy, lambda x, z, t: W, n_seg=28)
+                band(P + "ring", hd, top + 0.0, top + 0.04, brim * 0.58)
+            elif hid == 1:  # a scholar's cap with two wings
+                lathe(P + "cap", hm, [top + 0.16, top + 0.02], lambda t: 0.085 + 0.015 * t, lambda t: 0.08 + 0.014 * t, 0.0, cy, lambda x, z, t: W, n_seg=4)
+                band(P + "band", hd, top + 0.02, top + 0.055, 0.1)
+                gem(P + "jade", hd, 0.0, cy - 0.1, top + 0.04, 0.016)
+                for sx in (-1, 1):
+                    tube3(P + "wing%d" % sx, hm, [V(sx * 0.09, cy + 0.04, top + 0.06), V(sx * 0.17, cy + 0.04, top + 0.065), V(sx * 0.25, cy + 0.04, top + 0.07)], lambda t: 0.028 * (1 - t * 0.6) + 0.004, W, n_seg=6)
+            elif hid == 2:  # a crown of five points with pearls
+                band(P + "band", hm, top - 0.01, top + 0.045, 0.105)
+                for j in range(5):
+                    a = (j / 5) * math.tau + math.pi / 2
+                    x, y = math.cos(a) * 0.1, math.sin(a) * 0.095
+                    tube3(P + "pt%d" % j, hm, [V(x, cy + y, top + 0.04), V(x, cy + y, top + 0.09), V(x, cy + y, top + 0.125)], lambda t: 0.022 * (1 - t) + 0.003, W, n_seg=5)
+                    gem(P + "pearl%d" % j, hd, x, cy + y, top + 0.13, 0.014)
+                gem(P + "ruby", hd, 0.0, cy - 0.105, top + 0.02, 0.018)
+            elif hid == 3:  # a hair crown: a gold cap, a round bun and a pin
+                lathe(P + "cap", hm, [top + 0.07 - 0.07 * i / 5 for i in range(6)], lambda t: 0.04 + 0.075 * t, lambda t: 0.04 + 0.07 * t, 0.0, cy, lambda x, z, t: W, n_seg=18)
+                ball(P + "bun", hd, V(0.0, cy, top + 0.105), 0.062, W)
+                tube3(P + "pin", hm, [V(-0.15, cy, top + 0.105), V(0.0, cy, top + 0.105), V(0.15, cy, top + 0.105)], lambda t: 0.011 * (1 - abs(t - 0.5) * 0.4), W, n_seg=6)
+                gem(P + "pinjade", hd, 0.15, cy, top + 0.105, 0.016)
+            elif hid == 4:  # a crest of five plumes
+                band(P + "band", hd, top - 0.005, top + 0.04, 0.103)
+                for j in range(5):
+                    f = (j - 2) / 2
+                    ang = f * 0.75
+                    path = [V(math.sin(ang) * s * 0.17, cy - 0.04 * (1 - abs(f)) + 0.02 * s, top + 0.03 + math.cos(ang) * s * 0.2) for s in (0.0, 0.25, 0.5, 0.75, 1.0)]
+                    tube3(P + "plume%d" % j, hm, path, lambda t: 0.03 * math.sin(math.pi * (0.2 + 0.7 * t)) * (1 - 0.3 * t) + 0.003, W, n_seg=6)
+            elif hid == 5:  # a silk headband with a jewel and two ribbons
+                band(P + "band", hm, top - 0.045, top - 0.005, 0.104, 0.099)
+                gem(P + "jewel", hd, 0.0, cy - 0.105, top - 0.03, 0.02)
+                for sx in (-1, 1):
+                    path = [V(sx * 0.102, cy + 0.03, top - 0.03 - 0.07 * s) for s in range(5)]
+                    path = [V(p.x + sx * 0.02 * i, p.y + 0.02 * i, p.z) for i, p in enumerate(path)]
+                    tube3(P + "ribbon%d" % sx, hd, path, lambda t: 0.014 * (1 - t * 0.5) + 0.003, W, n_seg=6)
+            elif hid == 6:  # an iron helm: dome, band, nose guard and ridge
+                lathe(P + "dome", hm, [top + 0.115 - 0.13 * i / 9 for i in range(10)], lambda t: 0.12 * math.sin(math.pi * 0.5 * t) + 0.003, lambda t: 0.114 * math.sin(math.pi * 0.5 * t) + 0.003, 0.0, cy, lambda x, z, t: W, n_seg=22)
+                band(P + "band", hd, top - 0.015, top + 0.02, 0.121, 0.115)
+                tube3(P + "nose", hd, [V(0.0, cy - 0.118, top + 0.02), V(0.0, cy - 0.125, top - 0.05), V(0.0, cy - 0.12, top - 0.09)], lambda t: 0.012 * (1 - t * 0.4) + 0.003, W, n_seg=5)
+                tube3(P + "ridge", hd, [V(0.0, cy - 0.1 + 0.2 * s / 6, top + 0.108 + 0.025 * math.sin(math.pi * s / 6)) for s in range(7)], lambda t: 0.014 * math.sin(math.pi * t) + 0.004, W, n_seg=5)
+            elif hid == 7:  # a lotus crown: a band and a ring of petals
+                band(P + "band", hd, top - 0.01, top + 0.03, 0.102)
+                for j in range(8):
+                    a = (j / 8) * math.tau
+                    x, y = math.cos(a), math.sin(a)
+                    path = [V(x * (0.1 + 0.025 * s), cy + y * (0.095 + 0.025 * s), top + 0.03 + 0.085 * s - 0.01 * s * s) for s in (0.0, 0.3, 0.6, 1.0)]
+                    tube3(P + "petal%d" % j, hm, path, lambda t: 0.03 * math.sin(math.pi * (0.1 + 0.8 * t)) + 0.003, W, n_seg=6)
+                gem(P + "heart", hd, 0.0, cy, top + 0.06, 0.03)
+            elif hid == 8:  # a dragon crown: two curved horns and a spine
+                band(P + "band", hd, top - 0.005, top + 0.04, 0.104)
+                for sx in (-1, 1):
+                    path = [V(sx * (0.07 + 0.045 * s + 0.03 * s * s), cy + 0.03 * s, top + 0.04 + 0.14 * s - 0.02 * s * s) for s in (0.0, 0.25, 0.5, 0.75, 1.0)]
+                    tube3(P + "horn%d" % sx, hm, path, lambda t: 0.026 * (1 - t) ** 0.8 + 0.004, W, n_seg=6)
+                tube3(P + "spine", hd, [V(0.0, cy - 0.06 + 0.12 * s / 5, top + 0.04 + 0.05 * math.sin(math.pi * s / 5)) for s in range(6)], lambda t: 0.018 * math.sin(math.pi * t) + 0.004, W, n_seg=5)
+                gem(P + "eye", hm, 0.0, cy - 0.104, top + 0.018, 0.016)
+            elif hid == 9:  # a phoenix tiara: a fan of flame feathers
+                band(P + "band", hd, top - 0.005, top + 0.04, 0.104)
+                for j in range(7):
+                    f = (j - 3) / 3
+                    ang = f * 0.95
+                    ln = 0.2 - 0.07 * abs(f)
+                    path = [V(math.sin(ang) * s * ln * 0.9, cy - 0.05 + 0.02 * s, top + 0.035 + math.cos(ang) * s * ln) for s in (0.0, 0.25, 0.5, 0.75, 1.0)]
+                    tube3(P + "flame%d" % j, hm, path, lambda t: 0.028 * math.sin(math.pi * (0.15 + 0.75 * t)) + 0.003, W, n_seg=6)
+                gem(P + "ruby", hd, 0.0, cy - 0.105, top + 0.02, 0.02)
     log("generated clothing: %s" % ", ".join(parts))
 
 
@@ -362,16 +465,17 @@ def main():
         bpy.data.objects.remove(o, do_unlink=True)  # every pack ships a little reference sphere
     if cfg.get("generated"):
         g = cfg["generated"]
-        roles = ("robe", "trim", "sash", "sleeve", "hairpiece", "skin", "legwear", "boot", "hat")
+        roles = ("robe", "trim", "sash", "sleeve", "hairpiece", "skin", "legwear", "boot", "hat", "hatTrim")
         names = [g[k] for k in roles if g.get(k)]
         gm = {n: bpy.data.materials.new(n) for n in dict.fromkeys(names)}
         add_generated(rig, {**g, **{k: gm[g[k]] for k in roles if g.get(k)}})
     if cfg.get("passes"):
         # every mesh belongs to one slot of the paper doll (body, hair, bun, robe, belt, bracer, boots, hat): by name for what the script generated, the hair by its name, the rest is the body
-        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianSleeve", "robe"), ("GenLeg", "robe"), ("XianSash", "belt"), ("XianRibbon", "belt"),
-                    ("XianCuff", "bracer"), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "boots"), ("GenHat", "hat")]
+        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianSleeve", "robe"), ("XianMantle", "robe"), ("GenLeg", "robe"), ("XianSash", "belt"), ("XianRibbon", "belt"),
+                    ("XianCuff", "bracer"), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "boots")]
         for o in [o for o in bpy.data.objects if o.type == "MESH"]:
-            o["slot"] = next((s for p, s in prefixes if o.name.startswith(p)), "hair" if o.name.startswith("Hair") else "body")
+            hat = re.match(r"GenHat(\d+)_", o.name)
+            o["slot"] = ("h_" + hat.group(1)) if hat else next((s for p, s in prefixes if o.name.startswith(p)), "hair" if o.name.startswith("Hair") else "body")
         log("slots: " + ", ".join("%s=%s" % (o.name, o["slot"]) for o in bpy.data.objects if o.type == "MESH"))
     scene = bpy.context.scene
     scene.render.resolution_x = scene.render.resolution_y = F  # before the camera maths: world_to_camera_view and the lens shift read the aspect
@@ -530,18 +634,18 @@ def main():
             body_sol = sol
 
     # ---- a weapon in the hand ----
-    weapon_objs = []
-    wcfg = cfg.get("weapon")
-    if wcfg:
+    def attach_weapon(wcfg, slot=None, length_scale=1.0):
         before_w = set(bpy.data.objects)
         bpy.ops.import_scene.fbx(filepath=art(wcfg["model"]))
         new = [o for o in bpy.data.objects if o not in before_w]
-        weapon_objs = [o for o in new if o.type == "MESH"]
-        check(weapon_objs, "the weapon file has no mesh")
+        weapon_objs_local = [o for o in new if o.type == "MESH"]
+        check(weapon_objs_local, "the weapon file has no mesh")
         for o in [o for o in new if o.type != "MESH"]:
             bpy.data.objects.remove(o, do_unlink=True)
-        for w in weapon_objs:
+        for w in weapon_objs_local:
             w.parent = rig
+            if slot:
+                w["slot"] = slot
             w.parent_type = "BONE"
             w.parent_bone = wcfg["bone"]
             w.matrix_parent_inverse = Matrix.Identity(4)
@@ -552,7 +656,7 @@ def main():
             bb = [tuple(c) for c in w.bound_box]
             log("weapon mesh %s: dimensions %s, local box x %.2f..%.2f y %.2f..%.2f z %.2f..%.2f" % (w.name, tuple(round(d, 3) for d in dims), min(b[0] for b in bb), max(b[0] for b in bb), min(b[1] for b in bb), max(b[1] for b in bb), min(b[2] for b in bb), max(b[2] for b in bb)))
             if wcfg.get("length"):
-                wcfg["scale"] = wcfg["length"] / (max(dims) * fs)
+                wcfg["scale"] = wcfg["length"] * length_scale / (max(dims) * fs)
             w.rotation_mode = "XYZ"
             w.location = wcfg.get("location", [0, 0, 0])
             w.rotation_euler = [math.radians(a) for a in wcfg.get("rotationDeg", [0, 0, 0])]
@@ -576,10 +680,23 @@ def main():
             wsol.use_flip_normals = True
             wsol.material_offset = n_w
             wsol.use_rim = False
+        return weapon_objs_local
+
+    weapon_objs = []
+    wcfg = cfg.get("weapon")
+    if wcfg:
+        weapon_objs = attach_weapon(wcfg)
         if cfg.get("holdout", True):
             for o in meshes:
                 o.is_holdout = True  # the body hides the parts of the weapon behind it, and is itself not drawn in this layer
         log("weapon %s on %s, holdout %s" % (wcfg["model"], wcfg["bone"], cfg.get("holdout", True)))
+
+    if cfg.get("weaponSet"):
+        # every weapon family of the game in the one scene, each its own slot (`w_<family>`), for layers drawn over the body (the length is in world metres: a bigger figure needs longer weapons)
+        table = json.load(open(os.path.join(os.path.dirname(CFG_PATH), cfg["weaponSet"]), encoding="utf-8"))
+        for family, w in table["weapons"].items():
+            attach_weapon({"model": table["pack"] + "/" + w["file"], "bone": w["bone"], "length": w["length"], "location": w["location"], "rotationDeg": w["rotationDeg"]}, "w_" + family, cfg.get("weaponLengthScale", 1.0))
+        log("weapons: " + ", ".join(table["weapons"]))
 
     # ---- camera ----
     T = Vector((math.cos(az), math.sin(az), 0))  # on the ground, toward the viewer = down the screen
@@ -670,6 +787,8 @@ def main():
     drift = {}
     t0 = time.time()
     passes = cfg.get("passes") or [{"name": None}]
+    if cfg.get("onlyPasses"):
+        passes = [q for q in passes if q["name"] in cfg["onlyPasses"]]  # a quick re-render of a few layers
     slots_present = {o["slot"] for o in bpy.data.objects if o.type == "MESH" and "slot" in o}
     all_frames = {}
     for pdef in passes:
@@ -678,8 +797,9 @@ def main():
             skip = set(pdef.get("exclude", []))
             for o in [o for o in bpy.data.objects if o.type == "MESH"]:
                 s = o["slot"]
-                o.hide_render = s in skip or (s == "hat" and "hat" not in draw) or (bool(pdef.get("noHoldout")) and s not in draw)
-                o.is_holdout = (s not in draw) and not o.hide_render and s != "hat" and not pdef.get("noHoldout")
+                on_top = s.startswith(("h_", "w_"))  # hats and weapons are layers over the body: they are held out by the body, and hold nothing out themselves
+                o.hide_render = s in skip or (on_top and s not in draw) or (bool(pdef.get("noHoldout")) and s not in draw)
+                o.is_holdout = (s not in draw) and not o.hide_render and not on_top and not pdef.get("noHoldout")
             log("pass %s: draw %s, exclude %s" % (pdef["name"], sorted(draw), sorted(skip)))
         frames = {}
         clips = []
@@ -760,15 +880,20 @@ def main():
     for pdef in passes:
         frames, clips = all_frames[pdef["name"]]
         pname = cfg["name"] + ("_" + pdef["name"] if pdef["name"] else "")
-        pkey = cfg["spriteKey"] + (".layer." + pdef["name"] if pdef["name"] else "")
+        pkey = cfg["spriteKey"] + ("." + pdef["name"] if pdef["name"] else "")
         # ---- how tall the figure stands (idle frames): the game puts the name above this ----
         head = 0
+        head_sit = 0
         for name, arr in frames.items():
-            if not name.startswith("idle_"):
+            if not name.startswith(("idle_", "sit_")):
                 continue
             ys = np.nonzero(arr[:, :, 3] > 0.05)[0]
             if len(ys):
-                head = max(head, anchor[1] - (F - 1 - int(ys.max())))
+                h_px = anchor[1] - (F - 1 - int(ys.max()))
+                if name.startswith("idle_"):
+                    head = max(head, h_px)
+                else:
+                    head_sit = max(head_sit, h_px)
         check(head > 8 or wcfg or pdef["name"] not in (None, "body"), "could not measure the height of the figure")
         log("head is %d px above the feet" % head)
 
@@ -831,7 +956,7 @@ def main():
 
         save_array(atlas, os.path.join(OUT, img_name))
         json.dump({"frames": jframes, "meta": {"image": img_name, "size": {"w": W, "h": H}, "scale": "1"}}, open(os.path.join(OUT, pname + ".json"), "w"))
-        json.dump({"key": pkey, "atlas": pname, "image": img_name, "data": pname + ".json", "frame": {"w": F, "h": F}, "anchor": {"x": anchor[0], "y": anchor[1]}, "head": head, "anims": meta},
+        json.dump({"key": pkey, "atlas": pname, "image": img_name, "data": pname + ".json", "frame": {"w": F, "h": F}, "anchor": {"x": anchor[0], "y": anchor[1]}, "head": head, **({"headSit": head_sit} if head_sit else {}), "anims": meta},
                   open(os.path.join(OUT, pname + ".sprite.json"), "w"), indent=2)
 
     # ---- a contact sheet to look at: the middle frame of each animation in the 8 directions, 2x, with the 64x32 tile under the feet ----
@@ -853,7 +978,7 @@ def main():
                             cell[py, px, :3] = 0.6
                 key = "%s_%d_%02d" % (an, d, cfg["anims"][an]["frames"] // 2)
                 fr = np.zeros((F, F, 4), dtype=np.float32)
-                for pd_ in [q for q in passes if q["name"] in set_passes]:  # the layers on top of each other (the paper doll), each multiplied by its preview colour as the game will tint it
+                for pd_ in [q for q in passes if q["name"] in set_passes and q["name"] in all_frames]:  # the layers on top of each other (the paper doll), each multiplied by its preview colour as the game will tint it
                     lf = all_frames[pd_["name"]][0][key]
                     tint = np.array(cfg.get("previewTints", {}).get(pd_["name"], [1, 1, 1]), dtype=np.float32)
                     la = lf[:, :, 3:4]

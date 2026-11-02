@@ -1,11 +1,34 @@
 import Phaser from "phaser";
-import { CELLS_PER_TILE, TILE_H, TILE_W, bigLookOf, hash2, obstacleBlobs, obstacleStyleOf, playRectPixels, type GroundStyle, type MapArt, type MapData, type ObstacleStyle, type Obstacles } from "@game/shared";
+import { CELLS_PER_TILE, GFX_PROPS_ATLAS, GFX_PROP_ANCHOR, GFX_PROP_FRAME, TILE_H, TILE_W, bigLookOf, hash2, obstacleBlobs, obstacleStyleOf, playRectPixels, type GroundStyle, type MapArt, type MapData, type ObstacleStyle, type Obstacles } from "@game/shared";
 
 /** Pixel size of one chunk of the map: obstacles are drawn into textures of this size around the camera only (the whole map would take tens of MB). */
 export const CHUNK = 512;
 /** How far past the screen chunks are kept (px), and how far they must be before they are dropped. */
 const KEEP_PX = 192;
 const DROP_PX = 640;
+/** A prop reaches this far above its foot (px): a chunk whose props are below the screen must be built while their crowns are still in view. */
+const PROP_RISE_PX = 300;
+/** Where the props atlas is in the scene, and the styles whose sprite is neutral grey so that the map's own colour tints it. */
+const PROPS_TEX = `gfx:${GFX_PROPS_ATLAS}`;
+const TINTED_PROPS: ReadonlySet<ObstacleStyle> = new Set<ObstacleStyle>(["rock", "boulder", "pillar"]);
+/** A prop in front of the player's head fades to this opacity so the figure stays visible behind a tall tree. */
+const FADE_ALPHA = 0.4;
+
+const propCounts = new Map<string, number>();
+
+/** The frame of the props atlas for a style and variant (the variants of a style wrap round), or undefined when the atlas is not loaded or has no such style (the canvas drawings are used then). */
+export function propFrame(scene: Phaser.Scene, style: ObstacleStyle, variant: number): string | undefined {
+  if (!scene.textures.exists(PROPS_TEX)) return undefined;
+  const tex = scene.textures.get(PROPS_TEX);
+  const key = `${style}`;
+  let n = propCounts.get(key);
+  if (n === undefined || (n === 0 && tex.has(`${style}_0`))) {
+    n = 0;
+    while (tex.has(`${style}_${n}`)) n++;
+    propCounts.set(key, n);
+  }
+  return n > 0 ? `${style}_${((variant % n) + n) % n}` : undefined;
+}
 /** Chunks built in one frame (a fresh map needs several; building them all at once would stall the first frame). */
 const BUILDS_PER_FRAME = 4;
 /** Height (px) of the side faces of walls. */
@@ -60,18 +83,10 @@ export function ensureGroundTexture(scene: Phaser.Scene, palette: MapData["palet
     g.destroy();
     return key;
   }
-  const base = mixColor(palette.groundA, palette.groundB);
-  g.fillStyle(base, 1).fillRect(0, 0, GROUND_W, GROUND_H);
-  // soft patches, flattened like the iso view; each is also drawn shifted by one pattern so one crossing an edge continues on the other side
-  for (let n = 0; n < 70; n++) {
-    const x = rnd(n, 1, 21) * GROUND_W;
-    const y = rnd(n, 2, 22) * GROUND_H;
-    const w = 40 + rnd(n, 3, 23) * 90;
-    const color = shade(rnd(n, 4, 24) < 0.5 ? palette.groundA : palette.groundB, 0.92 + rnd(n, 5, 25) * 0.16);
-    for (const dx of [-GROUND_W, 0, GROUND_W]) for (const dy of [-GROUND_H, 0, GROUND_H]) g.fillStyle(color, 0.55).fillEllipse(x + dx, y + dy, w, w / 2);
-  }
-  // marks of the style: only fully inside, so none is cut at the seam
+  // The marks of the style go onto a transparent texture first; the ink wash is painted under them and the paper grain over them on a canvas (4j: ink-wash ground).
+  const marks = `${key}-marks`;
   for (let n = 0; n < 150; n++) {
+    // only fully inside, so none is cut at the seam
     const x = 6 + rnd(n, 7, 31) * (GROUND_W - 12);
     const y = 6 + rnd(n, 8, 32) * (GROUND_H - 12);
     detail(g, style, x, y, palette, rnd(n, 9, 33));
@@ -82,9 +97,82 @@ export function ensureGroundTexture(scene: Phaser.Scene, palette: MapData["palet
     const y = 14 + rnd(n, 12, 42) * (GROUND_H - 28);
     feature(g, style, x, y, palette, rnd(n, 13, 43));
   }
-  g.generateTexture(key, GROUND_W, GROUND_H);
+  g.generateTexture(marks, GROUND_W, GROUND_H);
   g.destroy();
+  const tex = scene.textures.createCanvas(key, GROUND_W, GROUND_H);
+  if (!tex) return key;
+  const ctx = tex.getContext();
+  inkWash(ctx, palette, style);
+  ctx.drawImage(scene.textures.get(marks).getSourceImage() as CanvasImageSource, 0, 0);
+  paperGrain(ctx);
+  tex.refresh();
+  scene.textures.remove(marks);
   return key;
+}
+
+const css = (c: number, a = 1): string => `rgba(${(c >> 16) & 255},${(c >> 8) & 255},${c & 255},${a})`;
+/** The cool dark of ink, mixed into the shadowed tones of the wash. */
+const INK = 0x24323a;
+
+/**
+ * The ink wash of a ground: a base tone, then wide soft blots of the two palette tones and of ink thinned with water, each with a feathered edge (a radial
+ * gradient squashed like the iso view) and drawn again one pattern over each way so that the repeat has no seam; dry-brush strokes of the style on top of the blots.
+ */
+function inkWash(ctx: CanvasRenderingContext2D, p: MapData["palette"], style: GroundStyle): void {
+  ctx.fillStyle = css(mixColor(p.groundA, p.groundB));
+  ctx.fillRect(0, 0, GROUND_W, GROUND_H);
+  const blot = (x: number, y: number, w: number, color: number, alpha: number): void => {
+    for (const dx of [-GROUND_W, 0, GROUND_W]) {
+      for (const dy of [-GROUND_H, 0, GROUND_H]) {
+        const cx = x + dx;
+        const cy = y + dy;
+        if (cx + w < 0 || cx - w > GROUND_W || cy + w / 2 < 0 || cy - w / 2 > GROUND_H) continue;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(1, 0.5);
+        const gr = ctx.createRadialGradient(0, 0, w * 0.1, 0, 0, w);
+        gr.addColorStop(0, css(color, alpha));
+        gr.addColorStop(0.6, css(color, alpha * 0.5));
+        gr.addColorStop(1, css(color, 0));
+        ctx.fillStyle = gr;
+        ctx.beginPath();
+        ctx.arc(0, 0, w, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  };
+  for (let n = 0; n < 26; n++) blot(rnd(n, 1, 61) * GROUND_W, rnd(n, 2, 62) * GROUND_H, 70 + rnd(n, 3, 63) * 110, rnd(n, 4, 64) < 0.5 ? p.groundA : p.groundB, 0.5 + rnd(n, 5, 65) * 0.3);
+  for (let n = 0; n < 14; n++) blot(rnd(n, 6, 66) * GROUND_W, rnd(n, 7, 67) * GROUND_H, 40 + rnd(n, 8, 68) * 70, mixColor(p.groundA, INK), 0.18 + rnd(n, 9, 69) * 0.14);
+  for (let n = 0; n < 10; n++) blot(rnd(n, 10, 70) * GROUND_W, rnd(n, 11, 71) * GROUND_H, 30 + rnd(n, 12, 72) * 50, shade(p.groundB, 1.35), 0.2);
+  // dry-brush strokes: a thin curved line that tapers, in the dark of the ground
+  const dark = shade(mixColor(p.groundA, INK), style === "snow" ? 1.9 : 0.8);
+  for (let n = 0; n < 90; n++) {
+    const x = rnd(n, 21, 81) * GROUND_W;
+    const y = rnd(n, 22, 82) * GROUND_H;
+    const len = style === "grass" ? 8 + rnd(n, 23, 83) * 10 : 14 + rnd(n, 23, 83) * 26;
+    const bend = (rnd(n, 24, 84) - 0.5) * 8;
+    ctx.strokeStyle = css(dark, 0.22 + rnd(n, 25, 85) * 0.25);
+    ctx.lineWidth = 0.8 + rnd(n, 26, 86) * 1.2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    if (style === "grass") {
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + bend * 0.5, y - len * 0.5, x + bend, y - len);
+    } else {
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + len * 0.5, y + bend * 0.2, x + len, y + bend * 0.1);
+    }
+    ctx.stroke();
+  }
+}
+
+/** A grain like the tooth of paper: a thousand specks, light and dark, so a flat wash does not look like plastic. */
+function paperGrain(ctx: CanvasRenderingContext2D): void {
+  for (let n = 0; n < 1400; n++) {
+    ctx.fillStyle = n % 2 === 0 ? "rgba(255,255,255,0.07)" : "rgba(20,30,34,0.06)";
+    ctx.fillRect(rnd(n, 31, 91) * GROUND_W, rnd(n, 32, 92) * GROUND_H, 1 + (n % 3 === 0 ? 1 : 0), 1);
+  }
 }
 
 /** The middle tone between two colours. */
@@ -369,11 +457,11 @@ export class MapLayer {
   }
 
   /** Builds the chunks near the view and drops the far ones; call every frame (it does nothing when the view is still). */
-  update(view: Phaser.Geom.Rectangle): void {
+  update(view: Phaser.Geom.Rectangle, focus?: { x: number; y: number; depth: number }): void {
     const x0 = Math.floor((view.x - KEEP_PX - this.rect.x0) / CHUNK);
     const x1 = Math.floor((view.right + KEEP_PX - this.rect.x0) / CHUNK);
     const y0 = Math.floor((view.y - KEEP_PX - this.rect.y0) / CHUNK);
-    const y1 = Math.floor((view.bottom + KEEP_PX - this.rect.y0) / CHUNK);
+    const y1 = Math.floor((view.bottom + PROP_RISE_PX - this.rect.y0) / CHUNK); // the crown of a tall prop below the screen can still be in it
     let built = 0;
     for (let ky = y0; ky <= y1 && built < BUILDS_PER_FRAME; ky++) {
       for (let kx = x0; kx <= x1 && built < BUILDS_PER_FRAME; kx++) {
@@ -383,6 +471,7 @@ export class MapLayer {
         built++;
       }
     }
+    if (focus) this.fadeOver(focus);
     for (const [key, chunk] of this.chunks) {
       const [kx, ky] = key.split(",").map(Number) as [number, number];
       const cx = this.rect.x0 + (kx + 0.5) * CHUNK;
@@ -391,6 +480,18 @@ export class MapLayer {
       if (far) {
         this.free(chunk);
         this.chunks.delete(key);
+      }
+    }
+  }
+
+  /** Props standing in front of the focus (the player) and covering its head are drawn see-through; the others are solid again. */
+  private fadeOver(focus: { x: number; y: number; depth: number }): void {
+    for (const chunk of this.chunks.values()) {
+      for (const s of chunk.sprites) {
+        if (!s.getData("prop")) continue;
+        const covers = s.depth > focus.depth && s.getBounds().contains(focus.x, focus.y - 36);
+        const want = covers ? FADE_ALPHA : 1;
+        if (s.alpha !== want) s.setAlpha(s.alpha + Math.sign(want - s.alpha) * Math.min(0.12, Math.abs(want - s.alpha)));
       }
     }
   }
@@ -481,7 +582,16 @@ export class MapLayer {
       const b = this.obstacles.blobs[id] as { x: number; y: number; radius: number; variant: number };
       if (this.map.npcs.some((n) => n.kind !== "waygate" && Math.hypot(n.x - b.x, n.y - b.y) < 0.6 && b.radius < 0.6)) continue; // the blocked disc under an NPC: the NPC itself is drawn there
       const p = toScreen(b.x, b.y);
-      const key = ensureObstacleTexture(this.scene, obstacleStyleOf(this.art, b), b.variant, this.map.palette.obstacle);
+      const style = obstacleStyleOf(this.art, b);
+      const frame = propFrame(this.scene, style, b.variant);
+      if (frame) {
+        // A rendered prop (4j): sized in metres like the figures, so only a little of the spot's own size is applied.
+        const img = this.scene.add.image(p.x, p.y + 4, PROPS_TEX, frame).setOrigin(GFX_PROP_ANCHOR.x / GFX_PROP_FRAME, GFX_PROP_ANCHOR.y / GFX_PROP_FRAME).setScale(Math.max(0.85, Math.min(1.5, 0.85 + 0.3 * (b.radius / 0.9 - 1) + 0.15))).setDepth(10 + b.x + b.y).setData("prop", true);
+        if (TINTED_PROPS.has(style)) img.setTint(shade(this.map.palette.obstacle, 1.9));
+        chunk.sprites.push(img);
+        continue;
+      }
+      const key = ensureObstacleTexture(this.scene, style, b.variant, this.map.palette.obstacle);
       const img = this.scene.add.image(p.x, p.y + 4, key).setOrigin(0.5, 0.875).setScale(Math.max(0.75, Math.min(2, b.radius / 0.9))).setDepth(10 + b.x + b.y);
       chunk.sprites.push(img);
     }

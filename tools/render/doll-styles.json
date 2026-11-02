@@ -1,0 +1,79 @@
+{
+  "note": "Silhouettes of the robe. Every layer of a doll is rendered with the others as holdout, so a silhouette is a complete set (body, hair, robe, belt, bracer, boots, hats, weapons). Which realm wears which: the `outfits` tuning rules.",
+  "genders": {
+    "female": {
+      "extends": "sprite-config-female.json",
+      "k": 1.0,
+      "skin": [
+        "MI_Superhero_Female",
+        "MI_Regular_Female"
+      ],
+      "hair": "MI_Hair_2",
+      "hairFile": null
+    },
+    "male": {
+      "extends": "sprite-config-male.json",
+      "k": 1.1,
+      "skin": [
+        "MI_Superhero_Male",
+        "MI_Regular_Male"
+      ],
+      "hair": "MI_Hair_1",
+      "hairFile": null
+    }
+  },
+  "styles": {
+    "robe": {
+      "parts": [
+        "skirt",
+        "top",
+        "sash",
+        "sleeves",
+        "legs",
+        "hands",
+        "boots",
+        "bun"
+      ],
+      "hemZ": 0.16,
+      "flare0": 0.19,
+      "flare1": 0.4,
+      "cuff": 0.07,
+      "bootHeight": 0.2
+    },
+    "tunic": {
+      "parts": [
+        "skirt",
+        "top",
+        "sash",
+        "sleeves",
+        "legs",
+        "hands",
+        "boots",
+        "bun"
+      ],
+      "hemZ": 0.55,
+      "flare0": 0.17,
+      "flare1": 0.27,
+      "cuff": 0.0,
+      "bootHeight": 0.34
+    },
+    "grand": {
+      "parts": [
+        "skirt",
+        "top",
+        "sash",
+        "sleeves",
+        "legs",
+        "hands",
+        "boots",
+        "bun",
+        "mantle"
+      ],
+      "hemZ": 0.08,
+      "flare0": 0.21,
+      "flare1": 0.52,
+      "cuff": 0.13,
+      "bootHeight": 0.18
+    }
+  }
+}

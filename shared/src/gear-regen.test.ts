@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { equipmentBonus, equipmentInfo, makeEquipmentId, scaledStats } from "./equipment-data";
 import { defaultMasterEntry, rollForType } from "./gear-master";
 import { gearRegenFrom, regenPerSecond, NO_GEAR_REGEN } from "./gear-regen";
-import { bootsTintOf, gearLookOf, hatShapeOf, HAT_SHAPES, robeTintOf, weaponLookParts, weaponTintOf } from "./gear-look";
+import { beltTintOf, bootsTintOf, bracerTintOf, gearLookOf, hatShapeOf, HAT_SHAPES, robeTintOf, weaponLookParts, weaponTintOf } from "./gear-look";
 import { startingStats } from "./progression";
 import { basicSkillAt, getSkill, setBasicSkillRealm, BASIC_SKILL_ID } from "./skills";
 
@@ -75,6 +75,13 @@ describe("the look of the worn gear", () => {
     const higher = gearLookOf([{ slot: "weapon", type: makeEquipmentId("weapon", "u", 5, 2, 1, "hoa", "kiem") }])!;
     expect(weaponTintOf(higher.w!)).not.toBe(weaponTintOf(look.w!));
     expect(gearLookOf([])).toBeUndefined();
+    // the belt and the bracers show too (paper doll layers, 4j): their set numbers colour them
+    const dressed = gearLookOf([{ slot: "belt", type: makeEquipmentId("belt", "u", 1, 3, 1) }, { slot: "bracer", type: makeEquipmentId("bracer", "f", 2, 5, 1) }])!;
+    expect(dressed.t).toBe(1 + 1 * 9 + 2);
+    expect(dressed.g).toBe(1 + 2 * 9 + 4);
+    expect(beltTintOf(dressed.t!)).toMatch(/^#[0-9a-f]{6}$/);
+    expect(bracerTintOf(dressed.g!)).toMatch(/^#[0-9a-f]{6}$/);
+    expect(gearLookOf([{ slot: "belt", type: makeEquipmentId("belt", "u", 1, 3, 1), dur: 0 }])).toBeUndefined();
     expect(gearLookOf([{ slot: "hat", type: makeEquipmentId("hat", "m", 0, 2, 1), dur: 0 }])).toBeUndefined();
   });
 });

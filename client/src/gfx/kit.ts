@@ -15,6 +15,8 @@ const IDLE_UNLOAD_MS = 120_000;
  */
 /** The share of a figure's height that a seated figure loses (the legs, folded away). */
 const SEAT_CUT = 0.36;
+/** The depth step between a body and each layer over it (layers do not overlap, so the order only has to be stable). */
+const LAYER_DEPTH = 0.001;
 
 export class GfxView {
   alive = true;
@@ -79,15 +81,68 @@ export class GfxView {
   /** Puts the feet at a screen point. A seated figure (see `setSeated`) is cut off at the thighs and lowered by what was cut. */
   place(x: number, y: number, depth: number): void {
     let sink = 0;
-    if (this.seated) {
+    if (this.seated && !this.hasSitPose) {
       const f = this.sprite.frame;
       this.sprite.setCrop(0, 0, f.realWidth, f.y + f.height * (1 - SEAT_CUT)); // the crop is in the untrimmed frame: `f.y` is the trimmed-off top
       sink = this.sinkPx();
     }
     this.sprite.setPosition(x + this.ox, y + this.oy + sink).setDepth(depth);
+    if (this.layers.length > 0) {
+      this.layers = this.layers.filter((l) => l.view.alive);
+      this.layers.forEach((l, i) => {
+        l.view.followFrame(this);
+        l.view.place(x, y, depth + LAYER_DEPTH * (i + 1));
+      });
+    }
   }
 
   private seated = false;
+
+  /** True when the sprite has a real sitting pose (the `sit` animation): the owner plays it, and nothing is cropped or sunk. */
+  get hasSitPose(): boolean {
+    return this.def.anims.sit !== undefined;
+  }
+
+  /** The slot layers of a paper doll (hair, robe, boots...): sprites drawn over this body, each showing the frame of the body (they share frame names). */
+  private layers: Array<{ slot: string; key: string; view: GfxView }> = [];
+
+  /** The slots and sprite keys of the layers now on this body, in order. */
+  layerKeys(): string[] {
+    this.layers = this.layers.filter((l) => l.view.alive);
+    return this.layers.map((l) => `${l.slot}=${l.key}`);
+  }
+
+  /**
+   * Makes the layers match `wanted` (a slot, a sprite key and a tint): a layer whose key changed is rebuilt, a slot no longer wanted goes, and a sprite whose atlas
+   * is not loaded yet is left out (the caller asks again). Returns how many wanted layers are still missing.
+   */
+  setLayers(wanted: ReadonlyArray<{ slot: string; key: string; tint?: number }>): number {
+    this.layers = this.layers.filter((l) => l.view.alive);
+    const keep: typeof this.layers = [];
+    for (const l of this.layers) {
+      if (wanted.some((w) => w.slot === l.slot && w.key === l.key)) keep.push(l);
+      else l.view.destroy();
+    }
+    let missing = 0;
+    const next: typeof this.layers = [];
+    for (const w of wanted) {
+      let l = keep.find((k) => k.slot === w.slot);
+      if (!l) {
+        const view = this.kit.createView(w.key);
+        if (!view) {
+          missing++;
+          continue;
+        }
+        view.setScale(this.k);
+        view.setSeated(this.seated);
+        l = { slot: w.slot, key: w.key, view };
+      }
+      l.view.setTint(w.tint);
+      next.push(l);
+    }
+    this.layers = next;
+    return missing;
+  }
 
   /**
    * Sits the figure down to meditate: the frames have no sitting pose, so the legs are cropped away (the owner draws folded legs over the cut) and the
@@ -97,15 +152,17 @@ export class GfxView {
     if (on === this.seated) return;
     this.seated = on;
     if (!on) this.sprite.setCrop();
+    for (const l of this.layers) l.view.setSeated(on);
   }
 
   /** How far a seated figure sinks, in px (0 when standing); the head, hat and name come down by the same. */
   sinkPx(): number {
-    return this.seated ? this.fullRise() * SEAT_CUT : 0;
+    return this.seated && !this.hasSitPose ? this.fullRise() * SEAT_CUT : 0;
   }
 
   private fullRise(): number {
-    return (this.def.head ?? this.def.anchor.y) * this.k * (this.def.scale ?? 1);
+    const h = this.seated && this.hasSitPose ? (this.def.headSit ?? this.def.head ?? this.def.anchor.y) : (this.def.head ?? this.def.anchor.y);
+    return h * this.k * (this.def.scale ?? 1);
   }
 
   private ox = 0;
@@ -117,6 +174,7 @@ export class GfxView {
   setOffset(dx: number, dy: number): void {
     this.ox = dx;
     this.oy = dy;
+    for (const l of this.layers) l.view.setOffset(dx, dy);
   }
 
   /** Paints the whole figure white for an instant (a blow landing); `false` brings back its tint. WebGL only (Canvas ignores tints). */
@@ -126,11 +184,13 @@ export class GfxView {
     if (on) this.sprite.setTintFill(0xffffff);
     else if (this.tinted === undefined) this.sprite.clearTint();
     else this.sprite.setTint(this.tinted);
+    for (const l of this.layers) l.view.setFlash(on);
   }
 
   setScale(k: number): void {
     this.k = k;
     this.sprite.setScale(k * (this.def.scale ?? 1));
+    for (const l of this.layers) l.view.setScale(k);
   }
 
   private k = 1;
@@ -151,6 +211,8 @@ export class GfxView {
   destroy(): void {
     if (!this.alive) return;
     this.alive = false;
+    for (const l of this.layers) l.view.destroy();
+    this.layers = [];
     this.sprite.destroy();
     this.kit.forget(this);
   }
@@ -334,13 +396,13 @@ export class GfxKit {
   /**
    * The sprite key to use for a kind of actor, or undefined to keep the shape. This is the one place that turns "what is it" into "which sprite":
    * for now it follows the naming convention below; the D1 mapping (admin-editable) will wrap it in 4c/4e.
-   *   player -> `player.<variant>` then `player`; monster -> `monster.<kind>`; guard -> the player body of `npcLooks.byKind.guard` (the scene asks for `player.*` and `weapon.*` itself).
+   *   player -> `doll.<variant>.body` (a paper doll: the layers come with it), `player.<variant>`, then `player`; monster -> `monster.<kind>`; guard -> the player body of `npcLooks.byKind.guard` (the scene asks for `player.*` and `weapon.*` itself).
    */
   spriteKeyFor(kind: "player" | "monster" | "guard" | "weapon", id?: string, variant?: string): string | undefined {
     if (!this.active) return undefined;
     // A player variant is `<body>` or `<body>.<outfit>`: the outfit sprite, then the plain body, then any player sprite.
     const candidates =
-      kind === "player" ? [...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`, ...(id && monsterModelOf(id) ? [`monster.${monsterModelOf(id)}`] : [])] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
+      kind === "player" ? [...((variant ?? "").includes(".") ? [`doll.${variant}.body`] : []), ...(variant ?? "").split(".").map((_, i, parts) => `player.${parts.slice(0, parts.length - i).join(".")}`).filter((k) => k !== "player."), "player"] : kind === "monster" ? [`monster.${id ?? ""}`, ...(id && monsterModelOf(id) ? [`monster.${monsterModelOf(id)}`] : [])] : kind === "weapon" ? [`weapon.${id ?? ""}.${variant ?? ""}`] : ["guard"];
     for (const k of candidates) {
       if (k === "") continue;
       if (this.usable(k)) return k;
@@ -366,6 +428,7 @@ export class GfxKit {
   /** Makes a sprite view for a key from `spriteKeyFor`; undefined when it can no longer be made. */
   createView(key: string): GfxView | undefined {
     const def = this.manifest.sprites[key];
+    if (def && !this.usable(key)) this.demand(def.atlas); // a layer whose atlas is not here yet (the caller asks again)
     if (!def || !this.usable(key)) return undefined;
     const first = (Object.keys(def.anims)[0] ?? "idle") as GfxAnimName;
     const frame = frameName(first, 0, 0);
@@ -382,6 +445,11 @@ export class GfxKit {
     if (!set) this.views.set(def.atlas, (set = new Set()));
     set.add(view);
     return view;
+  }
+
+  /** True when the manifest has a sprite of this key (loaded or not). */
+  knows(key: string): boolean {
+    return this.manifest.sprites[key] !== undefined;
   }
 
   isBroken(key: string): boolean {
@@ -419,4 +487,4 @@ export class GfxKit {
  * How long each one-shot lasts on screen, in ms. The server alone decides when a hit lands and how often one can be made; these only say how long the
  * picture takes, so they sit under the usual attack gaps and never gate anything. A death stays until the view is dropped.
  */
-export const ONE_SHOT_MS: Readonly<Record<GfxAnimName, number>> = { idle: 0, run: 0, attack: 500, thrust: 500, cast: 600, hit: 320, die: Infinity };
+export const ONE_SHOT_MS: Readonly<Record<GfxAnimName, number>> = { idle: 0, run: 0, attack: 500, thrust: 500, cast: 600, hit: 320, die: Infinity, sit: 0 };

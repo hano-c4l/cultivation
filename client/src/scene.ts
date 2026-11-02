@@ -96,6 +96,7 @@ import { initTrade, type TradeUi } from "./trade-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
 import { HAT_ORN_TEX, HAT_TEX, ensureHatTextures } from "./hat-art";
+import { dollLayers, dollPrefixOf, dollWeaponKey } from "./gfx/doll";
 import { DRAGON_HEAD, DRAGON_MIST, DRAGON_SEG, DRAGON_TAIL, FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
@@ -228,6 +229,10 @@ interface Actor {
   /** When (performance.now) the next wisp of that haze is released. */
   qiNext?: number;
   wview?: GfxView;
+  /** The paper doll's layers asked for now (a signature of what is worn), how many were still missing, and when to ask again. */
+  dollSig?: string;
+  dollMissing?: number;
+  dollRetry?: number;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
   snAt: number;
@@ -2169,6 +2174,16 @@ export class GameScene extends Phaser.Scene {
     this.fx.puff("qi", at.x, at.y, st.burst, st.color);
   }
 
+  /** Keeps the layers of a paper doll (hair, robe, belt, bracers, boots, hat) on the body: asked again only when what is worn changes or a layer's atlas was still loading. */
+  private syncDoll(a: Actor, prefix: string, now: number): void {
+    if (!a.view?.alive) return;
+    const sig = `${prefix}|${JSON.stringify(a.lk ?? null)}`;
+    if (sig === a.dollSig && !((a.dollMissing ?? 0) > 0 && now >= (a.dollRetry ?? 0))) return;
+    a.dollSig = sig;
+    a.dollRetry = now + 400;
+    a.dollMissing = a.view.setLayers(dollLayers(prefix, a.lk, (k) => this.gfx.knows(k)));
+  }
+
   private syncActorView(a: Actor, now: number, x: number, y: number, depth: number, moving: boolean): void {
     if (a.view && !a.view.alive) {
       a.wview?.destroy();
@@ -2196,10 +2211,12 @@ export class GameScene extends Phaser.Scene {
     a.view.setSeated(sit);
     a.wview?.setSeated(sit);
     // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
-    const anim = moving && !rides(a) ? "run" : "idle";
+    const anim = sit && a.view.hasSitPose ? "sit" : moving && !rides(a) ? "run" : "idle";
     const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
+    const doll = dollPrefixOf(a.view.key);
+    if (doll) this.syncDoll(a, doll, now);
     // The weapon is a second sprite over the body that shows the same frame as the body (frames line up by name); it follows what is in the hand.
-    const wkey = a.weapon ? this.gfx.spriteKeyFor("weapon", a.weapon, a.female ? "female" : "male") : undefined;
+    const wkey = (doll ? dollWeaponKey(doll, a.weapon, (k) => this.gfx.knows(k)) : undefined) ?? (a.weapon ? this.gfx.spriteKeyFor("weapon", a.weapon, a.female ? "female" : "male") : undefined);
     if (a.wview && (!a.wview.alive || a.wview.key !== wkey)) {
       a.wview.destroy();
       a.wview = undefined;
@@ -2317,10 +2334,14 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
+    if (a.view?.hasSitPose && a.legs) {
+      a.legs.destroy(); // the figure really sits: no crossed legs are drawn over a cut
+      a.legs = undefined;
+    }
     // The crossed legs: a robe-coloured mound (a darker knee line in front) where the legs were cut away, a little wider than the body.
     const robe = mixTint(a.lk?.r !== undefined ? (hexOf(robeTintOf(a.lk.r)) ?? 0xd8d0bc) : 0xd8d0bc, 0x30303c, 0.25);
-    if (!a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
-    a.legs.setPosition(x, y + lift - (rides(a) ? 1 : 3)).setFillStyle(robe).setDepth(depth + 0.01);
+    if (!a.view?.hasSitPose && !a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
+    a.legs?.setPosition(x, y + lift - (rides(a) ? 1 : 3)).setFillStyle(robe).setDepth(depth + 0.01);
     if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
     a.seat.setPosition(x, y + 3 + (rides(a) ? lift + 2 : 0)).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
     if ((a.moteAt ?? 0) > now) return;
@@ -2425,10 +2446,11 @@ export class GameScene extends Phaser.Scene {
    */
   private applyGearLook(a: Actor, x: number, y: number, depth: number, moving: boolean): void {
     const lk = a.lk;
-    a.view?.setTint(lk?.r !== undefined ? hexOf(robeTintOf(lk.r)) : undefined);
+    const doll = a.view !== undefined && dollPrefixOf(a.view.key) !== undefined; // a doll's pieces are layers of their own, tinted one by one
+    if (!doll) a.view?.setTint(lk?.r !== undefined ? hexOf(robeTintOf(lk.r)) : undefined);
     a.wview?.setTint(lk?.w !== undefined ? hexOf(weaponTintOf(lk.w)) : undefined);
     this.applyWeaponGlow(a, depth, lk);
-    if (lk?.h !== undefined && a.view) this.placeHat(a, hatShapeOf(lk.h), hexOf(hatTintOf(lk.h)) ?? 0xffffff, a.view, x, y, depth, 1);
+    if (!doll && lk?.h !== undefined && a.view) this.placeHat(a, hatShapeOf(lk.h), hexOf(hatTintOf(lk.h)) ?? 0xffffff, a.view, x, y, depth, 1);
     else this.dropHat(a);
     if (moving && !rides(a) && lk?.b !== undefined && Math.random() < 0.12) this.fx.puff("trail", x + (Math.random() - 0.5) * 10, y - 2, 1, hexOf(bootsTintOf(lk.b)) ?? 0xffffff);
   }
@@ -2630,7 +2652,10 @@ export class GameScene extends Phaser.Scene {
   update(): void {
     const now = performance.now();
     this.fx.update(now);
-    this.mapLayer?.update(this.cameras.main.worldView);
+    const me = this.selfId ? this.actors.get(this.selfId) : undefined;
+    const at = me ? currentPos(me, this.time.now) : undefined;
+    const focus = at ? { ...toScreen(at.x, at.y), depth: 10 + at.x + at.y } : undefined;
+    this.mapLayer?.update(this.cameras.main.worldView, focus);
     if (now - this.lastSweepAt > 5000) {
       this.lastSweepAt = now;
       this.gfx.sweepIdle(now);

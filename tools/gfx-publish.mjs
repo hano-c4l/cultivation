@@ -54,14 +54,14 @@ for (const sp of sprites) {
     rmSync(join(OUT, sp.image));
   }
   manifest.atlases[sp.atlas] = { image, data: sp.data };
-  manifest.sprites[sp.key] = { atlas: sp.atlas, frame: sp.frame, anchor: sp.anchor, ...(sp.head ? { head: sp.head } : {}), anims: sp.anims };
+  manifest.sprites[sp.key] = { atlas: sp.atlas, frame: sp.frame, anchor: sp.anchor, ...(sp.head ? { head: sp.head } : {}), ...(sp.headSit ? { headSit: sp.headSit } : {}), anims: sp.anims };
   for (const m of maps) {
     manifest.maps[m] = [...new Set([...(manifest.maps[m] ?? []), sp.atlas])];
   }
   console.log(`published ${sp.key} (${sp.atlas}) ${demand ? "on demand" : "to maps " + maps.join(", ")}`);
 }
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
-console.log(`manifest version ${manifest.version}; ${report.clips.length} frames touch the box edge (see report.json)`);
+console.log(`manifest version ${manifest.version}; ${Array.isArray(report.clips) ? report.clips.length : Object.values(report.clips).reduce((n, c) => n + c.length, 0)} frames touch the box edge (see report.json)`);
 
 function readdirSprites(d) {
   return readdirSync(d)

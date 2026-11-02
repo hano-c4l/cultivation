@@ -13,8 +13,12 @@ import type { Vec2 } from "./map";
  */
 export const GFX_FRAME_SIZE = 96;
 export const GFX_ATLAS_MAX_PX = 2048;
+/** The props atlas (trees, rocks, pillars... `tools/render/props-config.json`): every frame is named `<style>_<variant>` and sits in a box of this size anchored at the foot. */
+export const GFX_PROP_FRAME = 320;
+export const GFX_PROP_ANCHOR = { x: 160, y: 280 } as const;
+export const GFX_PROPS_ATLAS = "props";
 export const GFX_DIRECTIONS = 8;
-export const GFX_ANIMS = ["idle", "run", "attack", "thrust", "cast", "hit", "die"] as const;
+export const GFX_ANIMS = ["idle", "run", "attack", "thrust", "cast", "hit", "die", "sit"] as const;
 export type GfxAnimName = (typeof GFX_ANIMS)[number];
 
 /** Atlas id "*" lists the atlases loaded on every map (the players, the common effects). */
@@ -34,6 +38,8 @@ export interface GfxSprite {
   anchor: { x: number; y: number };
   /** How many px the top of the head is above the feet, at scale 1: where the name goes (the anchor's height when omitted). */
   head?: number;
+  /** The same while sitting (the `sit` animation): lower than standing. */
+  headSit?: number;
   /** Draw scale on screen (1 when omitted). */
   scale?: number;
   anims: Partial<Record<GfxAnimName, GfxAnim>>;
@@ -142,6 +148,7 @@ export function validateManifest(raw: unknown): ManifestResult {
     if (!isObj(frame) || !isInt(frame.w, 1, GFX_ATLAS_MAX_PX) || !isInt(frame.h, 1, GFX_ATLAS_MAX_PX)) return fail(`sprite ${key}: frame`);
     if (!isObj(anchor) || !isInt(anchor.x, 0, frame.w) || !isInt(anchor.y, 0, frame.h)) return fail(`sprite ${key}: anchor`);
     if (s.head !== undefined && !isInt(s.head, 1, frame.h)) return fail(`sprite ${key}: head`);
+    if (s.headSit !== undefined && !isInt(s.headSit, 1, frame.h)) return fail(`sprite ${key}: headSit`);
     if (s.scale !== undefined && !(typeof s.scale === "number" && s.scale > 0 && s.scale <= 8)) return fail(`sprite ${key}: scale`);
     if (!isObj(s.anims)) return fail(`sprite ${key}: anims`);
     const anims: Partial<Record<GfxAnimName, GfxAnim>> = {};
@@ -150,7 +157,7 @@ export function validateManifest(raw: unknown): ManifestResult {
       if (!isObj(an) || !isInt(an.frames, 1, 64) || !isInt(an.fps, 1, 60) || typeof an.loop !== "boolean") return fail(`sprite ${key}: animation ${name}`);
       anims[name as GfxAnimName] = { frames: an.frames, fps: an.fps, loop: an.loop };
     }
-    sprites[key] = { atlas: s.atlas, frame: { w: frame.w, h: frame.h }, anchor: { x: anchor.x, y: anchor.y }, ...(s.head !== undefined ? { head: s.head as number } : {}), ...(s.scale !== undefined ? { scale: s.scale as number } : {}), anims };
+    sprites[key] = { atlas: s.atlas, frame: { w: frame.w, h: frame.h }, anchor: { x: anchor.x, y: anchor.y }, ...(s.head !== undefined ? { head: s.head as number } : {}), ...(s.headSit !== undefined ? { headSit: s.headSit as number } : {}), ...(s.scale !== undefined ? { scale: s.scale as number } : {}), anims };
   }
 
   const maps: Record<string, string[]> = {};

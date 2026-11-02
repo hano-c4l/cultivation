@@ -115,12 +115,14 @@ const BASE_SCREENS: readonly TuningScreenGroup[] = [
     group: "gearLooks",
     page: "misc",
     title: "Màu trang bị trên nhân vật",
-    note: "Vũ khí nhuộm theo hệ của món (cảnh giới cao thì sáng hơn một chút), áo, mũ và giày lấy màu trong bảng theo bộ (số bộ chia dư cho số màu). Chỉ đổi cách hiển thị; người chơi nhận màu mới khi vào lại game. Nhập màu dạng #rrggbb.",
+    note: "Vũ khí nhuộm theo hệ của món (cảnh giới cao thì sáng hơn một chút), áo, mũ, giày, đai và hộ uyển lấy màu trong bảng theo bộ (số bộ chia dư cho số màu). Chỉ đổi cách hiển thị; người chơi nhận màu mới khi vào lại game. Nhập màu dạng #rrggbb.",
     fields: [
       ...Object.keys(DEFAULT_TUNING.gearLooks.weapon).map((k): TuningField => ({ path: `weapon.${k}`, label: `Màu vũ khí: ${k === "none" ? "không hệ" : k}`, kind: "color" })),
       ...DEFAULT_TUNING.gearLooks.robe.map((_, i): TuningField => ({ path: `robe.${i}`, label: `Màu áo, bảng ${i + 1}`, kind: "color" })),
       ...DEFAULT_TUNING.gearLooks.hat.map((_, i): TuningField => ({ path: `hat.${i}`, label: `Màu mũ, bảng ${i + 1}`, kind: "color" })),
-      ...DEFAULT_TUNING.gearLooks.boots.map((_, i): TuningField => ({ path: `boots.${i}`, label: `Màu bụi của giày, bảng ${i + 1}`, kind: "color" })),
+      ...DEFAULT_TUNING.gearLooks.boots.map((_, i): TuningField => ({ path: `boots.${i}`, label: `Màu giày, bảng ${i + 1}`, kind: "color" })),
+      ...(DEFAULT_TUNING.gearLooks.belt ?? []).map((_, i): TuningField => ({ path: `belt.${i}`, label: `Màu đai, bảng ${i + 1}`, kind: "color" })),
+      ...(DEFAULT_TUNING.gearLooks.bracer ?? []).map((_, i): TuningField => ({ path: `bracer.${i}`, label: `Màu hộ uyển, bảng ${i + 1}`, kind: "color" })),
     ],
   },
   {

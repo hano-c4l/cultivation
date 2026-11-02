@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { DIRECTION_VECTORS, EMPTY_MANIFEST, GFX_ANIMS, animKey, atlasesForMap, directionOf, frameName, headingAlongPath, validateManifest } from "./gfx";
+import { DIRECTION_VECTORS, EMPTY_MANIFEST, GFX_ANIMS, GFX_PROP_ANCHOR, GFX_PROP_FRAME, animKey, atlasesForMap, directionOf, frameName, headingAlongPath, validateManifest } from "./gfx";
 import type { Vec2 } from "./map";
 import shipped from "../../client/public/gfx/manifest.json";
 import renderConfig from "../../tools/render/sprite-config.json";
 import weaponTable from "../../tools/render/weapons.json";
+import propsConfig from "../../tools/render/props-config.json";
 import { WEAPON_TYPES } from "./equipment-data";
 
 const good = () => ({
@@ -114,18 +115,29 @@ describe("the render config", () => {
 
   it("agrees with the shipped manifest about the frame box and the feet anchor, for every sprite", () => {
     const sprites = (shipped as { sprites: Record<string, { frame: { w: number; h: number }; anchor: { x: number; y: number } }> }).sprites;
+    // Two frame boxes exist: the original 96 px one and, since 4j (the bigger figure), a 128 px one with the same rule (the feet 16 px above the bottom, in the middle).
+    const boxes = [{ frame: renderConfig.frame, anchor: { x: renderConfig.anchor[0], y: renderConfig.anchor[1] } }, { frame: 128, anchor: { x: 64, y: 112 } }];
     for (const [key, sprite] of Object.entries(sprites)) {
-      expect(sprite.frame, key).toEqual({ w: renderConfig.frame, h: renderConfig.frame });
-      expect(sprite.anchor, key).toEqual({ x: renderConfig.anchor[0], y: renderConfig.anchor[1] });
+      const box = boxes.find((b) => b.frame === sprite.frame.w);
+      expect(box, key).toBeDefined();
+      expect(sprite.frame, key).toEqual({ w: box!.frame, h: box!.frame });
+      expect(sprite.anchor, key).toEqual(box!.anchor);
     }
   });
 
   it("asks only for animations the manifest knows, with frames that fit one atlas page", () => {
     const names = Object.keys(renderConfig.anims);
-    expect(names.sort()).toEqual([...GFX_ANIMS].sort());
+    expect(names.sort()).toEqual(GFX_ANIMS.filter((a) => a !== "sit").sort()); // `sit` exists only on the paper dolls
     const total = Object.values(renderConfig.anims).reduce((n, a) => n + a.frames, 0) * renderConfig.directions.length;
     const cols = Math.floor(renderConfig.atlasMaxPx / renderConfig.frame);
     expect(Math.ceil(total / cols) * renderConfig.frame).toBeLessThanOrEqual(renderConfig.atlasMaxPx);
+  });
+});
+
+describe("the props render config", () => {
+  it("agrees with the constants the map layer reads", () => {
+    expect(propsConfig.frame).toBe(GFX_PROP_FRAME);
+    expect({ x: propsConfig.anchor[0], y: propsConfig.anchor[1] }).toEqual(GFX_PROP_ANCHOR);
   });
 });
 

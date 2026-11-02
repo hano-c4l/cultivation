@@ -50,7 +50,7 @@ export interface Tuning {
   /** The boss heals this fraction of its maximum HP per second once it has walked home from a lost fight. */
   bossRegen: { perSecond: number };
   /** The colours of the gear on a figure (see gear-look.ts): the tint of a weapon by its element (`none` for one without), and the palettes the robe, hat and boots of each set pick from (set number modulo the length). */
-  gearLooks: { weapon: Record<string, string>; robe: string[]; hat: string[]; boots: string[] };
+  gearLooks: { weapon: Record<string, string>; robe: string[]; hat: string[]; boots: string[]; belt?: string[]; bracer?: string[] };
   basicSkill: { realms: Array<{ nameVi?: string; powerMult: number; range?: number; mpCost?: number; area?: AreaDef }> };
   /** The teleport array in the middle of a main town: Linh Thạch = base + perUnit x the distance between the two towns on the world map (see waygate.ts). */
   waygate: { base: number; perUnit: number };
@@ -261,6 +261,8 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     robe: ["#ffffff", "#ffe9d0", "#d8ecff", "#e2ffd8", "#f6d8ff", "#fff4b8", "#ffd0d8", "#cfeee8", "#e8e0ff", "#ffe0a8", "#cfe4ff", "#f0ffd0", "#ffd8f0", "#d0fff4", "#ffd6b0", "#dcdcff"],
     hat: ["#e8d8b0", "#d0e0ff", "#f0c0c0", "#c8f0c8", "#e0c8f8", "#ffe8a0", "#c0e8f0", "#f8d0a0", "#d8d8e8", "#b8e0c0"],
     boots: ["#c8d0dc", "#ffd890", "#a8d8ff", "#ffa8a8", "#b8f0b8", "#e0b8ff", "#fff0a0", "#a8f0e8"],
+    belt: ["#e04a38", "#e8b84a", "#4a6fc8", "#3fae8f", "#f0e8d0", "#9a5bd0", "#d0703a", "#38586a"],
+    bracer: ["#e8c25a", "#cfd6e0", "#5fc4a8", "#c98a4a", "#7aa6e8", "#d86a6a", "#b8a0e8", "#e8e0b0"],
   },
   basicSkill: {
     realms: [
@@ -813,7 +815,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "gearLooks": {
       const color = (c: unknown): boolean => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c);
       const list = (a: unknown): boolean => Array.isArray(a) && a.length >= 1 && a.length <= 64 && a.every(color);
-      return obj(value.weapon) && Object.entries(value.weapon).every(([k, v]) => /^[a-z]{2,8}$/.test(k) && color(v)) && list(value.robe) && list(value.hat) && list(value.boots);
+      return obj(value.weapon) && Object.entries(value.weapon).every(([k, v]) => /^[a-z]{2,8}$/.test(k) && color(v)) && list(value.robe) && list(value.hat) && list(value.boots) && (value.belt === undefined || list(value.belt)) && (value.bracer === undefined || list(value.bracer));
     }
     case "basicSkill": {
       const r = value.realms;

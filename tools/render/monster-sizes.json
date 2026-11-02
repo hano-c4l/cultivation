@@ -1,0 +1,5 @@
+{
+  "note": "How much bigger each monster model is rendered than the original sprite set (the player is about 1.39 times taller since 4j). `base` applies to every species not listed.",
+  "base": 1.39,
+  "species": {}
+}

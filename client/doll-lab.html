@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Doll lab (dev only)</title>
+  <style>
+    body { margin: 0; background: #1b2a1d; color: #ddd; font: 13px sans-serif; }
+    #bar { position: fixed; top: 0; left: 0; right: 0; z-index: 2; padding: 6px; background: rgba(0, 0, 0, 0.65); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    select, input, button { font: inherit; padding: 2px 4px; }
+    label { display: inline-flex; gap: 3px; align-items: center; }
+  </style>
+</head>
+<body>
+  <div id="bar"></div>
+  <div id="game"></div>
+  <script type="module" src="/src/doll-lab.ts"></script>
+</body>
+</html>

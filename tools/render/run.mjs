@@ -40,7 +40,7 @@ function findBlender() {
 mkdirSync(out, { recursive: true });
 const marker = join(out, "done.marker");
 rmSync(marker, { force: true });
-const script = join(root, "tools/render/render_sprites.py");
+const script = join(root, "tools/render", JSON.parse(readFileSync(cfg, "utf8")).script ?? "render_sprites.py"); // a config can name another script (the props)
 const child = spawn(findBlender(), ["--background", "--factory-startup", "--python", script, "--", cfg, out, artRoot], { stdio: "ignore", detached: true });
 child.unref();
 
