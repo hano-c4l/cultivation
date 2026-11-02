@@ -161,13 +161,13 @@ def add_generated(rig, spec):
     if "skirt" in parts:
         zs = [waist - (waist - hem) * i / 9 for i in range(10)]
         f0, f1 = spec.get("flare0", 0.19), spec.get("flare1", 0.40)
-        flare = lambda t: f0 * k + (f1 * k - f0 * k) * (t ** 0.75)
+        flare = lambda t: f0 * k + (f1 * k - f0 * k) * (t ** spec.get("flareCurve", 1.0))
         lathe("XianSkirt", robe, zs, flare, lambda t: flare(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, 0.62))
         lathe("XianHem", trim, [hem + 0.04, hem - 0.005], lambda t: f1 * k + 0.012, lambda t: (f1 * k + 0.012) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, 1.0, 0.62))
     if "top" in parts:
         top_z = head("neck_01").z - 0.02
         zs = [waist - 0.02 + (top_z - waist + 0.02) * i / 7 for i in range(8)]
-        prof = lambda t: (0.185 + 0.03 * math.sin(t * math.pi * 0.9)) * k * (1.0 - 0.45 * max(0.0, t - 0.82) / 0.18)
+        prof = lambda t: (0.15 + 0.06 * math.sin(t * math.pi * 0.8)) * k * (1.0 - 0.45 * max(0.0, t - 0.82) / 0.18)  # a waist, then the chest
         lathe("XianTop", robe, zs, prof, lambda t: prof(t) * 0.78, 0.0, 0.02, lambda x, z, t: spine_w(z))
         lathe("XianCollar", trim, [top_z + 0.02, top_z - 0.06], lambda t: 0.095 * k, lambda t: 0.085 * k, 0.0, 0.035, lambda x, z, t: {"neck_01": 0.7, "spine_03": 0.3})
     if "mantle" in parts:
@@ -177,7 +177,7 @@ def add_generated(rig, spec):
         prof = lambda t: (0.13 + 0.14 * math.sin(t * math.pi * 0.5)) * k
         lathe("XianMantle", trim, zs, prof, lambda t: prof(t) * 0.8, 0.0, 0.03, lambda x, z, t: spine_w(z))
     if "sash" in parts:
-        lathe("XianSash", sash, [waist + 0.07, waist - 0.02], lambda t: 0.205 * k, lambda t: 0.205 * k * 0.8, 0.0, 0.02, lambda x, z, t: {"pelvis": 0.6, "spine_01": 0.4})
+        lathe("XianSash", sash, [waist + 0.07, waist - 0.02], lambda t: 0.168 * k, lambda t: 0.168 * k * 0.8, 0.0, 0.02, lambda x, z, t: {"pelvis": 0.6, "spine_01": 0.4})
         for sx in (-1, 1):
             # two ribbons hanging from the sash at the back, flowing with the legs
             n = 8
@@ -293,6 +293,17 @@ def add_generated(rig, spec):
                 ws.append(weights)
         return build(name, mat, pts, ring_faces(n, n_seg), ws)
 
+    if "top" in parts:
+        # the crossed collar of a Chinese robe: a trim band from the left of the neck, over the chest, to the right of the waist (the front is -y)
+        top_z = head("neck_01").z - 0.02
+        pts_c = []
+        for i in range(9):
+            t = i / 8
+            z = top_z - 0.02 - (top_z - waist - 0.02) * t
+            x = (-0.05 + 0.15 * t) * k
+            pf = (0.15 + 0.06 * math.sin((1 - t) * math.pi * 0.8)) * k * (1.0 - 0.45 * max(0.0, (1 - t) - 0.82) / 0.18)
+            pts_c.append(Vector((x, 0.02 - pf * 0.78 * math.sqrt(max(0.05, 1 - (x / pf) ** 2)) - 0.004, z)))
+        tube3("XianCollarV", trim, pts_c, lambda t: 0.014 * k, {"spine_02": 0.5, "spine_01": 0.5})
     hat_ids = [i for i in range(10) if "hat%d" % i in parts]
     if hat_ids:
         # the ten hats of the game, in 3D, each one on the top of the head; one tonal material (the game tints the whole hat by its set) and a second, darker one for bands and gems
@@ -390,7 +401,8 @@ def main():
     el = math.radians(cfg["elevationDeg"])
     az = math.radians(cfg["azimuthDeg"])
     # 1 tile = tileMetres; a tile is 64 px wide, so the ground runs 64/sqrt(2) px per metre along a tile axis.
-    ppm = 64.0 / math.sqrt(2) / cfg["tileMetres"]
+    pixel_scale = cfg.get("pixelScale", 1.0)  # rendered at this many times the pixels it shows (frame, anchor and outlinePx are then in the bigger pixels); the sprite is drawn at 1/pixelScale
+    ppm = 64.0 / math.sqrt(2) / cfg["tileMetres"] * pixel_scale
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     src = cfg["source"]
@@ -734,8 +746,8 @@ def main():
     check(abs(o_px.x - anchor[0]) < 0.6 and abs(o_px.y - anchor[1]) < 0.6, "origin lands at %s, wanted %s" % (tuple(o_px), anchor))
     dx = to_px(tile_x * cfg["tileMetres"]) - o_px
     dy = to_px(tile_y * cfg["tileMetres"]) - o_px
-    check(abs(dx.x - 32) < 0.6 and abs(dx.y - 16) < 0.6, "tile +x projects to %s, wanted (32, 16)" % (tuple(dx),))
-    check(abs(dy.x + 32) < 0.6 and abs(dy.y - 16) < 0.6, "tile +y projects to %s, wanted (-32, 16)" % (tuple(dy),))
+    check(abs(dx.x - 32 * pixel_scale) < 0.6 and abs(dx.y - 16 * pixel_scale) < 0.6, "tile +x projects to %s, wanted (%g, %g)" % (tuple(dx), 32 * pixel_scale, 16 * pixel_scale))
+    check(abs(dy.x + 32 * pixel_scale) < 0.6 and abs(dy.y - 16 * pixel_scale) < 0.6, "tile +y projects to %s, wanted (%g, %g)" % (tuple(dy), -32 * pixel_scale, 16 * pixel_scale))
     log("camera ok: origin", tuple(round(v, 2) for v in o_px), "tile x", tuple(round(v, 2) for v in dx), "tile y", tuple(round(v, 2) for v in dy))
 
     # ---- light and render settings (the model turns, the light and the camera never do) ----
@@ -1036,7 +1048,7 @@ def main():
 
         save_array(atlas, os.path.join(OUT, img_name))
         json.dump({"frames": jframes, "meta": {"image": img_name, "size": {"w": W, "h": H}, "scale": "1"}}, open(os.path.join(OUT, pname + ".json"), "w"))
-        json.dump({"key": pkey, "atlas": pname, "image": img_name, "data": pname + ".json", "frame": {"w": F, "h": F}, "anchor": {"x": anchor[0], "y": anchor[1]}, "head": head, **({"headSit": head_sit} if head_sit else {}), "anims": meta},
+        json.dump({"key": pkey, "atlas": pname, "image": img_name, "data": pname + ".json", "frame": {"w": F, "h": F}, "anchor": {"x": anchor[0], "y": anchor[1]}, "head": head, **({"headSit": head_sit} if head_sit else {}), **({"scale": round(1.0 / pixel_scale, 4)} if pixel_scale != 1.0 else {}), "anims": meta},
                   open(os.path.join(OUT, pname + ".sprite.json"), "w"), indent=2)
 
     # ---- a contact sheet to look at: the middle frame of each animation in the 8 directions, 2x, with the 64x32 tile under the feet ----

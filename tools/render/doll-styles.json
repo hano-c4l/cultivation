@@ -35,7 +35,7 @@
         "bun"
       ],
       "hemZ": 0.16,
-      "flare0": 0.19,
+      "flare0": 0.15,
       "flare1": 0.4,
       "cuff": 0.07,
       "bootHeight": 0.2
@@ -52,7 +52,7 @@
         "bun"
       ],
       "hemZ": 0.55,
-      "flare0": 0.17,
+      "flare0": 0.15,
       "flare1": 0.27,
       "cuff": 0.0,
       "bootHeight": 0.34
@@ -70,7 +70,7 @@
         "mantle"
       ],
       "hemZ": 0.08,
-      "flare0": 0.21,
+      "flare0": 0.17,
       "flare1": 0.52,
       "cuff": 0.13,
       "bootHeight": 0.18

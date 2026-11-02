@@ -54,7 +54,7 @@ for (const sp of sprites) {
     rmSync(join(OUT, sp.image));
   }
   manifest.atlases[sp.atlas] = { image, data: sp.data };
-  manifest.sprites[sp.key] = { atlas: sp.atlas, frame: sp.frame, anchor: sp.anchor, ...(sp.head ? { head: sp.head } : {}), ...(sp.headSit ? { headSit: sp.headSit } : {}), anims: sp.anims };
+  manifest.sprites[sp.key] = { atlas: sp.atlas, frame: sp.frame, anchor: sp.anchor, ...(sp.head ? { head: sp.head } : {}), ...(sp.headSit ? { headSit: sp.headSit } : {}), ...(sp.scale ? { scale: sp.scale } : {}), anims: sp.anims };
   for (const m of maps) {
     manifest.maps[m] = [...new Set([...(manifest.maps[m] ?? []), sp.atlas])];
   }

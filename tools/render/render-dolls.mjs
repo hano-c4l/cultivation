@@ -10,11 +10,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const outRoot = resolve(args[0] ?? "");
 if (!args[0]) {
-  console.error("usage: node tools/render/render-dolls.mjs <out dir> [--only female.robe] [--quick] [--test]");
+  console.error("usage: node tools/render/render-dolls.mjs <out dir> [--only female.robe] [--quick] [--test] [--solo] [--set key=json]");
   process.exit(2);
 }
 const only = args.includes("--only") ? args[args.indexOf("--only") + 1].split(",") : null;
 const quick = args.includes("--quick");
+const sets = Object.fromEntries(args.flatMap((a, i) => (args[i - 1] === "--set" ? [[a.slice(0, a.indexOf("=")), JSON.parse(a.slice(a.indexOf("=") + 1))]] : []))); // --set key=json: any setting of the config, for a trial (`--set pixelScale=2`)
 const test = args.includes("--test"); // the sit pose, the weapons and a hat, facing the viewer and a side: a look before a full render
 const template = JSON.parse(readFileSync(join(here, "doll-template.json"), "utf8"));
 const table = JSON.parse(readFileSync(join(here, "doll-styles.json"), "utf8"));
@@ -40,8 +41,10 @@ for (const [gender, g] of Object.entries(table.genders)) {
       },
       generated: { ...template.generated, parts: [...st.parts, ...Array.from({ length: 10 }, (_, i) => `hat${i}`)], scale: g.k, hemZ: st.hemZ, flare0: st.flare0, flare1: st.flare1, cuff: st.cuff, bootHeight: st.bootHeight },
       ...(quick ? { onlyAnims: ["idle", "attack", "die"] } : {}),
+      ...(args.includes("--solo") ? { onlyAnims: ["idle"], onlyPasses: ["body", "hair", "robe", "w_kiem"], onlyDirs: [0, 2] } : {}),
       ...(test ? { onlyAnims: ["idle", "sit"], onlyPasses: ["body", "hair", "robe", "h0", "w_kiem", "w_dao", "w_thuong", "w_riu", "w_cung"], onlyDirs: [0, 2] } : {}),
     };
+    Object.assign(cfg, sets);
     const cfgPath = join(outRoot, "configs", `${name}.json`);
     writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
     console.log(`== ${id}`);
