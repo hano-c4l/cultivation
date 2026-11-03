@@ -133,6 +133,80 @@
         0.55,
         0.55
       ]
+    },
+    "XianRobeSkirt": {
+      "color": [
+        0.58,
+        0.58,
+        0.58
+      ],
+      "pattern": {
+        "type": "RINGS",
+        "scale": 6,
+        "scaleY": 6,
+        "scaleZ": 6,
+        "angle": 0,
+        "strength": 0.08,
+        "distortion": 8
+      },
+      "motif": {
+        "front": "motifs/dragon.png",
+        "frontU": [
+          0.22,
+          0.78
+        ],
+        "frontV": [
+          0.0,
+          1.0
+        ],
+        "back": "motifs/phoenix.png",
+        "backU": [
+          0.22,
+          0.78
+        ],
+        "backV": [
+          0.0,
+          1.0
+        ],
+        "boost": 1.75
+      }
+    },
+    "XianRobeTop": {
+      "color": [
+        0.58,
+        0.58,
+        0.58
+      ],
+      "pattern": {
+        "type": "RINGS",
+        "scale": 6,
+        "scaleY": 6,
+        "scaleZ": 6,
+        "angle": 0,
+        "strength": 0.08,
+        "distortion": 8
+      },
+      "motif": {
+        "front": "motifs/medallion.png",
+        "frontU": [
+          0.27,
+          0.73
+        ],
+        "frontV": [
+          0.22,
+          0.68
+        ],
+        "back": "motifs/medallion.png",
+        "backU": [
+          0.27,
+          0.73
+        ],
+        "backV": [
+          0.22,
+          0.68
+        ],
+        "boost": 1.75
+      }
     }
   },
   "generated": {
@@ -169,7 +243,9 @@
     "hemZ": 0.16,
     "hatTrim": "GenHatTrim",
     "skirtLeg": 0.35,
-    "hemBand": 0.08
+    "hemBand": 0.08,
+    "robeSkirt": "XianRobeSkirt",
+    "robeTop": "XianRobeTop"
   },
   "passes": [
     {

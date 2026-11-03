@@ -162,13 +162,13 @@ def add_generated(rig, spec):
         zs = [waist - (waist - hem) * i / 9 for i in range(10)]
         f0, f1 = spec.get("flare0", 0.19), spec.get("flare1", 0.40)
         flare = lambda t: f0 * k + (f1 * k - f0 * k) * (t ** spec.get("flareCurve", 1.0))
-        lathe("XianSkirt", robe, zs, flare, lambda t: flare(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, spec.get("skirtLeg", 0.62)))
+        lathe("XianSkirt", spec.get("robeSkirt") or robe, zs, flare, lambda t: flare(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, spec.get("skirtLeg", 0.62)))
         lathe("XianHem", trim, [hem + spec.get("hemBand", 0.04), hem - 0.005], lambda t: f1 * k + 0.012, lambda t: (f1 * k + 0.012) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, 1.0, spec.get("skirtLeg", 0.62)))
     if "top" in parts:
         top_z = head("neck_01").z - 0.02
         zs = [waist - 0.02 + (top_z - waist + 0.02) * i / 7 for i in range(8)]
         prof = lambda t: (0.15 + 0.06 * math.sin(t * math.pi * 0.8)) * k * (1.0 - 0.45 * max(0.0, t - 0.82) / 0.18)  # a waist, then the chest
-        lathe("XianTop", robe, zs, prof, lambda t: prof(t) * 0.78, 0.0, 0.02, lambda x, z, t: spine_w(z))
+        lathe("XianTop", spec.get("robeTop") or robe, zs, prof, lambda t: prof(t) * 0.78, 0.0, 0.02, lambda x, z, t: spine_w(z))
         lathe("XianCollar", trim, [top_z + 0.02, top_z - 0.06], lambda t: 0.095 * k, lambda t: 0.085 * k, 0.0, 0.035, lambda x, z, t: {"neck_01": 0.7, "spine_03": 0.3})
     if "mantle" in parts:
         # a shoulder mantle over the top: a short wide cape on the shoulders (grand robes)
@@ -500,7 +500,7 @@ def main():
         bpy.data.objects.remove(o, do_unlink=True)  # every pack ships a little reference sphere
     if cfg.get("generated"):
         g = cfg["generated"]
-        roles = ("robe", "trim", "sash", "sleeve", "hairpiece", "skin", "legwear", "boot", "hat", "hatTrim")
+        roles = ("robe", "robeSkirt", "robeTop", "trim", "sash", "sleeve", "hairpiece", "skin", "legwear", "boot", "hat", "hatTrim")
         names = [g[k] for k in roles if g.get(k)]
         gm = {n: bpy.data.materials.new(n) for n in dict.fromkeys(names)}
         add_generated(rig, {**g, **{k: gm[g[k]] for k in roles if g.get(k)}})
@@ -541,7 +541,7 @@ def main():
     pal = cfg["palette"]
     levels = cfg["toonLevels"]
 
-    def toon(mat, rgb, vertex=False, image=None, pattern=None):
+    def toon(mat, rgb, vertex=False, image=None, pattern=None, motif=None):
         mat.use_nodes = True
         nt = mat.node_tree
         nt.nodes.clear()
@@ -617,6 +617,70 @@ def main():
             nt.links.new(mix.outputs[2], pat.inputs[6])
             nt.links.new(pr.outputs["Color"], pat.inputs[7])
             shaded = pat.outputs[2]
+        if motif:
+            # brocade: images (a dragon, a phoenix...) laid on the front and the back of a garment by its "generated" coordinates (the undeformed mesh box, so they follow the pose),
+            # shown only where the surface faces front or back; the image's grey multiplies the cloth (white lighter than the plain cloth by `boost`, grey darker), its alpha cuts the shape
+            tc2 = nt.nodes.new("ShaderNodeTexCoord")
+            gsep = nt.nodes.new("ShaderNodeSeparateXYZ")
+            nsep = nt.nodes.new("ShaderNodeSeparateXYZ")
+            nt.links.new(tc2.outputs["Generated"], gsep.inputs["Vector"])
+            nt.links.new(tc2.outputs["Normal"], nsep.inputs["Vector"])
+            for side, sign in (("front", -1.0), ("back", 1.0)):
+                path = motif.get(side)
+                if not path:
+                    continue
+                u0, u1 = motif.get(side + "U", [0.2, 0.8])
+                v0, v1 = motif.get(side + "V", [0.0, 1.0])
+                flip = side == "back"
+                comb = nt.nodes.new("ShaderNodeCombineXYZ")
+                nt.links.new(gsep.outputs["X"], comb.inputs["X"])
+                nt.links.new(gsep.outputs["Z"], comb.inputs["Y"])
+                mp2 = nt.nodes.new("ShaderNodeMapping")
+                su = (-1.0 if flip else 1.0) / (u1 - u0)
+                mp2.inputs["Scale"].default_value = (su, 1.0 / (v1 - v0), 1.0)
+                mp2.inputs["Location"].default_value = ((u1 if flip else -u0) / (u1 - u0), -v0 / (v1 - v0), 0.0)
+                nt.links.new(comb.outputs["Vector"], mp2.inputs["Vector"])
+                img = bpy.data.images.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), path))
+                tex2 = nt.nodes.new("ShaderNodeTexImage")
+                tex2.image = img
+                tex2.extension = "CLIP"
+                tex2.interpolation = "Linear"
+                nt.links.new(mp2.outputs["Vector"], tex2.inputs["Vector"])
+                face = nt.nodes.new("ShaderNodeMapRange")
+                face.clamp = True
+                face.inputs["From Min"].default_value = 0.35
+                face.inputs["From Max"].default_value = 0.75
+                if sign < 0:
+                    neg = nt.nodes.new("ShaderNodeMath")
+                    neg.operation = "MULTIPLY"
+                    neg.inputs[1].default_value = -1.0
+                    nt.links.new(nsep.outputs["Y"], neg.inputs[0])
+                    nt.links.new(neg.outputs["Value"], face.inputs["Value"])
+                else:
+                    nt.links.new(nsep.outputs["Y"], face.inputs["Value"])
+                cover = nt.nodes.new("ShaderNodeMath")
+                cover.operation = "MULTIPLY"
+                nt.links.new(tex2.outputs["Alpha"], cover.inputs[0])
+                nt.links.new(face.outputs["Result"], cover.inputs[1])
+                boost = nt.nodes.new("ShaderNodeMix")
+                boost.data_type = "RGBA"
+                boost.blend_type = "MULTIPLY"
+                boost.inputs[0].default_value = 1.0
+                nt.links.new(tex2.outputs["Color"], boost.inputs[6])
+                b = motif.get("boost", 1.3)
+                boost.inputs[7].default_value = (b, b, b, 1)
+                lit = nt.nodes.new("ShaderNodeMix")
+                lit.data_type = "RGBA"
+                lit.blend_type = "MULTIPLY"
+                lit.inputs[0].default_value = 1.0
+                nt.links.new(shaded, lit.inputs[6])
+                nt.links.new(boost.outputs[2], lit.inputs[7])
+                over = nt.nodes.new("ShaderNodeMix")
+                over.data_type = "RGBA"
+                nt.links.new(cover.outputs["Value"], over.inputs[0])
+                nt.links.new(shaded, over.inputs[6])
+                nt.links.new(lit.outputs[2], over.inputs[7])
+                shaded = over.outputs[2]
         mist = cfg.get("groundInk")  # ink-wash: the colour fades toward ink near the ground, like mist soaking the hem
         if mist:
             geo = nt.nodes.new("ShaderNodeNewGeometry")
@@ -665,7 +729,7 @@ def main():
                         image = nd.image
                         break
                 check(image is not None, "material %s has no BaseColor texture" % m.name)
-            toon(m, rgb, bool(isinstance(spec, dict) and spec.get("vertexColor")), image, spec.get("pattern") if isinstance(spec, dict) else None)
+            toon(m, rgb, bool(isinstance(spec, dict) and spec.get("vertexColor")), image, spec.get("pattern") if isinstance(spec, dict) else None, spec.get("motif") if isinstance(spec, dict) else None)
     outline = bpy.data.materials.new("outline")
     outline.use_nodes = True
     nt = outline.node_tree
