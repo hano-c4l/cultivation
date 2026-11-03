@@ -191,6 +191,29 @@ def add_generated(rig, spec):
                     ws.append(leg_w(x, t, 0.5))
             faces = [(2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2) for i in range(n - 1)]
             build("XianRibbon", sash, pts, faces, ws)
+    if "placket" in parts:
+        # a broad embroidered band down the middle of the front, from the collar to the hem (the trim material)
+        top_z = head("neck_01").z - 0.02
+        f0, f1 = spec.get("flare0", 0.19), spec.get("flare1", 0.40)
+        pw = spec.get("placketHalf", 0.035) * k
+        n = 14
+        pts, ws = [], []
+        for i in range(n):
+            z = (top_z + 0.01) + (hem - top_z - 0.01) * i / (n - 1)
+            if z >= waist:
+                t = (z - (waist - 0.02)) / (top_z - waist + 0.02)
+                t = min(max(t, 0.0), 1.0)
+                ry = (0.15 + 0.06 * math.sin(t * math.pi * 0.8)) * k * (1.0 - 0.45 * max(0.0, t - 0.82) / 0.18) * 0.78
+                cyy, w = 0.02, spine_w(z)
+            else:
+                t = (waist - z) / (waist - hem)
+                ry = (f0 * k + (f1 * k - f0 * k) * (t ** spec.get("flareCurve", 1.0))) * 0.86
+                cyy, w = cy, leg_w(0.0, t, spec.get("skirtLeg", 0.62))
+            for dx in (-pw, pw):
+                pts.append((dx, cyy - ry - 0.006, z))
+                ws.append(w)
+        faces = [(2 * i, 2 * i + 1, 2 * i + 3, 2 * i + 2) for i in range(n - 1)]
+        build("XianPlacket", trim, pts, faces, ws)
     if "sleeves" in parts:
         for side, sx in (("l", 1), ("r", -1)):
             ua, la = head("upperarm_" + side), head("lowerarm_" + side)
@@ -483,7 +506,7 @@ def main():
         add_generated(rig, {**g, **{k: gm[g[k]] for k in roles if g.get(k)}})
     if cfg.get("passes"):
         # every mesh belongs to one slot of the paper doll (body, hair, bun, robe, hat; the belt, the cuffs and the boots are part of the robe layer): by name for what the script generated, the hair by its name, the rest is the body
-        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianSleeve", "robe"), ("XianMantle", "robe"), ("GenLeg", "robe"), ("XianSash", "robe"), ("XianRibbon", "robe"),
+        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianPlacket", "robe"), ("XianSleeve", "robe"), ("XianMantle", "robe"), ("GenLeg", "robe"), ("XianSash", "robe"), ("XianRibbon", "robe"),
                     ("XianCuff", "robe"), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "robe")]
         for o in [o for o in bpy.data.objects if o.type == "MESH"]:
             hat = re.match(r"GenHat(\d+)_", o.name)
