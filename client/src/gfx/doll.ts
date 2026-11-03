@@ -34,6 +34,7 @@ export function dollLayers(prefix: string, lk: GearLook | undefined, has: (key: 
   const hatted = lk?.h !== undefined && has(`${prefix}.h${hatShapeOf(lk.h)}`);
   add("hair", hatted ? "hairhat" : "hair");
   add("robe", "robe", lk?.r !== undefined ? (hex(robeTintOf(lk.r)) ?? BARE_ROBE) : BARE_ROBE);
+  add("trim", "trim"); // the metal and trim of the styles that split them (armour): baked colours, never tinted
   if (hatted && lk?.h !== undefined) add("hat", `h${hatShapeOf(lk.h)}`, hex(hatTintOf(lk.h)));
   return out;
 }
@@ -76,6 +77,7 @@ export function npcDollLayers(prefix: string, look: { tint?: string; hat?: numbe
   const hatted = shape !== undefined && has(`${prefix}.h${shape}`);
   add("hair", hatted ? "hairhat" : "hair");
   add("robe", "robe", hex(look.tint) ?? BARE_ROBE);
+  add("trim", "trim");
   if (hatted) add("hat", `h${shape}`, hex(look.hatTint ?? look.aura));
   return out;
 }

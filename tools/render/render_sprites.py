@@ -523,8 +523,9 @@ def main():
         add_generated(rig, {**g, **{k: gm[g[k]] for k in roles if g.get(k)}})
     if cfg.get("passes"):
         # every mesh belongs to one slot of the paper doll (body, hair, bun, robe, hat; the belt, the cuffs and the boots are part of the robe layer): by name for what the script generated, the hair by its name, the rest is the body
-        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianPlacket", "robe"), ("XianPlate", "robe"), ("XianPauldron", "robe"), ("XianSleeve", "robe"), ("XianMantle", "robe"), ("GenLeg", "robe"), ("XianSash", "robe"), ("XianRibbon", "robe"),
-                    ("XianCuff", "robe"), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "robe")]
+        ts = "trim" if cfg["generated"].get("trimLayer") else "robe"  # a style may split its metal and trim (plates, hems, collar, sash, cuffs) into their own layer, which the game does not tint
+        prefixes = [("XianSkirt", "robe"), ("XianHem", ts), ("XianTop", "robe"), ("XianCollar", ts), ("XianPlacket", ts), ("XianPlate", ts), ("XianPauldron", ts), ("XianSleeve", "robe"), ("XianMantle", ts), ("GenLeg", "robe"), ("XianSash", ts), ("XianRibbon", ts),
+                    ("XianCuff", ts), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "robe")]
         for o in [o for o in bpy.data.objects if o.type == "MESH"]:
             hat = re.match(r"GenHat(\d+)_", o.name)
             o["slot"] = ("h_" + hat.group(1)) if hat else next((s for p, s in prefixes if o.name.startswith(p)), "hair" if o.name.startswith("Hair") else "body")

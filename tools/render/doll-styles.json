@@ -96,7 +96,8 @@
       "generated": {
         "plate": "XianPlate",
         "hemBand": 0.07,
-        "sleeveK": 0.8
+        "sleeveK": 0.8,
+        "trimLayer": true
       },
       "materials": {
         "XianRobeSkirt": {
@@ -137,9 +138,9 @@
         },
         "XianPlate": {
           "color": [
-            1.25,
-            1.25,
-            1.25
+            0.7,
+            0.76,
+            0.86
           ],
           "pattern": {
             "type": "BRICK",
@@ -166,6 +167,20 @@
             "strength": 0.14,
             "distortion": 3.0
           }
+        },
+        "XianTrim": {
+          "color": [
+            1.0,
+            0.78,
+            0.32
+          ]
+        },
+        "XianSash": {
+          "color": [
+            0.62,
+            0.12,
+            0.12
+          ]
         }
       }
     },
@@ -188,7 +203,8 @@
       "cuff": 0.07,
       "bootHeight": 0.18,
       "generated": {
-        "plate": "XianTrim"
+        "plate": "XianTrim",
+        "trimLayer": true
       },
       "materials": {
         "XianRobeSkirt": {
@@ -264,6 +280,20 @@
             ],
             "boost": 1.9
           }
+        },
+        "XianTrim": {
+          "color": [
+            1.0,
+            0.78,
+            0.32
+          ]
+        },
+        "XianSash": {
+          "color": [
+            0.62,
+            0.12,
+            0.12
+          ]
         }
       }
     },
@@ -339,7 +369,24 @@
             ],
             "boost": 1.7
           }
+        },
+        "XianTrim": {
+          "color": [
+            1.0,
+            0.78,
+            0.32
+          ]
+        },
+        "XianSash": {
+          "color": [
+            0.62,
+            0.12,
+            0.12
+          ]
         }
+      },
+      "generated": {
+        "trimLayer": true
       }
     }
   }
