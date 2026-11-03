@@ -88,14 +88,15 @@
         "boots",
         "bun"
       ],
-      "hemZ": 0.5,
+      "hemZ": 0.6,
       "flare0": 0.15,
-      "flare1": 0.3,
-      "cuff": 0.04,
+      "flare1": 0.215,
+      "cuff": 0.0,
       "bootHeight": 0.34,
       "generated": {
         "plate": "XianPlate",
-        "hemBand": 0.07
+        "hemBand": 0.07,
+        "sleeveK": 0.8
       },
       "materials": {
         "XianRobeSkirt": {
@@ -118,9 +119,9 @@
         },
         "XianRobeTop": {
           "color": [
-            0.55,
-            0.55,
-            0.55
+            0.45,
+            0.45,
+            0.45
           ],
           "pattern": {
             "type": "BRICK",
@@ -136,20 +137,20 @@
         },
         "XianPlate": {
           "color": [
-            1.5,
-            1.5,
-            1.5
+            1.25,
+            1.25,
+            1.25
           ],
           "pattern": {
             "type": "BRICK",
-            "scale": 12,
-            "scaleY": 12,
-            "scaleZ": 12,
+            "scale": 7,
+            "scaleY": 7,
+            "scaleZ": 7,
             "angle": 0,
-            "strength": 0.35,
-            "mortar": 0.06,
-            "brickW": 0.5,
-            "brickH": 0.5
+            "strength": 0.3,
+            "mortar": 0.04,
+            "brickW": 4.0,
+            "brickH": 0.3
           }
         },
         "XianSleeve": {

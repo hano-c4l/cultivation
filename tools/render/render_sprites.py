@@ -180,17 +180,17 @@ def add_generated(rig, spec):
         # a chest plate over the top, with a darker rim at the neck and at the waist (armour)
         top_z = head("neck_01").z - 0.02
         zs = [waist + 0.04 + (top_z - 0.07 - waist - 0.04) * i / 6 for i in range(7)]
-        prof = lambda t: (0.15 + 0.06 * math.sin((0.08 + 0.92 * t) * math.pi * 0.8)) * k * (1.0 - 0.45 * max(0.0, (0.1 + 0.9 * t) - 0.82) / 0.18) + 0.014 * k
+        prof = lambda t: (0.15 + 0.06 * math.sin((0.08 + 0.92 * t) * math.pi * 0.8)) * k * (1.0 - 0.45 * max(0.0, (0.1 + 0.9 * t) - 0.82) / 0.18) + 0.008 * k
         lathe("XianPlate", spec.get("plate") or trim, zs, prof, lambda t: prof(t) * 0.78 + 0.006, 0.0, 0.02, lambda x, z, t: spine_w(z))
     if "pauldrons" in parts:
         # three overlapping shoulder plates on each side, curved like the lames of a pauldron
         for side, sx in (("l", 1), ("r", -1)):
             ua = head("upperarm_" + side)
             for i in range(3):
-                x0, x1 = 0.05 + 0.035 * i, 0.19 + 0.04 * i
-                z = ua.z + 0.05 - 0.05 * i
+                x0, x1 = 0.09 + 0.03 * i, 0.19 + 0.04 * i
+                z = ua.z + 0.03 - 0.035 * i
                 axis = [(sx * (x0 + (x1 - x0) * j / 5), ua.y, z) for j in range(6)]
-                rp = lambda t, i=i: (0.075 + 0.07 * math.sin(math.pi * (0.15 + 0.7 * t))) * k * (1.0 + 0.1 * i)
+                rp = lambda t, i=i: (0.045 + 0.03 * math.sin(math.pi * (0.15 + 0.7 * t))) * k * (1.0 + 0.08 * i)
                 tube("XianPauldron_" + side + str(i), spec.get("plate") or trim, axis, rp, lambda x, t, side=side: {"clavicle_" + side: 0.55, "upperarm_" + side: 0.45}, n_seg=12)
     if "sash" in parts:
         lathe("XianSash", sash, [waist + 0.07, waist - 0.02], lambda t: 0.168 * k, lambda t: 0.168 * k * 0.8, 0.0, 0.02, lambda x, z, t: {"pelvis": 0.6, "spine_01": 0.4})
@@ -237,7 +237,8 @@ def add_generated(rig, spec):
             xs = [sx * (0.10 + (end_x - 0.10) * i / 8) for i in range(9)]
             axis = [(x, ua.y, ua.z) for x in xs]
             cuff_w = spec.get("cuff", 0.07)
-            ru = lambda t: (0.05 + 0.024 * min(1.0, t * 2.0) - 0.008 * t + cuff_w * max(0.0, (t - 0.7) / 0.3) ** 1.6) * k  # thin at the shoulder (no ridge on the top), wide only toward the cuff
+            sk = spec.get("sleeveK", 1.0)  # a tighter sleeve for armour
+            ru = lambda t: (0.05 + 0.024 * min(1.0, t * 2.0) - 0.008 * t) * sk * k + cuff_w * max(0.0, (t - 0.7) / 0.3) ** 1.6 * k  # thin at the shoulder (no ridge on the top), wide only toward the cuff
             elbow = abs(la.x)
 
             def w_arm(x, t, side=side, elbow=elbow):
