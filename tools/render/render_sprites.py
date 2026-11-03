@@ -176,6 +176,22 @@ def add_generated(rig, spec):
         zs = [top_z - 0.02 - 0.2 * i / 6 for i in range(7)]
         prof = lambda t: (0.13 + 0.14 * math.sin(t * math.pi * 0.5)) * k
         lathe("XianMantle", trim, zs, prof, lambda t: prof(t) * 0.8, 0.0, 0.03, lambda x, z, t: spine_w(z))
+    if "breastplate" in parts:
+        # a chest plate over the top, with a darker rim at the neck and at the waist (armour)
+        top_z = head("neck_01").z - 0.02
+        zs = [waist + 0.04 + (top_z - 0.07 - waist - 0.04) * i / 6 for i in range(7)]
+        prof = lambda t: (0.15 + 0.06 * math.sin((0.08 + 0.92 * t) * math.pi * 0.8)) * k * (1.0 - 0.45 * max(0.0, (0.1 + 0.9 * t) - 0.82) / 0.18) + 0.014 * k
+        lathe("XianPlate", spec.get("plate") or trim, zs, prof, lambda t: prof(t) * 0.78 + 0.006, 0.0, 0.02, lambda x, z, t: spine_w(z))
+    if "pauldrons" in parts:
+        # three overlapping shoulder plates on each side, curved like the lames of a pauldron
+        for side, sx in (("l", 1), ("r", -1)):
+            ua = head("upperarm_" + side)
+            for i in range(3):
+                x0, x1 = 0.05 + 0.035 * i, 0.19 + 0.04 * i
+                z = ua.z + 0.05 - 0.05 * i
+                axis = [(sx * (x0 + (x1 - x0) * j / 5), ua.y, z) for j in range(6)]
+                rp = lambda t, i=i: (0.075 + 0.07 * math.sin(math.pi * (0.15 + 0.7 * t))) * k * (1.0 + 0.1 * i)
+                tube("XianPauldron_" + side + str(i), spec.get("plate") or trim, axis, rp, lambda x, t, side=side: {"clavicle_" + side: 0.55, "upperarm_" + side: 0.45}, n_seg=12)
     if "sash" in parts:
         lathe("XianSash", sash, [waist + 0.07, waist - 0.02], lambda t: 0.168 * k, lambda t: 0.168 * k * 0.8, 0.0, 0.02, lambda x, z, t: {"pelvis": 0.6, "spine_01": 0.4})
         for sx in (-1, 1):
@@ -500,13 +516,13 @@ def main():
         bpy.data.objects.remove(o, do_unlink=True)  # every pack ships a little reference sphere
     if cfg.get("generated"):
         g = cfg["generated"]
-        roles = ("robe", "robeSkirt", "robeTop", "trim", "sash", "sleeve", "hairpiece", "skin", "legwear", "boot", "hat", "hatTrim")
+        roles = ("robe", "robeSkirt", "robeTop", "plate", "trim", "sash", "sleeve", "hairpiece", "skin", "legwear", "boot", "hat", "hatTrim")
         names = [g[k] for k in roles if g.get(k)]
         gm = {n: bpy.data.materials.new(n) for n in dict.fromkeys(names)}
         add_generated(rig, {**g, **{k: gm[g[k]] for k in roles if g.get(k)}})
     if cfg.get("passes"):
         # every mesh belongs to one slot of the paper doll (body, hair, bun, robe, hat; the belt, the cuffs and the boots are part of the robe layer): by name for what the script generated, the hair by its name, the rest is the body
-        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianPlacket", "robe"), ("XianSleeve", "robe"), ("XianMantle", "robe"), ("GenLeg", "robe"), ("XianSash", "robe"), ("XianRibbon", "robe"),
+        prefixes = [("XianSkirt", "robe"), ("XianHem", "robe"), ("XianTop", "robe"), ("XianCollar", "robe"), ("XianPlacket", "robe"), ("XianPlate", "robe"), ("XianPauldron", "robe"), ("XianSleeve", "robe"), ("XianMantle", "robe"), ("GenLeg", "robe"), ("XianSash", "robe"), ("XianRibbon", "robe"),
                     ("XianCuff", "robe"), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "robe")]
         for o in [o for o in bpy.data.objects if o.type == "MESH"]:
             hat = re.match(r"GenHat(\d+)_", o.name)
@@ -597,13 +613,26 @@ def main():
             mp = nt.nodes.new("ShaderNodeMapping")
             mp.inputs["Scale"].default_value = (pattern.get("scale", 24.0), pattern.get("scaleY", pattern.get("scale", 24.0)), pattern.get("scaleZ", 1.0))
             mp.inputs["Rotation"].default_value = (0.0, 0.0, math.radians(pattern.get("angle", 0.0)))
-            wave = nt.nodes.new("ShaderNodeTexWave")
-            wave.wave_type = pattern.get("type", "BANDS")
-            wave.bands_direction = "X"
-            wave.wave_profile = pattern.get("profile", "SIN")
-            wave.inputs["Scale"].default_value = 1.0
-            wave.inputs["Distortion"].default_value = pattern.get("distortion", 2.0)
-            wave.inputs["Detail"].default_value = 1.0
+            if pattern.get("type") == "BRICK":
+                # lamellar plates (armour): rows of offset plates with dark seams between them
+                wave = nt.nodes.new("ShaderNodeTexBrick")
+                wave.offset = 0.5
+                wave.inputs["Scale"].default_value = 1.0
+                wave.inputs["Mortar Size"].default_value = pattern.get("mortar", 0.06)
+                wave.inputs["Mortar Smooth"].default_value = 0.1
+                wave.inputs["Brick Width"].default_value = pattern.get("brickW", 0.5)
+                wave.inputs["Row Height"].default_value = pattern.get("brickH", 0.25)
+                wave.inputs["Color1"].default_value = (1, 1, 1, 1)
+                wave.inputs["Color2"].default_value = (0.9, 0.9, 0.9, 1)
+                wave.inputs["Bias"].default_value = 0.0
+            else:
+                wave = nt.nodes.new("ShaderNodeTexWave")
+                wave.wave_type = pattern.get("type", "BANDS")
+                wave.bands_direction = "X"
+                wave.wave_profile = pattern.get("profile", "SIN")
+                wave.inputs["Scale"].default_value = 1.0
+                wave.inputs["Distortion"].default_value = pattern.get("distortion", 2.0)
+                wave.inputs["Detail"].default_value = 1.0
             pr = nt.nodes.new("ShaderNodeValToRGB")
             pr.color_ramp.elements[0].color = (1 - pattern.get("strength", 0.12),) * 3 + (1,)
             pr.color_ramp.elements[1].color = (1, 1, 1, 1)

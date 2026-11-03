@@ -35,11 +35,12 @@ for (const [gender, g] of Object.entries(table.genders)) {
       source: { outfit: null },
       materials: {
         ...template.materials,
+        ...st.materials,
         ...Object.fromEntries(g.skin.map((m) => [m, { color: [1.25, 1.02, 0.88] }])),
         [g.hair]: { color: [0.08, 0.09, 0.15] },
         MI_Eyes: { color: [0.04, 0.04, 0.07] },
       },
-      generated: { ...template.generated, parts: [...st.parts, ...Array.from({ length: 10 }, (_, i) => `hat${i}`)], scale: g.k, hemZ: st.hemZ, flare0: st.flare0, flare1: st.flare1, cuff: st.cuff, bootHeight: st.bootHeight },
+      generated: { ...template.generated, ...st.generated, parts: [...st.parts, ...Array.from({ length: 10 }, (_, i) => `hat${i}`)], scale: g.k, hemZ: st.hemZ, flare0: st.flare0, flare1: st.flare1, cuff: st.cuff, bootHeight: st.bootHeight },
       ...(quick ? { onlyAnims: ["idle", "attack", "die"] } : {}),
       ...(args.includes("--solo") ? { onlyAnims: ["idle"], onlyPasses: ["body", "hair", "robe", "w_kiem"], onlyDirs: [0, 2] } : {}),
       ...(test ? { onlyAnims: ["idle", "sit"], onlyPasses: ["body", "hair", "robe", "h0", "w_kiem", "w_dao", "w_thuong", "w_riu", "w_cung"], onlyDirs: [0, 2] } : {}),

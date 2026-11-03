@@ -8,8 +8,11 @@ export const DEFAULT_OUTFIT = "robe";
 export function outfitOf(equipped: readonly { slot: string; type: string; dur?: number }[]): string | null {
   const robe = equipped.find((e) => e.slot === "robe");
   if (!robe || (robe.dur !== undefined && robe.dur <= 0)) return null;
-  const realm = equipmentInfo(robe.type)?.realm;
+  const info = equipmentInfo(robe.type);
+  const realm = info?.realm;
   if (realm === undefined) return null;
+  const special = tuning().outfits.byTier?.[`${realm}.${info?.tier}`];
+  if (special) return special;
   let best: { minRealm: number; outfit: string } | null = null;
   for (const r of tuning().outfits.rules) if (realm >= r.minRealm && (!best || r.minRealm > best.minRealm)) best = r;
   return best?.outfit ?? null;

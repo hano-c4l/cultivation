@@ -176,7 +176,7 @@ export interface Tuning {
   /** The chance that a kill drops the book of a rare skill of the realm of the map (see skills-extra.ts): by monster class, and for each item round of the map's boss. */
   rareBooks: { chance: Record<"normal" | "rare1" | "rare2" | "boss", number> };
   /** The outfit drawn on a player's sprite, by the realm of the robe worn: the rule with the highest `minRealm` the robe reaches wins (no robe or no rule: the plain peasant clothes). `outfit` names a sprite variant (`player.<body>.<outfit>`); one without a sprite is drawn as the plain clothes. */
-  outfits: { rules: Array<{ minRealm: number; outfit: string }> };
+  outfits: { rules: Array<{ minRealm: number; outfit: string }>; byTier?: Record<string, string> };
   /** Which sprite model draws a species (`monster.<species>` is tried first): species id -> model key (`monster.<model>`). Several species can share one model; a species with neither is drawn as the square. */
   monsterModels: Record<string, string>;
   /** The colour a monster sprite is multiplied by, by element (`#rrggbb`), so one model looks different in each element; an element without one is drawn in the model's own colours. */
@@ -536,7 +536,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   trade: DEFAULT_TRADE,
   sect: DEFAULT_SECT,
   rareBooks: { chance: { normal: 0.00005, rare1: 0.0008, rare2: 0.003, boss: 0.02 } },
-  outfits: { rules: [{ minRealm: 0, outfit: "tunic" }, { minRealm: 1, outfit: "tunic" }, { minRealm: 2, outfit: "robe" }, { minRealm: 3, outfit: "robe" }, { minRealm: 4, outfit: "grand" }, { minRealm: 5, outfit: "grand" }] }, // the silhouettes of the paper dolls (4j): a tunic for Luyện Khí and Trúc Cơ, the long robe for Kim Đan and Nguyên Anh, the grand robe above
+  outfits: { rules: [{ minRealm: 0, outfit: "tunic" }, { minRealm: 1, outfit: "tunic" }, { minRealm: 2, outfit: "robe" }, { minRealm: 3, outfit: "robe" }, { minRealm: 4, outfit: "grand" }, { minRealm: 5, outfit: "grand" }] }, // the silhouettes of the paper dolls (4j): a tunic for Luyện Khí and Trúc Cơ, the long robe for Kim Đan and Nguyên Anh, the grand robe above. `byTier` ("realm.tier": outfit) overrides the rule for one robe set, e.g. a suit of armour
   // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp), ghost (hàn thi ma), snake (rắn). Stand-ins: the boss dragons use the dragon.
   monsterModels: {
     doi_u_minh: "bat",
@@ -1074,7 +1074,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "monsterModels":
       return Object.keys(value).length <= 100 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && /^[a-z0-9]{1,16}$/.test(v));
     case "outfits":
-      return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit));
+      return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit)) && (value.byTier === undefined || (obj(value.byTier) && Object.keys(value.byTier).length <= 200 && Object.entries(value.byTier).every(([k, v]) => /^\d{1,2}\.\d{1,2}$/.test(k) && typeof v === "string" && /^[a-z]{1,16}$/.test(v))));
     case "mounts":
       return validMounts(value);
     case "forge":

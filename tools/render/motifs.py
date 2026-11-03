@@ -188,17 +188,54 @@ def medallion():
     return two_tone(draw)
 
 
+def roundel():
+    """A coiled dragon inside a ring, for the chest of a dragon robe."""
+    A = S * AA
+    big = dragon()
+    inner = big.resize((int(A * 0.62), int(A * 0.62)), Image.LANCZOS)
+
+    def draw(d, _):
+        c = A / 2
+        d.ellipse((c - 0.48 * A, c - 0.48 * A, c + 0.48 * A, c + 0.48 * A), fill=255)
+        d.ellipse((c - 0.40 * A, c - 0.40 * A, c + 0.40 * A, c + 0.40 * A), fill=0)
+        for k in range(8):
+            ang = k * math.pi / 4 + math.pi / 8
+            cloud(d, c + math.cos(ang) * 0.44 * A, c + math.sin(ang) * 0.44 * A, 0.035 * A)
+
+    ring = two_tone(draw)
+    ring.alpha_composite(inner, (int(A * 0.19), int(A * 0.19)))
+    return ring
+
+
+def waves():
+    """Seigaiha: rows of overlapping concentric arcs, tiled over the whole picture (water, for a robe of the sea)."""
+    A = S * AA
+    n = 5
+
+    def draw(d, _):
+        r = A / n / 1.0
+        for row in range(n * 2 + 1):
+            for col in range(-1, n + 2):
+                cx = col * r + (r / 2 if row % 2 else 0)
+                cy = row * r / 2 + r / 2
+                for k in range(4, 0, -1):
+                    rr = r / 2 * k / 4 * 1.0
+                    d.ellipse((cx - rr, cy - rr, cx + rr, cy + rr), outline=255, width=int(A * 0.006))
+
+    return two_tone(draw)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
-    for name, fn in (("dragon", dragon), ("phoenix", phoenix), ("medallion", medallion)):
+    for name, fn in (("dragon", dragon), ("phoenix", phoenix), ("medallion", medallion), ("roundel", roundel), ("waves", waves)):
         im = fn().resize((S, S), Image.LANCZOS)
         im.save(os.path.join(OUT, name + ".png"))
         print("wrote", name)
-    sheet = Image.new("RGBA", (S * 3, S), (150, 110, 90, 255))
-    for i, name in enumerate(("dragon", "phoenix", "medallion")):
+    sheet = Image.new("RGBA", (S * 5, S), (150, 110, 90, 255))
+    for i, name in enumerate(("dragon", "phoenix", "medallion", "roundel", "waves")):
         im = Image.open(os.path.join(OUT, name + ".png")).convert("RGBA")
         sheet.alpha_composite(im, (i * S, 0))
-    sheet.resize((S * 3 // 2, S // 2)).save(os.path.join(OUT, "preview.png"))
+    sheet.resize((S * 5 // 2, S // 2)).save(os.path.join(OUT, "preview.png"))
 
 
 if __name__ == "__main__":

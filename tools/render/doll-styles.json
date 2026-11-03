@@ -74,6 +74,272 @@
       "flare1": 0.52,
       "cuff": 0.06,
       "bootHeight": 0.18
+    },
+    "armor": {
+      "parts": [
+        "skirt",
+        "top",
+        "breastplate",
+        "pauldrons",
+        "sash",
+        "sleeves",
+        "legs",
+        "hands",
+        "boots",
+        "bun"
+      ],
+      "hemZ": 0.5,
+      "flare0": 0.15,
+      "flare1": 0.3,
+      "cuff": 0.04,
+      "bootHeight": 0.34,
+      "generated": {
+        "plate": "XianPlate",
+        "hemBand": 0.07
+      },
+      "materials": {
+        "XianRobeSkirt": {
+          "color": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "pattern": {
+            "type": "BRICK",
+            "scale": 8,
+            "scaleY": 8,
+            "scaleZ": 8,
+            "angle": 0,
+            "strength": 0.5,
+            "mortar": 0.09,
+            "brickW": 0.5,
+            "brickH": 0.3
+          }
+        },
+        "XianRobeTop": {
+          "color": [
+            0.55,
+            0.55,
+            0.55
+          ],
+          "pattern": {
+            "type": "BRICK",
+            "scale": 8,
+            "scaleY": 8,
+            "scaleZ": 8,
+            "angle": 0,
+            "strength": 0.4,
+            "mortar": 0.07,
+            "brickW": 0.5,
+            "brickH": 0.3
+          }
+        },
+        "XianPlate": {
+          "color": [
+            1.5,
+            1.5,
+            1.5
+          ],
+          "pattern": {
+            "type": "BRICK",
+            "scale": 12,
+            "scaleY": 12,
+            "scaleZ": 12,
+            "angle": 0,
+            "strength": 0.35,
+            "mortar": 0.06,
+            "brickW": 0.5,
+            "brickH": 0.5
+          }
+        },
+        "XianSleeve": {
+          "color": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "pattern": {
+            "scale": 9,
+            "scaleY": 3,
+            "angle": 20,
+            "strength": 0.14,
+            "distortion": 3.0
+          }
+        }
+      }
+    },
+    "dragon": {
+      "parts": [
+        "skirt",
+        "top",
+        "pauldrons",
+        "sash",
+        "sleeves",
+        "legs",
+        "hands",
+        "boots",
+        "bun",
+        "mantle"
+      ],
+      "hemZ": 0.08,
+      "flare0": 0.17,
+      "flare1": 0.52,
+      "cuff": 0.07,
+      "bootHeight": 0.18,
+      "generated": {
+        "plate": "XianTrim"
+      },
+      "materials": {
+        "XianRobeSkirt": {
+          "color": [
+            0.55,
+            0.55,
+            0.55
+          ],
+          "pattern": {
+            "type": "RINGS",
+            "scale": 6,
+            "scaleY": 6,
+            "scaleZ": 6,
+            "angle": 0,
+            "strength": 0.08,
+            "distortion": 8
+          },
+          "motif": {
+            "front": "motifs/dragon.png",
+            "frontU": [
+              0.08,
+              0.92
+            ],
+            "frontV": [
+              0.0,
+              1.0
+            ],
+            "back": "motifs/phoenix.png",
+            "backU": [
+              0.22,
+              0.78
+            ],
+            "backV": [
+              0.0,
+              1.0
+            ],
+            "boost": 1.9
+          }
+        },
+        "XianRobeTop": {
+          "color": [
+            0.55,
+            0.55,
+            0.55
+          ],
+          "pattern": {
+            "type": "RINGS",
+            "scale": 6,
+            "scaleY": 6,
+            "scaleZ": 6,
+            "angle": 0,
+            "strength": 0.08,
+            "distortion": 8
+          },
+          "motif": {
+            "front": "motifs/roundel.png",
+            "frontU": [
+              0.2,
+              0.8
+            ],
+            "frontV": [
+              0.15,
+              0.75
+            ],
+            "back": "motifs/roundel.png",
+            "backU": [
+              0.2,
+              0.8
+            ],
+            "backV": [
+              0.15,
+              0.75
+            ],
+            "boost": 1.9
+          }
+        }
+      }
+    },
+    "wave": {
+      "parts": [
+        "skirt",
+        "top",
+        "sash",
+        "sleeves",
+        "legs",
+        "hands",
+        "boots",
+        "bun"
+      ],
+      "hemZ": 0.16,
+      "flare0": 0.15,
+      "flare1": 0.4,
+      "cuff": 0.05,
+      "bootHeight": 0.2,
+      "materials": {
+        "XianRobeSkirt": {
+          "color": [
+            0.6,
+            0.6,
+            0.6
+          ],
+          "motif": {
+            "front": "motifs/waves.png",
+            "frontU": [
+              0.0,
+              1.0
+            ],
+            "frontV": [
+              0.0,
+              0.9
+            ],
+            "back": "motifs/waves.png",
+            "backU": [
+              0.0,
+              1.0
+            ],
+            "backV": [
+              0.0,
+              0.9
+            ],
+            "boost": 1.7
+          }
+        },
+        "XianRobeTop": {
+          "color": [
+            0.6,
+            0.6,
+            0.6
+          ],
+          "motif": {
+            "front": "motifs/waves.png",
+            "frontU": [
+              0.0,
+              1.0
+            ],
+            "frontV": [
+              0.0,
+              0.9
+            ],
+            "back": "motifs/waves.png",
+            "backU": [
+              0.0,
+              1.0
+            ],
+            "backV": [
+              0.0,
+              0.9
+            ],
+            "boost": 1.7
+          }
+        }
+      }
     }
   }
 }
