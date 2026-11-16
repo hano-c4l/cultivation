@@ -1,15 +1,16 @@
 import { ALL_ROOTS } from "./character";
 import { equipmentInfo, STAGES_PER_REALM_FOR_LOOK } from "./equipment-data";
-import { tuning } from "./tuning";
+import { DEFAULT_TUNING, tuning } from "./tuning";
 
 /**
  * How the worn gear changes the way a figure is drawn (docs/PHASE2.md 2o): the sprites of the body and the weapon are the same ones, but each piece colours them
  * and adds its own touch, so a sword is not every sword and two robes of different sets are not alike. The server only sends small numbers (what the piece is);
  * the colours and the shapes are the client's, from the tuning `gearLooks` (an admin can repaint them).
  *   w   the weapon: `1 + realm * 10 + element` (element 0 none, 1.. in the order of ALL_ROOTS): tints the weapon sprite
- *   r   the robe: `1 + realm * 9 + (bậc - 1)`: tints the body sprite, one colour for each set
+ *   r   the robe: `1 + realm * 9 + (bậc - 1)`: tints the robe layer, a colour for each realm shaded by the bậc
  *   h   the hat: the same number: its colour, and (modulo the number of shapes) the shape drawn on the head
- *   b   the boots: the same number: the colour of the dust they raise
+ *   b   the boots: the same number: their colour (and the colour of the dust they raise)
+ *   t   the belt, g the bracers: the same number: their colour
  *   e   the upgrade level of the worn weapon when it is +7 or more (7..10): its sprite shines with it (see `glowTierOf`)
  */
 export interface GearLook {
@@ -17,6 +18,8 @@ export interface GearLook {
   r?: number;
   h?: number;
   b?: number;
+  t?: number;
+  g?: number;
   e?: number;
 }
 
@@ -32,7 +35,7 @@ export const HAT_SHAPES = 10;
 
 const setNo = (realm: number, tier: number): number => 1 + realm * STAGES_PER_REALM_FOR_LOOK + Math.max(0, tier - 1);
 
-/** The look of the worn weapon, robe, hat and boots (a broken piece does not count); undefined when none of them is worn. */
+/** The look of the worn weapon, robe, hat, boots, belt and bracers (a broken piece does not count); undefined when none of them is worn. */
 export function gearLookOf(equipped: readonly { slot: string; type: string; dur?: number; en?: number }[]): GearLook | undefined {
   const out: GearLook = {};
   for (const e of equipped) {
@@ -46,6 +49,8 @@ export function gearLookOf(equipped: readonly { slot: string; type: string; dur?
     else if (e.slot === "robe" && info.kind === "robe") out.r = setNo(info.realm, info.tier);
     else if (e.slot === "hat" && info.kind === "hat") out.h = setNo(info.realm, info.tier);
     else if (e.slot === "boots" && info.kind === "boots") out.b = setNo(info.realm, info.tier);
+    else if (e.slot === "belt" && info.kind === "belt") out.t = setNo(info.realm, info.tier);
+    else if (e.slot === "bracer" && info.kind === "bracer") out.g = setNo(info.realm, info.tier);
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -57,7 +62,19 @@ export function weaponLookParts(w: number): { realm: number; element: string | n
   return { realm: Math.floor(n / 10), element: e > 0 ? (ALL_ROOTS[e - 1] ?? null) : null };
 }
 
-const pick = (list: readonly string[], n: number): string | undefined => (list.length > 0 ? list[(Math.max(1, Math.trunc(n)) - 1) % list.length] : undefined);
+/**
+ * The colour a set number gives from a palette that has one colour for each realm: the realm picks the colour (past the last it wraps), the bậc deepens it a little
+ * (bậc 9 is about a fifth darker than bậc 1), so the nine sets of a realm are shades of one colour and a higher realm is told apart by hue.
+ */
+const pick = (list: readonly string[], n: number): string | undefined => {
+  if (list.length === 0) return undefined;
+  const set = Math.max(1, Math.trunc(n)) - 1;
+  const base = list[Math.floor(set / STAGES_PER_REALM_FOR_LOOK) % list.length] as string;
+  const k = 1 - 0.025 * (set % STAGES_PER_REALM_FOR_LOOK);
+  const v = parseInt(base.slice(1), 16);
+  const c = (shift: number): string => Math.round(((v >> shift) & 255) * k).toString(16).padStart(2, "0");
+  return `#${c(16)}${c(8)}${c(0)}`;
+};
 
 /** The colours (`#rrggbb`) a look number gives, from the tuning; undefined where the tuning names none. */
 export function weaponTintOf(w: number): string | undefined {
@@ -74,6 +91,8 @@ export function weaponTintOf(w: number): string | undefined {
 export const robeTintOf = (r: number): string | undefined => pick(tuning().gearLooks.robe, r);
 export const hatTintOf = (h: number): string | undefined => pick(tuning().gearLooks.hat, h);
 export const bootsTintOf = (b: number): string | undefined => pick(tuning().gearLooks.boots, b);
+export const beltTintOf = (t: number): string | undefined => pick(tuning().gearLooks.belt ?? DEFAULT_TUNING.gearLooks.belt ?? [], t);
+export const bracerTintOf = (g: number): string | undefined => pick(tuning().gearLooks.bracer ?? DEFAULT_TUNING.gearLooks.bracer ?? [], g);
 /** The realm of the set a look number belongs to (`setNo`'s inverse). */
 const realmOfSet = (n: number): number => Math.floor((Math.max(1, Math.trunc(n)) - 1) / STAGES_PER_REALM_FOR_LOOK);
 

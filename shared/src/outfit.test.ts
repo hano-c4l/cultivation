@@ -13,11 +13,20 @@ describe("outfitOf", () => {
   });
 
   it("follows the rules in the tuning: the highest minRealm reached wins", () => {
-    expect(outfitOf([robe(0)])).toBe("ranger");
+    expect(outfitOf([robe(0)])).toBe("tunic");
     setTuning({ outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 2, outfit: "mage" }] } });
     expect(outfitOf([robe(1)])).toBe("ranger");
     expect(outfitOf([robe(2)])).toBe("mage");
     expect(outfitOf([robe(3, 10)])).toBe("mage");
+  });
+
+  it("lets a robe set of one realm and tier wear its own outfit (byTier)", () => {
+    setTuning({ outfits: { rules: DEFAULT_TUNING.outfits.rules, byTier: { "2.1": "armor" } } });
+    expect(outfitOf([robe(2)])).toBe("armor");
+    expect(outfitOf([robe(3)])).toBe("robe");
+    expect(validTuningGroup("outfits", { rules: [], byTier: { "2.1": "armor" } })).toBe(true);
+    expect(validTuningGroup("outfits", { rules: [], byTier: { x: "armor" } })).toBe(false);
+    expect(validTuningGroup("outfits", { rules: [], byTier: { "2.1": "Bad Name" } })).toBe(false);
   });
 
   it("validates the rules", () => {

@@ -14,17 +14,26 @@ applyTheme(DEFAULT_THEME);
 // `?renderer=canvas` forces the Canvas renderer for devices with broken or weak WebGL.
 const forceCanvas = new URLSearchParams(location.search).get("renderer") === "canvas";
 
+/**
+ * The canvas has one backing pixel for each screen pixel (a display at 150 % scale has 1.5 per CSS pixel); with one per CSS pixel the browser stretches
+ * the canvas and everything blurs. The scene multiplies the camera zoom by this so the world keeps its size. `?dpr=1` turns it off, `?dpr=2` tries a sharper one.
+ */
+const dprParam = Number(new URLSearchParams(location.search).get("dpr"));
+const DPR = Math.min(Math.max(dprParam > 0 ? dprParam : window.devicePixelRatio || 1, 1), 3);
+
 function startGame(isAdmin: boolean): void {
-  new Phaser.Game({
+  const backing = (): { width: number; height: number } => ({ width: Math.round(window.innerWidth * DPR), height: Math.round(window.innerHeight * DPR) });
+  const game = new Phaser.Game({
     // Read by the scene when it starts; the server decides what admins may actually do.
-    callbacks: { preBoot: (game) => game.registry.set("isAdmin", isAdmin) },
+    callbacks: { preBoot: (g) => { g.registry.set("isAdmin", isAdmin); g.registry.set("dpr", DPR); } },
     type: forceCanvas ? Phaser.CANVAS : Phaser.AUTO,
     parent: "game",
     backgroundColor: "#10141c",
-    scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
+    scale: { mode: Phaser.Scale.NONE, ...backing(), zoom: 1 / DPR },
     scene: [GameScene],
     input: { activePointers: 2 },
   });
+  window.addEventListener("resize", () => game.scale.resize(backing().width, backing().height));
 }
 
 /** Resolves the login state, walking the player through login and character creation when needed. */

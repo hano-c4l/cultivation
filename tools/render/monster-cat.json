@@ -25,6 +25,7 @@
     "idle",
     "run",
     "attack",
+    "hit",
     "die"
   ],
   "anims": {
@@ -41,12 +42,31 @@
     "attack": {
       "action": "Walking",
       "frames": 6,
-      "loop": false
+      "loop": false,
+      "proc": {
+        "type": "lunge",
+        "dist": 0.5,
+        "pitch": 16
+      }
     },
     "die": {
       "action": "Idle",
+      "frames": 4,
+      "loop": false,
+      "proc": {
+        "type": "fall",
+        "roll": 88
+      }
+    },
+    "hit": {
+      "action": "Idle",
       "frames": 3,
-      "loop": false
+      "loop": false,
+      "proc": {
+        "type": "recoil",
+        "dist": 0.28,
+        "pitch": 14
+      }
     }
   },
   "animsNote": "the pack has only Idle and Walking: attack replays the move once, die holds the idle pose (no hit animation either)"

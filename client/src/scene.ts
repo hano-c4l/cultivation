@@ -5,6 +5,9 @@ import {
   BASIC_SKILL_ID,
   parseSkillSlot,
   directionOf,
+  bodyOf,
+  DEFAULT_OUTFIT,
+  FIGURE_SCALE,
   type GfxAnimName,
   bossKinds,
   bossRealmBonus,
@@ -96,6 +99,8 @@ import { initTrade, type TradeUi } from "./trade-ui";
 import { initMinimap, type MinimapUi } from "./minimap";
 import { Effects } from "./fx";
 import { HAT_ORN_TEX, HAT_TEX, ensureHatTextures } from "./hat-art";
+import { dollLayers, dollOfWorn, dollPrefixOf, dollWeaponKey, npcDollLayers } from "./gfx/doll";
+import { paintDoll } from "./gfx/doll-preview";
 import { DRAGON_HEAD, DRAGON_MIST, DRAGON_SEG, DRAGON_TAIL, FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
@@ -147,12 +152,14 @@ import { initPerf } from "./perf-ui";
 import { MapLayer } from "./map-layer";
 
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
+/** The default camera zoom: below 1 the window shows more of the world (the figures are drawn at a higher resolution than they show, so they stay sharp). */
+const VIEW_ZOOM = 0.75;
 
 /** The element icon in front of a monster's name: the same colours as the element dots on gear and skills (index.html .elem-*). */
 const ELEMENT_DOT: Record<string, number> = { kim: 0xfbc02d, moc: 0x43a047, thuy: 0x1e88e5, hoa: 0xe53935, tho: 0x8d6e63, loi: 0x7e57c2, bang: 0x4dd0e1, phong: 0x80cbc4 };
 const ELEMENT_COLOR: Record<string, number> = { kim: 0xe0e0e0, moc: 0x4caf50, thuy: 0x2196f3, hoa: 0xff5722, tho: 0x9c7a5b, loi: 0x9575cd, bang: 0x80deea, phong: 0xa5d6a7 };
 /** A click within this many screen pixels of a monster (around its body) targets it instead of walking. */
-const MONSTER_PICK_PX = 34;
+const MONSTER_PICK_PX = Math.round(34 * FIGURE_SCALE);
 
 /** Converts continuous tile coordinates to isometric screen pixels. */
 function toScreen(x: number, y: number): { x: number; y: number } {
@@ -228,6 +235,10 @@ interface Actor {
   /** When (performance.now) the next wisp of that haze is released. */
   qiNext?: number;
   wview?: GfxView;
+  /** The paper doll's layers asked for now (a signature of what is worn), how many were still missing, and when to ask again. */
+  dollSig?: string;
+  dollMissing?: number;
+  dollRetry?: number;
   /** Sát nhân when last heard (it falls 5 a minute while online) and when; the name colour comes from these. */
   sn: number;
   snAt: number;
@@ -244,6 +255,9 @@ interface MonsterActor {
   view?: GfxView;
   /** The weapon sprite of a guard (a guard is drawn as a player body holding a weapon, from the tuning `npcLooks`). */
   wview?: GfxView;
+  dollSig?: string;
+  dollMissing?: number;
+  dollRetry?: number;
   /** The formation circle under a guard (from the tuning `npcLooks`): lit only for a moment when it uses a skill. */
   aura?: Phaser.GameObjects.Container;
   /** When (performance.now) the aura goes out again. */
@@ -331,7 +345,7 @@ export class GameScene extends Phaser.Scene {
   /** Timed buffs still running on each actor (skill id -> when it ends, performance.now): they keep a light round the figure. */
   private buffGlows = new Map<string, Map<string, number>>();
   private nextGlowAt = 0;
-  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView; aura?: Phaser.GameObjects.Container } & HatHolder> = [];
+  private npcFigures: Array<{ npc: NpcSpot; x: number; y: number; depth: number; body: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text; view?: GfxView; wview?: GfxView; aura?: Phaser.GameObjects.Container; dollSig?: string; dollMissing?: number; dollRetry?: number } & HatHolder> = [];
   private actors = new Map<string, Actor>();
   private monsters = new Map<string, MonsterActor>();
   private targetId: string | null = null;
@@ -483,7 +497,11 @@ export class GameScene extends Phaser.Scene {
       pillCount: () => this.inventory.list().filter((i) => getItemDef(i.type)?.masteryPills !== undefined).reduce((n, i) => n + i.qty, 0),
     });
     this.inventory = initInventory((msg) => this.net.send(msg), (value, label) => this.hotbar.beginAssign(value, label));
-    this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list(), this.registry.get("isAdmin") === true);
+    this.equipment = initEquipment((msg) => this.net.send(msg), () => this.inventory.list(), this.registry.get("isAdmin") === true, (canvas, worn) => {
+      const doll = dollOfWorn(this.selfSheet ? bodyOf(this.selfSheet.gender) === "female" : false, worn, (k) => this.gfx.knows(k));
+      if (!doll) return 0;
+      return paintDoll(this.textures, this.gfx, canvas, doll.body, [...doll.layers, ...(doll.weapon ? [doll.weapon] : [])]);
+    });
     this.shop = initShop((msg) => this.net.send(msg), () => this.inventory.list(), (npc, view) => this.switchNpcView(npc, view));
     this.smith = initSmith((msg) => this.net.send(msg), () => this.inventory.list(), () => ({ linh_thach: this.linhThach }), (npc, view) => this.switchNpcView(npc, view));
     this.quests = initQuests((msg) => this.net.send(msg), () => this.inventory.list(), (title) => this.chat.system(vi.quests.ready(title)));
@@ -534,6 +552,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     const camera = this.cameras.main;
+    camera.setZoom(this.viewZoom());
     const center = toScreen(this.map.spawn[0] + 0.5, this.map.spawn[1] + 0.5);
     this.applyCameraBounds();
     camera.centerOn(center.x, center.y);
@@ -700,7 +719,7 @@ export class GameScene extends Phaser.Scene {
     for (const f of this.npcFigures) {
       const look = npcLookOf(f.npc);
       if (!look) continue;
-      const key = this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`);
+      const key = this.readyBodyKey(`${look.body}.${look.outfit ?? DEFAULT_OUTFIT}`, (p) => npcDollLayers(p, look, (k) => this.gfx.knows(k)).map((l) => l.key));
       if (f.view && (!f.view.alive || (key && f.view.key !== key))) {
         f.wview?.destroy();
         f.view.destroy();
@@ -717,20 +736,44 @@ export class GameScene extends Phaser.Scene {
         }
       }
       if (!f.view?.alive) continue;
-      const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
+      const doll = dollPrefixOf(f.view.key);
+      if (doll) this.syncLookDoll(f, doll, look, performance.now());
+      const wkey = (doll ? dollWeaponKey(doll, look.weapon, (k) => this.gfx.knows(k)) : undefined) ?? (look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined);
       if (f.wview && (!f.wview.alive || f.wview.key !== wkey)) {
         f.wview.destroy();
         f.wview = undefined;
       }
       if (!f.wview && wkey) f.wview = this.gfx.createView(wkey);
       f.view.play("idle", 0);
-      f.view.setTint(hexOf(look.tint));
+      if (!doll) f.view.setTint(hexOf(look.tint));
       f.view.place(f.x, f.y, f.depth);
       f.wview?.followFrame(f.view);
       f.wview?.place(f.x, f.y, f.depth + 0.02);
       f.label.setY(f.y - f.view.rise() - 6);
-      this.syncLookHat(f, look, f.view, f.x, f.y, f.depth);
+      if (doll) this.dropHat(f);
+      else this.syncLookHat(f, look, f.view, f.x, f.y, f.depth);
     }
+  }
+
+  /**
+   * The body sprite for a variant (`female.robe`): a paper doll only once every layer it will wear is loaded (so a figure never shows as a bare body with its clothes still on
+   * the way), the single-sprite figure of before until then.
+   */
+  private readyBodyKey(variant: string, layersOf: (prefix: string) => string[]): string | undefined {
+    const key = this.gfx.spriteKeyFor("player", undefined, variant);
+    const prefix = key ? dollPrefixOf(key) : undefined;
+    if (!prefix || this.gfx.warm(layersOf(prefix))) return key;
+    return this.gfx.spriteKeyFor("player", undefined, variant, false);
+  }
+
+  /** Dresses the doll of an NPC or a guard from its look (asked again only when the look changes or a layer was still loading). */
+  private syncLookDoll(h: { view?: GfxView; dollSig?: string; dollMissing?: number; dollRetry?: number }, prefix: string, look: NpcLook, now: number): void {
+    if (!h.view?.alive) return;
+    const sig = `${prefix}|${JSON.stringify(look)}`;
+    if (sig === h.dollSig && !((h.dollMissing ?? 0) > 0 && now >= (h.dollRetry ?? 0))) return;
+    h.dollSig = sig;
+    h.dollRetry = now + 400;
+    h.dollMissing = h.view.setLayers(npcDollLayers(prefix, look, (k) => this.gfx.knows(k)));
   }
 
   /** The hat of an NPC or a guard from its look (`hat`, `hatTint`, else the colour of its aura); none in the look: the head is bare. */
@@ -772,6 +815,12 @@ export class GameScene extends Phaser.Scene {
    * Keeps the view inside the map's rectangle so the black beyond it is never shown. A map smaller than the window (in either direction) can
    * not fill it, so the bounds grow to the window around the map's centre and the map sits in the middle.
    */
+  /** How much of the world the window shows: the backing pixels per CSS pixel (main.ts) times `?zoom=` (below 1 shows more; default VIEW_ZOOM). */
+  private viewZoom(): number {
+    const z = Number(new URLSearchParams(location.search).get("zoom"));
+    return (Number(this.registry.get("dpr")) || 1) * (z > 0.2 && z < 3 ? z : VIEW_ZOOM);
+  }
+
   private applyCameraBounds(): void {
     const cam = this.cameras.main;
     const r = playRectPixels(this.map);
@@ -841,7 +890,7 @@ export class GameScene extends Phaser.Scene {
     const npc = npcsOf(this.map).find((n) => {
       const p = toScreen(n.x, n.y);
       if (n.kind === "waygate") return Math.hypot(tx - n.x, ty - n.y) <= WAYGATE_RADIUS; // a circle on the ground, nothing stands up from it
-      return Math.hypot(tx - n.x, ty - n.y) <= 1 || (Math.abs(world.x - p.x) <= 18 && world.y >= p.y - 52 && world.y <= p.y + 10);
+      return Math.hypot(tx - n.x, ty - n.y) <= 1 || (Math.abs(world.x - p.x) <= Math.round(18 * FIGURE_SCALE) && world.y >= p.y - Math.round(52 * FIGURE_SCALE) && world.y <= p.y + 10);
     });
     if (npc) {
       this.stopAuto("manual"); // opening an NPC window is the player taking over
@@ -1797,7 +1846,7 @@ export class GameScene extends Phaser.Scene {
       if (m.guard && this.pk.mode() === 0) continue; // a guard is only attacked on purpose: with the PK state off a click walks past it
       const pos = positionAlongPath(m.path, now - m.startedAt, m.speed);
       const s = toScreen(pos.x, pos.y);
-      const d = Math.hypot(s.x - wx, s.y - 20 - wy);
+      const d = Math.hypot(s.x - wx, s.y - Math.round(20 * FIGURE_SCALE) - wy);
       if (d <= bestD) {
         bestD = d;
         best = m.id;
@@ -2077,7 +2126,7 @@ export class GameScene extends Phaser.Scene {
       if (!anyone && this.pk.mode() === 0 && !(hitAt !== undefined && now - hitAt < grayWindowMs())) continue;
       const pos = currentPos(a, now);
       const s = toScreen(pos.x, pos.y);
-      const d = Math.hypot(s.x - wx, s.y - 20 - wy);
+      const d = Math.hypot(s.x - wx, s.y - Math.round(20 * FIGURE_SCALE) - wy);
       if (d <= bestD) {
         bestD = d;
         best = a.id;
@@ -2169,6 +2218,16 @@ export class GameScene extends Phaser.Scene {
     this.fx.puff("qi", at.x, at.y, st.burst, st.color);
   }
 
+  /** Keeps the layers of a paper doll (hair, robe, hat) on the body: asked again only when what is worn changes or a layer's atlas was still loading. */
+  private syncDoll(a: Actor, prefix: string, now: number): void {
+    if (!a.view?.alive) return;
+    const sig = `${prefix}|${JSON.stringify(a.lk ?? null)}`;
+    if (sig === a.dollSig && !((a.dollMissing ?? 0) > 0 && now >= (a.dollRetry ?? 0))) return;
+    a.dollSig = sig;
+    a.dollRetry = now + 400;
+    a.dollMissing = a.view.setLayers(dollLayers(prefix, a.lk, (k) => this.gfx.knows(k)));
+  }
+
   private syncActorView(a: Actor, now: number, x: number, y: number, depth: number, moving: boolean): void {
     if (a.view && !a.view.alive) {
       a.wview?.destroy();
@@ -2177,7 +2236,7 @@ export class GameScene extends Phaser.Scene {
       a.body.setVisible(true);
     }
     // The body sprite follows the outfit: an atlas that is not here yet is fetched, and the plain clothes show until it is.
-    const bodyKey = this.gfx.spriteKeyFor("player", undefined, `${a.female ? "female" : "male"}${a.outfit ? `.${a.outfit}` : ""}`);
+    const bodyKey = this.readyBodyKey(`${a.female ? "female" : "male"}.${a.outfit ?? DEFAULT_OUTFIT}`, (p) => dollLayers(p, a.lk, (k) => this.gfx.knows(k)).map((l) => l.key));
     if (a.view && bodyKey && a.view.key !== bodyKey) {
       a.wview?.destroy();
       a.wview = undefined;
@@ -2196,10 +2255,12 @@ export class GameScene extends Phaser.Scene {
     a.view.setSeated(sit);
     a.wview?.setSeated(sit);
     // Riding the flight pháp bảo the body stands still (the cloud carries it, and only the arms move to strike or cast), so it never runs.
-    const anim = moving && !rides(a) ? "run" : "idle";
+    const anim = sit && a.view.hasSitPose ? "sit" : moving && !rides(a) ? "run" : "idle";
     const dir = headingAlongPath(a.path, now - a.startedAt, a.speed) ?? a.view.dir;
+    const doll = dollPrefixOf(a.view.key);
+    if (doll) this.syncDoll(a, doll, now);
     // The weapon is a second sprite over the body that shows the same frame as the body (frames line up by name); it follows what is in the hand.
-    const wkey = a.weapon ? this.gfx.spriteKeyFor("weapon", a.weapon, a.female ? "female" : "male") : undefined;
+    const wkey = (doll ? dollWeaponKey(doll, a.weapon, (k) => this.gfx.knows(k)) : undefined) ?? (a.weapon ? this.gfx.spriteKeyFor("weapon", a.weapon, a.female ? "female" : "male") : undefined);
     if (a.wview && (!a.wview.alive || a.wview.key !== wkey)) {
       a.wview.destroy();
       a.wview = undefined;
@@ -2213,7 +2274,8 @@ export class GameScene extends Phaser.Scene {
       a.wview?.followFrame(a.view);
       this.applyReact(a.id, a.view, a.wview, now);
       // A rider stands 8 px above the ground on the pháp bảo; seated, the rider sits a little higher (on the pháp bảo itself, not in it).
-      const ride = rides(a) ? (sit ? 16 : 8) : 0;
+      // On a beast the rider sits on its back (about 60% of its height); on the flight pháp bảo a little above the ground.
+      const ride = a.beastView?.alive ? Math.round(a.beastView.rise() * 0.6) : rides(a) ? Math.round((sit ? 16 : 8) * FIGURE_SCALE) : 0;
       const lift = -ride;
       a.view.place(x, y - ride, depth);
       a.wview?.place(x, y - ride, depth + 0.02);
@@ -2269,38 +2331,39 @@ export class GameScene extends Phaser.Scene {
     // On screen a ground vector is squashed 2:1 vertically; `fwd` runs head-ward, `side` is to the left of it.
     const fwd = { x: Math.cos(ga), y: 0.5 * Math.sin(ga) };
     const side = { x: -Math.sin(ga), y: 0.5 * Math.cos(ga) };
-    const length = 150;
+    const K = FIGURE_SCALE; // the dragon is drawn for the bigger figure of 4j
+    const length = 150 * K;
     const phase = now / (moving ? 170 : 300) + a.id.length;
     const at = (t: number): { x: number; y: number; z: number } => {
       const calm = 0.35 + 0.65 * (1 - t); // the head holds steady, the tail swings widest
-      const sway = Math.sin(phase - t * 5.2) * 16 * calm;
-      return { x: cx + fwd.x * length * (t - 0.5) + side.x * sway, y: cy + fwd.y * length * (t - 0.5) + side.y * sway, z: Math.sin(phase * 0.9 - t * 4.1 + 1.2) * 7 * calm + t * 9 };
+      const sway = Math.sin(phase - t * 5.2) * 16 * K * calm;
+      return { x: cx + fwd.x * length * (t - 0.5) + side.x * sway, y: cy + fwd.y * length * (t - 0.5) + side.y * sway, z: Math.sin(phase * 0.9 - t * 4.1 + 1.2) * 7 * K * calm + t * 9 * K };
     };
     const parts = a.dragon;
     // The cloud bank follows the body: a puff under four places along it, so it turns with the dragon.
     a.mist?.forEach((puff, k) => {
       const m = at(0.12 + k * 0.25);
-      puff.setPosition(m.x, m.y + 8).setScale(1.25 + 0.1 * Math.sin(now / 500 + k)).setDepth(depth - 0.002);
+      puff.setPosition(m.x, m.y + 8 * K).setScale((1.25 + 0.1 * Math.sin(now / 500 + k)) * K).setDepth(depth - 0.002);
     });
     for (let i = 0; i < JOINTS; i++) {
       const t = i / (JOINTS - 1);
       const p = at(t * 0.92);
       const img = parts[1 + i]!;
-      img.setPosition(p.x, p.y - p.z - 6).setScale(0.55 + 0.5 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.5)).setDepth(depth + t * 0.004);
+      img.setPosition(p.x, p.y - p.z - 6 * K).setScale((0.55 + 0.5 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.5)) * K).setDepth(depth + t * 0.004);
     }
     const tail = at(-0.02);
     const tailDir = Math.atan2(tail.y - at(0.1).y, tail.x - at(0.1).x);
-    parts[0]!.setPosition(tail.x, tail.y - tail.z - 6).setRotation(tailDir).setFlipY(Math.cos(tailDir) < 0).setDepth(depth - 0.001).setScale(0.8).setOrigin(1, 0.5);
+    parts[0]!.setPosition(tail.x, tail.y - tail.z - 6 * K).setRotation(tailDir).setFlipY(Math.cos(tailDir) < 0).setDepth(depth - 0.001).setScale(0.8 * K).setOrigin(1, 0.5);
     const h = at(1);
     const neck = at(0.9);
     const headAng = Math.atan2(h.y - neck.y, h.x - neck.x);
     const left = Math.cos(headAng) < 0;
     parts[parts.length - 1]!
-      .setPosition(h.x, h.y - h.z - 10)
+      .setPosition(h.x, h.y - h.z - 10 * K)
       .setRotation(left ? headAng - Math.PI : headAng)
       .setFlipX(left)
       .setFlipY(false)
-      .setScale(0.95)
+      .setScale(0.95 * K)
       .setDepth(depth + 0.006);
   }
 
@@ -2317,10 +2380,14 @@ export class GameScene extends Phaser.Scene {
       }
       return;
     }
+    if (a.view?.hasSitPose && a.legs) {
+      a.legs.destroy(); // the figure really sits: no crossed legs are drawn over a cut
+      a.legs = undefined;
+    }
     // The crossed legs: a robe-coloured mound (a darker knee line in front) where the legs were cut away, a little wider than the body.
     const robe = mixTint(a.lk?.r !== undefined ? (hexOf(robeTintOf(a.lk.r)) ?? 0xd8d0bc) : 0xd8d0bc, 0x30303c, 0.25);
-    if (!a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
-    a.legs.setPosition(x, y + lift - (rides(a) ? 1 : 3)).setFillStyle(robe).setDepth(depth + 0.01);
+    if (!a.view?.hasSitPose && !a.legs) a.legs = this.add.ellipse(x, y, 26, 9, robe).setStrokeStyle(1.2, 0x2a2a35, 0.9);
+    a.legs?.setPosition(x, y + lift - (rides(a) ? 1 : 3)).setFillStyle(robe).setDepth(depth + 0.01);
     if (!a.seat) a.seat = this.makeAura(x, y, "#9fffd0", 34, depth - 0.05);
     a.seat.setPosition(x, y + 3 + (rides(a) ? lift + 2 : 0)).setDepth(depth - 0.05).setAlpha(0.65 + 0.25 * Math.sin(now / 420));
     if ((a.moteAt ?? 0) > now) return;
@@ -2425,10 +2492,11 @@ export class GameScene extends Phaser.Scene {
    */
   private applyGearLook(a: Actor, x: number, y: number, depth: number, moving: boolean): void {
     const lk = a.lk;
-    a.view?.setTint(lk?.r !== undefined ? hexOf(robeTintOf(lk.r)) : undefined);
+    const doll = a.view !== undefined && dollPrefixOf(a.view.key) !== undefined; // a doll's pieces are layers of their own, tinted one by one
+    if (!doll) a.view?.setTint(lk?.r !== undefined ? hexOf(robeTintOf(lk.r)) : undefined);
     a.wview?.setTint(lk?.w !== undefined ? hexOf(weaponTintOf(lk.w)) : undefined);
     this.applyWeaponGlow(a, depth, lk);
-    if (lk?.h !== undefined && a.view) this.placeHat(a, hatShapeOf(lk.h), hexOf(hatTintOf(lk.h)) ?? 0xffffff, a.view, x, y, depth, 1);
+    if (!doll && lk?.h !== undefined && a.view) this.placeHat(a, hatShapeOf(lk.h), hexOf(hatTintOf(lk.h)) ?? 0xffffff, a.view, x, y, depth, 1);
     else this.dropHat(a);
     if (moving && !rides(a) && lk?.b !== undefined && Math.random() < 0.12) this.fx.puff("trail", x + (Math.random() - 0.5) * 10, y - 2, 1, hexOf(bootsTintOf(lk.b)) ?? 0xffffff);
   }
@@ -2443,7 +2511,7 @@ export class GameScene extends Phaser.Scene {
       this.dropHat(m);
       m.body.setVisible(true);
     }
-    const key = look ? this.gfx.spriteKeyFor("player", undefined, `${look.body}${look.outfit ? `.${look.outfit}` : ""}`) : this.gfx.spriteKeyFor("monster", m.kind);
+    const key = look ? this.readyBodyKey(`${look.body}.${look.outfit ?? DEFAULT_OUTFIT}`, (p) => npcDollLayers(p, look, (k) => this.gfx.knows(k)).map((l) => l.key)) : this.gfx.spriteKeyFor("monster", m.kind);
     // The outfit atlas of a guard loads on demand: the plain body shows until it is here, then the view is swapped (as for players and NPCs).
     if (look && m.view && key && m.view.key !== key) {
       m.wview?.destroy();
@@ -2461,7 +2529,9 @@ export class GameScene extends Phaser.Scene {
     }
     const scale = (look?.scale ?? 1) * (m.boss ? 2 : m.rank === "rare2" ? 1.4 : m.rank === "rare1" ? 1.2 : 1);
     m.view.setScale(scale);
-    m.view.setTint(look ? hexOf(look.tint) : monsterTintOf(m.element)); // one model, a colour for each element; a guard wears its own robe colour
+    const guardDoll = look && dollPrefixOf(m.view.key);
+    if (!guardDoll) m.view.setTint(look ? hexOf(look.tint) : monsterTintOf(m.element)); // one model, a colour for each element; a guard wears its own robe colour (a doll: its robe layer)
+    else this.syncLookDoll(m, guardDoll, look, now);
     m.view.play(positionAlongPath(m.path, now - m.startedAt, m.speed).moving ? "run" : "idle", headingAlongPath(m.path, now - m.startedAt, m.speed) ?? m.view.dir);
     if (!m.view.alive) return;
     this.applyReact(m.id, m.view, m.wview, now);
@@ -2474,7 +2544,7 @@ export class GameScene extends Phaser.Scene {
       m.aura = undefined;
     }
     if (look) {
-      const wkey = look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined;
+      const wkey = (guardDoll ? dollWeaponKey(guardDoll, look.weapon, (k) => this.gfx.knows(k)) : undefined) ?? (look.weapon ? this.gfx.spriteKeyFor("weapon", look.weapon, look.body) : undefined);
       if (m.wview && (!m.wview.alive || m.wview.key !== wkey)) {
         m.wview.destroy();
         m.wview = undefined;
@@ -2483,7 +2553,8 @@ export class GameScene extends Phaser.Scene {
       m.wview?.setScale(scale);
       m.wview?.followFrame(m.view);
       m.wview?.place(x, y, depth + 0.02);
-      this.syncLookHat(m, look, m.view, x, y, depth);
+      if (guardDoll) this.dropHat(m);
+      else this.syncLookHat(m, look, m.view, x, y, depth);
     }
   }
 
@@ -2630,7 +2701,10 @@ export class GameScene extends Phaser.Scene {
   update(): void {
     const now = performance.now();
     this.fx.update(now);
-    this.mapLayer?.update(this.cameras.main.worldView);
+    const me = this.selfId ? this.actors.get(this.selfId) : undefined;
+    const at = me ? currentPos(me, this.time.now) : undefined;
+    const focus = at ? { ...toScreen(at.x, at.y), depth: 10 + at.x + at.y } : undefined;
+    this.mapLayer?.update(this.cameras.main.worldView, focus);
     if (now - this.lastSweepAt > 5000) {
       this.lastSweepAt = now;
       this.gfx.sweepIdle(now);
@@ -2687,9 +2761,9 @@ export class GameScene extends Phaser.Scene {
       const depth = 10 + pos.x + pos.y;
       actor.body.setDepth(depth);
       this.syncActorView(actor, now, s.x, s.y, depth, pos.moving);
-      this.syncQi(actor, now, s.x, s.y - (rides(actor) ? 8 : 0));
+      this.syncQi(actor, now, s.x, s.y - (rides(actor) ? Math.round(8 * FIGURE_SCALE) : 0));
       // The name stands just above the head: a sprite says how tall it is, the oval has a fixed height (a rider is lifted a little).
-      const rise = actor.view?.alive ? actor.view.rise() + 6 + (rides(actor) ? 8 : 0) : rides(actor) ? 46 : 38;
+      const rise = actor.view?.alive ? actor.view.rise() + 6 + (rides(actor) ? Math.round(8 * FIGURE_SCALE) : 0) : rides(actor) ? 46 : 38;
       actor.label.setPosition(s.x, s.y - rise).setDepth(depth + 0.1);
       if (actor.tag.visible) actor.tag.setPosition(s.x + actor.label.width / 2 + 2, s.y - rise - 1).setDepth(depth + 0.1);
       actor.sectTag?.setPosition(s.x, s.y - rise - actor.label.height + 1).setDepth(depth + 0.1);

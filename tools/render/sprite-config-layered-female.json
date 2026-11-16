@@ -1,0 +1,59 @@
+{
+  "extends": "sprite-config-female.json",
+  "name": "lay_female",
+  "spriteKey": "player.female.lay",
+  "frame": 128,
+  "anchor": [64, 112],
+  "figureScale": 1.2,
+  "headScale": 1.25,
+  "outlinePx": 1.8,
+  "atlasMaxPx": 2048,
+  "toonLevels": [0.7, 0.9, 1.0],
+  "shadeTints": [[0.8, 0.86, 1.0], [0.95, 0.97, 1.0], [1.0, 1.0, 1.0]],
+  "groundInk": { "height": 0.3, "strength": 0.28, "color": [0.55, 0.62, 0.7] },
+  "palette": { "outline": [0.04, 0.05, 0.1] },
+  "source": { "outfit": null },
+  "materials": {
+    "MI_Superhero_Female": { "color": [1.25, 1.02, 0.88] },
+    "MI_Regular_Female": { "color": [1.25, 1.02, 0.88] },
+    "MI_Hair_2": { "color": [0.08, 0.09, 0.15] },
+    "MI_Eyes": { "color": [0.04, 0.04, 0.07] },
+    "GenSkin": { "color": [1.25, 1.02, 0.88] },
+    "XianHair": { "color": [0.09, 0.1, 0.17] },
+    "XianRobe": { "color": [1.0, 1.0, 1.0] },
+    "XianSleeve": { "color": [0.92, 0.92, 0.92] },
+    "XianTrim": { "color": [0.5, 0.5, 0.5] },
+    "XianSash": { "color": [1.0, 1.0, 1.0] },
+    "GenLegwear": { "color": [0.8, 0.8, 0.8] },
+    "GenBoot": { "color": [0.85, 0.85, 0.85] },
+    "GenHat": { "color": [1.0, 1.0, 1.0] }
+  },
+  "generated": {
+    "parts": ["skirt", "top", "sash", "sleeves", "legs", "hands", "boots", "bun", "douli"],
+    "robe": "XianRobe", "sleeve": "XianSleeve", "trim": "XianTrim", "sash": "XianSash", "hairpiece": "XianHair",
+    "skin": "GenSkin", "legwear": "GenLegwear", "boot": "GenBoot", "hat": "GenHat",
+    "scale": 1.0, "hemZ": 0.16
+  },
+  "passes": [
+    { "name": "body", "draw": ["body"] },
+    { "name": "hair", "draw": ["hair", "bun"] },
+    { "name": "hairhat", "draw": ["hair"], "exclude": ["bun"] },
+    { "name": "robe", "draw": ["robe"] },
+    { "name": "belt", "draw": ["belt"] },
+    { "name": "bracer", "draw": ["bracer"] },
+    { "name": "boots", "draw": ["boots"] },
+    { "name": "hat", "draw": ["hat"], "noHoldout": true }
+  ],
+  "previewTints": {
+    "robe": [0.95, 0.94, 0.9],
+    "belt": [0.9, 0.25, 0.18],
+    "bracer": [0.9, 0.72, 0.28],
+    "boots": [0.22, 0.26, 0.36],
+    "hat": [0.88, 0.76, 0.5]
+  },
+  "previewSets": {
+    "": ["body", "hair", "robe", "belt", "bracer", "boots"],
+    "hat": ["body", "hairhat", "robe", "belt", "bracer", "boots", "hat"]
+  },
+  "onlyAnims": ["idle", "attack", "die"]
+}

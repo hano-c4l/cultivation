@@ -114,9 +114,11 @@ const SHAPES: Readonly<Record<IconShape, readonly Part[]>> = {
 };
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const FIXED: Readonly<Record<string, string>> = { d: "#3a2f26", l: "rgba(255,255,255,0.75)", w: "#8d6e4a", g: "#e0b84a", p: "#f2e6b8" };
+const FIXED: Readonly<Record<string, string>> = { d: "#22313a", l: "rgba(255,255,255,0.8)", w: "#7a6248", g: "#d9a93c", p: "#efe6cc" };
+/** The ink of the outlines (a blue-black, like the ink of the figures). */
+const INK = "#1b262b";
 const MAIN: Readonly<Partial<Record<IconShape, string>>> = { stone: "#6fb7ff", merit: "#e0b84a", immortal: "#f4a6d0", person: "#c9d4e6", shield: "#7a8fb8", bag: "#a8794a", trophy: "#e0b84a", fist: "#e6c4a0", ore: "#9aa7a0", robe: "#7a8fb8", hat: "#b89b6a", jade: "#7fcfa6", pill: "#e0b84a", book: "#8a5a9a", boots: "#7a5a3a", bracer: "#8a8f99", flight: "#cfd8e6" };
-const STEEL = "#cfd8dc";
+const STEEL = "#c4d0d4";
 
 function paint(role: Part[1], shape: IconShape, accent: string): string {
   if (role === "a") return accent;
@@ -138,12 +140,25 @@ export function renderIcon(spec: IconSpec): SVGSVGElement {
     node.setAttribute("class", "ic");
     node.setAttribute("aria-hidden", "true");
     if (spec.grade > 0) {
+      // an ink-wash blot behind the picture: the grade colour at the middle, thinning to nothing at the rim
+      const grade = `var(--grade-${Math.min(4, spec.grade - 1)}, rgba(158,158,158,0.3))`;
+      const defs = document.createElementNS(SVG_NS, "defs");
+      const gradient = document.createElementNS(SVG_NS, "radialGradient");
+      gradient.setAttribute("id", `wash${spec.grade}`);
+      for (const [at, op] of [["0", "0.95"], ["0.65", "0.7"], ["1", "0"]] as const) {
+        const stop = document.createElementNS(SVG_NS, "stop");
+        stop.setAttribute("offset", at);
+        stop.setAttribute("stop-color", grade);
+        stop.setAttribute("stop-opacity", op);
+        gradient.append(stop);
+      }
+      defs.append(gradient);
       const disc = document.createElementNS(SVG_NS, "circle");
       disc.setAttribute("cx", "16");
       disc.setAttribute("cy", "16");
-      disc.setAttribute("r", "15");
-      disc.setAttribute("fill", `var(--grade-${Math.min(4, spec.grade - 1)}, rgba(158,158,158,0.3))`);
-      node.append(disc);
+      disc.setAttribute("r", "15.5");
+      disc.setAttribute("fill", `url(#wash${spec.grade})`);
+      node.append(defs, disc);
     }
     for (const [d, role, stroke] of SHAPES[spec.shape]) {
       const p = document.createElementNS(SVG_NS, "path");
@@ -157,8 +172,8 @@ export function renderIcon(spec: IconSpec): SVGSVGElement {
         p.setAttribute("stroke-linejoin", "round");
       } else {
         p.setAttribute("fill", color);
-        p.setAttribute("stroke", "#2a2018");
-        p.setAttribute("stroke-width", "0.9");
+        p.setAttribute("stroke", INK);
+        p.setAttribute("stroke-width", "1.05");
         p.setAttribute("stroke-linejoin", "round");
       }
       node.append(p);
