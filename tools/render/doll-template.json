@@ -207,6 +207,27 @@
         ],
         "boost": 1.75
       }
+    },
+    "XianCape": {
+      "color": [
+        0.6,
+        0.1,
+        0.1
+      ]
+    },
+    "XianHalo": {
+      "color": [
+        1.0,
+        0.86,
+        0.42
+      ]
+    },
+    "XianAccent": {
+      "color": [
+        0.95,
+        0.95,
+        1.0
+      ]
     }
   },
   "generated": {
@@ -245,7 +266,10 @@
     "skirtLeg": 0.35,
     "hemBand": 0.08,
     "robeSkirt": "XianRobeSkirt",
-    "robeTop": "XianRobeTop"
+    "robeTop": "XianRobeTop",
+    "cape": "XianCape",
+    "halo": "XianHalo",
+    "accent": "XianAccent"
   },
   "passes": [
     {

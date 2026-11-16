@@ -20,6 +20,13 @@ describe("outfitOf", () => {
     expect(outfitOf([robe(3, 10)])).toBe("mage");
   });
 
+  it("gives the sets of one realm different cuts by default", () => {
+    const at = (realm: number, tier: number) => outfitOf([{ slot: "robe", type: makeEquipmentId("robe", "m", realm, tier, 1) }]);
+    for (let realm = 0; realm < 6; realm++) expect(new Set([1, 2, 3, 4, 5, 6, 7, 8, 9].map((t) => at(realm, t))).size).toBeGreaterThanOrEqual(2);
+    expect(at(0, 1)).toBe("tunic");
+    expect(at(5, 9)).toBe("dragon");
+  });
+
   it("lets a robe set of one realm and tier wear its own outfit (byTier)", () => {
     setTuning({ outfits: { rules: DEFAULT_TUNING.outfits.rules, byTier: { "2.1": "armor" } } });
     expect(outfitOf([robe(2)])).toBe("armor");
