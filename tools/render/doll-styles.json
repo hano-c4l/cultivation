@@ -1,5 +1,5 @@
 {
-  "note": "Silhouettes of the robe. Every layer of a doll is rendered with the others as holdout, so a silhouette is a complete set (body, hair, robe with belt, cuffs and boots in it, hats, weapons). Which realm wears which: the `outfits` tuning rules.",
+  "note": "Silhouettes of the robe. Each style is a different cut (parts and `generated` options of render_sprites.py add_generated), not only a different cloth. Every layer of a doll is rendered with the others as holdout, so a silhouette is a complete set (body, hair, robe, the untinted trim layer, hats, weapons). Which realm wears which: the `outfits` tuning rules.",
   "genders": {
     "female": {
       "extends": "sprite-config-female.json",
@@ -24,6 +24,7 @@
   },
   "styles": {
     "robe": {
+      "note": "The daoist robe: long skirt, sleeves that hang past the hands, a pale tabard down the front.",
       "parts": [
         "skirt",
         "top",
@@ -36,28 +37,181 @@
       ],
       "hemZ": 0.16,
       "flare0": 0.15,
-      "flare1": 0.4,
-      "cuff": 0.05,
-      "bootHeight": 0.2
+      "flare1": 0.38,
+      "cuff": 0.085,
+      "bootHeight": 0.2,
+      "generated": {
+        "trimLayer": true,
+        "sleeveExt": 0.09,
+        "panels": [
+          {
+            "at": 270,
+            "half": 24,
+            "bottom": 0.24,
+            "mat": "trim",
+            "taper": 0.2
+          },
+          {
+            "at": 90,
+            "half": 20,
+            "bottom": 0.3,
+            "mat": "trim",
+            "taper": 0.2
+          }
+        ]
+      },
+      "materials": {
+        "XianRobeSkirt": {
+          "color": [
+            0.6,
+            0.6,
+            0.6
+          ],
+          "pattern": {
+            "type": "RINGS",
+            "scale": 6,
+            "scaleY": 6,
+            "scaleZ": 6,
+            "angle": 0,
+            "strength": 0.1,
+            "distortion": 8
+          }
+        },
+        "XianRobeTop": {
+          "color": [
+            0.6,
+            0.6,
+            0.6
+          ],
+          "pattern": {
+            "type": "RINGS",
+            "scale": 6,
+            "scaleY": 6,
+            "scaleZ": 6,
+            "angle": 0,
+            "strength": 0.1,
+            "distortion": 8
+          },
+          "motif": {
+            "front": "motifs/medallion.png",
+            "frontU": [
+              0.27,
+              0.73
+            ],
+            "frontV": [
+              0.22,
+              0.68
+            ],
+            "back": "motifs/medallion.png",
+            "backU": [
+              0.27,
+              0.73
+            ],
+            "backV": [
+              0.22,
+              0.68
+            ],
+            "boost": 1.75
+          }
+        },
+        "XianTrim": {
+          "color": [
+            0.93,
+            0.9,
+            0.8
+          ]
+        },
+        "XianSash": {
+          "color": [
+            0.15,
+            0.19,
+            0.33
+          ]
+        }
+      },
+      "previewRobe": [
+        0.3,
+        0.55,
+        0.75
+      ]
     },
     "tunic": {
+      "note": "Novice martial clothes: a short jacket with elbow sleeves, leather bracers, wide trousers gathered at the ankle. Plain cloth, no brocade.",
       "parts": [
         "skirt",
         "top",
         "sash",
         "sleeves",
+        "bracers",
         "legs",
         "hands",
         "boots",
         "bun"
       ],
-      "hemZ": 0.55,
+      "hemZ": 0.64,
       "flare0": 0.15,
-      "flare1": 0.27,
+      "flare1": 0.25,
       "cuff": 0.0,
-      "bootHeight": 0.34
+      "bootHeight": 0.26,
+      "generated": {
+        "trimLayer": true,
+        "sleeveEnd": 0.52,
+        "legPuff": 0.035,
+        "hemBand": 0.045,
+        "plate": "XianTrim"
+      },
+      "materials": {
+        "XianRobeSkirt": {
+          "color": [
+            0.62,
+            0.62,
+            0.62
+          ],
+          "pattern": {
+            "scale": 14,
+            "scaleY": 3,
+            "angle": 35,
+            "strength": 0.12,
+            "distortion": 2.0
+          }
+        },
+        "XianRobeTop": {
+          "color": [
+            0.62,
+            0.62,
+            0.62
+          ],
+          "pattern": {
+            "scale": 14,
+            "scaleY": 3,
+            "angle": 35,
+            "strength": 0.12,
+            "distortion": 2.0
+          }
+        },
+        "XianTrim": {
+          "color": [
+            0.42,
+            0.27,
+            0.17
+          ]
+        },
+        "XianSash": {
+          "color": [
+            0.5,
+            0.17,
+            0.14
+          ]
+        }
+      },
+      "previewRobe": [
+        0.45,
+        0.6,
+        0.5
+      ]
     },
     "grand": {
+      "note": "The immortal robe: a wide trailing skirt, a gold mantle and a tall collar, and a scarf floating in an arc behind the shoulders.",
       "parts": [
         "skirt",
         "top",
@@ -67,15 +221,103 @@
         "hands",
         "boots",
         "bun",
-        "mantle"
+        "mantle",
+        "highCollar",
+        "ribbon"
       ],
       "hemZ": 0.08,
       "flare0": 0.17,
       "flare1": 0.52,
-      "cuff": 0.06,
-      "bootHeight": 0.18
+      "cuff": 0.09,
+      "bootHeight": 0.18,
+      "generated": {
+        "trimLayer": true,
+        "sleeveExt": 0.08
+      },
+      "materials": {
+        "XianRobeSkirt": {
+          "color": [
+            0.58,
+            0.58,
+            0.58
+          ],
+          "pattern": {
+            "type": "RINGS",
+            "scale": 6,
+            "scaleY": 6,
+            "scaleZ": 6,
+            "angle": 0,
+            "strength": 0.08,
+            "distortion": 8
+          },
+          "motif": {
+            "front": "motifs/phoenix.png",
+            "frontU": [
+              0.2,
+              0.8
+            ],
+            "frontV": [
+              0.0,
+              1.0
+            ],
+            "back": "motifs/phoenix.png",
+            "backU": [
+              0.2,
+              0.8
+            ],
+            "backV": [
+              0.0,
+              1.0
+            ],
+            "boost": 1.8
+          }
+        },
+        "XianRobeTop": {
+          "color": [
+            0.58,
+            0.58,
+            0.58
+          ],
+          "pattern": {
+            "type": "RINGS",
+            "scale": 6,
+            "scaleY": 6,
+            "scaleZ": 6,
+            "angle": 0,
+            "strength": 0.08,
+            "distortion": 8
+          }
+        },
+        "XianTrim": {
+          "color": [
+            0.93,
+            0.75,
+            0.36
+          ]
+        },
+        "XianSash": {
+          "color": [
+            0.6,
+            0.12,
+            0.14
+          ]
+        },
+        "XianAccent": {
+          "color": [
+            0.78,
+            0.94,
+            0.97
+          ]
+        }
+      },
+      "previewRobe": [
+        0.62,
+        0.45,
+        0.8
+      ]
     },
     "armor": {
+      "note": "A suit of armour: cuirass, pauldrons, four tassets over a short skirt, bracers and a red cape.",
       "parts": [
         "skirt",
         "top",
@@ -83,10 +325,12 @@
         "pauldrons",
         "sash",
         "sleeves",
+        "bracers",
         "legs",
         "hands",
         "boots",
-        "bun"
+        "bun",
+        "cape"
       ],
       "hemZ": 0.6,
       "flare0": 0.15,
@@ -97,7 +341,43 @@
         "plate": "XianPlate",
         "hemBand": 0.07,
         "sleeveK": 0.8,
-        "trimLayer": true
+        "trimLayer": true,
+        "capeEnd": 0.3,
+        "capeW": 0.34,
+        "panels": [
+          {
+            "at": 270,
+            "half": 27,
+            "bottom": 0.44,
+            "mat": "plate",
+            "off": 0.022,
+            "taper": 0.12
+          },
+          {
+            "at": 90,
+            "half": 27,
+            "bottom": 0.44,
+            "mat": "plate",
+            "off": 0.022,
+            "taper": 0.12
+          },
+          {
+            "at": 0,
+            "half": 24,
+            "bottom": 0.44,
+            "mat": "plate",
+            "off": 0.022,
+            "taper": 0.12
+          },
+          {
+            "at": 180,
+            "half": 24,
+            "bottom": 0.44,
+            "mat": "plate",
+            "off": 0.022,
+            "taper": 0.12
+          }
+        ]
       },
       "materials": {
         "XianRobeSkirt": {
@@ -181,6 +461,13 @@
             0.12,
             0.12
           ]
+        },
+        "XianCape": {
+          "color": [
+            0.62,
+            0.1,
+            0.1
+          ]
         }
       },
       "previewRobe": [
@@ -190,26 +477,30 @@
       ]
     },
     "dragon": {
+      "note": "The dragon robe of a sovereign: upswept shoulders, a broad placket, a great dragon on the skirt and a halo behind the head.",
       "parts": [
         "skirt",
         "top",
-        "pauldrons",
+        "wings",
         "sash",
         "sleeves",
         "legs",
         "hands",
         "boots",
         "bun",
-        "mantle"
+        "placket",
+        "halo"
       ],
       "hemZ": 0.08,
       "flare0": 0.17,
-      "flare1": 0.52,
-      "cuff": 0.07,
+      "flare1": 0.48,
+      "cuff": 0.075,
       "bootHeight": 0.18,
       "generated": {
         "plate": "XianTrim",
-        "trimLayer": true
+        "trimLayer": true,
+        "sleeveExt": 0.05,
+        "placketHalf": 0.04
       },
       "materials": {
         "XianRobeSkirt": {
@@ -299,6 +590,13 @@
             0.1,
             0.1
           ]
+        },
+        "XianHalo": {
+          "color": [
+            1.0,
+            0.86,
+            0.42
+          ]
         }
       },
       "previewRobe": [
@@ -308,21 +606,32 @@
       ]
     },
     "wave": {
+      "note": "The wanderer: a long coat open down the front over a white under-skirt, half sleeves and bracers, wide trousers.",
       "parts": [
         "skirt",
+        "innerSkirt",
         "top",
         "sash",
         "sleeves",
+        "bracers",
         "legs",
         "hands",
         "boots",
         "bun"
       ],
-      "hemZ": 0.16,
-      "flare0": 0.15,
+      "hemZ": 0.2,
+      "flare0": 0.16,
       "flare1": 0.4,
-      "cuff": 0.05,
-      "bootHeight": 0.2,
+      "cuff": 0.03,
+      "bootHeight": 0.3,
+      "generated": {
+        "trimLayer": true,
+        "skirtGap": 40,
+        "innerHem": 0.52,
+        "sleeveEnd": 0.6,
+        "legPuff": 0.02,
+        "plate": "XianTrim"
+      },
       "materials": {
         "XianRobeSkirt": {
           "color": [
@@ -393,10 +702,14 @@
             0.9,
             0.95
           ]
+        },
+        "XianAccent": {
+          "color": [
+            0.96,
+            0.96,
+            1.0
+          ]
         }
-      },
-      "generated": {
-        "trimLayer": true
       },
       "previewRobe": [
         0.25,

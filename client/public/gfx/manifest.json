@@ -1,5 +1,5 @@
 {
-  "version": 152,
+  "version": 162,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -1144,6 +1144,26 @@
     "dl_m_wave_w_thuong": {
       "image": "dl_m_wave_w_thuong.webp",
       "data": "dl_m_wave_w_thuong.json"
+    },
+    "dl_m_tunic_trim": {
+      "image": "dl_m_tunic_trim.webp",
+      "data": "dl_m_tunic_trim.json"
+    },
+    "dl_m_robe_trim": {
+      "image": "dl_m_robe_trim.webp",
+      "data": "dl_m_robe_trim.json"
+    },
+    "dl_m_grand_trim": {
+      "image": "dl_m_grand_trim.webp",
+      "data": "dl_m_grand_trim.json"
+    },
+    "dl_f_tunic_trim": {
+      "image": "dl_f_tunic_trim.webp",
+      "data": "dl_f_tunic_trim.json"
+    },
+    "dl_f_grand_trim": {
+      "image": "dl_f_grand_trim.webp",
+      "data": "dl_f_grand_trim.json"
     }
   },
   "sprites": {
@@ -4436,7 +4456,7 @@
         "y": 224
       },
       "head": 176,
-      "headSit": 153,
+      "headSit": 152,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4492,7 +4512,7 @@
         "y": 224
       },
       "head": 182,
-      "headSit": 159,
+      "headSit": 158,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4604,7 +4624,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 157,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4660,7 +4680,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 156,
+      "headSit": 155,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4716,7 +4736,7 @@
         "y": 224
       },
       "head": 184,
-      "headSit": 161,
+      "headSit": 160,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4828,7 +4848,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 153,
+      "headSit": 152,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4940,7 +4960,7 @@
         "y": 224
       },
       "head": 181,
-      "headSit": 159,
+      "headSit": 158,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4996,7 +5016,7 @@
         "y": 224
       },
       "head": 185,
-      "headSit": 162,
+      "headSit": 161,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5052,7 +5072,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 157,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5108,7 +5128,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 157,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5163,8 +5183,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 161,
-      "headSit": 138,
+      "head": 160,
+      "headSit": 137,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5276,7 +5296,7 @@
         "y": 224
       },
       "head": 147,
-      "headSit": 163,
+      "headSit": 162,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -5388,7 +5408,7 @@
         "y": 224
       },
       "head": 118,
-      "headSit": 130,
+      "headSit": 129,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6284,7 +6304,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 76,
+      "headSit": 75,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -6507,8 +6527,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 123,
-      "headSit": 66,
+      "head": 125,
+      "headSit": 67,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7291,8 +7311,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 151,
-      "headSit": 136,
+      "head": 148,
+      "headSit": 133,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7516,7 +7536,7 @@
         "y": 224
       },
       "head": 114,
-      "headSit": 134,
+      "headSit": 133,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7571,7 +7591,7 @@
         "x": 128,
         "y": 224
       },
-      "head": 122,
+      "head": 123,
       "headSit": 102,
       "scale": 0.5,
       "anims": {
@@ -7628,7 +7648,7 @@
         "y": 224
       },
       "head": 176,
-      "headSit": 125,
+      "headSit": 124,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7684,7 +7704,7 @@
         "y": 224
       },
       "head": 182,
-      "headSit": 131,
+      "headSit": 130,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7740,7 +7760,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 129,
+      "headSit": 128,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7852,7 +7872,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 128,
+      "headSit": 127,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -7908,7 +7928,7 @@
         "y": 224
       },
       "head": 184,
-      "headSit": 133,
+      "headSit": 132,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8132,7 +8152,7 @@
         "y": 224
       },
       "head": 181,
-      "headSit": 131,
+      "headSit": 130,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8188,7 +8208,7 @@
         "y": 224
       },
       "head": 185,
-      "headSit": 134,
+      "headSit": 133,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8412,7 +8432,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 77,
+      "headSit": 78,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -8636,7 +8656,7 @@
         "y": 224
       },
       "head": 126,
-      "headSit": 69,
+      "headSit": 68,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9419,8 +9439,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 161,
-      "headSit": 146,
+      "head": 159,
+      "headSit": 144,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9476,7 +9496,7 @@
         "y": 224
       },
       "head": 129,
-      "headSit": 106,
+      "headSit": 113,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9531,7 +9551,7 @@
         "x": 128,
         "y": 224
       },
-      "head": 148,
+      "head": 146,
       "headSit": 171,
       "scale": 0.5,
       "anims": {
@@ -9587,7 +9607,7 @@
         "x": 128,
         "y": 224
       },
-      "head": 146,
+      "head": 145,
       "headSit": 169,
       "scale": 0.5,
       "anims": {
@@ -9644,7 +9664,7 @@
         "y": 224
       },
       "head": 119,
-      "headSit": 138,
+      "headSit": 136,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9699,7 +9719,7 @@
         "x": 128,
         "y": 224
       },
-      "head": 126,
+      "head": 125,
       "headSit": 106,
       "scale": 0.5,
       "anims": {
@@ -9756,7 +9776,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 121,
+      "headSit": 142,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9812,7 +9832,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 124,
+      "headSit": 144,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9868,7 +9888,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 124,
+      "headSit": 144,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9924,7 +9944,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 124,
+      "headSit": 144,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -9980,7 +10000,7 @@
         "y": 224
       },
       "head": 174,
-      "headSit": 123,
+      "headSit": 143,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10036,7 +10056,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 128,
+      "headSit": 148,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10092,7 +10112,7 @@
         "y": 224
       },
       "head": 155,
-      "headSit": 104,
+      "headSit": 124,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10148,7 +10168,7 @@
         "y": 224
       },
       "head": 169,
-      "headSit": 118,
+      "headSit": 139,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10204,7 +10224,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 121,
+      "headSit": 141,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10260,7 +10280,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 126,
+      "headSit": 146,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10316,7 +10336,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 129,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10372,7 +10392,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 122,
+      "headSit": 143,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10428,7 +10448,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 122,
+      "headSit": 143,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10484,7 +10504,7 @@
         "y": 224
       },
       "head": 149,
-      "headSit": 98,
+      "headSit": 118,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10540,7 +10560,7 @@
         "y": 224
       },
       "head": 154,
-      "headSit": 102,
+      "headSit": 123,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10596,7 +10616,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 77,
+      "headSit": 98,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10652,7 +10672,7 @@
         "y": 224
       },
       "head": 145,
-      "headSit": 133,
+      "headSit": 153,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10708,7 +10728,7 @@
         "y": 224
       },
       "head": 143,
-      "headSit": 130,
+      "headSit": 151,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10764,7 +10784,7 @@
         "y": 224
       },
       "head": 114,
-      "headSit": 99,
+      "headSit": 119,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10820,7 +10840,7 @@
         "y": 224
       },
       "head": 125,
-      "headSit": 67,
+      "headSit": 87,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10876,7 +10896,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 157,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10932,7 +10952,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 160,
+      "headSit": 159,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -10988,7 +11008,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 160,
+      "headSit": 159,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11044,7 +11064,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 160,
+      "headSit": 158,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11100,7 +11120,7 @@
         "y": 224
       },
       "head": 174,
-      "headSit": 158,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11155,8 +11175,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 179,
-      "headSit": 163,
+      "head": 178,
+      "headSit": 162,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11212,7 +11232,7 @@
         "y": 224
       },
       "head": 155,
-      "headSit": 140,
+      "headSit": 139,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11268,7 +11288,7 @@
         "y": 224
       },
       "head": 169,
-      "headSit": 154,
+      "headSit": 153,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11324,7 +11344,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 157,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11380,7 +11400,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 162,
+      "headSit": 161,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11435,8 +11455,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 180,
-      "headSit": 164,
+      "head": 177,
+      "headSit": 161,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11492,7 +11512,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 158,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11548,7 +11568,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 158,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11603,8 +11623,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 149,
-      "headSit": 134,
+      "head": 146,
+      "headSit": 132,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11659,8 +11679,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 154,
-      "headSit": 138,
+      "head": 200,
+      "headSit": 183,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11716,7 +11736,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 112,
+      "headSit": 111,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11772,7 +11792,7 @@
         "y": 224
       },
       "head": 145,
-      "headSit": 168,
+      "headSit": 167,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11828,7 +11848,7 @@
         "y": 224
       },
       "head": 143,
-      "headSit": 166,
+      "headSit": 165,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11884,7 +11904,7 @@
         "y": 224
       },
       "head": 114,
-      "headSit": 134,
+      "headSit": 133,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11939,8 +11959,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 122,
-      "headSit": 102,
+      "head": 123,
+      "headSit": 101,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -11996,7 +12016,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 149,
+      "headSit": 146,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12052,7 +12072,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 152,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12108,7 +12128,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 151,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12164,7 +12184,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 151,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12220,7 +12240,7 @@
         "y": 224
       },
       "head": 174,
-      "headSit": 150,
+      "headSit": 148,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12276,7 +12296,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 155,
+      "headSit": 153,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12332,7 +12352,7 @@
         "y": 224
       },
       "head": 155,
-      "headSit": 131,
+      "headSit": 129,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12388,7 +12408,7 @@
         "y": 224
       },
       "head": 169,
-      "headSit": 146,
+      "headSit": 143,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12444,7 +12464,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 149,
+      "headSit": 146,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12500,7 +12520,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 153,
+      "headSit": 151,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12556,7 +12576,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 156,
+      "headSit": 154,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12612,7 +12632,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 150,
+      "headSit": 147,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12668,7 +12688,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 150,
+      "headSit": 147,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12724,7 +12744,7 @@
         "y": 224
       },
       "head": 151,
-      "headSit": 127,
+      "headSit": 125,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12780,7 +12800,7 @@
         "y": 224
       },
       "head": 147,
-      "headSit": 123,
+      "headSit": 121,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12836,7 +12856,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 104,
+      "headSit": 100,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12892,7 +12912,7 @@
         "y": 224
       },
       "head": 145,
-      "headSit": 160,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -12948,7 +12968,7 @@
         "y": 224
       },
       "head": 143,
-      "headSit": 158,
+      "headSit": 155,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13004,7 +13024,7 @@
         "y": 224
       },
       "head": 114,
-      "headSit": 126,
+      "headSit": 124,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13059,8 +13079,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 123,
-      "headSit": 94,
+      "head": 125,
+      "headSit": 92,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13116,7 +13136,7 @@
         "y": 224
       },
       "head": 176,
-      "headSit": 124,
+      "headSit": 146,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13172,7 +13192,7 @@
         "y": 224
       },
       "head": 182,
-      "headSit": 130,
+      "headSit": 152,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13228,7 +13248,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 128,
+      "headSit": 150,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13284,7 +13304,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 128,
+      "headSit": 150,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13340,7 +13360,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 127,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13396,7 +13416,7 @@
         "y": 224
       },
       "head": 184,
-      "headSit": 132,
+      "headSit": 154,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13452,7 +13472,7 @@
         "y": 224
       },
       "head": 163,
-      "headSit": 112,
+      "headSit": 134,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13508,7 +13528,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 124,
+      "headSit": 146,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13564,7 +13584,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 126,
+      "headSit": 147,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13620,7 +13640,7 @@
         "y": 224
       },
       "head": 181,
-      "headSit": 130,
+      "headSit": 152,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13676,7 +13696,7 @@
         "y": 224
       },
       "head": 185,
-      "headSit": 133,
+      "headSit": 155,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13732,7 +13752,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 128,
+      "headSit": 150,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13788,7 +13808,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 128,
+      "headSit": 150,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13844,7 +13864,7 @@
         "y": 224
       },
       "head": 159,
-      "headSit": 108,
+      "headSit": 130,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13900,7 +13920,7 @@
         "y": 224
       },
       "head": 161,
-      "headSit": 109,
+      "headSit": 131,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -13955,8 +13975,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 134,
-      "headSit": 78,
+      "head": 130,
+      "headSit": 100,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14012,7 +14032,7 @@
         "y": 224
       },
       "head": 147,
-      "headSit": 134,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14068,7 +14088,7 @@
         "y": 224
       },
       "head": 145,
-      "headSit": 132,
+      "headSit": 153,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14124,7 +14144,7 @@
         "y": 224
       },
       "head": 118,
-      "headSit": 101,
+      "headSit": 123,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14180,7 +14200,7 @@
         "y": 224
       },
       "head": 126,
-      "headSit": 68,
+      "headSit": 90,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14236,7 +14256,7 @@
         "y": 224
       },
       "head": 176,
-      "headSit": 161,
+      "headSit": 160,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14291,8 +14311,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 183,
-      "headSit": 168,
+      "head": 182,
+      "headSit": 166,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14347,8 +14367,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 181,
-      "headSit": 166,
+      "head": 180,
+      "headSit": 165,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14403,8 +14423,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 180,
-      "headSit": 165,
+      "head": 179,
+      "headSit": 164,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14459,8 +14479,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 180,
-      "headSit": 165,
+      "head": 179,
+      "headSit": 163,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14515,8 +14535,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 184,
-      "headSit": 169,
+      "head": 183,
+      "headSit": 167,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14571,8 +14591,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 164,
-      "headSit": 149,
+      "head": 163,
+      "headSit": 148,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14628,7 +14648,7 @@
         "y": 224
       },
       "head": 176,
-      "headSit": 161,
+      "headSit": 160,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14683,8 +14703,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 178,
-      "headSit": 163,
+      "head": 177,
+      "headSit": 162,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14740,7 +14760,7 @@
         "y": 224
       },
       "head": 182,
-      "headSit": 167,
+      "headSit": 166,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14795,8 +14815,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 185,
-      "headSit": 170,
+      "head": 183,
+      "headSit": 167,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14852,7 +14872,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 165,
+      "headSit": 164,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14908,7 +14928,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 165,
+      "headSit": 164,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -14964,7 +14984,7 @@
         "y": 224
       },
       "head": 161,
-      "headSit": 146,
+      "headSit": 145,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15019,8 +15039,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 161,
-      "headSit": 146,
+      "head": 203,
+      "headSit": 188,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15075,8 +15095,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 129,
-      "headSit": 106,
+      "head": 135,
+      "headSit": 112,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15131,8 +15151,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 148,
-      "headSit": 171,
+      "head": 147,
+      "headSit": 170,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15187,8 +15207,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 146,
-      "headSit": 169,
+      "head": 143,
+      "headSit": 168,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15243,8 +15263,8 @@
         "x": 128,
         "y": 224
       },
-      "head": 119,
-      "headSit": 138,
+      "head": 118,
+      "headSit": 137,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15300,7 +15320,7 @@
         "y": 224
       },
       "head": 126,
-      "headSit": 106,
+      "headSit": 104,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16421,6 +16441,286 @@
       },
       "head": 126,
       "headSit": 97,
+      "scale": 0.5,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.male.tunic.trim": {
+      "atlas": "dl_m_tunic_trim",
+      "frame": {
+        "w": 256,
+        "h": 256
+      },
+      "anchor": {
+        "x": 128,
+        "y": 224
+      },
+      "head": 150,
+      "headSit": 99,
+      "scale": 0.5,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.male.robe.trim": {
+      "atlas": "dl_m_robe_trim",
+      "frame": {
+        "w": 256,
+        "h": 256
+      },
+      "anchor": {
+        "x": 128,
+        "y": 224
+      },
+      "head": 150,
+      "headSit": 127,
+      "scale": 0.5,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.male.grand.trim": {
+      "atlas": "dl_m_grand_trim",
+      "frame": {
+        "w": 256,
+        "h": 256
+      },
+      "anchor": {
+        "x": 128,
+        "y": 224
+      },
+      "head": 199,
+      "headSit": 184,
+      "scale": 0.5,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.tunic.trim": {
+      "atlas": "dl_f_tunic_trim",
+      "frame": {
+        "w": 256,
+        "h": 256
+      },
+      "anchor": {
+        "x": 128,
+        "y": 224
+      },
+      "head": 147,
+      "headSit": 96,
+      "scale": 0.5,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.grand.trim": {
+      "atlas": "dl_f_grand_trim",
+      "frame": {
+        "w": 256,
+        "h": 256
+      },
+      "anchor": {
+        "x": 128,
+        "y": 224
+      },
+      "head": 194,
+      "headSit": 179,
       "scale": 0.5,
       "anims": {
         "idle": {

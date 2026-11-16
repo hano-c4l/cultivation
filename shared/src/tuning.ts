@@ -536,7 +536,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   trade: DEFAULT_TRADE,
   sect: DEFAULT_SECT,
   rareBooks: { chance: { normal: 0.00005, rare1: 0.0008, rare2: 0.003, boss: 0.02 } },
-  outfits: { rules: [{ minRealm: 0, outfit: "tunic" }, { minRealm: 1, outfit: "tunic" }, { minRealm: 2, outfit: "robe" }, { minRealm: 3, outfit: "robe" }, { minRealm: 4, outfit: "grand" }, { minRealm: 5, outfit: "grand" }] }, // the silhouettes of the paper dolls (4j): a tunic for Luyện Khí and Trúc Cơ, the long robe for Kim Đan and Nguyên Anh, the grand robe above. `byTier` ("realm.tier": outfit) overrides the rule for one robe set, e.g. a suit of armour
+  outfits: { rules: [{ minRealm: 0, outfit: "tunic" }, { minRealm: 1, outfit: "tunic" }, { minRealm: 2, outfit: "robe" }, { minRealm: 3, outfit: "robe" }, { minRealm: 4, outfit: "grand" }, { minRealm: 5, outfit: "grand" }], byTier: { "0.7": "wave", "0.8": "wave", "0.9": "wave", "1.4": "wave", "1.5": "wave", "1.6": "wave", "1.7": "armor", "1.8": "armor", "1.9": "armor", "2.5": "armor", "2.6": "armor", "2.7": "armor", "2.8": "wave", "2.9": "wave", "3.5": "armor", "3.6": "armor", "3.7": "armor", "3.8": "grand", "3.9": "grand", "4.6": "armor", "4.7": "armor", "4.8": "dragon", "4.9": "dragon", "5.5": "dragon", "5.6": "dragon", "5.7": "dragon", "5.8": "dragon", "5.9": "dragon" } }, // every realm has three cuts (the later sets of a realm wear the open coat, armour, the dragon robe); the silhouettes of the paper dolls (4j): a tunic for Luyện Khí and Trúc Cơ, the long robe for Kim Đan and Nguyên Anh, the grand robe above. `byTier` ("realm.tier": outfit) overrides the rule for one robe set, e.g. a suit of armour
   // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp), ghost (hàn thi ma), snake (rắn). Stand-ins: the boss dragons use the dragon.
   monsterModels: {
     doi_u_minh: "bat",
@@ -659,20 +659,20 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   // Xianxia robes for everyone: the white robe `tien`, one colour each by tint, a formation circle in the same colour under the feet.
   npcLooks: {
     byKind: {
-      merchant: { body: "male", outfit: "robe", tint: "#f0d890", aura: "#e6c35a", hat: 5 },
+      merchant: { body: "male", outfit: "wave", tint: "#f0d890", aura: "#e6c35a", hat: 5 },
       quest: { body: "female", outfit: "robe", tint: "#cfe0ff", aura: "#9fc4ff", hat: 1 },
-      smith: { body: "male", outfit: "robe", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a", hat: 5 },
+      smith: { body: "male", outfit: "tunic", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a", hat: 5 },
       alchemist: { body: "female", outfit: "robe", tint: "#bff0c8", aura: "#7dff9c", hat: 3 },
       master: { body: "male", outfit: "tunic", weapon: "kiem", tint: "#e6b8a0", aura: "#e0563a", hat: 6 },
-      market: { body: "female", outfit: "robe", tint: "#e8c8ff", aura: "#c89cff", hat: 3 },
-      sect: { body: "male", outfit: "robe", tint: "#9ad8c0", aura: "#6fe0b0", hat: 7 },
-      guard: { body: "male", outfit: "tunic", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a", hat: 6 },
+      market: { body: "female", outfit: "grand", tint: "#e8c8ff", aura: "#c89cff", hat: 3 },
+      sect: { body: "male", outfit: "dragon", tint: "#9ad8c0", aura: "#6fe0b0", hat: 7 },
+      guard: { body: "male", outfit: "armor", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a", hat: 6 },
     },
     byId: {
-      elder: { body: "male", outfit: "robe", tint: "#fff0c0", aura: "#ffe58a", hat: 1 },
-      path_kiem: { body: "male", outfit: "robe", weapon: "kiem", tint: "#bfe4ff", aura: "#9fe0ff", hat: 0 },
+      elder: { body: "male", outfit: "grand", tint: "#fff0c0", aura: "#ffe58a", hat: 1 },
+      path_kiem: { body: "male", outfit: "armor", weapon: "kiem", tint: "#bfe4ff", aura: "#9fe0ff", hat: 0 },
       path_thuat: { body: "female", outfit: "robe", tint: "#dccbff", aura: "#b99bff", hat: 7 },
-      path_dan: { body: "female", outfit: "robe", tint: "#c6f5c6", aura: "#7dff9c", hat: 3 },
+      path_dan: { body: "female", outfit: "wave", tint: "#c6f5c6", aura: "#7dff9c", hat: 3 },
     },
   },
 };

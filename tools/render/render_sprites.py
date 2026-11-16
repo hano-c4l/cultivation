@@ -132,7 +132,8 @@ def add_generated(rig, spec):
                 faces.append((r * n_seg + a, r * n_seg + a2, (r + 1) * n_seg + a2, (r + 1) * n_seg + a))
         return faces
 
-    def lathe(name, mat, zs, rx_of, ry_of, cx, cy, weight_of, n_seg=24):
+    def lathe(name, mat, zs, rx_of, ry_of, cx, cy, weight_of, n_seg=24, gap=None):
+        """`gap` (centre and half width, degrees; the front is 270) leaves the ring open there: a coat open down the front, a collar open at the throat."""
         pts, ws = [], []
         for zi, z in enumerate(zs):
             t = zi / (len(zs) - 1)
@@ -142,7 +143,11 @@ def add_generated(rig, spec):
                 y = cy + math.sin(ang) * ry_of(t)
                 pts.append((x, y, z))
                 ws.append(weight_of(x, z, t))
-        return build(name, mat, pts, ring_faces(len(zs), n_seg), ws)
+        faces = ring_faces(len(zs), n_seg)
+        if gap:
+            mid = lambda f: ((f[0] % n_seg) + 0.5) / n_seg * 360.0
+            faces = [f for f in faces if abs((mid(f) - gap[0] + 180.0) % 360.0 - 180.0) > gap[1]]
+        return build(name, mat, pts, faces, ws)
 
     def tube(name, mat, axis_pts, radius_of, weight_of, n_seg=14):
         pts, ws = [], []
@@ -162,8 +167,17 @@ def add_generated(rig, spec):
         zs = [waist - (waist - hem) * i / 9 for i in range(10)]
         f0, f1 = spec.get("flare0", 0.19), spec.get("flare1", 0.40)
         flare = lambda t: f0 * k + (f1 * k - f0 * k) * (t ** spec.get("flareCurve", 1.0))
-        lathe("XianSkirt", spec.get("robeSkirt") or robe, zs, flare, lambda t: flare(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, spec.get("skirtLeg", 0.62)))
-        lathe("XianHem", trim, [hem + spec.get("hemBand", 0.04), hem - 0.005], lambda t: f1 * k + 0.012, lambda t: (f1 * k + 0.012) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, 1.0, spec.get("skirtLeg", 0.62)))
+        sgap = (270.0, spec["skirtGap"]) if spec.get("skirtGap") else None  # a coat open down the front: the legs (and an inner skirt) show in the opening
+        lathe("XianSkirt", spec.get("robeSkirt") or robe, zs, flare, lambda t: flare(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, spec.get("skirtLeg", 0.62)), gap=sgap)
+        lathe("XianHem", trim, [hem + spec.get("hemBand", 0.04), hem - 0.005], lambda t: f1 * k + 0.012, lambda t: (f1 * k + 0.012) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, 1.0, spec.get("skirtLeg", 0.62)), gap=sgap)
+        if sgap:
+            spec["_edges"] = [[(math.cos(math.radians(270.0 + sg * (sgap[1] + 2.0))) * (flare(t) + 0.004), cy + math.sin(math.radians(270.0 + sg * (sgap[1] + 2.0))) * (flare(t) + 0.004) * 0.86, z, t) for t, z in ((i / 9, zs[i]) for i in range(10))] for sg in (-1, 1)]
+    if "innerSkirt" in parts:
+        # a shorter under-skirt of another cloth, seen in the opening of a coat
+        ih = spec.get("innerHem", 0.5)
+        zs = [waist - (waist - ih) * i / 6 for i in range(7)]
+        fi = lambda t: (spec.get("flare0", 0.19) - 0.012 + 0.07 * t) * k
+        lathe("XianT_inner", spec.get("accent") or sash, zs, fi, lambda t: fi(t) * 0.86, 0.0, cy, lambda x, z, t: leg_w(x, t, 0.5))
     if "top" in parts:
         top_z = head("neck_01").z - 0.02
         zs = [waist - 0.02 + (top_z - waist + 0.02) * i / 7 for i in range(8)]
@@ -233,7 +247,8 @@ def add_generated(rig, spec):
     if "sleeves" in parts:
         for side, sx in (("l", 1), ("r", -1)):
             ua, la = head("upperarm_" + side), head("lowerarm_" + side)
-            end_x = abs(head("hand_" + side).x) - 0.025
+            hand_x = abs(head("hand_" + side).x)
+            end_x = 0.10 + (hand_x - 0.025 - 0.10) * spec.get("sleeveEnd", 1.0) + spec.get("sleeveExt", 0.0)  # a short sleeve stops at the elbow; a long one hangs past the hand
             xs = [sx * (0.10 + (end_x - 0.10) * i / 8) for i in range(9)]
             axis = [(x, ua.y, ua.z) for x in xs]
             cuff_w = spec.get("cuff", 0.07)
@@ -249,6 +264,10 @@ def add_generated(rig, spec):
             tube("XianSleeve_" + side, spec.get("sleeve") or robe, axis, ru, w_arm)
             cuff = [(sx * (end_x - 0.05 + 0.05 * i / 2), ua.y, ua.z) for i in range(3)]
             tube("XianCuff_" + side, trim, cuff, lambda t: (0.075 + cuff_w) * k + 0.006, w_arm)
+            if "bracers" in parts:
+                # a guard on the forearm, from below the elbow to the wrist
+                bx = [sx * (elbow + 0.04 + (hand_x - 0.03 - elbow - 0.04) * i / 3) for i in range(4)]
+                tube("XianT_bracer_" + side, spec.get("plate") or trim, [(x, ua.y, ua.z) for x in bx], lambda t: (0.058 - 0.01 * t) * k, lambda x, t, side=side: {"lowerarm_" + side: 1.0}, n_seg=10)
     if "bun" in parts:
         # a hair knot on top of the head with a gold pin through it, and two long ribbons falling down the back
         hh, ht = head("Head"), B["Head"].tail_local
@@ -293,7 +312,8 @@ def add_generated(rig, spec):
         for s in ("l", "r"):
             th, ca, fo = head("thigh_" + s), head("calf_" + s), head("foot_" + s)
             zs = [th.z - 0.02 - (th.z - 0.02 - fo.z - 0.05) * i / 9 for i in range(10)]
-            radius = lambda t: (0.088 - 0.036 * t) * k
+            puff = spec.get("legPuff", 0.0)  # wide trousers gathered at the ankle
+            radius = lambda t, puff=puff: (0.088 - 0.036 * t + (puff * math.sin(math.pi * t / 0.85) ** 0.7 if t < 0.85 else 0.0)) * k
 
             def w_leg(x, z, t, s=s, ca=ca):
                 u = _clamp01((ca.z + 0.06 - z) / 0.12)
@@ -330,7 +350,7 @@ def add_generated(rig, spec):
             for a in range(n_seg):
                 ang = a / n_seg * math.tau
                 pts.append(tuple(c + u * math.cos(ang) * r + v * math.sin(ang) * r))
-                ws.append(weights)
+                ws.append(weights[i] if isinstance(weights, list) else weights)
         return build(name, mat, pts, ring_faces(n, n_seg), ws)
 
     if "top" in parts:
@@ -344,6 +364,96 @@ def add_generated(rig, spec):
             pf = (0.15 + 0.06 * math.sin((1 - t) * math.pi * 0.8)) * k * (1.0 - 0.45 * max(0.0, (1 - t) - 0.82) / 0.18)
             pts_c.append(Vector((x, 0.02 - pf * 0.78 * math.sqrt(max(0.05, 1 - (x / pf) ** 2)) - 0.004, z)))
         tube3("XianCollarV", trim, pts_c, lambda t: 0.014 * k, {"spine_02": 0.5, "spine_01": 0.5})
+
+    def sheet(name, mat, rows, wrows):
+        """A cloth of rows of points (a cape, a hanging panel, a ribbon): quads between neighbouring rows."""
+        m = len(rows[0])
+        pts = [tuple(p) for row in rows for p in row]
+        ws = [w for row in wrows for w in row]
+        faces = [(r * m + c, r * m + c + 1, (r + 1) * m + c + 1, (r + 1) * m + c) for r in range(len(rows) - 1) for c in range(m - 1)]
+        return build(name, mat, pts, faces, ws)
+
+    top_z = head("neck_01").z - 0.02
+    f0s, f1s = spec.get("flare0", 0.19) * k, spec.get("flare1", 0.40) * k
+    flare_z = lambda z: f0s + (f1s - f0s) * (max(0.0, (waist - z) / (waist - hem)) ** spec.get("flareCurve", 1.0))
+    for e_i, edge in enumerate(spec.get("_edges", [])):
+        tube3("XianT_edge%d" % e_i, trim, [Vector((x, y, z)) for x, y, z, t in edge], lambda t: 0.016 * k, [leg_w(x, t, spec.get("skirtLeg", 0.62)) for x, y, z, t in edge], n_seg=6)
+    for p_i, pn in enumerate(spec.get("panels", [])):
+        # hanging panels around the waist over the skirt: a tabard down the front, the tassets of a suit of armour (`at` and `half` in degrees, the front is 270; `bottom` the height of the lower edge)
+        z0, z1 = waist + pn.get("top", 0.0), pn["bottom"]
+        rows, wrows = [], []
+        for r in range(8):
+            tt = r / 7
+            z = z0 + (z1 - z0) * tt
+            rr = flare_z(z) + pn.get("off", 0.016)
+            half = pn["half"] * (1.0 - pn.get("taper", 0.0) * tt)
+            row, wrow = [], []
+            for c in range(5):
+                a = math.radians(pn["at"] + half * (c / 2 - 1))
+                x = math.cos(a) * rr
+                row.append((x, cy + math.sin(a) * rr * 0.86, z))
+                wrow.append(leg_w(x, min(1.0, max(0.0, (waist - z) / (waist - hem))), spec.get("skirtLeg", 0.62)) if z < waist else {"pelvis": 1.0})
+            rows.append(row)
+            wrows.append(wrow)
+        sheet(("XianR_" if pn.get("tinted") else "XianT_") + "panel%d" % p_i, spec[pn.get("mat", "trim")], rows, wrows)
+    if "cape" in parts:
+        # a cape from the shoulders down the back, wrapping a little round the sides
+        z0, z1 = top_z - 0.03, spec.get("capeEnd", 0.3)
+        rows, wrows = [], []
+        for r in range(10):
+            tt = r / 9
+            z = z0 + (z1 - z0) * tt
+            half = (0.15 + (spec.get("capeW", 0.36) - 0.15) * tt ** 0.8) * k
+            row, wrow = [], []
+            for c in range(7):
+                u = c / 3 - 1
+                row.append((u * half, 0.03 + (0.17 + 0.12 * tt) * k - 0.08 * k * u * u, z))
+                wrow.append(spine_w(z) if z >= waist else {"pelvis": 0.5, "spine_01": 0.3, "thigh_l": 0.1, "thigh_r": 0.1})
+            rows.append(row)
+            wrows.append(wrow)
+        sheet("XianT_cape", spec.get("cape") or trim, rows, wrows)
+    if "wings" in parts:
+        # stiff upswept shoulders (a court robe): a horn of cloth from each shoulder, out and up
+        for side, sx in (("l", 1), ("r", -1)):
+            ua = head("upperarm_" + side)
+            path = [Vector((sx * (0.1 + 0.27 * s) * k, ua.y + 0.01, ua.z + 0.03 + 0.13 * s * s)) for s in (0.0, 0.25, 0.5, 0.75, 1.0)]
+            tube3("XianT_wing_" + side, spec.get("plate") or trim, path, lambda t: (0.062 * (1 - t) ** 0.7 + 0.006) * k, {"clavicle_" + side: 0.5, "spine_03": 0.5}, n_seg=8)
+    if "halo" in parts:
+        # a ring of light behind the head, with short rays
+        hh = head("Head")
+        c0 = Vector((0.0, hh.y + 0.13, hh.z + 0.1))
+        R = spec.get("haloR", 0.27)
+        W = {"spine_03": 0.6, "neck_01": 0.4}
+        hm_ = spec.get("halo") or trim
+        tube3("XianT_halo", hm_, [c0 + Vector((math.cos(a / 24 * math.tau) * R, 0, math.sin(a / 24 * math.tau) * R)) for a in range(25)], lambda t: 0.016, W, n_seg=6)
+        for j in range(8):
+            a = (j + 0.5) / 8 * math.tau
+            d = Vector((math.cos(a), 0, math.sin(a)))
+            tube3("XianT_ray%d" % j, hm_, [c0 + d * (R + 0.02), c0 + d * (R + 0.06), c0 + d * (R + 0.1)], lambda t: 0.014 * (1 - t) + 0.003, W, n_seg=5)
+    if "ribbon" in parts:
+        # the floating scarf of an immortal: an arc behind the shoulders, its ends trailing down at both sides
+        zc, yb = top_z - 0.1, 0.05 + 0.2 * k
+        path = []
+        for i in range(17):
+            a = math.radians(-30.0 + 240.0 * i / 16)
+            path.append((math.cos(a) * 0.5 * k, zc + math.sin(a) * 0.46))
+        ex, ez = path[0]
+        tail = [(ex + 0.02 * j + 0.01 * j * j, ez - 0.13 * j) for j in range(1, 5)]
+        full = [(-x, z) for x, z in reversed(tail)] + list(reversed(path)) + tail
+        rows, wrows = [], []
+        for i, (x, z) in enumerate(full):
+            x0, z0_ = full[max(i - 1, 0)]
+            x1, z1_ = full[min(i + 1, len(full) - 1)]
+            tx, tz = x1 - x0, z1_ - z0_
+            ln = math.hypot(tx, tz) or 1.0
+            nx, nz = -tz / ln, tx / ln
+            wd = 0.04 * (0.55 + 0.45 * math.sin(math.pi * i / (len(full) - 1)))
+            rows.append([(x - nx * wd, yb, z - nz * wd), (x + nx * wd, yb + 0.01, z + nz * wd)])
+            wrows.append([{"spine_03": 0.6, "spine_02": 0.4}] * 2)
+        sheet("XianT_ribbon", spec.get("accent") or sash, rows, wrows)
+    if "highCollar" in parts:
+        # a tall collar standing round the back of the neck, open at the throat
+        lathe("XianT_collar", trim, [top_z - 0.01, top_z + 0.06, top_z + 0.13], lambda t: (0.1 + 0.075 * t) * k, lambda t: (0.095 + 0.07 * t) * k, 0.0, 0.04, lambda x, z, t: {"neck_01": 0.4, "spine_03": 0.6}, n_seg=20, gap=(270.0, 62.0))
     hat_ids = [i for i in range(10) if "hat%d" % i in parts]
     if hat_ids:
         # the ten hats of the game, in 3D, each one on the top of the head; one tonal material (the game tints the whole hat by its set) and a second, darker one for bands and gems
@@ -517,14 +627,14 @@ def main():
         bpy.data.objects.remove(o, do_unlink=True)  # every pack ships a little reference sphere
     if cfg.get("generated"):
         g = cfg["generated"]
-        roles = ("robe", "robeSkirt", "robeTop", "plate", "trim", "sash", "sleeve", "hairpiece", "skin", "legwear", "boot", "hat", "hatTrim")
+        roles = ("robe", "robeSkirt", "robeTop", "plate", "trim", "sash", "cape", "halo", "accent", "sleeve", "hairpiece", "skin", "legwear", "boot", "hat", "hatTrim")
         names = [g[k] for k in roles if g.get(k)]
         gm = {n: bpy.data.materials.new(n) for n in dict.fromkeys(names)}
         add_generated(rig, {**g, **{k: gm[g[k]] for k in roles if g.get(k)}})
     if cfg.get("passes"):
         # every mesh belongs to one slot of the paper doll (body, hair, bun, robe, hat; the belt, the cuffs and the boots are part of the robe layer): by name for what the script generated, the hair by its name, the rest is the body
         ts = "trim" if cfg["generated"].get("trimLayer") else "robe"  # a style may split its metal and trim (plates, hems, collar, sash, cuffs) into their own layer, which the game does not tint
-        prefixes = [("XianSkirt", "robe"), ("XianHem", ts), ("XianTop", "robe"), ("XianCollar", ts), ("XianPlacket", ts), ("XianPlate", ts), ("XianPauldron", ts), ("XianSleeve", "robe"), ("XianMantle", ts), ("GenLeg", "robe"), ("XianSash", ts), ("XianRibbon", ts),
+        prefixes = [("XianT_", ts), ("XianR_", "robe"), ("XianSkirt", "robe"), ("XianHem", ts), ("XianTop", "robe"), ("XianCollar", ts), ("XianPlacket", ts), ("XianPlate", ts), ("XianPauldron", ts), ("XianSleeve", "robe"), ("XianMantle", ts), ("GenLeg", "robe"), ("XianSash", ts), ("XianRibbon", ts),
                     ("XianCuff", ts), ("XianBun", "bun"), ("XianPin", "bun"), ("XianHairRibbon", "hair"), ("GenHand", "body"), ("GenBoot", "robe")]
         for o in [o for o in bpy.data.objects if o.type == "MESH"]:
             hat = re.match(r"GenHat(\d+)_", o.name)

@@ -1,8 +1,8 @@
 import { equipmentInfo } from "./equipment-data";
 import { tuning } from "./tuning";
 
-/** The silhouette a doll wears when no robe is worn (the bare cloth of the paper doll, 4j). */
-export const DEFAULT_OUTFIT = "robe";
+/** The silhouette a doll wears when no robe is worn: the novice's plain jacket and trousers, undyed (the paper doll, 4j). */
+export const DEFAULT_OUTFIT = "tunic";
 
 /** The outfit drawn on a player (a key of the tuning `outfits` rules), from the worn gear; null for the plain peasant clothes (no robe, a broken one, or a robe below every rule). */
 export function outfitOf(equipped: readonly { slot: string; type: string; dur?: number }[]): string | null {

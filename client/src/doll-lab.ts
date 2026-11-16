@@ -57,7 +57,7 @@ class Lab extends Phaser.Scene {
       bar.appendChild(l);
     };
     sel("gender", "gender", ["female", "male"]);
-    sel("style", "style", ["robe", "tunic", "grand"]);
+    sel("style", "style", ["tunic", "robe", "grand", "armor", "dragon", "wave"]);
     sel("dir", "dir", [0, 1, 2, 3, 4, 5, 6, 7]);
     sel("anim", "anim", ["idle", "run", "attack", "thrust", "cast", "hit", "die", "sit"]);
     sel("robe", "r", [0, 1, 2, 3, 4, 5, 6, 7, 8]);

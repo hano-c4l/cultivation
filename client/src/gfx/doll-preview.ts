@@ -7,7 +7,7 @@ import type { DollLayerSpec } from "./doll";
  * Phaser tint, so a tinted layer is drawn onto a scratch canvas, multiplied by its colour, and cut back to its own shape. Returns how many layers are not loaded yet (the
  * caller draws again a little later).
  */
-export function paintDoll(textures: Phaser.Textures.TextureManager, kit: GfxKit, canvas: HTMLCanvasElement, body: string, layers: readonly DollLayerSpec[], frame = "idle_0_00", scale = 1.5): number {
+export function paintDoll(textures: Phaser.Textures.TextureManager, kit: GfxKit, canvas: HTMLCanvasElement, body: string, layers: readonly DollLayerSpec[], frame = "idle_0_00", size = 1.5): number {
   const ctx = canvas.getContext("2d");
   if (!ctx) return 0;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -25,6 +25,7 @@ export function paintDoll(textures: Phaser.Textures.TextureManager, kit: GfxKit,
     const src = f.source.image as CanvasImageSource;
     const w = f.cutWidth;
     const h = f.cutHeight;
+    const scale = (size * 128) / f.realWidth; // `size` is for the 128 px frame; a doll rendered at twice the pixels (a 256 px frame) is drawn at half of it, so the figure stays the same size
     // the anchor of the figure (its feet) goes to the bottom middle of the canvas; the sprites of one doll share the untrimmed frame, so `f.x / f.y` (the trim) places each
     const ox = canvas.width / 2 - (f.realWidth / 2) * scale + f.x * scale;
     const oy = canvas.height - 6 - (f.realHeight * 0.875) * scale + f.y * scale;
