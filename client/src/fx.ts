@@ -1,6 +1,9 @@
 import Phaser from "phaser";
-import { getSkill, skillAreaOf, skillLookOf, weaponAreaOf, type AreaDef, type SkillLook } from "@game/shared";
+import { FIGURE_SCALE, getSkill, skillAreaOf, skillLookOf, weaponAreaOf, type AreaDef, type SkillLook } from "@game/shared";
 import { FxLayer, type Puff } from "./fx-layer";
+
+/** A height above a figure's feet, drawn for the figure of 4j (about 1.39 times the old one): the old chest heights are written in the old px. */
+const lift = (px: number): number => Math.round(px * FIGURE_SCALE);
 import { BASIC_COLOR, BUFF_COLOR, DOT_COLOR, ELEMENT_COLOR, NEUTRAL, basicFxOf, basicProjectileOf, elementStyleOf, skillFxOf, templateOf, type ElementStyle } from "./fx-kinds";
 
 /** A point on screen (world pixels of the scene) where an effect is drawn, or null when the thing it belongs to is not in view. */
@@ -119,7 +122,7 @@ export class Effects {
     const color = def.kind === "heal" ? DOT_COLOR.heal! : (DOT_COLOR[def.buff?.stat ?? ""] ?? NEUTRAL);
     const a = ((slot + Math.random()) / total) * Math.PI * 2;
     const rx = 20 + Math.random() * 12;
-    this.layer.puff("mote", at.x + Math.cos(a) * rx, at.y - 22 + Math.sin(a) * rx * 0.5 - Math.random() * 18, 1, color);
+    this.layer.puff("mote", at.x + Math.cos(a) * rx, at.y - lift(22) + Math.sin(a) * rx * 0.5 - Math.random() * 18, 1, color);
   }
 
   /** A guard used a skill: a glow of its colour (mend: lotus light, ward: a ring, burst and slash: a flash of its spear). */
@@ -129,15 +132,15 @@ export class Effects {
     switch (skill) {
       case "mend":
         this.layer.puff("petal", at.x, at.y - 10, 8, 0x9be8a8);
-        this.layer.glow(at.x, at.y - 24, 0x9be8a8, 0.6, 1.6, 700, 0.5);
+        this.layer.glow(at.x, at.y - lift(24), 0x9be8a8, 0.6, 1.6, 700, 0.5);
         break;
       case "ward":
         this.layer.ring(at.x, at.y + 6, 0xffd36a, 0.5, 1.5, 800, 0.7);
         this.layer.puff("mote", at.x, at.y - 6, 8, 0xffd36a);
         break;
       default:
-        this.layer.glow(at.x, at.y - 24, 0xff7a4a, 0.6, 1.7, 500, 0.6);
-        this.layer.puff("spark", at.x, at.y - 24, 6, 0xffe2b0);
+        this.layer.glow(at.x, at.y - lift(24), 0xff7a4a, 0.6, 1.7, 500, 0.6);
+        this.layer.puff("spark", at.x, at.y - lift(24), 6, 0xffe2b0);
     }
   }
 
@@ -161,7 +164,7 @@ export class Effects {
     const arrow = basicProjectileOf(weapon, byMonster) === "arrow";
     if (arrow || basicFxOf(Math.hypot(b.x - a.x, b.y - a.y)) !== "melee") return this.bolt(a, b, color, "plain", arrow);
     const ang = Math.atan2(b.y - a.y, b.x - a.x);
-    const cy = b.y - 22;
+    const cy = b.y - lift(22);
     const area = weaponAreaOf(weapon);
     if (area.shape !== "single") this.areaMark(area, a, b, color, 0.16);
     switch (weapon) {
@@ -176,7 +179,7 @@ export class Effects {
       case "riu": {
         // a whirl round the wielder
         this.layer.ring(a.x, a.y + 8, color, 0.3, 1.5, 320, 0.8);
-        for (let k = 0; k < 3; k++) this.layer.crescent(a.x, a.y - 22, ang + k * 2.09, 100, color, 300);
+        for (let k = 0; k < 3; k++) this.layer.crescent(a.x, a.y - lift(22), ang + k * 2.09, 100, color, 300);
         this.layer.puff("shard", b.x, cy, 4, color);
         break;
       }
@@ -199,13 +202,13 @@ export class Effects {
     const start = this.posOf(id);
     if (!start) return;
     this.layer.sigil(start.x, start.y + 2, 0xfff0b0, 34, 700, 0.5, 0.7);
-    this.layer.puff("spark", start.x, start.y - 26, 8, 0xfff0b0);
+    this.layer.puff("spark", start.x, start.y - lift(26), 8, 0xfff0b0);
     this.shot(650, FX_DEPTH, (g, p) => {
       const at = this.posOf(id) ?? start;
       g.lineStyle(3, 0xfff0b0, 1 - p).strokeEllipse(at.x, at.y - 6 - p * 30, 44 + 14 * p, 22 + 7 * p);
       // a glint of steel: two crossed strokes that open and fade at chest height
       const s = 4 + 14 * Math.sin(Math.min(1, p * 1.6) * Math.PI);
-      g.lineStyle(3, 0xffffff, 1 - p).lineBetween(at.x - s, at.y - 26, at.x + s, at.y - 26).lineBetween(at.x, at.y - 26 - s, at.x, at.y - 26 + s);
+      g.lineStyle(3, 0xffffff, 1 - p).lineBetween(at.x - s, at.y - lift(26), at.x + s, at.y - lift(26)).lineBetween(at.x, at.y - lift(26) - s, at.x, at.y - lift(26) + s);
     });
   }
 
@@ -386,7 +389,7 @@ export class Effects {
     if (light) {
       // a tick of a lasting zone: one small spark in the colour of the skill's element
       const def0 = skillId ? getSkill(skillId) : undefined;
-      this.layer.puff("spark", at.x, at.y - 22, 2, (def0?.element ? ELEMENT_COLOR[def0.element] : undefined) ?? 0xfff0d0);
+      this.layer.puff("spark", at.x, at.y - lift(22), 2, (def0?.element ? ELEMENT_COLOR[def0.element] : undefined) ?? 0xfff0d0);
       return;
     }
     const src = this.posOf(from);
@@ -394,7 +397,7 @@ export class Effects {
     const color = (def?.element ? ELEMENT_COLOR[def.element] : undefined) ?? (kind === "crit" ? 0xffd54a : 0xfff0d0);
     const ang = src ? Math.atan2(at.y - src.y, at.x - src.x) : -0.6;
     const cx = at.x;
-    const cy = at.y - 22;
+    const cy = at.y - lift(22);
     const L = this.layer;
     L.puff("spark", cx, cy, kind === "crit" ? 9 : 4, color);
     L.glow(cx, cy, 0xffffff, 0.3, kind === "crit" ? 1.8 : 0.9, 180, 0.8);
@@ -409,8 +412,8 @@ export class Effects {
 
   /** A finger of force: a bright line from the caster through the target, with sparks along it. */
   private finger(from: P, to: P, color: number, style: ElementStyle, lvl: number): void {
-    const fy = from.y - 24;
-    const ty = to.y - 22;
+    const fy = from.y - lift(24);
+    const ty = to.y - lift(22);
     const ang = Math.atan2(ty - fy, to.x - from.x);
     const dist = Math.hypot(to.x - from.x, ty - fy);
     this.layer.ray(to.x + Math.cos(ang) * 40, ty + Math.sin(ang) * 20, ang, dist + 60, 12 + 6 * lvl, color, 340);
@@ -428,7 +431,7 @@ export class Effects {
     this.layer.glow(ox, oy, color, 0.3, 1.3, 260, 0.95);
     this.layer.puff("mote", ox, oy, 6, color);
     this.later(240, () => {
-      const ty = to.y - 22;
+      const ty = to.y - lift(22);
       const ang = Math.atan2(ty - oy, to.x - ox);
       const dist = Math.hypot(to.x - ox, ty - oy);
       this.layer.ray(to.x, ty, ang, dist + 20, 14 + 6 * lvl, color, 320);
@@ -442,7 +445,7 @@ export class Effects {
   private great(from: P, to: P, color: number, style: ElementStyle, lvl: number): void {
     this.layer.sigil(from.x, from.y + 2, color, 70, 900, 0.8, 0.95);
     this.layer.ring(from.x, from.y + 6, color, 0.4, 2.6, 800, 0.9);
-    this.layer.glow(from.x, from.y - 30, 0xffffff, 0.6, 3.2, 420, 0.8);
+    this.layer.glow(from.x, from.y - lift(30), 0xffffff, 0.6, 3.2, 420, 0.8);
     const me = this.selfId();
     if (me && (to.x !== from.x || to.y !== from.y)) {
       const mine = this.posOf(me);
@@ -470,18 +473,18 @@ export class Effects {
       for (let k = 1; k <= 2; k++) g.lineStyle(1.5, color, 0.6 * a).strokeEllipse(now.x, cy - 4, rx * 2 * (1 - k * 0.3), ry * 0.5 * (1 - k * 0.3));
       g.lineStyle(1.5, color, 0.6 * a).lineBetween(now.x, cy, now.x, cy - ry).lineBetween(now.x - rx * 0.7, cy, now.x - rx * 0.4, cy - ry * 0.8).lineBetween(now.x + rx * 0.7, cy, now.x + rx * 0.4, cy - ry * 0.8);
     });
-    this.layer.puff("spark", at.x, at.y - 30, 6, 0xffffff);
+    this.layer.puff("spark", at.x, at.y - lift(30), 6, 0xffffff);
   }
 
   /** Fire climbing round the caster and rings of a roar going out: strength. */
   private flames(at: P, color: number, id: string): void {
     this.layer.sigil(at.x, at.y + 2, 0xff6a3a, 40, 900, 1, 0.85);
-    this.layer.glow(at.x, at.y - 24, 0xff5a2a, 0.6, 2.4, 700, 0.6);
+    this.layer.glow(at.x, at.y - lift(24), 0xff5a2a, 0.6, 2.4, 700, 0.6);
     this.shot(950, FX_DEPTH, (g, p) => {
       const now = this.posOf(id) ?? at;
       for (let i = 0; i < 3; i++) {
         const q = Math.min(1, Math.max(0, p * 1.6 - i * 0.22));
-        g.lineStyle(3, 0xffb070, 0.8 * (1 - q)).strokeEllipse(now.x, now.y - 24, 30 + 90 * q, 15 + 45 * q);
+        g.lineStyle(3, 0xffb070, 0.8 * (1 - q)).strokeEllipse(now.x, now.y - lift(24), 30 + 90 * q, 15 + 45 * q);
       }
       for (let k = 0; k < 2; k++) this.layer.puff("ember", now.x + (Math.random() - 0.5) * 36, now.y - 4 - Math.random() * 12, 1, k ? 0xffe9a0 : color);
     });
@@ -555,7 +558,7 @@ export class Effects {
   /** A fire-bird's wings spread behind the caster and embers rise: new life. */
   private phoenix(at: P, id: string): void {
     this.layer.sigil(at.x, at.y + 2, 0xff9a4a, 40, 1100, 0.7, 0.9);
-    this.layer.glow(at.x, at.y - 30, 0xffb070, 0.6, 3.4, 800, 0.7);
+    this.layer.glow(at.x, at.y - lift(30), 0xffb070, 0.6, 3.4, 800, 0.7);
     this.layer.puff("ember", at.x, at.y - 6, 14, 0xff8a3a);
     this.layer.puff("mote", at.x, at.y - 10, 8, 0xffe9a0);
     this.shot(1100, FX_DEPTH, (g, p) => {
@@ -565,10 +568,10 @@ export class Effects {
         for (let f = 0; f < 6; f++) {
           const a = -0.25 - f * 0.28;
           const len = (34 + f * 7) * open;
-          g.lineStyle(4 - f * 0.4, f % 2 ? 0xffe9a0 : 0xff7a2a, 0.85 * open).lineBetween(now.x + side * 8, now.y - 30, now.x + side * (8 + Math.cos(a) * len * 1.2), now.y - 30 + Math.sin(a) * len);
+          g.lineStyle(4 - f * 0.4, f % 2 ? 0xffe9a0 : 0xff7a2a, 0.85 * open).lineBetween(now.x + side * 8, now.y - lift(30), now.x + side * (8 + Math.cos(a) * len * 1.2), now.y - lift(30) + Math.sin(a) * len);
         }
       }
-      g.fillStyle(0xff7a2a, 0.35 * open).fillEllipse(now.x, now.y - 28, 22, 40);
+      g.fillStyle(0xff7a2a, 0.35 * open).fillEllipse(now.x, now.y - lift(28), 22, 40);
     });
   }
 
@@ -584,8 +587,8 @@ export class Effects {
       case "slash":
         if (target) {
           this.melee(target, color, style, from ?? undefined, lvl, "tram");
-          this.layer.crescent(target.x, target.y - 26, 0.9, 130 + 40 * lvl, 0xffffff, 300);
-          this.layer.crescent(target.x, target.y - 26, -0.9, 130 + 40 * lvl, color, 340);
+          this.layer.crescent(target.x, target.y - lift(26), 0.9, 130 + 40 * lvl, 0xffffff, 300);
+          this.layer.crescent(target.x, target.y - lift(26), -0.9, 130 + 40 * lvl, color, 340);
         }
         return !!target;
       case "finger":
@@ -646,7 +649,7 @@ export class Effects {
       case "field":
         // the lasting part is drawn from the zone message; the cast itself is the spark that lights it
         if (from) {
-          this.layer.glow(from.x, from.y - 24, color, 0.5, 1.4, 360, 0.6);
+          this.layer.glow(from.x, from.y - lift(24), color, 0.5, 1.4, 360, 0.6);
           if (target) this.layer.glow(target.x, target.y - 4, color, 0.4, 1.2, 420, 0.5);
         }
         return !!from;
@@ -664,9 +667,9 @@ export class Effects {
     const len = Math.hypot(d.x, d.y) || 1;
     const end = this.gs((d.x / len) * range, (d.y / len) * range);
     const fx = from.x;
-    const fy = from.y - 22;
+    const fy = from.y - lift(22);
     const tx = from.x + end.x;
-    const ty = from.y + end.y - 22;
+    const ty = from.y + end.y - lift(22);
     const ang = Math.atan2(ty - fy, tx - fx);
     const flight = Math.min(520, 160 + Math.hypot(tx - fx, ty - fy) * 0.8);
     this.shot(flight + 260, FX_DEPTH, (g, p) => {
@@ -758,28 +761,28 @@ export class Effects {
     for (let i = 0; i < wisps; i++) {
       const a = (i / wisps) * Math.PI * 2;
       const sx = origin.x + (to ? (Math.random() - 0.5) * 20 : Math.cos(a) * 70);
-      const sy = origin.y - 22 + (to ? (Math.random() - 0.5) * 24 : Math.sin(a) * 35);
+      const sy = origin.y - lift(22) + (to ? (Math.random() - 0.5) * 24 : Math.sin(a) * 35);
       this.later(i * 45, () =>
         this.shot(420, FX_DEPTH, (g, p) => {
           const t = p * p;
           const x = sx + (from.x - sx) * t + Math.sin(p * 6 + i) * 8 * (1 - p);
-          const y = sy + (from.y - 22 - sy) * t - Math.sin(p * Math.PI) * 14;
+          const y = sy + (from.y - lift(22) - sy) * t - Math.sin(p * Math.PI) * 14;
           g.fillStyle(c, 0.8 * (1 - p * 0.5)).fillCircle(x, y, 5 - 2.5 * p).fillStyle(color, 0.35 * (1 - p)).fillCircle(x, y, 9 - 4 * p);
         }),
       );
     }
-    this.later(460, () => this.layer.glow(from.x, from.y - 22, 0xff6a7a, 0.7, 2.4, 360, 0.8));
+    this.later(460, () => this.layer.glow(from.x, from.y - lift(22), 0xff6a7a, 0.7, 2.4, 360, 0.8));
   }
 
   /** A finishing cut: a dark flash on the target and a long white slash across it, with a ring that bursts at the end. */
   private shock(from: P, to: P, color: number, lvl: number): void {
-    this.layer.glow(to.x, to.y - 24, 0x000000, 0.5, 2.6, 260, 0.55);
+    this.layer.glow(to.x, to.y - lift(24), 0x000000, 0.5, 2.6, 260, 0.55);
     const ang = Math.atan2(to.y - from.y, to.x - from.x) + 0.9;
     this.shot(320, FX_DEPTH, (g, p) => {
       const len = 70 + 40 * lvl;
       const a = Math.sin(Math.min(1, p) * Math.PI);
       const cx = to.x;
-      const cy = to.y - 26;
+      const cy = to.y - lift(26);
       const dx = Math.cos(ang) * len * p;
       const dy = Math.sin(ang) * len * p * 0.6;
       g.lineStyle(9, color, 0.45 * a).lineBetween(cx - dx, cy - dy, cx + dx, cy + dy);
@@ -787,7 +790,7 @@ export class Effects {
     });
     this.later(160, () => {
       this.layer.ring(to.x, to.y, color, 0.3, 1.8, 420, 0.9);
-      this.layer.puff("spark", to.x, to.y - 24, 7, color);
+      this.layer.puff("spark", to.x, to.y - lift(24), 7, color);
     });
   }
 
@@ -796,7 +799,7 @@ export class Effects {
     const rx = range * 45.25;
     const ry = range * 22.6;
     const cy = at.y + 4;
-    this.layer.glow(at.x, at.y - 20, color, 0.8, 2 + lvl, 420, 0.7);
+    this.layer.glow(at.x, at.y - lift(20), color, 0.8, 2 + lvl, 420, 0.7);
     this.shot(620, 0.64, (g, p) => {
       for (let i = 0; i < 3; i++) {
         const q = Math.min(1, Math.max(0, p * 1.25 - i * 0.12));
@@ -1003,7 +1006,7 @@ export class Effects {
   /** Close combat: a sweep of light across the target, a palm print for a palm, an element's mark under it. `from` is where the blow came from. */
   private melee(at: P, color: number, style: ElementStyle = "plain", from?: P, lvl = 0.2, tpl = ""): void {
     const cx = at.x;
-    const cy = at.y - 22;
+    const cy = at.y - lift(22);
     const ang = from ? Math.atan2(at.y - from.y, at.x - from.x) : -0.6;
     if (tpl === "chuong") {
       // a palm: a swelling print of light with a shock ring
@@ -1029,7 +1032,7 @@ export class Effects {
         const fx = from.x + (i - mid) * 14;
         const fy = from.y - 46 - Math.abs(i - mid) * 7;
         const tx = to.x;
-        const ty = to.y - 22;
+        const ty = to.y - lift(22);
         const dur = 260;
         this.shot(dur + 120, FX_DEPTH, (g, p) => {
           const t = Math.min(1, (p * (dur + 120)) / dur);
@@ -1322,9 +1325,9 @@ export class Effects {
   /** A single target hit from afar: a glowing bolt with a trail of its element flies from the caster to the target and bursts. */
   private bolt(from: P, to: P, color: number, style: ElementStyle = "plain", arrow = false, lvl = 0.2): void {
     const fx = from.x;
-    const fy = from.y - 22;
+    const fy = from.y - lift(22);
     const tx = to.x;
-    const ty = to.y - 22;
+    const ty = to.y - lift(22);
     const dist = Math.hypot(tx - fx, ty - fy);
     const flight = Math.min(420, 140 + dist * 0.9);
     this.shot(flight + 160, FX_DEPTH, (g, p) => {
@@ -1566,13 +1569,13 @@ export class Effects {
   private blink(from: P, to: P): void {
     const ang = Math.atan2(to.y - from.y, to.x - from.x);
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
-    for (let i = 0; i < 4; i++) this.layer.glow(from.x + (to.x - from.x) * (i / 4), from.y - 22 + (to.y - from.y) * (i / 4), 0xb8e8ff, 0.8, 0.2, 260 + i * 60, 0.7);
-    this.layer.ray(to.x, to.y - 20, ang, Math.min(dist, 260), 10, 0xb8e8ff, 320);
+    for (let i = 0; i < 4; i++) this.layer.glow(from.x + (to.x - from.x) * (i / 4), from.y - lift(22) + (to.y - from.y) * (i / 4), 0xb8e8ff, 0.8, 0.2, 260 + i * 60, 0.7);
+    this.layer.ray(to.x, to.y - lift(20), ang, Math.min(dist, 260), 10, 0xb8e8ff, 320);
     this.layer.puff("smoke", from.x, from.y - 14, 4, 0xdff4ff);
     this.layer.puff("spark", from.x, from.y - 14, 6, 0xffffff);
     this.layer.sigil(to.x, to.y + 2, 0xb8e8ff, 36, 520, 0.6);
-    this.layer.puff("spark", to.x, to.y - 20, 8, 0xe6f9ff);
-    this.layer.glow(to.x, to.y - 20, 0xffffff, 0.4, 1.8, 300);
+    this.layer.puff("spark", to.x, to.y - lift(20), 8, 0xe6f9ff);
+    this.layer.glow(to.x, to.y - lift(20), 0xffffff, 0.4, 1.8, 300);
     this.shot(320, FX_DEPTH, (g, p) => {
       g.lineStyle(3, 0xffffff, p).strokeEllipse(to.x, to.y, 12 + 44 * p, 6 + 22 * p);
     });
@@ -1582,8 +1585,8 @@ export class Effects {
   private buff(at: P, color: number, id: string, lvl = 0.3): void {
     this.layer.sigil(at.x, at.y + 2, color, 36 + 18 * lvl, 1000, 1.2, 0.9);
     this.layer.puff("mote", at.x, at.y - 4, 8 + Math.round(6 * lvl), color);
-    this.layer.puff("spark", at.x, at.y - 20, 5, 0xffffff);
-    this.layer.glow(at.x, at.y - 24, color, 0.6, 1.6 + lvl, 600, 0.5);
+    this.layer.puff("spark", at.x, at.y - lift(20), 5, 0xffffff);
+    this.layer.glow(at.x, at.y - lift(24), color, 0.6, 1.6 + lvl, 600, 0.5);
     this.shot(900, FX_DEPTH, (g, p) => {
       const now = this.posOf(id) ?? at;
       for (let i = 0; i < 2; i++) {
@@ -1614,7 +1617,7 @@ export class Effects {
     this.layer.sigil(at.x, at.y + 2, 0x7dff9c, 34 + 14 * lvl, 900, 0.8, 0.7);
     this.layer.puff("petal", at.x, at.y - 6, 7 + Math.round(6 * lvl), 0xb6ffc8);
     this.layer.puff("mote", at.x, at.y - 4, 8, 0x9dffb4);
-    this.layer.glow(at.x, at.y - 22, 0x7dff9c, 0.8, 2, 700, 0.5);
+    this.layer.glow(at.x, at.y - lift(22), 0x7dff9c, 0.8, 2, 700, 0.5);
     this.shot(900, FX_DEPTH, (g, p) => {
       const now = this.posOf(id) ?? at;
       this.lotus(g, now.x, now.y, Math.min(1, p * 2.2), 30 + 14 * lvl, 0x9dffb4, 1 - p);
@@ -1628,8 +1631,8 @@ export class Effects {
     if (ok) {
       this.layer.sigil(at.x, at.y + 2, 0xffd54a, 110, 1100, 0.8, 0.9);
       this.layer.ring(at.x, at.y, 0xffe58a, 0.4, 2.4, 900, 0.9);
-      this.layer.glow(at.x, at.y - 30, 0xfff0b0, 0.8, 4, 700, 0.8);
-      this.layer.puff("spark", at.x, at.y - 24, 14, 0xfff0b0);
+      this.layer.glow(at.x, at.y - lift(30), 0xfff0b0, 0.8, 4, 700, 0.8);
+      this.layer.puff("spark", at.x, at.y - lift(24), 14, 0xfff0b0);
       this.layer.puff("petal", at.x, at.y - 10, 12, 0xffe58a);
       this.layer.puff("mote", at.x, at.y, 14, 0xffd54a);
       this.shot(1100, FX_DEPTH, (g, p) => {
@@ -1641,7 +1644,7 @@ export class Effects {
       this.layer.puff("smoke", at.x, at.y - 10, 8, 0x777777);
       this.layer.ring(at.x, at.y, 0x884444, 0.4, 1.2, 600, 0.7);
       this.shot(900, FX_DEPTH, (g, p) => {
-        g.lineStyle(3, 0xff5a5a, 1 - p).lineBetween(at.x - 8, at.y - 50, at.x + 4, at.y - 30).lineBetween(at.x + 4, at.y - 30, at.x - 4, at.y - 12);
+        g.lineStyle(3, 0xff5a5a, 1 - p).lineBetween(at.x - 8, at.y - 50, at.x + 4, at.y - lift(30)).lineBetween(at.x + 4, at.y - lift(30), at.x - 4, at.y - 12);
       });
     }
   }
@@ -1649,7 +1652,7 @@ export class Effects {
   /** A flash of light at a spot (a teleport leaving): a beam of light rising out of a circle that opens. */
   private flash(at: P, color: number): void {
     this.layer.sigil(at.x, at.y + 2, color, 52, 600, 0.6);
-    this.layer.puff("spark", at.x, at.y - 30, 10, 0xffffff);
+    this.layer.puff("spark", at.x, at.y - lift(30), 10, 0xffffff);
     this.layer.puff("mote", at.x, at.y, 8, color);
     this.shot(500, FX_DEPTH, (g, p) => {
       g.fillStyle(color, 0.55 * (1 - p)).fillRect(at.x - 10 - 10 * (1 - p), at.y - 260 * p - 30, 20 + 20 * (1 - p), 260 * p + 30);

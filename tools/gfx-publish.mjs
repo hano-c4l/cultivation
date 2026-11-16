@@ -54,14 +54,28 @@ for (const sp of sprites) {
     rmSync(join(OUT, sp.image));
   }
   manifest.atlases[sp.atlas] = { image, data: sp.data };
-  manifest.sprites[sp.key] = { atlas: sp.atlas, frame: sp.frame, anchor: sp.anchor, ...(sp.head ? { head: sp.head } : {}), anims: sp.anims };
+  manifest.sprites[sp.key] = { atlas: sp.atlas, frame: sp.frame, anchor: sp.anchor, ...(sp.head ? { head: sp.head } : {}), ...(sp.headSit ? { headSit: sp.headSit } : {}), ...(sp.scale ? { scale: sp.scale } : {}), anims: sp.anims };
   for (const m of maps) {
     manifest.maps[m] = [...new Set([...(manifest.maps[m] ?? []), sp.atlas])];
   }
   console.log(`published ${sp.key} (${sp.atlas}) ${demand ? "on demand" : "to maps " + maps.join(", ")}`);
 }
+// A props atlas (tools/render/render_props.py) has no sprite entries: the map layer reads its frames by name (`<style>_<variant>`), so only the atlas is registered (on every map).
+for (const f of readdirSync(dir).filter((n) => n.endsWith(".props.json"))) {
+  const pr = JSON.parse(readFileSync(join(dir, f), "utf8"));
+  copyFileSync(join(dir, pr.image), join(OUT, pr.image));
+  copyFileSync(join(dir, pr.data), join(OUT, pr.data));
+  let image = pr.image;
+  if (toWebp && image.endsWith(".png")) {
+    image = (await toWebp(image)).name;
+    rmSync(join(OUT, pr.image));
+  }
+  manifest.atlases[pr.atlas] = { image, data: pr.data };
+  manifest.maps["*"] = [...new Set([...(manifest.maps["*"] ?? []), pr.atlas])];
+  console.log(`published props atlas ${pr.atlas} on every map`);
+}
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
-console.log(`manifest version ${manifest.version}; ${report.clips.length} frames touch the box edge (see report.json)`);
+console.log(`manifest version ${manifest.version}; ${Array.isArray(report.clips) ? report.clips.length : Object.values(report.clips).reduce((n, c) => n + c.length, 0)} frames touch the box edge (see report.json)`);
 
 function readdirSprites(d) {
   return readdirSync(d)

@@ -43,7 +43,7 @@ const ARTIFACT_SLOTS: ReadonlySet<EquipSlot> = new Set<EquipSlot>(["bonded", "fl
  * open a chooser with the bag pieces that fit it. The server decides everything (who may wear what, the price), the
  * checks here only grey out what it would refuse and say why.
  */
-export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => BagItem[], isAdmin = false): EquipmentUi {
+export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => BagItem[], isAdmin = false, drawFigure?: (canvas: HTMLCanvasElement, worn: EquippedItem[]) => number): EquipmentUi {
   const toggle = el("button", undefined, "");
   iconButton(toggle, "shield", vi.equip.button);
   toggle.id = "eq-btn";
@@ -135,6 +135,20 @@ export function initEquipment(send: (msg: ClientMessage) => void, getBag: () => 
     const bonus = equipmentBonus(worn, w);
     const parts = (Object.keys(bonus) as Array<keyof typeof bonus>).filter((k) => bonus[k] > 0).map((k) => statText(k, bonus[k]));
     panel.append(el("div", "muted", `${vi.equip.bonusTitle}: ${parts.length > 0 ? parts.join(", ") : vi.equip.noBonus}`));
+
+    if (drawFigure && tab === "gear") {
+      // the figure as it stands in the game, with what is worn now (a layer that is still loading is drawn a moment later)
+      const figure = el("canvas", "eq-doll");
+      figure.width = 200;
+      figure.height = 200;
+      panel.append(figure);
+      let tries = 0;
+      const paint = (): void => {
+        if (!figure.isConnected || tries++ > 12) return;
+        if (drawFigure(figure, worn) > 0) setTimeout(paint, 400);
+      };
+      paint();
+    }
 
     const tabs = el("div", "eq-tabs");
     for (const id of ["gear", "artifact"] as const) {

@@ -1,0 +1,22 @@
+{
+  "extends": "sprite-config-tien-female.json",
+  "name": "char_tienmac_female",
+  "spriteKey": "player.female.tienmac",
+  "outlinePx": 1.6,
+  "palette": { "outline": [0.04, 0.05, 0.1] },
+  "shadeTints": [[0.82, 0.88, 1.0], [0.96, 0.98, 1.0], [1.0, 1.0, 1.0]],
+  "groundInk": { "height": 0.3, "strength": 0.3, "color": [0.2, 0.28, 0.34] },
+  "headScale": 1.25,
+  "materials": {
+    "MI_Superhero_Female": { "color": [1.2, 1.0, 0.86] },
+    "MI_Regular_Female": { "color": [1.2, 1.0, 0.86] },
+    "MI_Peasant": { "color": [0.16, 0.19, 0.28] },
+    "MI_Hair_2": { "color": [0.08, 0.09, 0.15] },
+    "XianRobe": { "color": [1.6, 1.55, 1.45] },
+    "XianSleeve": { "color": [0.95, 1.4, 1.32] },
+    "XianTrim": { "color": [0.13, 0.4, 0.44] },
+    "XianSash": { "color": [1.5, 0.33, 0.22] },
+    "XianHair": { "color": [0.09, 0.1, 0.17] }
+  },
+  "generated": { "parts": ["skirt", "top", "sash", "sleeves", "bun"], "robe": "XianRobe", "sleeve": "XianSleeve", "trim": "XianTrim", "sash": "XianSash", "hairpiece": "XianHair", "scale": 1.0, "hemZ": 0.16 }
+}

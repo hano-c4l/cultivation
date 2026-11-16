@@ -50,7 +50,7 @@ export interface Tuning {
   /** The boss heals this fraction of its maximum HP per second once it has walked home from a lost fight. */
   bossRegen: { perSecond: number };
   /** The colours of the gear on a figure (see gear-look.ts): the tint of a weapon by its element (`none` for one without), and the palettes the robe, hat and boots of each set pick from (set number modulo the length). */
-  gearLooks: { weapon: Record<string, string>; robe: string[]; hat: string[]; boots: string[] };
+  gearLooks: { weapon: Record<string, string>; robe: string[]; hat: string[]; boots: string[]; belt?: string[]; bracer?: string[] };
   basicSkill: { realms: Array<{ nameVi?: string; powerMult: number; range?: number; mpCost?: number; area?: AreaDef }> };
   /** The teleport array in the middle of a main town: Linh Thạch = base + perUnit x the distance between the two towns on the world map (see waygate.ts). */
   waygate: { base: number; perUnit: number };
@@ -176,7 +176,7 @@ export interface Tuning {
   /** The chance that a kill drops the book of a rare skill of the realm of the map (see skills-extra.ts): by monster class, and for each item round of the map's boss. */
   rareBooks: { chance: Record<"normal" | "rare1" | "rare2" | "boss", number> };
   /** The outfit drawn on a player's sprite, by the realm of the robe worn: the rule with the highest `minRealm` the robe reaches wins (no robe or no rule: the plain peasant clothes). `outfit` names a sprite variant (`player.<body>.<outfit>`); one without a sprite is drawn as the plain clothes. */
-  outfits: { rules: Array<{ minRealm: number; outfit: string }> };
+  outfits: { rules: Array<{ minRealm: number; outfit: string }>; byTier?: Record<string, string> };
   /** Which sprite model draws a species (`monster.<species>` is tried first): species id -> model key (`monster.<model>`). Several species can share one model; a species with neither is drawn as the square. */
   monsterModels: Record<string, string>;
   /** The colour a monster sprite is multiplied by, by element (`#rrggbb`), so one model looks different in each element; an element without one is drawn in the model's own colours. */
@@ -258,9 +258,12 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   bossRegen: { perSecond: 0.02 },
   gearLooks: {
     weapon: { none: "#e6edf5", kim: "#f2f4f8", moc: "#9fe0a0", thuy: "#8cc4ff", hoa: "#ff8c6a", tho: "#e0b878", loi: "#c8a8ff", bang: "#b4f0ff", phong: "#a8f0d8" },
-    robe: ["#ffffff", "#ffe9d0", "#d8ecff", "#e2ffd8", "#f6d8ff", "#fff4b8", "#ffd0d8", "#cfeee8", "#e8e0ff", "#ffe0a8", "#cfe4ff", "#f0ffd0", "#ffd8f0", "#d0fff4", "#ffd6b0", "#dcdcff"],
-    hat: ["#e8d8b0", "#d0e0ff", "#f0c0c0", "#c8f0c8", "#e0c8f8", "#ffe8a0", "#c0e8f0", "#f8d0a0", "#d8d8e8", "#b8e0c0"],
-    boots: ["#c8d0dc", "#ffd890", "#a8d8ff", "#ffa8a8", "#b8f0b8", "#e0b8ff", "#fff0a0", "#a8f0e8"],
+    // One colour for each realm (Luyện Khí to Luyện Hư); the bậc of a set shades it (see `gear-look.ts`). Ink-wash hues: paper, jade, azure, violet, cinnabar, ink.
+    robe: ["#e9e3d8", "#7ec9ab", "#7fa8e8", "#a98ad8", "#dc6a5a", "#6a7a90"],
+    hat: ["#e8d6a8", "#8fd0a8", "#8fb4e8", "#b89ae0", "#e8806a", "#e8c25a"],
+    boots: ["#4a4038", "#3a4a44", "#3a4658", "#4a3f58", "#583a38", "#303540"],
+    belt: ["#e04a38", "#e8b84a", "#4a6fc8", "#9a5bd0", "#d8402a", "#e8c25a"],
+    bracer: ["#e8c25a", "#cfd6e0", "#5fc4a8", "#b8a0e8", "#e8806a", "#f0d27a"],
   },
   basicSkill: {
     realms: [
@@ -402,14 +405,14 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
     realmColors: ["#8bc34a", "#4fc3f7", "#ffb300", "#e040fb", "#ff5252", "#e8f4ff"],
     gradeColors: ["rgba(158, 158, 158, 0.28)", "rgba(76, 175, 80, 0.3)", "rgba(66, 165, 245, 0.32)", "rgba(171, 71, 188, 0.34)", "rgba(255, 179, 0, 0.36)"],
     ui: {
-      "ui-text": "#e8e4d8",
-      "ui-border": "#3a4560",
-      "ui-accent": "#d6a94b",
+      "ui-text": "#ece6d4",
+      "ui-border": "#3d5559",
+      "ui-accent": "#d9a93c",
       "ui-on-accent": "#1b1405",
-      "ui-highlight": "#ffd54a",
-      "ui-muted": "#6b7a99",
-      "ui-panel": "rgba(27, 33, 48, 0.96)",
-      "ui-page": "#10141c",
+      "ui-highlight": "#ffd76a",
+      "ui-muted": "#7f948f",
+      "ui-panel": "rgba(23, 33, 37, 0.96)",
+      "ui-page": "#0e1618",
     },
   },
   monsters: {
@@ -533,7 +536,7 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   trade: DEFAULT_TRADE,
   sect: DEFAULT_SECT,
   rareBooks: { chance: { normal: 0.00005, rare1: 0.0008, rare2: 0.003, boss: 0.02 } },
-  outfits: { rules: [{ minRealm: 0, outfit: "ranger" }, { minRealm: 1, outfit: "scout" }, { minRealm: 2, outfit: "tien" }, { minRealm: 3, outfit: "violet" }, { minRealm: 4, outfit: "crimson" }, { minRealm: 5, outfit: "shadow" }] }, // Kim Đan robes and above: the white xianxia robe
+  outfits: { rules: [{ minRealm: 0, outfit: "tunic" }, { minRealm: 1, outfit: "tunic" }, { minRealm: 2, outfit: "robe" }, { minRealm: 3, outfit: "robe" }, { minRealm: 4, outfit: "grand" }, { minRealm: 5, outfit: "grand" }] }, // the silhouettes of the paper dolls (4j): a tunic for Luyện Khí and Trúc Cơ, the long robe for Kim Đan and Nguyên Anh, the grand robe above. `byTier` ("realm.tier": outfit) overrides the rule for one robe set, e.g. a suit of armour
   // Real species where a model exists: wolf (sói, lang), cat (báo), eagle (hạc), yeti (hầu), demon (quỷ vương), dino (heo), orc (thú giáp), ghost (hàn thi ma), snake (rắn). Stand-ins: the boss dragons use the dragon.
   monsterModels: {
     doi_u_minh: "bat",
@@ -656,20 +659,20 @@ export const DEFAULT_TUNING: Readonly<Tuning> = {
   // Xianxia robes for everyone: the white robe `tien`, one colour each by tint, a formation circle in the same colour under the feet.
   npcLooks: {
     byKind: {
-      merchant: { body: "male", outfit: "sage", tint: "#f0d890", aura: "#e6c35a", hat: 5 },
-      quest: { body: "female", outfit: "sage", tint: "#cfe0ff", aura: "#9fc4ff", hat: 1 },
-      smith: { body: "male", outfit: "sage", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a", hat: 5 },
-      alchemist: { body: "female", outfit: "sage", tint: "#bff0c8", aura: "#7dff9c", hat: 3 },
-      master: { body: "male", outfit: "ranger", weapon: "kiem", tint: "#e6b8a0", aura: "#e0563a", hat: 6 },
-      market: { body: "female", outfit: "sage", tint: "#e8c8ff", aura: "#c89cff", hat: 3 },
-      sect: { body: "male", outfit: "sage", tint: "#9ad8c0", aura: "#6fe0b0", hat: 7 },
-      guard: { body: "male", outfit: "warden", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a", hat: 6 },
+      merchant: { body: "male", outfit: "robe", tint: "#f0d890", aura: "#e6c35a", hat: 5 },
+      quest: { body: "female", outfit: "robe", tint: "#cfe0ff", aura: "#9fc4ff", hat: 1 },
+      smith: { body: "male", outfit: "robe", weapon: "riu", tint: "#ffc09a", aura: "#ff8a3a", hat: 5 },
+      alchemist: { body: "female", outfit: "robe", tint: "#bff0c8", aura: "#7dff9c", hat: 3 },
+      master: { body: "male", outfit: "tunic", weapon: "kiem", tint: "#e6b8a0", aura: "#e0563a", hat: 6 },
+      market: { body: "female", outfit: "robe", tint: "#e8c8ff", aura: "#c89cff", hat: 3 },
+      sect: { body: "male", outfit: "robe", tint: "#9ad8c0", aura: "#6fe0b0", hat: 7 },
+      guard: { body: "male", outfit: "tunic", weapon: "thuong", scale: 1.5, tint: "#7f93c4", aura: "#e6c35a", hat: 6 },
     },
     byId: {
-      elder: { body: "male", outfit: "sage", tint: "#fff0c0", aura: "#ffe58a", hat: 1 },
-      path_kiem: { body: "male", outfit: "sage", weapon: "kiem", tint: "#bfe4ff", aura: "#9fe0ff", hat: 0 },
-      path_thuat: { body: "female", outfit: "sage", tint: "#dccbff", aura: "#b99bff", hat: 7 },
-      path_dan: { body: "female", outfit: "sage", tint: "#c6f5c6", aura: "#7dff9c", hat: 3 },
+      elder: { body: "male", outfit: "robe", tint: "#fff0c0", aura: "#ffe58a", hat: 1 },
+      path_kiem: { body: "male", outfit: "robe", weapon: "kiem", tint: "#bfe4ff", aura: "#9fe0ff", hat: 0 },
+      path_thuat: { body: "female", outfit: "robe", tint: "#dccbff", aura: "#b99bff", hat: 7 },
+      path_dan: { body: "female", outfit: "robe", tint: "#c6f5c6", aura: "#7dff9c", hat: 3 },
     },
   },
 };
@@ -813,7 +816,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "gearLooks": {
       const color = (c: unknown): boolean => typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c);
       const list = (a: unknown): boolean => Array.isArray(a) && a.length >= 1 && a.length <= 64 && a.every(color);
-      return obj(value.weapon) && Object.entries(value.weapon).every(([k, v]) => /^[a-z]{2,8}$/.test(k) && color(v)) && list(value.robe) && list(value.hat) && list(value.boots);
+      return obj(value.weapon) && Object.entries(value.weapon).every(([k, v]) => /^[a-z]{2,8}$/.test(k) && color(v)) && list(value.robe) && list(value.hat) && list(value.boots) && (value.belt === undefined || list(value.belt)) && (value.bracer === undefined || list(value.bracer));
     }
     case "basicSkill": {
       const r = value.realms;
@@ -1071,7 +1074,7 @@ export function validTuningGroup(group: string, value: unknown): boolean {
     case "monsterModels":
       return Object.keys(value).length <= 100 && Object.entries(value).every(([k, v]) => /^[a-z0-9_]{1,24}$/.test(k) && typeof v === "string" && /^[a-z0-9]{1,16}$/.test(v));
     case "outfits":
-      return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit));
+      return Array.isArray(value.rules) && value.rules.length <= 20 && value.rules.every((r) => obj(r) && int(r.minRealm, 0, 99) && typeof r.outfit === "string" && /^[a-z]{1,16}$/.test(r.outfit)) && (value.byTier === undefined || (obj(value.byTier) && Object.keys(value.byTier).length <= 200 && Object.entries(value.byTier).every(([k, v]) => /^\d{1,2}\.\d{1,2}$/.test(k) && typeof v === "string" && /^[a-z]{1,16}$/.test(v))));
     case "mounts":
       return validMounts(value);
     case "forge":

@@ -40,11 +40,11 @@ function findBlender() {
 mkdirSync(out, { recursive: true });
 const marker = join(out, "done.marker");
 rmSync(marker, { force: true });
-const script = join(root, "tools/render/render_sprites.py");
+const script = join(root, "tools/render", JSON.parse(readFileSync(cfg, "utf8")).script ?? "render_sprites.py"); // a config can name another script (the props)
 const child = spawn(findBlender(), ["--background", "--factory-startup", "--python", script, "--", cfg, out, artRoot], { stdio: "ignore", detached: true });
 child.unref();
 
-const deadline = Date.now() + 15 * 60_000;
+const deadline = Date.now() + 90 * 60_000; // a full paper doll (every layer, hat and weapon) takes about 20 minutes
 let shown = 0;
 while (!existsSync(marker)) {
   if (Date.now() > deadline) {
