@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DIRECTION_VECTORS, EMPTY_MANIFEST, GFX_ANIMS, GFX_PROP_ANCHOR, GFX_PROP_FRAME, animKey, atlasesForMap, directionOf, frameName, headingAlongPath, validateManifest } from "./gfx";
+import { DIRECTION_VECTORS, EMPTY_MANIFEST, GFX_ANIMS, GFX_FLIGHT_ANCHOR, GFX_FLIGHT_ATLAS, GFX_FLIGHT_FRAME, GFX_PROP_ANCHOR, GFX_PROP_FRAME, animKey, atlasesForMap, directionOf, frameName, headingAlongPath, validateManifest } from "./gfx";
 import type { Vec2 } from "./map";
 import shipped from "../../client/public/gfx/manifest.json";
 import renderConfig from "../../tools/render/sprite-config.json";
 import weaponTable from "../../tools/render/weapons.json";
 import propsConfig from "../../tools/render/props-config.json";
+import flightConfig from "../../tools/render/flight-config.json";
 import { WEAPON_TYPES } from "./equipment-data";
 
 const good = () => ({
@@ -139,6 +140,11 @@ describe("the props render config", () => {
   it("agrees with the constants the map layer reads", () => {
     expect(propsConfig.frame).toBe(GFX_PROP_FRAME);
     expect({ x: propsConfig.anchor[0], y: propsConfig.anchor[1] }).toEqual(GFX_PROP_ANCHOR);
+  });
+  it("agrees with the constants the flight pháp bảo are drawn with", () => {
+    expect(flightConfig.name).toBe(GFX_FLIGHT_ATLAS);
+    expect(flightConfig.frame).toBe(GFX_FLIGHT_FRAME);
+    expect({ x: flightConfig.anchor[0], y: flightConfig.anchor[1] }).toEqual(GFX_FLIGHT_ANCHOR);
   });
 });
 

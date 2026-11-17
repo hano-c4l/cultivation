@@ -19,6 +19,15 @@ export const FIGURE_SCALE = 1.39;
 export const GFX_PROP_FRAME = 320;
 export const GFX_PROP_ANCHOR = { x: 160, y: 280 } as const;
 export const GFX_PROPS_ATLAS = "props";
+/**
+ * The flight pháp bảo atlas (`tools/render/flight-config.json`, rendered by the props script): every frame is named `<part>_<i>` and sits in a box of this size with the
+ * ground point under the rider at the anchor. A part that is turned has one frame for each of n ground headings (i of n is i/n of a turn on screen: 0 to the right,
+ * a quarter turn towards the viewer); a round one has the single frame 0. It is rendered at twice the size it is shown, for the 2x figure of 4j.
+ */
+export const GFX_FLIGHT_ATLAS = "flight";
+export const GFX_FLIGHT_FRAME = 512;
+export const GFX_FLIGHT_ANCHOR = { x: 256, y: 300 } as const;
+export const GFX_FLIGHT_SHOWN = 0.5;
 export const GFX_DIRECTIONS = 8;
 export const GFX_ANIMS = ["idle", "run", "attack", "thrust", "cast", "hit", "die", "sit"] as const;
 export type GfxAnimName = (typeof GFX_ANIMS)[number];
