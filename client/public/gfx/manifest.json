@@ -1,5 +1,5 @@
 {
-  "version": 162,
+  "version": 164,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -1164,6 +1164,10 @@
     "dl_f_grand_trim": {
       "image": "dl_f_grand_trim.webp",
       "data": "dl_f_grand_trim.json"
+    },
+    "dl_f_robe_trim": {
+      "image": "dl_f_robe_trim.webp",
+      "data": "dl_f_robe_trim.json"
     }
   },
   "sprites": {
@@ -3392,7 +3396,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 149,
+      "headSit": 148,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3448,7 +3452,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 152,
+      "headSit": 151,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3784,7 +3788,7 @@
         "y": 224
       },
       "head": 169,
-      "headSit": 146,
+      "headSit": 145,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -3840,7 +3844,7 @@
         "y": 224
       },
       "head": 172,
-      "headSit": 149,
+      "headSit": 148,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4008,7 +4012,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 150,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4064,7 +4068,7 @@
         "y": 224
       },
       "head": 173,
-      "headSit": 150,
+      "headSit": 149,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4176,7 +4180,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 104,
+      "headSit": 103,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4232,7 +4236,7 @@
         "y": 224
       },
       "head": 145,
-      "headSit": 160,
+      "headSit": 159,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4288,7 +4292,7 @@
         "y": 224
       },
       "head": 143,
-      "headSit": 158,
+      "headSit": 157,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -4400,7 +4404,7 @@
         "y": 224
       },
       "head": 123,
-      "headSit": 94,
+      "headSit": 93,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15376,7 +15380,7 @@
         "y": 224
       },
       "head": 176,
-      "headSit": 153,
+      "headSit": 150,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15432,7 +15436,7 @@
         "y": 224
       },
       "head": 182,
-      "headSit": 159,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15488,7 +15492,7 @@
         "y": 224
       },
       "head": 180,
-      "headSit": 157,
+      "headSit": 155,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15544,7 +15548,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 157,
+      "headSit": 154,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15600,7 +15604,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 156,
+      "headSit": 154,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15656,7 +15660,7 @@
         "y": 224
       },
       "head": 184,
-      "headSit": 161,
+      "headSit": 158,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15712,7 +15716,7 @@
         "y": 224
       },
       "head": 163,
-      "headSit": 140,
+      "headSit": 138,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15768,7 +15772,7 @@
         "y": 224
       },
       "head": 175,
-      "headSit": 153,
+      "headSit": 150,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15824,7 +15828,7 @@
         "y": 224
       },
       "head": 177,
-      "headSit": 154,
+      "headSit": 152,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15880,7 +15884,7 @@
         "y": 224
       },
       "head": 181,
-      "headSit": 159,
+      "headSit": 156,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15936,7 +15940,7 @@
         "y": 224
       },
       "head": 185,
-      "headSit": 162,
+      "headSit": 159,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -15992,7 +15996,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 157,
+      "headSit": 154,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16048,7 +16052,7 @@
         "y": 224
       },
       "head": 179,
-      "headSit": 157,
+      "headSit": 154,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16104,7 +16108,7 @@
         "y": 224
       },
       "head": 161,
-      "headSit": 138,
+      "headSit": 135,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16160,7 +16164,7 @@
         "y": 224
       },
       "head": 150,
-      "headSit": 128,
+      "headSit": 125,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16216,7 +16220,7 @@
         "y": 224
       },
       "head": 134,
-      "headSit": 105,
+      "headSit": 104,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16272,7 +16276,7 @@
         "y": 224
       },
       "head": 147,
-      "headSit": 163,
+      "headSit": 160,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16328,7 +16332,7 @@
         "y": 224
       },
       "head": 145,
-      "headSit": 160,
+      "headSit": 158,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16384,7 +16388,7 @@
         "y": 224
       },
       "head": 118,
-      "headSit": 130,
+      "headSit": 127,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16440,7 +16444,7 @@
         "y": 224
       },
       "head": 126,
-      "headSit": 97,
+      "headSit": 94,
       "scale": 0.5,
       "anims": {
         "idle": {
@@ -16721,6 +16725,62 @@
       },
       "head": 194,
       "headSit": 179,
+      "scale": 0.5,
+      "anims": {
+        "idle": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        },
+        "run": {
+          "frames": 8,
+          "fps": 9,
+          "loop": true
+        },
+        "attack": {
+          "frames": 8,
+          "fps": 14,
+          "loop": false
+        },
+        "thrust": {
+          "frames": 6,
+          "fps": 5,
+          "loop": false
+        },
+        "cast": {
+          "frames": 6,
+          "fps": 10,
+          "loop": false
+        },
+        "hit": {
+          "frames": 3,
+          "fps": 6,
+          "loop": false
+        },
+        "die": {
+          "frames": 6,
+          "fps": 2,
+          "loop": false
+        },
+        "sit": {
+          "frames": 4,
+          "fps": 2,
+          "loop": true
+        }
+      }
+    },
+    "doll.female.robe.trim": {
+      "atlas": "dl_f_robe_trim",
+      "frame": {
+        "w": 256,
+        "h": 256
+      },
+      "anchor": {
+        "x": 128,
+        "y": 224
+      },
+      "head": 147,
+      "headSit": 123,
       "scale": 0.5,
       "anims": {
         "idle": {
