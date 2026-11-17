@@ -1,0 +1,35 @@
+{
+  "script": "render_props.py",
+  "name": "flight",
+  "frame": 512,
+  "anchor": [256, 300],
+  "elevationDeg": 30,
+  "azimuthDeg": 45,
+  "outlinePx": 3.0,
+  "outline": [0.04, 0.05, 0.1],
+  "atlasMaxPx": 4096,
+  "turn": true,
+  "contactCols": 16,
+  "styles": {
+    "sword": 16,
+    "phoenix": 16,
+    "dhead": 16,
+    "dseg": 16,
+    "dleg": 16,
+    "dtail": 16,
+    "cloud": 1,
+    "lotus": 1,
+    "plain": 1
+  },
+  "scales": {
+    "sword": 2.78,
+    "phoenix": 2.78,
+    "dhead": 3.4,
+    "dseg": 2.78,
+    "dleg": 2.78,
+    "dtail": 2.78,
+    "cloud": 2.78,
+    "lotus": 2.78,
+    "plain": 2.78
+  }
+}

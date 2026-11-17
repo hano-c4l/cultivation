@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { FIGURE_SCALE, type FlightStyle } from "@game/shared";
+import { FIGURE_SCALE, GFX_FLIGHT_ANCHOR, GFX_FLIGHT_ATLAS, GFX_FLIGHT_FRAME, type FlightStyle } from "@game/shared";
 
 /**
  * What a rider of the flight pháp bảo stands on, drawn once on canvas (no art files, in the style of the xianxia cultivators: a flying sword, a cloud,
@@ -25,6 +25,28 @@ export const FLIGHT_TURNS: Readonly<Partial<Record<FlightStyle, { points: number
 };
 /** How much bigger than the others each is drawn: the two highest realms ride something grand. */
 export const FLIGHT_SCALE: Readonly<Record<FlightStyle, number>> = { plain: FIGURE_SCALE, sword: FIGURE_SCALE, cloud: FIGURE_SCALE, lotus: FIGURE_SCALE, phoenix: 1.3 * FIGURE_SCALE, dragon: 1.55 * FIGURE_SCALE };
+
+/** The rendered flight pháp bảo (4l): real shapes seen from the game's own angle, one frame for each heading. The canvas pictures below stand in until the atlas is there. */
+export const FLIGHT_ATLAS_TEX = `gfx:${GFX_FLIGHT_ATLAS}`;
+export const FLIGHT_ORIGIN = { x: GFX_FLIGHT_ANCHOR.x / GFX_FLIGHT_FRAME, y: GFX_FLIGHT_ANCHOR.y / GFX_FLIGHT_FRAME } as const;
+const headings = new Map<string, number>();
+/**
+ * The frame of a rendered part (`sword`, `phoenix`, `cloud`, `lotus`, `plain`, the dragon's `dhead`, `dseg`, `dleg`, `dtail`) that faces the ground heading `ga`
+ * (radians on screen with the vertical doubled: 0 to the right, PI/2 towards the viewer); undefined while the atlas is not loaded or has no such part.
+ */
+export function flightFrame(scene: Phaser.Scene, part: string, ga: number): string | undefined {
+  let n = headings.get(part);
+  if (n === undefined) {
+    if (!scene.textures.exists(FLIGHT_ATLAS_TEX)) return undefined;
+    const tex = scene.textures.get(FLIGHT_ATLAS_TEX);
+    n = 0;
+    while (tex.has(`${part}_${n}`)) n++;
+    headings.set(part, n);
+  }
+  if (n === 0) return undefined;
+  const i = ((Math.round((ga / (Math.PI * 2)) * n) % n) + n) % n;
+  return `${part}_${i}`;
+}
 
 type Paint = (c: CanvasRenderingContext2D, w: number, h: number) => void;
 

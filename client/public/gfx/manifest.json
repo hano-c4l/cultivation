@@ -1,5 +1,5 @@
 {
-  "version": 164,
+  "version": 165,
   "atlases": {
     "char_female": {
       "image": "char_female.webp",
@@ -1168,6 +1168,10 @@
     "dl_f_robe_trim": {
       "image": "dl_f_robe_trim.webp",
       "data": "dl_f_robe_trim.json"
+    },
+    "flight": {
+      "image": "flight.webp",
+      "data": "flight.json"
     }
   },
   "sprites": {
@@ -16830,7 +16834,8 @@
     "*": [
       "char_female",
       "char_male",
-      "props"
+      "props",
+      "flight"
     ]
   }
 }

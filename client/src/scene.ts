@@ -101,7 +101,7 @@ import { Effects } from "./fx";
 import { HAT_ORN_TEX, HAT_TEX, ensureHatTextures } from "./hat-art";
 import { dollLayers, dollOfWorn, dollPrefixOf, dollWeaponKey, npcDollLayers } from "./gfx/doll";
 import { paintDoll } from "./gfx/doll-preview";
-import { DRAGON_HEAD, DRAGON_MIST, DRAGON_SEG, DRAGON_TAIL, FLIGHT_GLOW, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures } from "./flight-art";
+import { DRAGON_HEAD, DRAGON_MIST, DRAGON_SEG, DRAGON_TAIL, FLIGHT_ATLAS_TEX, FLIGHT_GLOW, FLIGHT_ORIGIN, FLIGHT_SCALE, FLIGHT_TEX, FLIGHT_TURNS, ensureFlightTextures, flightFrame } from "./flight-art";
 import { FX_TEX, ensureFxTextures } from "./fx-art";
 
 /** The flight look an actor rides on: the one its worn pháp bảo gives, else the default. */
@@ -130,7 +130,7 @@ import { initChannel, type ChannelUi } from "./channel-ui";
 import { initRank, type RankUi } from "./rank-ui";
 import { closeAllWindows } from "./window-manager";
 import { setGearSetNames, setWornSkillSets, skillDisplayName, grayWindowMs, decayedSatNhan, displayColor, nameTier, type NameColor, type PkMode } from "@game/shared";
-import { FLIGHT_STYLES, NPC_INTERACT_RADIUS, flightStyleOf, type FlightStyle, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
+import { FLIGHT_STYLES, GFX_FLIGHT_SHOWN, NPC_INTERACT_RADIUS, flightStyleOf, type FlightStyle, nearestStandablePoint, type NpcSpot, type NpcView } from "@game/shared";
 import { initBuffs, type BuffsUi } from "./buffs-ui";
 import { initHotbar, type HotbarUi } from "./hotbar-ui";
 import { initSkills, type SkillsUi } from "./skills-ui";
@@ -230,6 +230,8 @@ interface Actor {
   moteAt?: number;
   /** The flight pháp bảo look this player rides on (`FlightStyle`; none: the default look). */
   flight?: string;
+  /** Whether the dragon's parts were made for the rendered atlas (4l) or for the canvas pictures. */
+  dragonArt?: boolean;
   /** The cultivation level (`realm * 10 + stage`): the colour and thickness of the qi haze round the figure. */
   lv?: number;
   /** When (performance.now) the next wisp of that haze is released. */
@@ -2321,7 +2323,10 @@ export class GameScene extends Phaser.Scene {
    */
   private syncDragon(a: Actor, cx: number, cy: number, ga: number, now: number, depth: number, moving: boolean): void {
     const JOINTS = 15;
+    const art = flightFrame(this, "dseg", 0) !== undefined; // the rendered dragon (4l): every joint is a length of body seen from the side it is turned to
+    if (a.dragon && a.dragonArt !== art) this.clearDragon(a); // the atlas came in: build it again from the rendered parts
     if (!a.dragon) {
+      a.dragonArt = art;
       const parts: Phaser.GameObjects.Image[] = [this.add.image(0, 0, DRAGON_TAIL)];
       for (let i = 0; i < JOINTS; i++) parts.push(this.add.image(0, 0, DRAGON_SEG).setOrigin(0.5, 0.65));
       parts.push(this.add.image(0, 0, DRAGON_HEAD).setOrigin(0.3, 0.5));
@@ -2340,6 +2345,32 @@ export class GameScene extends Phaser.Scene {
       return { x: cx + fwd.x * length * (t - 0.5) + side.x * sway, y: cy + fwd.y * length * (t - 0.5) + side.y * sway, z: Math.sin(phase * 0.9 - t * 4.1 + 1.2) * 7 * K * calm + t * 9 * K };
     };
     const parts = a.dragon;
+    if (art) {
+      // the ground heading of the body at t, read off two points a little apart (the rise and fall is left out: a joint is turned, not tilted)
+      const turnAt = (t: number): number => {
+        const p0 = at(t - 0.04);
+        const p1 = at(t + 0.04);
+        return Math.atan2(2 * (p1.y - p0.y), p1.x - p0.x);
+      };
+      const put = (img: Phaser.GameObjects.Image, part: string, t: number, lift: number, scale: number): void => {
+        const p = at(t);
+        const frame = flightFrame(this, part, turnAt(t)) ?? `${part}_0`;
+        if (img.texture.key !== FLIGHT_ATLAS_TEX || img.frame.name !== frame) img.setTexture(FLIGHT_ATLAS_TEX, frame);
+        // what is nearer the viewer (lower on screen) is drawn over what is further: the coil reads in depth whichever way it flies
+        img.setOrigin(FLIGHT_ORIGIN.x, FLIGHT_ORIGIN.y).setRotation(0).setFlipX(false).setFlipY(false).setScale(scale * GFX_FLIGHT_SHOWN).setPosition(p.x, p.y - p.z - lift * K).setDepth(depth + 0.03 + (p.y - cy) * 0.0004);
+      };
+      a.mist?.forEach((puff, k) => {
+        const m = at(0.12 + k * 0.25);
+        puff.setPosition(m.x, m.y + 8 * K).setScale((1.25 + 0.1 * Math.sin(now / 500 + k)) * K).setDepth(depth - 0.002);
+      });
+      put(parts[0]!, "dtail", 0.0, 6, 0.8);
+      for (let i = 0; i < JOINTS; i++) {
+        const t = i / (JOINTS - 1);
+        put(parts[1 + i]!, i === 4 || i === 11 ? "dleg" : "dseg", 0.04 + t * 0.88, 6, 0.6 + 0.45 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.5));
+      }
+      put(parts[parts.length - 1]!, "dhead", 0.98, 9, 1);
+      return;
+    }
     // The cloud bank follows the body: a puff under four places along it, so it turns with the dragon.
     a.mist?.forEach((puff, k) => {
       const m = at(0.12 + k * 0.25);
@@ -2736,8 +2767,6 @@ export class GameScene extends Phaser.Scene {
         }
         fly.x = s.x;
         fly.y = s.y;
-        const want = FLIGHT_TEX[actorFlight(actor)];
-        if (actor.cloud.texture.key !== want) actor.cloud.setTexture(want); // another pháp bảo was put on
         const style = actorFlight(actor);
         const turn = FLIGHT_TURNS[style]; // the sword, the phoenix and the dragon face where they fly
         const dragon = style === "dragon";
@@ -2749,11 +2778,20 @@ export class GameScene extends Phaser.Scene {
         const along = sword ? Math.hypot(Math.cos(ga), 0.5 * Math.sin(ga)) : 1;
         actor.cloud.setPosition(s.x, s.y - 4 + bob).setDepth(10 + pos.x + pos.y - 0.1);
         const big = FLIGHT_SCALE[actorFlight(actor)];
-        if (dragon) {
+        // the rendered pháp bảo (4l) has a frame for each heading: nothing is turned or squashed, the picture itself is the thing seen from that side
+        const frame = dragon ? undefined : flightFrame(this, style, ga);
+        const want = frame ? FLIGHT_ATLAS_TEX : FLIGHT_TEX[style];
+        if (actor.cloud.texture.key !== want || (frame && actor.cloud.frame.name !== frame)) actor.cloud.setTexture(want, frame); // it turned, or another pháp bảo was put on
+        if (frame) {
+          this.clearDragon(actor);
+          actor.cloud.setOrigin(FLIGHT_ORIGIN.x, FLIGHT_ORIGIN.y).setAlpha(1).setRotation(0).setFlipY(false).setScale(GFX_FLIGHT_SHOWN * (style === "phoenix" ? 1.1 : 1)).setPosition(s.x, s.y + bob);
+        } else if (dragon) {
+          actor.cloud.setOrigin(0.5, 0.5).setAlpha(0.95);
           actor.cloud.setRotation(0).setFlipY(false).setScale(big * 0.8);
           this.syncDragon(actor, s.x, s.y - 4 + bob, ga, now, 10 + pos.x + pos.y - 0.1, pos.moving);
         } else {
           this.clearDragon(actor);
+          actor.cloud.setOrigin(0.5, 0.5).setAlpha(0.95);
           actor.cloud.setRotation(turn ? fly.a - turn.points : 0).setFlipY(!!turn?.flip && ca < 0).setScale(turn && turn.points === 0 ? along * big : big, turn && turn.points !== 0 ? along * big : big); // the length lies along the picture's x for a picture that points right, along its y for one that points up
         }
         if (pos.moving && Math.random() < 0.4) this.fx.puff("trail", s.x - (turn ? ca * turn.tail * along : 14), s.y - 4 + bob - (turn ? sa * turn.tail * along : 0), 1, FLIGHT_GLOW[style]);
